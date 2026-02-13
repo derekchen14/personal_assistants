@@ -1,0 +1,144 @@
+,product_id,sku,type,brand,style,cost
+0,5000,284957,Men,Nike,basketball,80.0
+1,5001,285014,Men,Nike,soccer,75.0
+2,5002,285071,Men,Nike,casual,75.0
+3,5003,285128,Men,Nike,streetwear,85.0
+4,5004,285185,Men,Nike,running,80.0
+5,5005,285242,Men,Nike,fashion,93.0
+6,5006,285299,Men,Adidas,soccer,59.0
+7,5007,285356,Men,Adidas,casual,44.0
+8,5008,285413,Men,Adidas,streetwear,90.0
+9,5009,285470,Men,Adidas,running,51.0
+10,5010,285527,Men,Adidas,basketball,62.0
+11,5011,285584,Men,Reebok,soccer,79.0
+12,5012,285641,Men,Reebok,basketball,62.0
+13,5013,285698,Men,Reebok,streetwear,86.0
+14,5014,285755,Men,Reebok,casual,57.0
+15,5015,285812,Men,Puma,soccer,56.0
+16,5016,285869,Men,Puma,casual,48.0
+17,5017,285926,Men,Puma,streetwear,84.0
+18,5018,285983,Men,New Balance,casual light,64.0
+19,5019,286040,Men,New Balance,causal dark,66.0
+20,5020,286097,Men,New Balance,streetwear,70.0
+21,5021,286154,Men,New Balance,running,50.0
+22,5022,286211,Men,New Balance,soccer,77.0
+23,5023,286268,Men,Converse,running,42.0
+24,5024,286325,Men,Converse,streetwear,90.0
+25,5025,286382,Men,Converse,casual light,73.0
+26,5026,286439,Men,Converse,causal dark,79.0
+27,5027,286496,Men,Vans,streetwear,95.0
+28,5028,286553,Men,Vans,casual light,56.0
+29,5029,286610,Men,Vans,causal dark,87.0
+30,5030,286667,Men,Timberland,streetwear,76.0
+31,5031,286724,Men,Timberland,casual light,66.0
+32,5032,286781,Men,Timberland,causal dark,77.0
+33,5033,286838,Men,Dr. Martens,casual,71.0
+34,5034,286895,Men,Dr. Martens,fashion,175.0
+35,5035,286952,Men,Clarks,casual,58.0
+36,5036,287009,Men,Clarks,fashion,167.0
+37,5037,287066,Men,Sperry,casual,57.0
+38,5038,287123,Men,Sperry,fashion light,0.0
+39,5039,287180,Men,Sperry,fashion dark,141.0
+40,5040,287237,Men,Cole Haan,casual,71.0
+41,5041,287294,Men,Cole Haan,fashion,166.0
+42,5042,287351,Men,Merrell,casual,62.0
+43,5043,287408,Men,Merrell,fashion,175.0
+44,5044,287465,Men,ASICS,casual,65.0
+45,5045,287522,Men,ASICS,streetwear,94.0
+46,5046,287465,Men,ASICS,running,41.0
+47,5047,287636,Men,Brooks,casual,58.0
+48,5048,287693,Men,Brooks,fashion,158.0
+49,5049,287750,Men,Brooks,running,45.0
+50,5050,287807,Women,Nike,basketball,69.0
+51,5051,287864,Women,Nike,soccer,59.0
+52,5052,287921,Women,Nike,casual,55.0
+53,5053,287978,Women,Nike,streetwear,82.0
+54,5054,288035,Women,Nike,running,60.0
+55,5055,288092,Women,Nike,fashion,168.0
+56,5056,288149,Women,Adidas,soccer,52.0
+57,5057,288206,Women,Adidas,casual,61.0
+58,5058,288263,Women,Adidas,streetwear,71.0
+59,5059,288320,Women,Adidas,running,60.0
+60,5060,288377,Women,Adidas,basketball,77.0
+61,5061,288434,Women,Reebok,soccer,62.0
+62,5062,288491,Women,Reebok,basketball,88.0
+63,5063,288548,Women,Reebok,streetwear,70.0
+64,5064,288605,Women,Reebok,casual,43.0
+65,5065,288662,Women,Puma,soccer,80.0
+66,5066,288719,Women,Puma,casual,59.0
+67,5067,288776,Women,Puma,streetwear,76.0
+68,5068,288833,Women,New Balance,casual light,73.0
+69,5069,288890,Women,New Balance,causal dark,81.0
+70,5070,288947,Women,New Balance,streetwear,95.0
+71,5071,289004,Women,New Balance,running,45.0
+72,5072,289061,Women,New Balance,soccer,79.0
+73,5073,289118,Women,Converse,running,44.0
+74,5074,289175,Women,Converse,streetwear,97.0
+75,5075,289232,Women,Converse,casual light,70.0
+76,5076,289289,Women,Converse,causal dark,86.0
+77,5077,289346,Women,Vans,streetwear,86.0
+78,5078,289403,Women,Vans,casual light,69.0
+79,5079,289460,Women,Vans,casual dark,84.0
+80,5080,289517,Women,UGG,casual dark,87.0
+81,5081,289574,Women,UGG,causal light,66.0
+82,5082,289631,Women,Dr. Martens,casual,55.0
+83,5083,289688,Women,Dr. Martens,streetwear,82.0
+84,5084,289745,Women,Clarks,casual,68.0
+85,5085,289802,Women,Clarks,running,60.0
+86,5086,289859,Women,Steve Madden,casual,84.0
+87,5087,289916,Women,Steve Madden,fashion,160.0
+88,5088,289973,Women,Sam Edelman,casual,76.0
+89,5089,290030,Women,Sam Edelman,fashion,145.0
+90,5090,290087,Women,Tory Burch,casual,56.0
+91,5091,290144,Women,Tory Burch,fashion,176.0
+92,5092,290201,Women,Nine West,fashion,151.0
+93,5093,290258,Women,Nine West,casual,40.0
+94,5094,290315,Women,Jimmy Choo,fashion,180.0
+95,5095,290372,Women,Christian Louboutin,fashion,152.0
+96,5096,290429,Women,Manolo Blahnik,fashion,159.0
+97,5097,290486,Women,Gucci,fashion,143.0
+98,5098,290543,Women,Prada,fashion,163.0
+99,5099,290600,Women,Valentino,fashion,173.0
+100,5100,290657,Women,Chanel,fashion,144.0
+101,5101,290714,Women,Yves Saint Laurent,fashion,172.0
+102,5102,290771,Women,Alexander McQueen,fashion,146.0
+103,5103,290828,Women,Dolce & Gabbana,fashion,179.0
+104,5104,290885,Women,Salvatore Ferragamo,fashion,158.0
+105,5105,290942,Women,Versace,fashion,162.0
+106,5106,290999,Women,Fendi,fashion,156.0
+107,5107,291056,Women,Givenchy,fashion,167.0
+108,5108,291113,Women,Bottega Veneta,fashion,174.0
+109,5109,291170,Women,Miu Miu,fashion,147.0
+110,5110,291227,Women,Stella McCartney,fashion,168.0
+111,5111,291284,Women,Versace,fashion light,130.0
+112,5112,291341,Women,Fendi,fashion light,121.0
+113,5113,291398,Women,Givenchy,fashion light,136.0
+114,5114,291455,Women,Bottega Veneta,fashion light,126.0
+115,5115,291512,Women,Miu Miu,fashion light,141.0
+116,5116,291569,Men,Stella McCartney,fashion light,139.0
+117,5117,290600,Men,Valentino,fashion light,173.0
+118,5118,291626,Kids,Nike,basketball,48.0
+119,5119,291683,Kids,Nike,soccer,43.8
+120,5120,291740,Kids,Nike,casual,44.4
+121,5121,291797,Kids,Nike,streetwear,44.4
+122,5122,291854,Kids,Nike,running,3360.0
+123,5123,291911,Kids,Adidas,soccer,30.0
+124,5124,291968,Kids,Adidas,casual,45.0
+125,5125,292025,Kids,Adidas,streetwear,49.8
+126,5126,292082,Kids,Adidas,running,31.8
+127,5127,292139,Kids,Adidas,basketball,40.2
+128,5128,292139,Kids,Rebook,basketball,35.2
+129,5129,292196,Kids,Reebok,soccer,33.0
+130,5130,292253,Kids,Reebok,basketball,47.4
+131,5131,292310,Kids,Reebok,streetwear,58.2
+132,5132,292367,Kids,Reebok,casual,45.6
+133,5133,292424,Kids,Puma,soccer,45.6
+134,5134,292481,Kids,Puma,casual,25.8
+135,5135,292538,Kids,Puma,running,28.2
+136,5136,292595,Kids,New Balance,casual,25.2
+137,5137,292652,Kids,New Balance,running,25.8
+138,5138,292709,Kids,New Balance,soccer,30.0
+139,5139,292766,Kids,Converse,running,24.0
+140,5140,292823,Kids,Converse,casual,36.6
+141,5141,292880,Kids,Vans,streetwear,49.2
+142,5142,292937,Kids,Vans,casual,34.2

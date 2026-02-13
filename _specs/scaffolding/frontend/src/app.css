@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.title-font {
+  font-family: 'Catamaran', 'Merriweather Sans', 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+.subtitle-font {
+  font-family: Roboto, 'Trebuchet MS', sans-serif;
+  font-weight: 300;
+}
+.signature-font {
+  font-family: Tahoma, 'Trebuchet MS', sans-serif;
+}
+
+
+.catamaran-font {
+  font-family: 'Catamaran', 'Merriweather Sans', sans-serif;
+  font-weight: 300;
+}
+.roboto-font {
+  font-family: Roboto, 'Trebuchet MS', Tahoma, sans-serif;
+}
+.open-sans-font {
+  font-family: 'Open Sans', 'Helvetica Neue', sans-serif;
+}
