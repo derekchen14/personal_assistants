@@ -1,4 +1,4 @@
-# Phase 7 — Prompt Writing
+# Phase 8 — Prompt Writing
 
 Assemble the full prompt suite: system prompts, NLU classification prompts, PEX skill prompts, RES naturalization prompts, and the template registry.
 
@@ -6,7 +6,7 @@ Assemble the full prompt suite: system prompts, NLU classification prompts, PEX 
 
 Prompts are the agent's instructions. Every LLM call follows the standard 8-slot format, every output is JSON, and every classification prompt includes chain-of-thought reasoning. This phase ensures all prompts are written, versioned, and organized.
 
-**Prerequisites**: Phase 6 complete — 32 working flows with policies and skill templates.
+**Prerequisites**: Phase 7 complete — 32 working flows with policies and skill templates.
 
 **Outputs**: Complete prompt suite across all `for_*.py` files, template registry with base + domain overrides, prompt versioning.
 

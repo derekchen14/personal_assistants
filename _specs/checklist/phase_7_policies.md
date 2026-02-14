@@ -1,4 +1,4 @@
-# Phase 6 — Policies
+# Phase 7 — Policies
 
 Write per-flow policies and skill templates. Code flows in batches, test each batch before continuing. This is where the agent learns to do real work.
 
@@ -6,7 +6,7 @@ Write per-flow policies and skill templates. Code flows in batches, test each ba
 
 Each flow has a policy (deterministic skeleton) and a skill template (LLM prompt). The hybrid model keeps the deterministic parts predictable and the creative parts flexible. Policies are organized by intent — 7 policy files per domain. Flows are brought up in batches: first 16, then 16 more, then stub the remaining 16.
 
-**Prerequisites**: Phase 5 complete — all components, modules, and Agent orchestrator are implemented and working.
+**Prerequisites**: Phase 6 complete — server boots, WebSocket smoke tests pass, canned responses work end-to-end.
 
 **Outputs**: 32 working flows with unit tests, 16 stubbed flows, complete skill templates.
 
@@ -210,8 +210,8 @@ tests/
 - [ ] Each of the 32 working flows has all 8 per-flow checklist items complete
 - [ ] Each flow has 10 sample utterances
 - [ ] Each flow has a skill template in `skills/<dact>.md`
-- [ ] Skill templates follow the 8-slot format (providing slots 2–6)
-- [ ] 3–5 unit tests per working flow
+- [ ] Skill templates follow the 8-slot format (providing slots 2-6)
+- [ ] 3-5 unit tests per working flow
 - [ ] Batch 1 (16 flows): all 64 test utterances classify correctly
 - [ ] Batch 2 (32 flows): all 96 test utterances classify correctly
 - [ ] 16 stubbed flows return graceful "in development" messages

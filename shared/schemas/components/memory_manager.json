@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "memory_manager",
+  "description": "Read/write scratchpad, read user preferences. Provided by PEX, not in manifest.",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["read_scratchpad", "write_scratchpad", "read_preferences"],
+      "description": "Operation to perform"
+    },
+    "key": {
+      "type": "string",
+      "description": "Key for scratchpad read/write or preference lookup"
+    },
+    "value": {
+      "type": "string",
+      "description": "Value to write (for write_scratchpad)"
+    }
+  },
+  "required": ["action"],
+  "additionalProperties": false
+}

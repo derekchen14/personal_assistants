@@ -15,6 +15,7 @@
   - Single quotes for all internal strings (code logic, keys, identifiers)
   - Double quotes only for user utterances (external-facing text)
   - Rationale: Distinguishes internal strings from user input. User utterances are more likely to contain contractions (e.g., "don't") that conflict with single quotes.
+- **Comments**: Include minimal comments and docstrings. Code should be largely self-documenting.
 
 ## Naming
 

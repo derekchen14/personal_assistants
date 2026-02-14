@@ -1,4 +1,4 @@
-# Phase 8 — Deployment
+# Phase 9 — Deployment
 
 Build the frontend, set up evaluation, and prepare for production. This phase produces a production-ready agent with a web interface and comprehensive testing.
 
@@ -6,7 +6,7 @@ Build the frontend, set up evaluation, and prepare for production. This phase pr
 
 The final phase connects the agent to a real frontend, instruments evaluation for ongoing quality assurance, and configures production settings. By the end, the agent is deployable with a complete UI, regression thresholds, user feedback collection, and production hardening.
 
-**Prerequisites**: Phase 7 complete — full prompt suite, template registry, 32 working flows.
+**Prerequisites**: Phase 8 complete — full prompt suite, template registry, 16 working flows.
 
 **Outputs**: SvelteKit frontend with building blocks, full evaluation pipeline (online + offline), production configuration, containerization.
 
@@ -171,21 +171,6 @@ Session record schema:
 | Prediction Quality | Vote rounds, confidence scores, agreement ratios |
 | Self-Check | Rule-based results (4), LLM-based (if enabled) |
 | Prompt Versions | `{template_id.version: call_count}` map |
-| User Feedback | Explicit + implicit signals |
-
-#### User Feedback
-
-**Explicit**: thumbs up/down (`bool`), correction (`{expected, actual}`), rating (`int` 1–5).
-
-**Implicit**:
-
-| Signal | Interpretation |
-|---|---|
-| Re-ask | Prior response insufficient |
-| Abandonment | User gave up (non-empty stack at session end) |
-| Correction follow-up | Agent was wrong |
-| Continued engagement | Positive signal |
-| Escalation to ambiguity | Agent couldn't handle it |
 
 ### Step 8 — Offline Evaluation (Three Pillars)
 
@@ -239,15 +224,23 @@ JSON conversation format with multi-turn scenarios:
 | Mean latency | > 20% increase |
 | Self-check failure rate | Any increase |
 
-### Step 10 — Per-Flow Testing
+### Step 10 — Building Block Components
 
-Three levels:
+Implement the block types from [blocks.md](../utilities/blocks.md):
 
-| Level | Scope | Tools |
+| Block | Description | Inline? |
 |---|---|---|
-| Unit | Single policy, mocked tools | Fast, isolated |
-| Integration | Full NLU→PEX→RES for one flow | Sandboxed tools, real pipeline |
-| Edge flow confusion | Verify flow NOT predicted for edge cases | Validates edge flow definitions |
+| `table` | Data tables with sorting, filtering | No (right panel) |
+| `card` | Summary cards for entities | No (right panel) |
+| `list` | Ordered/unordered lists | No (right panel) |
+| `form` | Input forms for slot collection | No (right panel) |
+| `toast` | Ephemeral notifications | Yes (inline) |
+| `confirmation` | Yes/no prompts | Yes (inline) |
+
+Each block component:
+- Accepts frame data as props
+- Handles its own responsive hints (viewport, color scheme)
+- Emits user interactions as messages back to the WebSocket
 
 ### Step 11 — Production Configuration
 
@@ -343,8 +336,7 @@ wait
 - [ ] Responsive hints apply correctly (mobile/desktop, dark/light)
 - [ ] User interactions on blocks route to NLU `react()`
 - [ ] Signal envelopes emitted from all modules and components
-- [ ] Session records accumulate per-session metrics correctly
-- [ ] User feedback (explicit + implicit) captured and attributed
+- [ ] Session records accumulate per-session metrics correctly-
 - [ ] Three-pillar E2E evals produce scores
 - [ ] Regression thresholds defined and enforceable
 - [ ] Per-flow tests: unit, integration, edge flow confusion all passing

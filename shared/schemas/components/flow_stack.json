@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flow_stack",
+  "description": "Read slot values and flow metadata. Provided by PEX, not in manifest.",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["get_slots", "get_flow_meta", "get_stack"],
+      "description": "Operation to perform"
+    },
+    "flow_name": {
+      "type": "string",
+      "description": "Flow name to query (defaults to active flow)"
+    }
+  },
+  "required": ["action"],
+  "additionalProperties": false
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "context_coordinator",
+  "description": "Read conversation history and turn context. Provided by PEX, not in manifest.",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["get_history", "get_turn", "get_checkpoint"],
+      "description": "Operation to perform"
+    },
+    "turn_count": {
+      "type": "integer",
+      "description": "Number of recent turns to retrieve (for get_history)"
+    }
+  },
+  "required": ["action"],
+  "additionalProperties": false
+}

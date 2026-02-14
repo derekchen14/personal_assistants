@@ -13,9 +13,11 @@ Phased implementation plan for building a domain agent from scratch. Each phase 
 | 3 | [Tool Design](./phase_3_tool_design.md) | Tool manifest, JSON schemas, error contracts, service classes |
 | 4 | [Foundation](./phase_4_foundation.md) | Running server, config loader, database, module shells, Agent shell |
 | 5 | [Core Agent](./phase_5_core_agent.md) | 7 components, NLU/PEX/RES modules, Agent orchestrator |
-| 6 | [Policies](./phase_6_policies.md) | 32 working flows, 16 stubbed, skill templates, tests |
-| 7 | [Prompt Writing](./phase_7_prompt_writing.md) | Full prompt suite, template registry, prompt versioning |
-| 8 | [Deployment](./phase_8_deployment.md) | Frontend, evaluation pipeline, production config, containerization |
+| 6 | [Staging](./phase_6_staging.md) | Basic agent working end-to-end with hard-coded test flows |
+| 7 | [Policies](./phase_7_policies.md) | 32 working flows, 16 stubbed, skill templates, tests |
+| 8 | [Prompt Writing](./phase_8_prompt_writing.md) | Full prompt suite, template registry, prompt versioning |
+| 9 | [Deployment](./phase_9_deployment.md) | Frontend, evaluation pipeline, production config, containerization |
+| 10 | [Expansion](./phase_10_expansion.md) | Filling out all 32 flows, prompt tuning, iterate based on evaluation |
 
 ---
 
