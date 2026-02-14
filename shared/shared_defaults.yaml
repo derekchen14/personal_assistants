@@ -1,0 +1,159 @@
+# shared/shared_defaults.yaml
+# Baseline config inherited by all domain agents.
+# Each top-level section is fully replaced if the domain defines it.
+
+environment: dev                    # dev | prod — controls logging, guardrails
+
+models:
+  default:
+    provider: anthropic             # openai | anthropic | google | azure | bedrock
+    model_id: claude-sonnet-4-5-latest
+    temperature: 0.0                # 0.0–2.0
+    top_p: 1.0                      # 0.0–1.0
+    max_output_tokens: 4096         # max tokens in LLM response
+    stop_sequences: []              # optional custom stop tokens
+  overrides:                        # named overrides for specific call sites
+    skill:                          # PEX skill invocation uses Opus
+      model_id: claude-opus-4-6
+    naturalize:                     # RES naturalization benefits from variety
+      temperature: 0.5
+  cost:
+    token_budget_per_session: null   # max total tokens (in+out) per session; null = unlimited
+    token_budget_per_turn: null      # max tokens per single turn
+    daily_token_budget: null         # max tokens across all sessions per day
+    warn_threshold: 0.8             # 0.0–1.0 fraction of budget to emit warning signal
+
+persona:
+  tone: professional                # neutral baseline
+  expertise_boundaries: []          # empty = no restrictions
+  name: "Assistant"                 # agent display name
+  response_style: balanced          # concise | balanced | detailed
+
+guardrails:
+  input_max_tokens: 4096            # max user input length (reject above)
+  content_filter:
+    enabled: true
+    categories: [violence, sexual, hate_speech, self_harm, dangerous]
+    severity: medium                # none | low | medium | high
+  pii_detection:
+    enabled: false
+    action: redact                  # redact | warn | block
+    types: [ssn, credit_card, email, phone, address]
+  topic_control:
+    allowed_topics: []              # empty = no restriction (use expertise_boundaries)
+    forbidden_topics: []            # explicit blocklist
+  forbidden_patterns: []            # regex patterns to block in input or output
+  prompt_injection_detection:
+    enabled: true
+    sensitivity: medium             # low | medium | high
+
+session:
+  idle_timeout_ms: 3600000          # 60 min before idle session expires
+  max_turns: 256                    # hard cap on turns per session (0 = unlimited)
+  max_flow_depth: 8                 # max flows on stack simultaneously
+  persistence:
+    backend: postgres               # memory | postgres | redis
+    ttl_hours: 24                   # how long to keep persisted sessions
+    timing: session_end             # session_end | per_turn
+
+memory:
+  scratchpad:
+    max_snippets: 64                # cap on session scratchpad entries
+    eviction: lru                   # lru | fifo
+  summarization:
+    trigger_turn_count: 20          # summarize after N turns
+    trigger_token_count: 32000      # or when context exceeds N tokens
+  user_preferences:
+    backend: postgres               # memory | postgres | redis
+    max_entries: 256                # max stored preferences per user
+  business_context:
+    backend: vector                 # vector store type
+    retrieval_top_k: 128            # candidates from vector search
+    rerank_top_n: 10                # after reranking
+    similarity_threshold: 0.5       # 0.0–1.0, minimum score to include
+    embedding_model: null           # embedding model ID; null = provider default
+
+resilience:
+  tool_retries:
+    max_attempts: 3                 # total attempts (1 = no retry)
+    backoff_strategy: exponential   # none | linear | exponential
+    backoff_base_ms: 1000           # base delay between retries
+    backoff_max_ms: 30000           # ceiling for exponential backoff
+  llm_retries:
+    max_attempts: 2
+    backoff_strategy: exponential
+    backoff_base_ms: 500
+    retriable_errors: [rate_limit, timeout, server_error]
+  fallback_model: null              # model_id to try if primary fails; null = none
+  max_recovery_attempts: 2          # max times Agent tries re-route before escalate
+
+context_window:
+  max_input_tokens: 128000          # total input budget (model-dependent)
+  allocation:                       # suggested fraction split — applies primarily to PEX policy calls
+    system_prompt: 0.10             # fraction of budget (0.0–1.0)
+    conversation_history: 0.30
+    memory_context: 0.15            # scratchpad + retrieved business context
+    tool_results: 0.35
+    response_reserve: 0.10          # reserved for model output
+  history_max_turns: 50             # max raw turns before summarization kicks in
+  priority_order:                   # when budget is tight, which sections get cut first
+    - memory_context
+    - conversation_history
+    - tool_results
+
+logging:
+  level: null                       # DEBUG | INFO | WARNING | ERROR; null = defer to environment
+  trace_export:
+    enabled: false
+    endpoint: console               # OTLP endpoint URL, or "console"
+    sampling_rate: 1.0              # 0.0–1.0 (1.0 = trace everything)
+  sensitive_data:                   # environment modulates defaults: dev = all true, prod = all false
+    log_prompts: false              # whether to log full prompt text
+    log_responses: false            # whether to log full LLM responses
+    log_tool_args: false            # whether to log tool call arguments
+  signal_export:
+    enabled: false                  # export evaluation signal envelopes
+    endpoint: ""                    # where to send signals
+
+display:
+  types: [Default]                  # minimal; domains extend
+  chart_types: [bar, line]          # common chart types
+  page_size: 512                    # rows before pagination
+
+thresholds:
+  stream_threshold_tokens: 200      # above this, RES streams response
+  nlu_confidence_min: 0.64          # below this, NLU triggers round-2 vote
+  nlu_vote_agreement_min: 0.67      # minimum agreement ratio for majority vote
+  ambiguity_escalation_turns: 3     # max turns in ambiguity loop before escalating
+  scratchpad_promotion_frequency: 3 # recurrence count to trigger promotion
+  extended_thinking_budget: 2048    # token budget for extended thinking (NLU round 3)
+
+feature_flags:                      # all flags default false
+  proactive_issue_detection: false
+
+template_registry: templates/base/  # path to base intent templates
+
+response_constraints:
+  length_bounds:
+    default:
+      min_tokens: 10
+      max_tokens: 2048
+    per_intent: {}                  # optional overrides, e.g. Converse: { min_tokens: 1, max_tokens: 512 }
+  language: en                      # ISO 639-1 code
+  supported_languages: [en]         # for multilingual agents
+  confidence_auto_threshold: 0.6    # below this, ask clarification instead of auto-responding
+  citation_mode: footnote           # none | inline | footnote
+
+human_in_the_loop:
+  tool_approval:
+    mode: none                      # none | non_idempotent | all | explicit_list
+    explicit_list: []               # tool_ids requiring approval (when mode=explicit_list)
+    timeout_ms: 60000               # how long to wait for approval before failing
+  escalation:
+    enabled: false
+    triggers: [max_recovery_exceeded, low_confidence, user_request]
+    channel: webhook                # webhook | queue | email
+    endpoint: ""                    # where to send escalation
+
+# No shared defaults for: §15 slot_types, §16 key_entities
+# These are inherently domain-specific.

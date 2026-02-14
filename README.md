@@ -1,18 +1,21 @@
 # Agent Architecture Specs
 
-## What This Is
+## Introduction
 
-A POMDP-based agent architecture specification. These are design documents, not runnable code. The architecture models user interaction as a partially observable Markov decision process where observations are user utterances and hidden state is user intent.
+Soleda is an Agent Factory that builds custom AI agents for specific personal and business needs at the click of a button. Our onboarding assistant is called Kalli, who will guide you through the process of building your own agent. She will ask you a few questions about your needs and help you build your agent. Once your agent is built, you can invite your team members to use it by simply sharing the agent's URL. Our agents are powerful and reliable due to three key innovations:
+  1. **Explicit Understanding**: Our assistants follow a POMDP-based architecture that models user interaction as a sequence of flows where observations are user utterances and hidden state is the user intent. This neuro-symbolic structure explicitly predicts and tracks user beliefs over time, taking advantage of traditional symbolic AI planning along with modern LLM-based deep learning.
+  2. **Ambiguity Handling**: Real-life conversations are often ambiguous due to conflicting information, incomplete specification, or simply the complexity of human language. Our assistants treat ambiguity as a first-class citizen by directly measuring confidence, recognizing levels of uncertainty, and asking for clarifications when needed.
+  3. **Synthetic Data Augmentation**: Our assistants are trained using a combination of real and synthetic data to improve their performance in handling rare events and improving generalization. This allows our assistants for customization to any specific user needs without the need for extensive real data.
 
 ## Purpose
 
-Starting point for building AI agents in custom domains. The path:
+Starting point for building personalized assistants in custom domains. The path:
 
 1. Read [architecture.md](./architecture.md) for the full system overview
 2. Define your domain ontology — intents, flows, and dax codes (see [Flow Selection](./utilities/flow_selection.md))
 3. Write policies for each flow (see [PEX § Policies and Tools](./modules/pex.md))
 4. Configure your domain YAML — tools, persona, display, thresholds (see [Configuration § Domain Config Schema](./utilities/configuration.md))
-5. Follow the [build checklist](./build_checklist.md) to implement end-to-end
+5. Follow the [build checklist](./checklist/start_here.md) to implement end-to-end
 
 ## Spec Map
 
@@ -48,7 +51,7 @@ Starting point for building AI agents in custom domains. The path:
 ### Guides
 
 - [style_guide.md](./style_guide.md) — Coding conventions and project standards
-- [build_checklist.md](./build_checklist.md) — Phased implementation checklist
+- [build_checklist.md](./checklist/start_here.md) — Phased implementation checklist
 
 ## Open Questions
 
@@ -61,7 +64,7 @@ Unresolved design decisions to address before or during implementation:
 - **Deployment**: No containerization, scaling, or multi-tenant spec.
 - **NLU `react()`**: Only 4 lines of description. Needs more detail on which user actions it handles and how it maps them to flows.
 
-## Queued Domains
+## Queued Domains and Terminology
 
 Three domains queued for implementation beyond the cooking example used throughout the specs.
 
@@ -72,6 +75,9 @@ Three domains queued for implementation beyond the cooking example used througho
 | Recruiter | Professional; recruiting, job market, candidate evaluation | listing, application, resume |
 
 See [Configuration § Cross-Domain Comparison](./utilities/configuration.md) for how domain configs differ across persona, display, tools, and auth scopes.
+
+**Terminology**:
+We use the terms assistant and agent interchangeably in the code and documentation. However, there is a subtle difference between the two. An assistant is a personalized AI system built for a specific user or team with a specific purpose. An agent represents the code and runtime instance of an assistant. In other words, an assistant is the product and personality, while an agent is the tangible implementation. Whenever possible, we use the word 'assistant' in the documenation and the user-facing website, whereas 'agent' is used primarily in the codebase.
 
 ## Folder Structure
 
@@ -116,4 +122,4 @@ assistants/
 └── tests/                          # pytest (test_*.py)
 ```
 
-See [build_checklist.md § Folder Structure](./build_checklist.md) for the full annotated tree with per-file descriptions and phase annotations.
+See [build_checklist.md § Folder Structure](./checklist/start_here.md) for the full annotated tree with per-file descriptions and phase annotations. The checklist is the plan for implementation, which outlines the sequence of steps to build a domain agent from scratch.
