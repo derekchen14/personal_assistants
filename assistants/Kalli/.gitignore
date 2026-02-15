@@ -1,0 +1,21 @@
+# Environment
+.env
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (Phase 8 frontend)
+node_modules/
+.svelte-kit/
+build/
+
+# Python
+*.egg-info/
+dist/

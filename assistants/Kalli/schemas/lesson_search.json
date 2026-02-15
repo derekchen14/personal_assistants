@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "lesson_search",
+  "description": "Search stored lessons by keyword, category, or tags",
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Search term to match against lesson content"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["bug", "pattern", "decision", "convention"],
+      "description": "Filter by lesson category"
+    },
+    "limit": {
+      "type": "integer",
+      "default": 10,
+      "description": "Maximum number of results to return"
+    }
+  },
+  "required": ["query"],
+  "additionalProperties": false
+}

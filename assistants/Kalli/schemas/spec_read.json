@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spec_read",
+  "description": "Read a spec file or section from the _specs/ directory",
+  "type": "object",
+  "properties": {
+    "spec_name": {
+      "type": "string",
+      "description": "Spec file name without extension (e.g., 'architecture', 'flow_selection', 'pex')"
+    },
+    "section": {
+      "type": "string",
+      "description": "Optional section heading to extract (returns full file if omitted)"
+    }
+  },
+  "required": ["spec_name"],
+  "additionalProperties": false
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "config_write",
+  "description": "Update a section of the assistant config being built",
+  "type": "object",
+  "properties": {
+    "section": {
+      "type": "string",
+      "description": "Config section to update (e.g., 'scope', 'persona', 'intents', 'entities', 'guardrails', 'dacts', 'flows')"
+    },
+    "data": {
+      "type": "object",
+      "description": "Key-value pairs to write into the section"
+    },
+    "merge": {
+      "type": "boolean",
+      "default": true,
+      "description": "If true, merge with existing section data. If false, replace the entire section"
+    }
+  },
+  "required": ["section", "data"],
+  "additionalProperties": false
+}

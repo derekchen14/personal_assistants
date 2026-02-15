@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "config_read",
+  "description": "Read the current partially-filled assistant config being built",
+  "type": "object",
+  "properties": {
+    "section": {
+      "type": "string",
+      "description": "Config section to read (e.g., 'persona', 'intents', 'flows'). Returns full config if omitted"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

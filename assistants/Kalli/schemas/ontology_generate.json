@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ontology_generate",
+  "description": "Generate ontology.py from the current config state (intents, dacts, flows)",
+  "type": "object",
+  "properties": {
+    "target_dir": {
+      "type": "string",
+      "description": "Directory to write ontology.py to. Defaults to the domain's schemas/ directory"
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, return generated content without writing to disk"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

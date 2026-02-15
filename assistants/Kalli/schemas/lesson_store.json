@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "lesson_store",
+  "description": "Store a learning or pattern to the lessons database",
+  "type": "object",
+  "properties": {
+    "content": {
+      "type": "string",
+      "description": "The lesson, pattern, or convention to store"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["bug", "pattern", "decision", "convention"],
+      "description": "Category of the lesson"
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Optional tags for search and retrieval"
+    }
+  },
+  "required": ["content"],
+  "additionalProperties": false
+}

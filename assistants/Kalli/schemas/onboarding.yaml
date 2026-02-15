@@ -1,0 +1,154 @@
+# kalli/schemas/onboarding.yaml
+# Domain config for the onboarding assistant (Kalli).
+# Sections defined here fully replace the shared default for that section.
+
+environment: dev
+
+models:
+  default:
+    provider: anthropic
+    model_id: claude-sonnet-4-5-20250929
+    temperature: 0.0
+    max_output_tokens: 4096
+  overrides:
+    skill:
+      model_id: claude-opus-4-6
+    naturalize:
+      temperature: 0.5
+    nlu:
+      model_id: claude-sonnet-4-5-20250929
+    nlu_vote:
+      model_id: claude-haiku-4-5-20251001
+
+persona:
+  tone: conversational
+  expertise_boundaries: [agent architecture, flow design, prompt engineering, POMDP systems]
+  name: "Kalli"
+  response_style: balanced
+
+guardrails:
+  input_max_tokens: 4096
+  content_filter:
+    enabled: true
+    categories: [violence, sexual, hate_speech, self_harm, dangerous]
+    severity: medium
+  pii_detection:
+    enabled: false
+    action: redact
+    types: [ssn, credit_card, email, phone, address]
+  topic_control:
+    allowed_topics: []
+    forbidden_topics: []
+  forbidden_patterns: []
+  prompt_injection_detection:
+    enabled: true
+    sensitivity: medium
+
+key_entities: [config, lesson, spec]
+
+display:
+  types: [Default, Dynamic]
+  chart_types: []
+  page_size: 256
+
+tools:
+  spec_read:
+    tool_id: spec_read
+    name: "Read spec file"
+    description: "Read a spec file or section from the _specs/ directory"
+    input_schema: schemas/spec_read.json
+    idempotent: true
+    timeout_ms: 5000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+    cache_ttl_ms: 300000
+
+  config_read:
+    tool_id: config_read
+    name: "Read config"
+    description: "Read the current partially-filled assistant config"
+    input_schema: schemas/config_read.json
+    idempotent: true
+    timeout_ms: 5000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+    cache_ttl_ms: 0
+
+  config_write:
+    tool_id: config_write
+    name: "Write config"
+    description: "Update a section of the assistant config being built"
+    input_schema: schemas/config_write.json
+    idempotent: false
+    timeout_ms: 5000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+
+  ontology_generate:
+    tool_id: ontology_generate
+    name: "Generate ontology"
+    description: "Generate ontology.py from current config state"
+    input_schema: schemas/ontology_generate.json
+    idempotent: true
+    timeout_ms: 15000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+
+  yaml_generate:
+    tool_id: yaml_generate
+    name: "Generate YAML"
+    description: "Compose domain YAML config from gathered requirements"
+    input_schema: schemas/yaml_generate.json
+    idempotent: true
+    timeout_ms: 15000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+
+  python_execute:
+    tool_id: python_execute
+    name: "Execute Python"
+    description: "Run Python code via exec() for ad hoc generation"
+    input_schema: ../shared/schemas/python_execute.json
+    idempotent: false
+    timeout_ms: 30000
+    accesses_private_data: false
+    receives_untrusted_input: true
+    communicates_externally: false
+    requires_approval: false
+
+  lesson_store:
+    tool_id: lesson_store
+    name: "Store lesson"
+    description: "Store a learning or pattern to the lessons database"
+    input_schema: schemas/lesson_store.json
+    idempotent: false
+    timeout_ms: 5000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+
+  lesson_search:
+    tool_id: lesson_search
+    name: "Search lessons"
+    description: "Search stored lessons by keyword, category, or tags"
+    input_schema: schemas/lesson_search.json
+    idempotent: true
+    timeout_ms: 5000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+    cache_ttl_ms: 30000
+
+# Template registry populated in Phase 7 (Prompt Writing)

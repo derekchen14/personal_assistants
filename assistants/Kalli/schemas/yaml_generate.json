@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "yaml_generate",
+  "description": "Compose domain YAML config from gathered persona, guardrails, entities, and tools",
+  "type": "object",
+  "properties": {
+    "target_dir": {
+      "type": "string",
+      "description": "Directory to write the YAML to. Defaults to the domain's schemas/ directory"
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, return generated content without writing to disk"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}
