@@ -1,5 +1,3 @@
-"""Display Frame — composes visual blocks for the frontend."""
-
 from __future__ import annotations
 
 from types import MappingProxyType
@@ -17,16 +15,24 @@ class DisplayFrame:
         self.source: str | None = None
         self.display_name: str | None = None
         self.code: str | None = None
+        self.panel: str = 'bottom'
+
+    _TOP_TYPES = frozenset(('form', 'confirmation', 'toast'))
 
     def set_frame(self, block_type: str, data: dict,
                   source: str | None = None,
                   display_name: str | None = None,
-                  code: str | None = None):
+                  code: str | None = None,
+                  panel: str | None = None):
         self.block_type = block_type
         self.data = data
         self.source = source
         self.display_name = display_name
         self.code = code
+        if panel is not None:
+            self.panel = panel
+        else:
+            self.panel = 'top' if block_type in self._TOP_TYPES else 'bottom'
 
     def clear(self):
         self.block_type = 'default'
@@ -34,6 +40,7 @@ class DisplayFrame:
         self.source = None
         self.display_name = None
         self.code = None
+        self.panel = 'bottom'
 
     def has_content(self) -> bool:
         return self.block_type != 'default' and bool(self.data)

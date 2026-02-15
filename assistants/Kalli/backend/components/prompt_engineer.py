@@ -7,9 +7,13 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+import logging
+
 import anthropic
 
 from backend.prompts.general import build_system, SLOT_7_REMINDER
+
+log = logging.getLogger(__name__)
 from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt
 from backend.prompts.for_nlu import build_slot_filling_prompt
 from backend.prompts.for_pex import build_skill_system, build_skill_messages
@@ -90,6 +94,9 @@ class PromptEngineer:
             kwargs['temperature'] = temp
         if tools:
             kwargs['tools'] = tools
+
+        model_id = kwargs['model']
+        log.info('  llm call_site=%s  model=%s', call_site, model_id)
 
         last_error = None
         for attempt in range(max_attempts):
@@ -175,23 +182,46 @@ class PromptEngineer:
         return system, messages
 
     def build_flow_prompt(
-        self, user_text: str, intent: str, history: list[dict],
+        self, user_text: str, intent: str | None, history: list[dict],
     ) -> tuple[str, list[dict]]:
         history_text = self._format_history(history, 5)
 
-        candidate_lines = []
-        for name, flow in FLOW_CATALOG.items():
-            flow_intent = flow['intent'].value if hasattr(flow['intent'], 'value') else str(flow['intent'])
-            if flow_intent == intent or name in _get_edge_flows_for_intent(intent):
+        if intent is None:
+            groups: dict[str, list[str]] = {}
+            for name, flow in FLOW_CATALOG.items():
+                fi = flow['intent']
+                if fi == Intent.INTERNAL:
+                    continue
+                fi_val = fi.value if hasattr(fi, 'value') else str(fi)
                 slots_desc = ', '.join(
                     f'{s} ({info.get("priority", "optional")})'
                     for s, info in flow.get('slots', {}).items()
                 )
-                candidate_lines.append(
+                line = (
                     f'- {name} (dax={flow["dax"]}): {flow["description"]}'
                     + (f' [slots: {slots_desc}]' if slots_desc else '')
                 )
-        candidates = '\n'.join(candidate_lines)
+                groups.setdefault(fi_val, []).append(line)
+            parts = []
+            for gi in sorted(groups):
+                parts.append(f'### {gi}')
+                parts.extend(groups[gi])
+                parts.append('')
+            candidates = '\n'.join(parts)
+        else:
+            candidate_lines = []
+            for name, flow in FLOW_CATALOG.items():
+                flow_intent = flow['intent'].value if hasattr(flow['intent'], 'value') else str(flow['intent'])
+                if flow_intent == intent or name in _get_edge_flows_for_intent(intent):
+                    slots_desc = ', '.join(
+                        f'{s} ({info.get("priority", "optional")})'
+                        for s, info in flow.get('slots', {}).items()
+                    )
+                    candidate_lines.append(
+                        f'- {name} (dax={flow["dax"]}): {flow["description"]}'
+                        + (f' [slots: {slots_desc}]' if slots_desc else '')
+                    )
+            candidates = '\n'.join(candidate_lines)
 
         system = (
             f'{self.build_system_prompt()}\n\n'

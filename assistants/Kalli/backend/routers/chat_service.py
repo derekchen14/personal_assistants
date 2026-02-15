@@ -40,7 +40,7 @@ async def chat(websocket: WebSocket):
         queue = _get_queue(username)
 
         await queue.put({
-            'message': f'Hey {username}! I\'m Kalli. What would you like to build today?',
+            'message': f"Hey {username}! What assistant are we building?",
             'raw_utterance': '',
             'actions': [],
             'interaction': {'type': 'default', 'show': False, 'data': {}},

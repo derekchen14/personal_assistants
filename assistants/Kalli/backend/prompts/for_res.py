@@ -6,7 +6,7 @@ NATURALIZE_INSTRUCTIONS = (
     '- If a visual block accompanies the response, reference it '
     '("here\'s what I found", "as shown on the right") rather than '
     'repeating its content\n'
-    '- Keep it concise unless the user prefers verbose responses\n'
+    '- Maximum 2 sentences unless the content genuinely requires more\n'
     '- Do not use markdown formatting unless the content is code\n'
     '- Respond with ONLY the rewritten text, nothing else'
 )

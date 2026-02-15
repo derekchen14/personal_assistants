@@ -1,13 +1,13 @@
 <script lang="ts">
     import { conversation, type Message } from '$lib/stores/conversation';
-    import { activeFrame } from '$lib/stores/display';
+    import { setFrame, topFrame, bottomFrame, displayLayout } from '$lib/stores/display';
     import { layoutMode, type LayoutMode } from '$lib/stores/ui';
     import BlockRenderer from '$lib/components/blocks/BlockRenderer.svelte';
     import { tick } from 'svelte';
 
     let usernameInput = $state('');
     let messageInput = $state('');
-    let chatContainer: HTMLElement;
+    let chatContainer: HTMLElement | undefined = $state();
 
     function handleConnect() {
         const name = usernameInput.trim();
@@ -36,12 +36,11 @@
         }
     }
 
-    // Update active frame when agent messages arrive with frame data
     $effect(() => {
         const msgs = $conversation.messages;
         const last = msgs[msgs.length - 1];
         if (last?.frame && last.role === 'agent') {
-            activeFrame.set(last.frame as any);
+            setFrame(last.frame as any);
         }
     });
 
@@ -67,7 +66,7 @@
     <!-- Username prompt -->
     <div class="flex-1 flex items-center justify-center">
         <div class="text-center space-y-6">
-            <h1 class="text-3xl font-light tracking-tight">Kalli</h1>
+            <h1 class="text-8xl font-bold tracking-tight text-[var(--color-accent)]">Kalli</h1>
             <p class="text-[var(--color-text-muted)]">Enter your name to get started</p>
             <div class="flex gap-2">
                 <input
@@ -88,12 +87,12 @@
     </div>
 {:else}
     <!-- Chat interface -->
-    <div class="flex-1 flex overflow-hidden">
-        <!-- Left panel: conversation -->
+    <div class="flex-1 flex gap-3 overflow-hidden">
+        <!-- Dialogue panel -->
         {#if $layoutMode !== 'bottom'}
-            <div class="flex flex-col {$layoutMode === 'top' ? 'flex-1' : 'w-1/2'}">
+            <div class="flex flex-col {$layoutMode === 'top' ? 'flex-1' : 'w-1/3'}">
                 <!-- Header -->
-                <div class="h-12 flex items-center justify-between px-4 border-b border-[var(--color-border)]">
+                <div class="h-12 flex items-center justify-between px-4 border-b border-[var(--color-border)] border-t-2 border-t-[var(--color-accent)]">
                     <span class="text-sm font-medium">Kalli</span>
                     <button onclick={cycleLayout} class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
                         {$layoutMode}
@@ -145,23 +144,34 @@
             </div>
         {/if}
 
-        <!-- Right panel: blocks -->
+        <!-- Display panel -->
         {#if $layoutMode !== 'top'}
-            <div class="flex flex-col border-l border-[var(--color-border)] {$layoutMode === 'bottom' ? 'flex-1' : 'w-1/2'}">
-                <div class="h-12 flex items-center px-4 border-b border-[var(--color-border)]">
-                    <span class="text-sm text-[var(--color-text-muted)]">
-                        {$activeFrame ? ($activeFrame.display_name || $activeFrame.type) : 'No active block'}
-                    </span>
-                </div>
-                <div class="flex-1 overflow-y-auto p-4">
-                    {#if $activeFrame}
-                        <BlockRenderer frame={$activeFrame} />
-                    {:else}
-                        <div class="flex items-center justify-center h-full text-[var(--color-text-muted)] text-sm">
-                            Blocks will appear here
-                        </div>
-                    {/if}
-                </div>
+            <div class="flex flex-col flex-1 bg-[var(--color-display-bg)] rounded-lg">
+                <!-- Top container -->
+                {#if $displayLayout === 'top' || $displayLayout === 'split'}
+                    <div class="flex flex-col grow-[2] h-0 overflow-y-auto p-4">
+                        {#if $topFrame}
+                            <BlockRenderer frame={$topFrame} />
+                        {/if}
+                    </div>
+                {/if}
+
+                {#if $displayLayout === 'split'}
+                    <div class="border-t border-[var(--color-border)]"></div>
+                {/if}
+
+                <!-- Bottom container -->
+                {#if $displayLayout === 'bottom' || $displayLayout === 'split'}
+                    <div class="flex flex-col grow-[2] h-0 overflow-y-auto p-4">
+                        {#if $bottomFrame}
+                            <BlockRenderer frame={$bottomFrame} />
+                        {:else}
+                            <div class="flex items-center justify-center h-full text-[var(--color-text-muted)] text-sm">
+                                Blocks will appear here
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
             </div>
         {/if}
     </div>

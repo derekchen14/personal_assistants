@@ -65,7 +65,7 @@ class ExplorePolicy:
         )
 
         block_type = flow_info.get('output', 'card')
-        block_data = {'flow_name': flow_name}
+        block_data = {'flow_name': flow_name, 'content': text}
         for entry in tool_log:
             result = entry.get('result', {})
             if result.get('status') == 'success':

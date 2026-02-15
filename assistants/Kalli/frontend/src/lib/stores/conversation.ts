@@ -30,6 +30,13 @@ function createConversationStore() {
             return;
         }
 
+        const frame = data.frame as Record<string, unknown> | null;
+        if (frame) {
+            console.log('[frame] received:', frame.type, 'panel:', frame.panel, 'data:', frame.data);
+        } else {
+            console.log('[frame] none');
+        }
+
         const msg: Message = {
             id: `agent-${++msgId}`,
             role: 'agent',
@@ -38,7 +45,7 @@ function createConversationStore() {
             actions: data.actions as unknown[],
             interaction: data.interaction as Record<string, unknown>,
             code_snippet: data.code_snippet as Record<string, unknown> | null,
-            frame: data.frame as Record<string, unknown> | null,
+            frame,
             timestamp: Date.now(),
         };
 

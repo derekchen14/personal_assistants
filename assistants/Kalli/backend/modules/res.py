@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from types import MappingProxyType
 
 from backend.components.dialogue_state import DialogueState
+
+log = logging.getLogger(__name__)
 from backend.components.flow_stack import FlowStack, FlowEntry
 from backend.components.context_coordinator import ContextCoordinator
 from backend.components.prompt_engineer import PromptEngineer
@@ -51,13 +54,19 @@ class RES:
 
         intent = self.dialogue_state.intent or 'Converse'
 
+        log.info('  res intent=%s  keep_going=%s  has_frame=%s',
+                 intent, self.dialogue_state.keep_going,
+                 self.display.has_content())
+
         if intent == Intent.INTERNAL.value:
-            response = self._build_response('', pex_result)
+            display_data = self._display('')
+            response = self._build_response('', pex_result, display_data)
             self._finish(response)
             return response
 
         if intent == Intent.PLAN.value and self.dialogue_state.keep_going:
-            response = self._build_response('', pex_result)
+            display_data = self._display('')
+            response = self._build_response('', pex_result, display_data)
             self._finish(response)
             return response
 
@@ -187,6 +196,7 @@ class RES:
             'data': self.display.data,
             'source': self.display.source,
             'display_name': self.display.display_name,
+            'panel': self.display.panel,
         }
 
     # ── Response assembly ─────────────────────────────────────────────

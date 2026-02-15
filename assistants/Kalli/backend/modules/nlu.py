@@ -34,7 +34,7 @@ _SHORTCUTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r'\bstatus\b', re.I), 'status'),
 ]
 
-_VOTE_MODELS = ['nlu', 'nlu_vote']
+_NUM_VOTERS = 2
 
 
 class NLU:
@@ -100,64 +100,29 @@ class NLU:
                     )
         return None
 
-    # ── Prediction (two-step: intent → flow with voting) ─────────────
+    # ── Prediction (parallel voting) ─────────────────────────────────
 
     def _predict(self, user_text: str) -> NLUResult:
         history = self.context.compile_history(turns=5)
-
-        intent = self._predict_intent(user_text, history)
-
-        return self._predict_flow_with_vote(user_text, intent, history)
-
-    def _predict_intent(self, user_text: str, history: list[dict]) -> str:
-        system, messages = self.prompt_engineer.build_nlu_prompt(user_text, history)
-
-        try:
-            response = self.prompt_engineer.call(
-                system=system,
-                messages=messages,
-                call_site='nlu',
-                max_tokens=256,
-            )
-            text = self._extract_text(response)
-            parsed = self._parse_json(text)
-            if parsed:
-                intent = parsed.get('intent', 'Converse')
-                valid_intents = {i.value for i in Intent if i != Intent.INTERNAL}
-                if intent in valid_intents:
-                    return intent
-        except Exception as e:
-            print(f'NLU intent prediction error: {e}')
-
-        return 'Converse'
-
-    def _predict_flow_with_vote(self, user_text: str, intent: str,
-                                history: list[dict]) -> NLUResult:
         system, messages = self.prompt_engineer.build_flow_prompt(
-            user_text, intent, history,
+            user_text, None, history,
         )
 
-        def _call_model(call_site: str) -> dict | None:
+        def _call_voter() -> dict | None:
             try:
                 response = self.prompt_engineer.call(
-                    system=system,
-                    messages=messages,
-                    call_site=call_site,
-                    max_tokens=512,
+                    system=system, messages=messages,
+                    call_site='nlu_vote', max_tokens=512,
                 )
                 text = self._extract_text(response)
                 return self._parse_json(text)
             except Exception as e:
-                print(f'NLU vote error ({call_site}): {e}')
+                print(f'NLU vote error: {e}')
                 return None
 
-        # Run Sonnet + Haiku in parallel
         votes: list[dict] = []
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = {
-                pool.submit(_call_model, site): site
-                for site in _VOTE_MODELS
-            }
+        with ThreadPoolExecutor(max_workers=_NUM_VOTERS) as pool:
+            futures = [pool.submit(_call_voter) for _ in range(_NUM_VOTERS)]
             for future in as_completed(futures):
                 result = future.result()
                 if result and result.get('flow_name') in FLOW_CATALOG:
@@ -166,9 +131,9 @@ class NLU:
         if not votes:
             return NLUResult('Converse', '{000}', 'chat', 0.3)
 
-        return self._tally_votes(votes, intent)
+        return self._tally_votes(votes)
 
-    def _tally_votes(self, votes: list[dict], intent: str) -> NLUResult:
+    def _tally_votes(self, votes: list[dict]) -> NLUResult:
         # Count flow_name occurrences
         flow_counts: dict[str, list[dict]] = {}
         for v in votes:

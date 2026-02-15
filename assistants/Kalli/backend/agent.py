@@ -1,9 +1,6 @@
-"""Agent orchestrator — NLU → PEX → RES turn pipeline with keep_going loop.
-
-Self-check gate: rule-based only (no LLM check for Kalli v1).
-"""
-
 from __future__ import annotations
+
+import logging
 
 from config import load_config
 from backend.modules.nlu import NLU, NLUResult
@@ -17,6 +14,8 @@ from backend.components.display_frame import DisplayFrame
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.memory_manager import MemoryManager
 
+
+log = logging.getLogger(__name__)
 
 _MAX_KEEP_GOING = 5
 
@@ -53,13 +52,17 @@ class Agent:
 
     def handle_turn(self, user_text: str, user_actions: list | None = None,
                     gold_dax: str | None = None) -> dict:
-        """Run NLU → PEX → RES. Returns WebSocket-ready response dict."""
         self.context.add_turn('User', user_text)
 
         if self.ambiguity.present():
             self.ambiguity.resolve()
 
         nlu_result = self.nlu.understand(user_text, gold_dax)
+
+        intent_val = nlu_result.intent.value if hasattr(nlu_result.intent, 'value') else nlu_result.intent
+        log.info('intent: %s {%s}, %s; score=%.2f, %s',
+                 nlu_result.flow_name, nlu_result.dax,
+                 intent_val, nlu_result.confidence, nlu_result.slots or {})
 
         if not self._self_check(nlu_result):
             return self._fallback_response(
@@ -73,6 +76,7 @@ class Agent:
         while keep_going and rounds < _MAX_KEEP_GOING:
             pex_result, keep_going = self.pex.execute(nlu_result)
             rounds += 1
+            log.info('  pex round=%d  keep_going=%s', rounds, keep_going)
 
             if keep_going:
                 active = self.flow_stack.get_active_flow()
@@ -84,6 +88,13 @@ class Agent:
                         confidence=1.0,
                         slots=active.slots,
                     )
+
+        if pex_result.tool_log:
+            tools_used = [e.get('tool') for e in pex_result.tool_log]
+            log.info('  tools=%s', tools_used)
+        if self.display.has_content():
+            log.info('  frame=%s  source=%s',
+                     self.display.block_type, self.display.source)
 
         response = self.res.respond(pex_result)
 

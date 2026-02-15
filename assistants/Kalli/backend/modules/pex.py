@@ -40,20 +40,9 @@ class PEXResult:
 class PEX:
 
     _CANNED: dict[str, str] = {
-        'chat': (
-            "Hi! I'm Kalli, your onboarding assistant. I help you build "
-            "custom AI agents. You can tell me about the assistant you want "
-            "to create, ask questions about the architecture, or browse the "
-            "spec files. What would you like to do?"
-        ),
-        'next_step': (
-            "Here's what we can work on next: define your assistant's scope, "
-            "collect intents and entities, design the flow catalog, or "
-            "generate domain files. Where would you like to start?"
-        ),
-        'status': (
-            "Let me check where we are in the onboarding process."
-        ),
+        'chat': "Hey! What assistant are we building?",
+        'next_step': "What should we work on next?",
+        'status': "Let me check where we are.",
     }
 
     _UNSUPPORTED = {
