@@ -1,14 +1,16 @@
-# Phase 4 — Foundation
+# Phase 4a — Basic Foundation
 
-Set up the server infrastructure, config loader, database, and module shells. This phase produces a running server that can be smoke-tested.
+Set up the server infrastructure, config loader, database, and module shells for the **basic** tier. No authentication, no Postgres — just a running server that can be smoke-tested locally.
 
 ## Context
 
-The foundation phase creates the full directory structure and wires together the server, config, database, and stub modules. By the end, the server boots, `/health` returns OK, WebSocket connects, and the Agent class exists with stubbed methods.
+The basic foundation creates the full directory structure and wires together the server, config, database, and stub modules. By the end, the server boots, `/health` returns OK, WebSocket connects (no auth), and the Agent class exists with stubbed methods.
+
+**Tier**: `basic` — local development, SQLite, no login.
 
 **Prerequisites**: Phases 1–3 complete — ontology, YAML config, and tool schemas exist.
 
-**Outputs**: Running FastAPI server with health endpoint, CORS, auth, WebSocket, config loader, database tables, module shells, Agent class shell.
+**Outputs**: Running FastAPI server with health endpoint, permissive CORS, WebSocket, config loader, SQLite database, module shells, Agent class shell.
 
 **Spec references**: [architecture.md](../architecture.md), [server_setup.md](../utilities/server_setup.md), [configuration.md § Startup Loading & Validation](../utilities/configuration.md), [style_guide.md](../style_guide.md)
 
@@ -52,15 +54,8 @@ Create the full domain folder structure. Every file listed here must exist (may 
 │   ├── routers/
 │   │   ├── __init__.py
 │   │   ├── chat_service.py
-│   │   ├── auth_service.py
 │   │   ├── conversation_service.py
 │   │   └── health_service.py
-│   ├── middleware/
-│   │   ├── auth_middleware.py
-│   │   └── activity_middleware.py
-│   ├── auth/
-│   │   ├── jwt_helpers.py
-│   │   └── user_fields.py
 │   ├── prompts/
 │   │   ├── for_nlu.py
 │   │   ├── for_pex.py
@@ -81,7 +76,7 @@ Create the full domain folder structure. Every file listed here must exist (may 
 │   ├── tables.py
 │   └── seed_data.json
 ├── frontend/
-│   └── (created in Phase 8)
+│   └── (created in Phase 9a)
 └── tests/
     └── conftest.py
 ```
@@ -96,61 +91,32 @@ shared/
     └── components/
 ```
 
+Note: no `auth/`, `middleware/auth_middleware.py`, or `routers/auth_service.py` — those are added in Phase 4b.
+
 ### Step 2 — FastAPI Server Setup
 
 Implement `backend/webserver.py` — the FastAPI entry point.
 
 **Components**:
 - FastAPI app instance
-- CORS middleware: permissive in dev, explicit allowlist in prod
-- Router mounting: health, auth, conversation, chat (WebSocket)
+- CORS middleware: permissive (all origins) — basic tier is local-only
+- Router mounting: health, conversation, chat (WebSocket)
 - Startup event: load config, initialize database, create tables
 
 **Health endpoint** (`routers/health_service.py`):
 - `GET /health` — returns `{"status": "ok", "config_loaded": true}`
 - No deep dependency checks
 
-**CORS** (`CORSMiddleware`):
+**CORS** (`CORSMiddleware`): Allow all origins (basic tier runs locally).
 
-| Environment | Behavior |
-|---|---|
-| `dev` | Allow all origins |
-| `prod` | Explicit allowlist of permitted origins |
-
-### Step 3 — Authentication
-
-Implement JWT authentication in `auth/jwt_helpers.py` and `middleware/auth_middleware.py`.
-
-**JWT settings**:
-
-| Setting | Value |
-|---|---|
-| Algorithm | HS256 |
-| Expiry | 7 days (604800 seconds) |
-| Refresh threshold | 1 day before expiry |
-| Cookie name | `auth_token` |
-| Payload | `{ email, userID, exp }` |
-
-**Cookie strategy**: `httponly`, `secure`, `samesite: strict`, `max_age: 604800`, `path: /`.
-
-**Token extraction priority**: Cookie → Bearer header → Query param → Raw Authorization header.
-
-**Auth routes** (`routers/auth_service.py`):
-- `POST /signup` — create user, return JWT cookie (rate limited: 5/min per IP)
-- `POST /login` — verify credentials, return JWT cookie (rate limited: 5/min per IP)
-- `POST /logout` — clear cookie
-
-**User models** (`auth/user_fields.py`):
-- Pydantic models for signup/login request validation
-
-### Step 4 — WebSocket Endpoint
+### Step 3 — WebSocket Endpoint
 
 Implement `routers/chat_service.py`.
 
 **Connection lifecycle**:
-- Validate JWT from `auth_token` cookie on WebSocket upgrade
+- No JWT validation — accept all connections
 - Generate unique conversation ID on connect
-- Close codes: `1008` = auth failure, `1000` = normal close
+- Close codes: `1000` = normal close
 
 **Client → Server message**:
 ```json
@@ -175,7 +141,7 @@ Implement `routers/chat_service.py`.
 | `block` | `display()` | `{frame, properties}` |
 | `error` | Any | `{message, code}` |
 
-### Step 5 — Config Loader
+### Step 4 — Config Loader
 
 Implement `config.py` at the domain root.
 
@@ -188,6 +154,7 @@ Implement `config.py` at the domain root.
 6. Freeze — convert to read-only object
 
 **Schema validation checks** (by section):
+- `tier` in `[basic, pro, advanced]`
 - §1 Models: provider in valid set; temperature 0.0–2.0; top_p 0.0–1.0
 - §2 Persona: required fields present; response_style in valid set
 - §3 Guardrails: categories recognized; patterns compile as regex
@@ -201,11 +168,11 @@ Implement `config.py` at the domain root.
 
 If any validation fails, the agent refuses to start.
 
-### Step 6 — Database Setup
+### Step 5 — Database Setup
 
 Implement `backend/db.py` and `database/tables.py`.
 
-**Database**: Postgres. One database per domain. `DATABASE_URL` from `.env`.
+**Database**: SQLite. File-based, no external server. `DATABASE_URL` from `.env` (e.g., `sqlite:///data.db`).
 
 **SQLAlchemy setup** (`db.py`):
 - Engine + session factory from `DATABASE_URL`
@@ -215,21 +182,21 @@ Implement `backend/db.py` and `database/tables.py`.
 
 | Table | PK | Key Columns |
 |---|---|---|
-| `User` | Integer (seq) | email (unique), password (bcrypt) |
 | `Agent` | Integer | name (unique, String 32), use_case |
 | `Conversation` | UUID | convo_id (seq), name, description |
 | `Utterance` | UUID | speaker (enum), utt_id, text, form (enum), operations, entity (JSON) |
 | `Intent` | Integer | level (String 8), intent_name (String 32) |
 | `DialogueAct` | Integer | dact (String 64), dax (String 4), description |
-| `DialogueState` | UUID | utterance_id (FK), intent, dax, flow_stack (JSONB), source (enum) |
+| `DialogueState` | UUID | utterance_id (FK), intent, dax, flow_stack (JSON), source (enum) |
 | `Frame` | UUID | utterance_id (FK), display_type (enum), columns, status, source, code |
-| `Credential` | Integer | user_id (FK), access_token, refresh_token, vendor, scope, status |
-| `UserDataSource` | UUID | user_id (FK), source_type (enum), provider, name, content (JSONB) |
+| `UserDataSource` | UUID | user_id (String), source_type (enum), provider, name, content (JSON) |
 | `ConversationDataSource` | UUID | conversation_id (FK), data_source_id (FK) |
+
+Note: no `User` table (no passwords in basic tier), no `Credential` table (no API key storage). `UserDataSource.user_id` is a plain string (username) instead of FK. `JSONB` columns use `JSON` for SQLite compatibility.
 
 **Enums**: speaker (User/Agent/System), form (text/speech/image/action), dialogue_state_source (nlu/pex), source_type (upload/api).
 
-### Step 7 — Module Shells
+### Step 6 — Module Shells
 
 Create stub modules with all entry points. Each module method should log a message and return a placeholder. All modules have error decorators wrapping entry points.
 
@@ -254,7 +221,7 @@ Create stub modules with all entry points. Each module method should log a messa
 - `display()` — render display frames to blocks
 - `finish()` — post-hook (4 checks)
 
-### Step 8 — Agent Class Shell
+### Step 7 — Agent Class Shell
 
 Implement `backend/agent.py` with the turn pipeline stub.
 
@@ -278,31 +245,31 @@ class Agent:
 
 **Agent Manager** (`backend/manager.py`):
 - Agent instance lifecycle (one per session)
-- JWT-based user lookup
+- Username-based user lookup (no JWT)
 - Cleanup on disconnect
 
-### Step 9 — Run Script and Dependencies
+### Step 8 — Run Script and Dependencies
 
-**`run.sh`**: Start both FastAPI backend and SvelteKit dev server. Each domain runs on its own port.
+**`run.sh`**: Start FastAPI backend.
 
 ```bash
 #!/bin/bash
 # Start backend
 uvicorn backend.webserver:app --host 0.0.0.0 --port ${PORT:-8000} --reload &
 
-# Start frontend (when ready)
+# Start frontend (when ready — Phase 9a)
 # cd frontend && npm run dev &
 
 wait
 ```
 
-**`requirements.txt`**: FastAPI, uvicorn, pydantic, sqlalchemy, psycopg2-binary, python-jose, bcrypt, pyyaml, anthropic.
+**`requirements.txt`**: FastAPI, uvicorn, pydantic, sqlalchemy, pyyaml, anthropic. No bcrypt, no python-jose (added in Phase 4b).
 
-**`.env.example`**: DATABASE_URL, PORT, ENV, JWT_SECRET, ANTHROPIC_API_KEY.
+**`.env.example`**: DATABASE_URL, PORT, ENV, ANTHROPIC_API_KEY. No JWT_SECRET (added in Phase 4b).
 
-**`.gitignore`**: `__pycache__/`, `node_modules/`, `.env`, `dist/`, `.svelte-kit/`.
+**`.gitignore`**: `__pycache__/`, `node_modules/`, `.env`, `dist/`, `.svelte-kit/`, `*.db`.
 
-### Step 10 — Shared Utilities
+### Step 9 — Shared Utilities
 
 **`shared/arguments.py`**: CLI arg definitions (port, env, debug).
 
@@ -322,13 +289,8 @@ wait
 | Create | `<domain>/backend/manager.py` | Agent instance lifecycle |
 | Create | `<domain>/backend/db.py` | SQLAlchemy engine + session |
 | Create | `<domain>/backend/routers/health_service.py` | GET /health |
-| Create | `<domain>/backend/routers/auth_service.py` | Login, signup, token endpoints |
 | Create | `<domain>/backend/routers/chat_service.py` | WebSocket /ws endpoint |
 | Create | `<domain>/backend/routers/conversation_service.py` | Conversation CRUD |
-| Create | `<domain>/backend/middleware/auth_middleware.py` | JWT validation |
-| Create | `<domain>/backend/middleware/activity_middleware.py` | Activity tracking |
-| Create | `<domain>/backend/auth/jwt_helpers.py` | JWT sign, decode, cookies |
-| Create | `<domain>/backend/auth/user_fields.py` | Pydantic models |
 | Create | `<domain>/backend/modules/nlu.py` | NLU shell |
 | Create | `<domain>/backend/modules/pex.py` | PEX shell |
 | Create | `<domain>/backend/modules/res.py` | RES shell |
@@ -346,12 +308,9 @@ wait
 - [ ] Config loader reads shared + domain YAML, validates, and freezes
 - [ ] Config validation fails on invalid values (test with a bad config)
 - [ ] Database tables are created on startup (`create_all()`)
-- [ ] WebSocket connection succeeds with valid JWT
-- [ ] WebSocket connection fails with `1008` on invalid JWT
-- [ ] Signup creates a user and returns JWT cookie
-- [ ] Login returns JWT cookie for existing user
+- [ ] WebSocket connection succeeds without authentication
 - [ ] All module shells exist with stubbed methods
 - [ ] Agent class exists with `process_turn()` method
 - [ ] All 7 component shells exist as importable classes
 - [ ] `.env.example` documents all required environment variables
-- [ ] `requirements.txt` lists all dependencies
+- [ ] `requirements.txt` lists all dependencies (no bcrypt or python-jose)

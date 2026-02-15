@@ -3,6 +3,7 @@
 # Each top-level section is fully replaced if the domain defines it.
 
 environment: dev                    # dev | prod — controls logging, guardrails
+tier: basic                         # basic | pro | advanced — controls auth and deployment complexity
 
 models:
   default:

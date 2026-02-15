@@ -69,6 +69,7 @@ See [Flow Selection](./flow_selection.md) for the compositional dact grammar, bu
 
 | § | Section | Shared default |
 |---|---|---|
+| — | `tier` | `basic` — controls auth complexity, database backend, and which checklist phases apply (basic / pro / advanced) |
 | 1 | `models` | `provider: anthropic`, `model_id: claude-sonnet-4-5-latest`, `temperature: 0.0`, `top_p: 1.0`, `max_output_tokens: 4096`, `stop_sequences: []`, overrides: `skill: { model_id: claude-opus-4-6 }`, `naturalize: { temperature: 0.5 }`, all cost budgets `null` (unlimited), `warn_threshold: 0.8` |
 | 2 | `persona` | `tone: professional`, `expertise_boundaries: []`, `name: "Assistant"`, `response_style: balanced` |
 | 3 | `guardrails` | `input_max_tokens: 4096`, content filter enabled at `severity: medium`, PII detection disabled, topic control empty (defers to `persona.expertise_boundaries`), no forbidden patterns, prompt injection enabled at `medium` |
@@ -79,7 +80,7 @@ See [Flow Selection](./flow_selection.md) for the compositional dact grammar, bu
 | 8 | `logging` | level `null` (defer to environment: dev→DEBUG, prod→INFO), trace disabled, sensitive data all `false` in prod / all `true` in dev, signal export disabled |
 | 9 | `display` | `types: [Default]`, `chart_types: [bar, line]`, `page_size: 512` |
 | 10 | `thresholds` | `stream_threshold_tokens: 200`, `nlu_confidence_min: 0.64`, `nlu_vote_agreement_min: 0.67`, `ambiguity_escalation_turns: 3`, `scratchpad_promotion_frequency: 3` |
-| 11 | `feature_flags` | `{}` (all flags default to false) |
+| 11 | `feature_flags` | `{}` (all flags default to false; auth/OAuth controlled by `tier`, not flags) |
 | 12 | `template_registry` | `templates/base/` (templates may include `block_hint` and `skip_naturalize`; see [RES](../modules/res.md)) |
 | 13 | `response_constraints` | `min_tokens: 10`, `max_tokens: 2048` for all intents, `language: en`, `supported_languages: [en]`, `confidence_auto_threshold: 0.6`, `citation_mode: footnote` |
 | 14 | `human_in_the_loop` | mode `none`, `timeout_ms: 60000`, escalation disabled |
@@ -98,6 +99,7 @@ See [Flow Selection](./flow_selection.md) for the compositional dact grammar, bu
 # Each top-level section is fully replaced if the domain defines it.
 
 environment: dev                    # dev | prod — controls logging, guardrails
+tier: basic                         # basic | pro | advanced — controls auth and deployment complexity
 
 models:
   default:
@@ -305,6 +307,7 @@ human_in_the_loop:
 # Sections defined here fully replace the shared default for that section.
 
 environment: prod                   # overrides shared 'dev'
+tier: pro                           # production agent with JWT auth
 
 models:                             # fully replaces shared models
   default:
@@ -436,6 +439,24 @@ The `environment` field (dev/prod) controls behavioral differences:
 
 Single config file per domain serves both environments — the environment flag controls behavior, not separate config files. The `logging.level` and `logging.sensitive_data` fields can override these defaults explicitly; `guardrails` severity is set directly in config while `environment` modulates enforcement behavior.
 
+## Tier Awareness
+
+The `tier` field (basic/pro/advanced) controls auth complexity, database backend, and which checklist phases apply:
+
+| Behavior | `basic` | `pro` | `advanced` |
+|---|---|---|---|
+| Auth | Username prompt only (no login) | JWT + bcrypt passwords | OAuth 2.0 providers |
+| Database | SQLite | Postgres | Postgres |
+| Persistence backend | memory | postgres | postgres |
+| Session store | In-memory | Postgres | Postgres |
+| Deployment | Local dev server (`run.sh`) | Dockerfile + docker-compose | Same + monitoring |
+| CORS | Permissive (all origins) | Explicit allowlist | Same |
+| Rate limiting | None | Auth endpoints (5/min) | Same |
+| Payment | None | None | Stripe (or similar) |
+| Checklist phases | 4a, 9a | 4a + 4b, 9a + 9b | 4a + 4b + 4c, 9a + 9b + 9c |
+
+Tiers are incremental — `pro` includes everything in `basic`, and `advanced` includes everything in `pro`. The `tier` value determines which checklist phases are relevant during implementation and which infrastructure components to set up.
+
 ## Startup Loading & Validation
 
 ### Load Sequence
@@ -472,7 +493,7 @@ One row per numbered section. Each row lists all checks for that section.
 | 15 | `slot_types` | Validator functions exist and are importable |
 | 16 | `key_entities` | Entity names are non-empty strings |
 
-Additional cross-cutting checks (not section-specific): `environment` is `dev` or `prod`; required sections present; flow integrity (no conflicting dax codes, intent references valid); edge flow names match defined flows; policy paths resolve to importable modules. Flow-related checks validate ontology.py data, not YAML data. All checks run during step 5 regardless of data source.
+Additional cross-cutting checks (not section-specific): `tier` in `[basic, pro, advanced]`; `environment` is `dev` or `prod`; required sections present; flow integrity (no conflicting dax codes, intent references valid); edge flow names match defined flows; policy paths resolve to importable modules. Flow-related checks validate ontology.py data, not YAML data. All checks run during step 5 regardless of data source.
 
 ### Frozen Config Object
 
@@ -502,7 +523,7 @@ After validation, config is frozen. All consumers receive a reference to the sam
 | Ambiguity Handler | Key entity definitions, escalation turn limit | `config.key_entities`, `config.thresholds.ambiguity_escalation_turns` |
 | Dialogue State | Custom slot type validators | `config.slot_types` |
 | Evaluation | Signal export, model attribution | `config.logging.signal_export`, `config.models` |
-| Server Setup | Session cleanup, escalation integration | `config.session`, `config.human_in_the_loop.escalation` |
+| Server Setup | Tier, session cleanup, escalation integration | `config.tier`, `config.session`, `config.human_in_the_loop.escalation` |
 | All modules | Log level, trace config | `config.logging` |
 
 Note: `config.flows` originates from ontology.py but is accessed through the same frozen config object as YAML-sourced data. Consumers don't need to know the underlying source.
@@ -513,3 +534,4 @@ Note: `config.flows` originates from ontology.py but is accessed through the sam
 - Section iteration: `for category, entries in config.guardrails.content_filter.items()`
 - Flag checks: `config.feature_flags.get('meal_planning', False)`
 - Environment branching: `if config.environment == 'prod'`
+- Tier branching: `if config.tier in ('pro', 'advanced')`
