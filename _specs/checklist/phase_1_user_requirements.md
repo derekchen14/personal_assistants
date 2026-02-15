@@ -134,11 +134,6 @@ class FlowLifecycle(str, Enum):
     COMPLETED = 'Completed'
     INVALID = 'Invalid'
 
-class SlotCategory(str, Enum):
-    REQUIRED = 'required'
-    ELECTIVE = 'elective'
-    OPTIONAL = 'optional'
-
 class AmbiguityLevel(str, Enum):
     GENERAL = 'general'
     PARTIAL = 'partial'
@@ -215,7 +210,7 @@ Also verify that `shared/shared_defaults.yaml` exists with baseline config for a
 - [ ] Persona section has tone, expertise_boundaries, name, response_style
 - [ ] Guardrails section has content_filter, pii_detection, topic_control, prompt_injection
 - [ ] `ontology.py` has Intent enum with all 7 intents
-- [ ] `ontology.py` has FlowLifecycle, SlotCategory, AmbiguityLevel enums
+- [ ] `ontology.py` has FlowLifecycle and AmbiguityLevel enums
 - [ ] `<domain>.yaml` loads without syntax errors
 - [ ] `shared_defaults.yaml` exists with all 16 sections
 - [ ] Intent names do not collide with any planned dact names

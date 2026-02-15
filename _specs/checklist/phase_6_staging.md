@@ -21,7 +21,8 @@ After Phase 5, the agent has all 7 components and 3 modules implemented, but not
 Ensure the server starts without errors:
 
 ```bash
-cd <domain> && ./run.sh
+cd <domain> && ./init_backend.sh   # tab 1
+cd <domain> && ./init_frontend.sh  # tab 2
 curl localhost:<port>/api/v1/health   # → {"status": "ok"}
 ```
 
@@ -50,7 +51,7 @@ Add hard-coded responses for core Converse flows so the agent responds without n
 ```python
 _CANNED = {
     'chat': "Hi! I'm <name>, your <role>...",
-    'next_step': "Here's what we can work on next...",
+    'next': "Here's what we can work on next...",
     'status': "Let me check where we are...",
 }
 ```
@@ -60,7 +61,7 @@ The canned check runs BEFORE intent routing in PEX so it works regardless of whi
 ### Step 4 — Environment and Keys
 
 - Shared API keys live in `shared/.keys` (not committed to git)
-- `run.sh` sources `shared/.keys` before `.env`
+- `init_backend.sh` sources `shared/.keys` before `.env`
 - `.gitignore` includes `.keys`, `.env`
 - Each domain runs on its own port (starting at 8000, incrementing by 1)
 
@@ -73,7 +74,7 @@ Test the full round-trip: WebSocket connect → send username → receive greeti
 2. Send {"username": "testuser"} → receive greeting
 3. Send {"text": "Hello"}      → receive canned chat response
 4. Send {"text": "status"}     → receive canned status response
-5. Send {"text": "what next?"} → receive canned next_step response
+5. Send {"text": "what next?"} → receive canned next response
 ```
 
 All 3 messages must receive non-error responses.
@@ -95,8 +96,43 @@ Verify the config loader successfully:
 |---|---|---|
 | Modify | `<domain>/backend/modules/pex.py` | Add `_CANNED` dict for core flows |
 | Modify | `<domain>/backend/components/prompt_engineer.py` | Lazy client property |
-| Modify | `<domain>/run.sh` | Source `shared/.keys` before `.env` |
+| Modify | `<domain>/init_backend.sh` | Source `shared/.keys` before `.env` |
 | Create | `<domain>/schemas/__init__.py` | Package init (if missing) |
+
+---
+
+## Logging Conventions
+
+Every turn logs structured diagnostics to `stdout` via the `logging` module.
+
+### After NLU
+
+```
+flow_name {dax}  confidence=0.XX  slots={...}
+```
+
+`flow_name {dax}` is the canonical format for dialogue state — the recognized flow and its dialogue act.
+
+### After Each PEX Round
+
+```
+  pex round=N  keep_going=True/False
+```
+
+Indented to nest under the NLU line. Logs after every round of the PEX loop.
+
+### After PEX Loop (Tools + Frame)
+
+```
+  tools=[tool1, tool2]
+  frame=card  source=sql
+```
+
+Only logged when present — no empty lines for turns without tools or frames.
+
+### Level
+
+All turn diagnostics use `INFO`. Reserve `WARNING` for recoverable issues (self-check failures, fallback activations) and `ERROR` for unrecoverable failures.
 
 ---
 
@@ -110,5 +146,8 @@ Verify the config loader successfully:
 - [ ] Username greeting is received after sending username
 - [ ] Canned response for `chat` flow works
 - [ ] Canned response for `status` flow works
-- [ ] Canned response for `next_step` flow works
+- [ ] Canned response for `next` flow works
 - [ ] `.keys` file is not tracked by git
+- [ ] Agent `process_turn()` runs NLU → PEX → RES end-to-end
+- [ ] `keep_going` loop processes multiple flows in one turn
+- [ ] Self-check gate catches intent drift and empty responses

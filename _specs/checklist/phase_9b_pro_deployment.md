@@ -139,18 +139,23 @@ Document HTTPS setup (not automated in v1):
 - WebSocket upgrades work through the reverse proxy
 - Let's Encrypt for certificate provisioning
 
-### Step 6 — Update `run.sh` for Production Mode
+### Step 6 — Production Mode for Init Scripts
+
+In production, `init_backend.sh` drops `--reload` and `init_frontend.sh` serves a built bundle:
 
 ```bash
-#!/bin/bash
+# init_backend.sh checks ENV
 if [ "$ENV" = "prod" ]; then
-    # Production: serve built frontend from backend
-    uvicorn backend.webserver:app --host 0.0.0.0 --port ${PORT:-8000}
+    uvicorn backend.webserver:app --host 0.0.0.0 --port "${PORT:-8000}"
 else
-    # Development: hot-reload both
-    uvicorn backend.webserver:app --host 0.0.0.0 --port ${PORT:-8000} --reload &
-    cd frontend && npm run dev -- --port ${FRONTEND_PORT:-5173} &
-    wait
+    uvicorn backend.webserver:app --host 0.0.0.0 --port "${PORT:-8000}" --reload
+fi
+
+# init_frontend.sh checks ENV
+if [ "$ENV" = "prod" ]; then
+    npm run build && npm run preview -- --port "${FRONTEND_PORT:-5173}"
+else
+    npm run dev -- --port "${FRONTEND_PORT:-5173}"
 fi
 ```
 
@@ -167,7 +172,8 @@ fi
 | Create | `<domain>/Dockerfile` | Multi-stage build |
 | Create | `<domain>/docker-compose.yml` | App + Postgres |
 | Modify | `<domain>/backend/webserver.py` | CORS allowlist for prod |
-| Modify | `<domain>/run.sh` | Production mode support |
+| Modify | `<domain>/init_backend.sh` | Production mode (no --reload) |
+| Modify | `<domain>/init_frontend.sh` | Production mode (build + preview) |
 | Modify | `<domain>/.env.example` | Add CORS_ORIGINS, DB_NAME, DB_USER, DB_PASSWORD |
 
 ---
@@ -182,5 +188,5 @@ fi
 - [ ] App connects to Postgres in Docker
 - [ ] Health endpoint returns OK from Docker container
 - [ ] CORS is strict in production mode (rejects disallowed origins)
-- [ ] `run.sh` works in both dev and prod modes
+- [ ] `init_backend.sh` and `init_frontend.sh` work in both dev and prod modes
 - [ ] Frontend build succeeds in Docker multi-stage build

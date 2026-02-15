@@ -26,7 +26,8 @@ Create the full domain folder structure. Every file listed here must exist (may 
 <domain>/
 ├── config.py
 ├── requirements.txt
-├── run.sh
+├── init_backend.sh
+├── init_frontend.sh
 ├── .env.example
 ├── .gitignore
 ├── backend/
@@ -250,17 +251,28 @@ class Agent:
 
 ### Step 8 — Run Script and Dependencies
 
-**`run.sh`**: Start FastAPI backend.
+**`init_backend.sh`**: Start FastAPI backend in its own terminal tab.
 
 ```bash
-#!/bin/bash
-# Start backend
-uvicorn backend.webserver:app --host 0.0.0.0 --port ${PORT:-8000} --reload &
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
 
-# Start frontend (when ready — Phase 9a)
-# cd frontend && npm run dev &
+KEYS_FILE="../../shared/.keys"
+if [ -f "$KEYS_FILE" ]; then set -a; source "$KEYS_FILE"; set +a; fi
+if [ -f .env ]; then set -a; source .env; set +a; fi
 
-wait
+uvicorn backend.webserver:app --host 0.0.0.0 --port "${PORT:-8000}" --reload
+```
+
+**`init_frontend.sh`**: Start SvelteKit frontend in a separate terminal tab (created in Phase 9a).
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/frontend"
+
+npm run dev -- --port "${FRONTEND_PORT:-5173}"
 ```
 
 **`requirements.txt`**: FastAPI, uvicorn, pydantic, sqlalchemy, pyyaml, anthropic. No bcrypt, no python-jose (added in Phase 4b).
@@ -281,7 +293,8 @@ wait
 |---|---|---|
 | Create | `<domain>/config.py` | Config loader: merge, validate, freeze |
 | Create | `<domain>/requirements.txt` | Python dependencies |
-| Create | `<domain>/run.sh` | Start script |
+| Create | `<domain>/init_backend.sh` | Start backend (separate tab) |
+| Create | `<domain>/init_frontend.sh` | Start frontend (separate tab, wired in Phase 9a) |
 | Create | `<domain>/.env.example` | Environment variable documentation |
 | Create | `<domain>/.gitignore` | Ignore patterns |
 | Create | `<domain>/backend/webserver.py` | FastAPI entry point |
@@ -303,7 +316,7 @@ wait
 
 ## Verification
 
-- [ ] `run.sh` starts the server without errors
+- [ ] `./init_backend.sh` starts the server without errors
 - [ ] `GET /health` returns `{"status": "ok", "config_loaded": true}`
 - [ ] Config loader reads shared + domain YAML, validates, and freezes
 - [ ] Config validation fails on invalid values (test with a bad config)

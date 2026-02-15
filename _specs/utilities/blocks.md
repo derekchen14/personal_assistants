@@ -71,6 +71,58 @@ When a block renders on the right panel alongside text, the text response can re
 
 ---
 
+## Panel Naming
+
+- **dialogue_panel** (left): Conversation stream with user/agent messages
+- **display_panel** (right): Visual blocks and artifacts
+
+Follows Soleda convention. Layout ratio: dialogue_panel ~1/3 width, display_panel ~2/3 (`flex-1`). Thin `gap-3` between panels, no border divider.
+
+## Panel Zones
+
+The display_panel contains two zones: **top_container** (feedback/interaction) and **bottom_container** (grounding entity).
+
+| Zone | Purpose | Block types |
+|---|---|---|
+| `top_container` | Feedback, interaction | Forms, confirmations, toasts, status summaries |
+| `bottom_container` | Grounding entity, artifact | Cards, lists, tables, draft previews |
+
+Controlled by a `displayLayout` store with three modes:
+
+| Mode | Visible zones | When |
+|---|---|---|
+| `bottom` | bottom_container only | Default — artifact/entity blocks |
+| `top` | top_container only | Form or confirmation without artifact |
+| `split` | Both | Form + artifact simultaneously |
+
+The frame's `panel` property (`'top'` or `'bottom'`, default `'bottom'`) determines which zone receives it. `displayLayout` is derived from which frames are populated: if both exist → `split`, top only → `top`, bottom only or neither → `bottom`.
+
+## Light Theme
+
+Off-white base with per-assistant brand colors:
+
+| Variable | Value |
+|---|---|
+| `--color-bg` | `#f5f5f4` (stone-100) |
+| `--color-surface` | `#ffffff` |
+| `--color-border` | `#e7e5e4` (stone-200) |
+| `--color-text` | `#1c1917` (stone-900) |
+| `--color-text-muted` | `#78716c` (stone-500) |
+
+## Brand Colors
+
+Each assistant defines its own accent palette in `app.css`:
+
+- `--color-accent` — primary brand color (buttons, links)
+- `--color-accent-hover` — hover state
+- `--color-accent-light` — tinted background (user bubble, subtle highlights)
+- `--color-user-bubble` — user message background (= accent-light)
+- `--color-agent-bubble` — agent message background (`#ffffff`)
+
+A 2px accent-colored top border on the header bar provides immediate brand identification.
+
+---
+
 ## Responsive Hints
 
 Blocks carry rendering hints so the frontend can adapt to different contexts. This is entirely frontend-side — the agent never sees viewport, theme, or device information.

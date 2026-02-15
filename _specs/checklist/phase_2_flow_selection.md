@@ -96,6 +96,7 @@ Combine 2–3 core dacts to form composite flows. The dax code is the sorted hex
 6. Near-synonym flows
 7. Agent behavior disguised as a flow
 8. Slot masquerading as a flow
+9. Compound flow names — flow names must be single tokens (e.g., `browse` not `browse_topics`, `rework` not `deep_revise`). When a single token would collide with an intent name or another flow, pick a synonym
 
 ### Step 3 — Assign Intents
 
@@ -181,8 +182,8 @@ FLOW_CATALOG = {
         'intent': Intent.SOURCE,        # domain-specific intent name
         'description': 'Browse recipes by category, cuisine, or dietary label',
         'slots': {
-            'category': {'type': 'CategorySlot', 'priority': SlotCategory.OPTIONAL},
-            'cuisine': {'type': 'CategorySlot', 'priority': SlotCategory.OPTIONAL},
+            'category': {'type': 'CategorySlot', 'priority': 'optional'},
+            'cuisine': {'type': 'CategorySlot', 'priority': 'optional'},
         },
         'output': 'list',
         'edge_flows': ['search', 'inventory'],

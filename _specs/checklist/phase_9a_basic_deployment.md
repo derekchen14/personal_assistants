@@ -130,19 +130,16 @@ Each block component:
 - Accepts frame data as props
 - Emits user interactions as messages back to the WebSocket
 
-### Step 6 — Update `run.sh`
+### Step 6 — Verify Init Scripts
 
-Update to start both backend and frontend:
+Backend and frontend run in separate terminal tabs. Verify `init_backend.sh` and `init_frontend.sh` are both present and executable:
 
 ```bash
-#!/bin/bash
-# Start backend
-uvicorn backend.webserver:app --host 0.0.0.0 --port ${PORT:-8000} --reload &
+# Tab 1: backend
+./init_backend.sh    # uvicorn on port ${PORT:-8000}
 
-# Start frontend
-cd frontend && npm run dev -- --port ${FRONTEND_PORT:-5173} &
-
-wait
+# Tab 2: frontend
+./init_frontend.sh   # vite dev on port ${FRONTEND_PORT:-5173}
 ```
 
 ---
@@ -158,7 +155,17 @@ wait
 | Create | `<domain>/frontend/src/lib/components/blocks/*.svelte` | Building block components |
 | Create | `<domain>/frontend/src/lib/utils/websocket.ts` | WebSocket manager |
 | Create | `<domain>/frontend/src/routes/*.svelte` | Main page + layout |
-| Modify | `<domain>/run.sh` | Start both backend and frontend |
+| Verify | `<domain>/init_backend.sh` | Backend start script present and executable |
+| Verify | `<domain>/init_frontend.sh` | Frontend start script present and executable |
+
+---
+
+## Frontend Conventions
+
+- **Panel naming**: dialogue_panel (left, ~1/3 width), display_panel (right, flex-1). `gap-3` between panels.
+- **Light theme**: Off-white base (stone-100), white surfaces, stone borders. Per-assistant brand colors via CSS variables (`--color-accent`, `--color-accent-light`, `--color-user-bubble`).
+- **Top/bottom zones**: display_panel has `top_container` (forms, confirmations) and `bottom_container` (artifacts, cards, lists). Controlled by `displayLayout` store derived from populated frames.
+- **Brand accent**: 2px accent top-border on header bar for immediate assistant identification.
 
 ---
 
@@ -172,4 +179,8 @@ wait
 - [ ] Messages send and responses display in chat
 - [ ] Building blocks render in correct locations (panel vs. inline)
 - [ ] Layout modes work (split, top, bottom)
+- [ ] Chat panel is ~1/3 width, display panel is ~2/3
+- [ ] Background is off-white, text is dark
+- [ ] Each assistant has distinct brand colors
+- [ ] Display panel supports top/bottom zones
 - [ ] End-to-end: enter username → send message → see response

@@ -36,7 +36,7 @@ Python module at root of each assistant folder (per style guide). Contains enums
 | Intent enum (Plan, Converse, Internal, Read, Prepare, Transform, Schedule) | §1 Models (provider, parameters, cost budgets) |
 | Flow lifecycle states (Pending, Active, Completed, Invalid) | §2 Persona (tone, boundaries, name, response style) |
 | **Dact catalog** (name, dax code, intent, edge flows, policy path) | §3 Guardrails (content filter, PII, topic control, injection) |
-| Slot category enum (Required, Elective, Optional) | §4 Session (timeouts, turn limits, persistence) |
+| Slot category strings (`'required'`, `'elective'`, `'optional'`) | §4 Session (timeouts, turn limits, persistence) |
 | Ambiguity levels (General, Partial, Specific, Confirmation) | §5 Memory (scratchpad, summarization, user prefs, RAG) |
 | Base slot value types (string, number, boolean, enum) | §6 Resilience (retries, backoff, fallback, recovery) |
 | **Type hierarchy** (domain-specific column/entity type tree) | §7 Context window (budget allocation, priority order) |
@@ -449,7 +449,7 @@ The `tier` field (basic/pro/advanced) controls auth complexity, database backend
 | Database | SQLite | Postgres | Postgres |
 | Persistence backend | memory | postgres | postgres |
 | Session store | In-memory | Postgres | Postgres |
-| Deployment | Local dev server (`run.sh`) | Dockerfile + docker-compose | Same + monitoring |
+| Deployment | Local dev (`init_backend.sh` + `init_frontend.sh`) | Dockerfile + docker-compose | Same + monitoring |
 | CORS | Permissive (all origins) | Explicit allowlist | Same |
 | Rate limiting | None | Auth endpoints (5/min) | Same |
 | Payment | None | None | Stripe (or similar) |

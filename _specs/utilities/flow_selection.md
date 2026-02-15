@@ -247,8 +247,32 @@ Canonical notation: `{XXX}` (always 3 digits, digits always sorted, no repeating
 | Identifier | Example | Purpose |
 |---|---|---|
 | Dact | query + table | Compositional description showing which cores combine |
-| Flow name | pivot | Single-token human-readable name (unique per domain) |
+| Flow name | pivot | Single-token human-readable name (unique per domain; see naming rules below) |
 | Dax | `{01A}` | Hex code, primary ID used in code |
+
+### Flow Naming Rules
+
+Flow names must be **single tokens** — one word, no underscores, no compound names. This keeps the vocabulary compact, reduces ambiguity in NLU prediction, and matches how users naturally refer to actions.
+
+**Rules:**
+1. One word only (e.g., `browse`, `search`, `outline`) — never `browse_topics` or `search_posts`
+2. Must not collide with intent names (e.g., don't name a flow `revise` if `Revise` is an intent)
+3. Must be unique across the entire domain
+4. Prefer concrete verbs or nouns over generic ones (e.g., `audit` over `check_consistency`, `syndicate` over `cross_post`)
+
+**Good examples** (from worked examples):
+- Chef: `browse`, `search`, `inventory`, `sear`, `blanch`, `plate`
+- Data Analysis: `query`, `pivot`, `plot`, `filter`, `merge`
+- Blogger: `browse`, `search`, `outline`, `rework`, `syndicate`, `blueprint`
+
+**Anti-patterns:**
+- `browse_topics` → use `browse` (drop the suffix)
+- `plan_post` → use `blueprint` (can't use `plan` — intent collision)
+- `deep_revise` → use `rework` (can't use `revise` — intent collision)
+- `auto_format` → use `tidy` (drop the prefix, pick a distinct word)
+- `check_consistency` → use `audit` (avoid collision with `check`)
+
+When two flows would naturally share the same single token, pick a synonym for one: `compare` for post comparison, `diff` for draft version comparison. The dact composition (stored in the dax code) already captures the full semantic meaning, so the flow name only needs to be a memorable handle. If it feels nearly impossible to find a distinct single token name, it's a sign that the flows are too similar and should be merged.
 
 ## Intent Assignment
 

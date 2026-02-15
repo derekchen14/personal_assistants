@@ -7,3 +7,5 @@ __pycache__/
 !.env.example
 shared/.keys
 *.bin
+
+_specs/hidden/

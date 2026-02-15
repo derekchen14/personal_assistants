@@ -277,6 +277,3 @@ On failure: set `has_issues`, emit signal, return to Agent.
 - [ ] PEX `recover()` escalates through the recovery ladder
 - [ ] RES `generate()` fills a template and naturalizes it
 - [ ] RES `display()` maps frames to blocks
-- [ ] Agent `process_turn()` runs NLU → PEX → RES end-to-end
-- [ ] `keep_going` loop processes multiple flows in one turn
-- [ ] Self-check gate catches intent drift and empty responses

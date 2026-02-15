@@ -84,6 +84,20 @@ Other domains define their own extension attributes when built. Display types ar
 - Additional pages are fetched via paginated calls to the underlying source, not stored in the frame.
 - When using a reference, display name is set to `<reference>` to signal it's a pointer, not a literal label.
 
+## Panel Attribute
+
+Frames carry a `panel` property: `'top'` or `'bottom'` (default: `'bottom'`).
+
+- `'bottom'` — grounding entity (blog draft, data table, outlines) — the artifact
+- `'top'` — feedback/interaction (forms, confirmations, toasts, status summaries)
+
+`DisplayFrame.set_frame()` auto-derives the panel from the block type when not explicitly provided: `form`, `confirmation`, `toast` → `'top'`; all others → `'bottom'`. FLOW_CATALOG entries can override with an explicit `panel` field.
+
+The frontend derives `displayLayout` from which frames are populated:
+- Both top + bottom → `'split'`
+- Top only → `'top'`
+- Bottom only (or neither) → `'bottom'` (default)
+
 ## Rendering Pipeline
 
 - After PEX populates the frame, RES reads it and maps attributes to [Building Blocks](../utilities/blocks.md).

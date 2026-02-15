@@ -45,7 +45,8 @@ shared/
 <domain>/
 ├── config.py                       # Config loader — merges shared + domain YAML          [Phase 4a]
 ├── requirements.txt                # Python dependencies                                  [Phase 4a]
-├── run.sh                          # Start backend + frontend                             [Phase 4a]
+├── init_backend.sh                 # Start FastAPI backend (separate terminal tab)         [Phase 4a]
+├── init_frontend.sh                # Start SvelteKit frontend (separate terminal tab)     [Phase 9a]
 ├── .env.example                    # DATABASE_URL, PORT, ENV, API keys                    [Phase 3]
 ├── .gitignore                      # __pycache__, node_modules, .env, *.db, dist/, .svelte-kit/
 ├── Dockerfile                      # Multi-stage build (backend + frontend)               [Phase 9b]
@@ -159,7 +160,7 @@ shared/
 ### Notes
 
 - **Tier-conditional files**: Files annotated `[Phase 4b]` or `[Phase 9b]` are only created for `pro`/`advanced` tiers. Files annotated `[Phase 4c]` or `[Phase 9c]` are only created for `advanced` tier. All phases are incremental — `pro` builds on `basic`, `advanced` builds on `pro`.
-- **`run.sh`** starts both the FastAPI backend and SvelteKit dev server. Each domain runs on its own port.
+- **`init_backend.sh`** and **`init_frontend.sh`** start the FastAPI backend and SvelteKit frontend in separate terminal tabs. Each domain runs on its own port pair (e.g., Kalli: 8000/5173, Hugo: 8001/5174).
 - **`.env.example`** documents required environment variables. Copy to `.env` and fill in. For `basic` tier, `DATABASE_URL` is SQLite (e.g., `sqlite:///data.db`). For `pro`/`advanced`, it points to Postgres (e.g., `postgresql://localhost/cooking`).
 - **`.gitignore`** covers `__pycache__/`, `node_modules/`, `.env`, `dist/`, `.svelte-kit/`, `*.db`.
 - **No Alembic** — uses `Base.metadata.create_all()` on startup. Add migrations when schema stabilizes.
