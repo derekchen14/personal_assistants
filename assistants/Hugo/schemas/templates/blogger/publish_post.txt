@@ -1,0 +1,3 @@
+Published! {message}
+block_hint: toast
+skip_naturalize: false

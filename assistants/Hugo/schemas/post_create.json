@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "post_create",
+  "description": "Create a new draft post with title and optional initial content",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Title of the new post"
+    },
+    "topic": {
+      "type": "string",
+      "description": "Topic or theme for the post"
+    },
+    "outline": {
+      "type": "object",
+      "description": "Initial outline structure (sections with key points)"
+    }
+  },
+  "required": ["title"],
+  "additionalProperties": false
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "content_format",
+  "description": "Format content for publication on a specific platform",
+  "type": "object",
+  "properties": {
+    "post_id": {
+      "type": "string",
+      "description": "Post to format"
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["blog", "substack", "linkedin", "twitter"],
+      "description": "Target platform for formatting"
+    },
+    "format": {
+      "type": "string",
+      "enum": ["markdown", "html", "plaintext"],
+      "default": "markdown",
+      "description": "Output format"
+    }
+  },
+  "required": ["post_id"],
+  "additionalProperties": false
+}

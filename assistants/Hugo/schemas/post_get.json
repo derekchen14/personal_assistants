@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "post_get",
+  "description": "Get a specific post or draft by ID, with full content and metadata",
+  "type": "object",
+  "properties": {
+    "post_id": {
+      "type": "string",
+      "description": "Unique identifier of the post or draft to retrieve"
+    },
+    "section": {
+      "type": "string",
+      "description": "Specific section title to retrieve (returns full post if omitted)"
+    },
+    "include_history": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include version history for the post"
+    }
+  },
+  "required": ["post_id"],
+  "additionalProperties": false
+}

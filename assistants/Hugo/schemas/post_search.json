@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "post_search",
+  "description": "Search posts, drafts, and topics by keyword, status, or category",
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Search term: keyword, topic, or phrase to match against post titles and content"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "published", "archived", "all"],
+      "default": "all",
+      "description": "Filter by post status"
+    },
+    "category": {
+      "type": "string",
+      "description": "Filter by topic category"
+    },
+    "limit": {
+      "type": "integer",
+      "default": 10,
+      "description": "Maximum number of results to return"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

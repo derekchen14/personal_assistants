@@ -1,0 +1,3 @@
+Here's the plan: {message}
+block_hint: list
+skip_naturalize: false

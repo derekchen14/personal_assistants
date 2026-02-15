@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "post_update",
+  "description": "Update a draft's content, outline, status, or metadata",
+  "type": "object",
+  "properties": {
+    "post_id": {
+      "type": "string",
+      "description": "Unique identifier of the post or draft to update"
+    },
+    "title": {
+      "type": "string",
+      "description": "New title for the post"
+    },
+    "section": {
+      "type": "string",
+      "description": "Section to update (updates full post if omitted)"
+    },
+    "content": {
+      "type": "string",
+      "description": "New content for the post or section"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "review", "approved", "published", "archived"],
+      "description": "New status for the post"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata to merge (tags, category, notes)"
+    }
+  },
+  "required": ["post_id"],
+  "additionalProperties": false
+}

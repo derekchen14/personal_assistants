@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "platform_publish",
+  "description": "Publish, schedule, or unpublish a post on a platform",
+  "type": "object",
+  "properties": {
+    "post_id": {
+      "type": "string",
+      "description": "Post to publish"
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["blog", "substack", "linkedin", "twitter"],
+      "description": "Target platform"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["publish", "schedule", "unpublish"],
+      "default": "publish",
+      "description": "Publication action to perform"
+    },
+    "scheduled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 datetime for scheduled publication (required when action=schedule)"
+    }
+  },
+  "required": ["post_id", "platform"],
+  "additionalProperties": false
+}

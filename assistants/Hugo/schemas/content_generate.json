@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "content_generate",
+  "description": "Generate content using LLM: outlines, prose, revisions, brainstorming",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["outline", "expand", "revise", "brainstorm", "explain"],
+      "description": "Type of content generation to perform"
+    },
+    "topic": {
+      "type": "string",
+      "description": "Topic or subject for generation"
+    },
+    "source_content": {
+      "type": "string",
+      "description": "Existing content to revise or expand"
+    },
+    "instructions": {
+      "type": "string",
+      "description": "Specific instructions or feedback to guide generation"
+    },
+    "tone": {
+      "type": "string",
+      "description": "Target tone or style for the generated content"
+    },
+    "depth": {
+      "type": "integer",
+      "default": 2,
+      "description": "Outline depth level (1=sections, 2=key points, 3=subpoints, 4=phrases)"
+    }
+  },
+  "required": ["action"],
+  "additionalProperties": false
+}

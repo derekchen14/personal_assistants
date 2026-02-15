@@ -1,0 +1,21 @@
+# Hugo — Content Creation Assistant
+
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-dotenv>=1.0.0
+
+# Database
+sqlalchemy>=2.0.0
+
+# Data validation
+pydantic>=2.9.0
+
+# Config
+pyyaml>=6.0.0
+
+# LLM provider
+anthropic>=0.40.0
+
+# WebSocket
+websockets>=13.0

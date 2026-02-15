@@ -1,0 +1,157 @@
+# hugo/schemas/blogger.yaml
+# Domain config for the blogging assistant (Hugo).
+# Sections defined here fully replace the shared default for that section.
+
+environment: dev
+
+models:
+  default:
+    provider: anthropic
+    model_id: claude-sonnet-4-5-20250929
+    temperature: 0.0
+    max_output_tokens: 4096
+  overrides:
+    skill:
+      model_id: claude-opus-4-6
+    naturalize:
+      temperature: 0.5
+    nlu:
+      model_id: claude-sonnet-4-5-20250929
+    nlu_vote:
+      model_id: claude-haiku-4-5-20251001
+
+persona:
+  tone: conversational
+  expertise_boundaries: [blog writing, content strategy, social media posting, copy editing]
+  name: "Hugo"
+  response_style: detailed
+  design_colors:
+    primary: ["#2D3748", "#4A5568"]
+    accent: "#ED8936"
+
+guardrails:
+  input_max_tokens: 8192
+  content_filter:
+    enabled: true
+    categories: [violence, sexual, hate_speech, self_harm, dangerous]
+    severity: medium
+  pii_detection:
+    enabled: false
+    action: redact
+    types: [ssn, credit_card, email, phone, address]
+  topic_control:
+    allowed_topics: []
+    forbidden_topics: []
+  forbidden_patterns: []
+  prompt_injection_detection:
+    enabled: true
+    sensitivity: medium
+
+key_entities: [post, section, draft]
+
+display:
+  types: [Default, Dynamic]
+  chart_types: []
+  page_size: 256
+
+tools:
+  post_search:
+    tool_id: post_search
+    name: "Search posts"
+    description: "Search posts, drafts, and topics by keyword, status, or category"
+    input_schema: schemas/post_search.json
+    idempotent: true
+    timeout_ms: 5000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+    cache_ttl_ms: 30000
+
+  post_get:
+    tool_id: post_get
+    name: "Get post"
+    description: "Get a specific post or draft by ID with full content and metadata"
+    input_schema: schemas/post_get.json
+    idempotent: true
+    timeout_ms: 5000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+    cache_ttl_ms: 0
+
+  post_create:
+    tool_id: post_create
+    name: "Create post"
+    description: "Create a new draft post with title and optional initial content"
+    input_schema: schemas/post_create.json
+    idempotent: false
+    timeout_ms: 5000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+
+  post_update:
+    tool_id: post_update
+    name: "Update post"
+    description: "Update a draft's content, outline, status, or metadata"
+    input_schema: schemas/post_update.json
+    idempotent: false
+    timeout_ms: 5000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+
+  content_generate:
+    tool_id: content_generate
+    name: "Generate content"
+    description: "Generate content using LLM: outlines, prose, revisions, brainstorming"
+    input_schema: schemas/content_generate.json
+    idempotent: true
+    timeout_ms: 30000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+
+  content_format:
+    tool_id: content_format
+    name: "Format content"
+    description: "Format content for publication on a specific platform"
+    input_schema: schemas/content_format.json
+    idempotent: true
+    timeout_ms: 10000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+
+  platform_publish:
+    tool_id: platform_publish
+    name: "Publish to platform"
+    description: "Publish, schedule, or unpublish a post on a platform"
+    input_schema: schemas/platform_publish.json
+    idempotent: false
+    timeout_ms: 15000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: true
+    requires_approval: false
+
+  platform_list:
+    tool_id: platform_list
+    name: "List platforms"
+    description: "List configured publishing platforms and their connection status"
+    input_schema: schemas/platform_list.json
+    idempotent: true
+    timeout_ms: 5000
+    accesses_private_data: false
+    receives_untrusted_input: false
+    communicates_externally: false
+    requires_approval: false
+    cache_ttl_ms: 300000
+
+# Template registry populated in Phase 7 (Prompt Writing)

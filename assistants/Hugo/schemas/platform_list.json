@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "platform_list",
+  "description": "List configured publishing platforms and their connection status",
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false
+}
