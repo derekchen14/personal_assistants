@@ -192,7 +192,7 @@ Also verify that `shared/shared_defaults.yaml` exists with baseline config for a
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|

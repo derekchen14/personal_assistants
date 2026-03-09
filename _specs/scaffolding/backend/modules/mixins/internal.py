@@ -6,7 +6,7 @@ import pandas as pd
 from backend.prompts.mixins.for_internal import * # Assuming prompts like think_prompt exist here
 from backend.utilities.pex_helpers import *
 from backend.components.engineer import PromptEngineer
-from backend.components.frame import Frame
+from backend.components.display_frame import DisplayFrame
 from utils.help import dax2flow, dax2dact, flow2dax
 
 class InternalMixin:

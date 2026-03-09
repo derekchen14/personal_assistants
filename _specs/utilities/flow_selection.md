@@ -62,6 +62,14 @@ Each domain names its own 4 intents; the abstract slot provides the semantic cri
 | Plan | Decomposes a request into sub-flows (diagnose/plan) |
 | Internal | Gathers supporting info invisibly (no user-facing output) |
 
+> **Mandatory Internal flows.** Three Internal flows must appear in every domain: **recap** (session scratchpad, L1), **recall** (user preferences, L2), and **retrieve** (general business context from Memory Manager, L3). These handle the agent's three-tier memory system and are domain-agnostic. A fourth Internal flow, **search**, is strongly recommended: it looks up vetted FAQs and curated reference content — the unstructured equivalent of `lookup` in the semantic layer. The distinction mirrors structured data: `lookup` (vetted definitions) vs `query` (raw data) parallels `search` (vetted FAQs) vs `retrieve` (unvetted context from anywhere). The remaining Internal flows (calculate, peek, etc.) may vary by domain.
+
+> **Internal flows are sub-agents, not tools.** Every flow — including Internal flows — is a sub-agent with its own decision-making power: it contains multiple prompts, can choose from multiple tools, and has a distinctly targeted purpose. This distinguishes flows from tools, which are largely deterministic (implemented as a Python function or a single-prompt LLM call). For example, the `retrieve` flow decides which Memory Manager tier to query, formulates the search, evaluates relevance, and may refine its query — a multi-step reasoning process. A tool like `memory_read(key)` simply returns a value.
+>
+> Internal flows can be invoked **asynchronously** by a parent flow, running in parallel with the user-facing flow that triggered them. For example, while a `query` flow is building a SQL statement, a `peek` flow can check data state in the background and a `recall` flow can fetch the user's preferred date format — all concurrently. The parent flow chains Internal flows as needed: `recap` reads from the scratchpad, and based on what it finds, the parent may trigger `retrieve` to fetch business context. The async execution mechanism is implemented in Python (design TBD).
+
+> **Mandatory Plan flow.** The **outline** flow must appear in every domain's Plan intent. It handles multi-step user requests (numbered lists, complex instructions) by orchestrating flows across all domain-specific intents. While `insight` chains Analyze + Report and `pipeline` chains Transform flows, `outline` is the catch-all that covers every intent other than the universal three (Converse, Plan, Internal).
+
 ### Step B: Choose Key Entities
 
 3 grounding objects that make the task concrete. These are the things you'd ask "which one?" about. They often inspire the types of building blocks to develop. Not necessarily hierarchical — containment is incidental.
@@ -135,7 +143,7 @@ The full catalog (64 flows) should distribute **7-10 flows per intent**. Fewer t
 **Good patterns — signs a flow is pulling its weight:**
 
 1. **Broad task coverage.** Flows should cover the full semantic range of user requests, not just literal readings. A flow like `exist` should handle "do I have data about X?" broadly — scanning table names, column headers, and cell values — not just exact keyword matching. If users might phrase a task loosely, the flow should accommodate that.
-2. **Similar flows as contemplate() candidates.** Near-similar flows are a feature, not a bug. When NLU `contemplate()` re-predicts, it narrows from 48 flows to 3-5 candidates. Flows that are legitimately similar (e.g., `freeze` vs `safety` in cooking, `read` vs `inspect` in programming) form each other's contemplate search space. If every flow were maximally distinct, contemplate would have no useful candidates.
+2. **Similar flows as contemplate() candidates.** Near-similar flows are a feature, not a bug. When NLU `contemplate()` re-detects, it narrows from 48 flows to 3-5 candidates. Flows that are legitimately similar (e.g., `freeze` vs `safety` in cooking, `read` vs `inspect` in programming) form each other's contemplate search space. If every flow were maximally distinct, contemplate would have no useful candidates.
 3. **Temporal distinction.** Pre-action and post-action flows are legitimately different even when they touch the same entity. `review` (pre-launch assessment) and `troubleshoot` (post-launch diagnosis) have different slot signatures, different tools, and different outputs — even though both examine a campaign.
 4. **Composed flows.** A flow that calls other flows as sub-steps is distinct from those sub-flows. `post` (review quality → then publish) is a Plan flow that invokes `publish` as a sub-step — it's not a duplicate of `publish`. The composed flow owns the orchestration; the sub-flow owns the action.
 5. **Internal validation.** Validation and safety-check flows belong in the Internal intent. `caution` (check if spend is risky) and `safety` (check food safety) are lightweight gates that run before user-facing actions. They don't produce user-visible output — they set flags that other flows consume.
@@ -148,7 +156,7 @@ After finalizing all flows (Step D), fully specify each flow's **slot signature*
 
 **Slot notation** (compact, inline in the flow table):
 
-- `dataset (req)` — required, must be filled before the flow can execute
+- `table (req)` — required, must be filled before the flow can execute
 - `column (opt)` — optional, has a reasonable default (e.g., "all columns")
 - `chart_type (elective)` — pick from a predefined set (e.g., bar, line, pie)
 - `—` — no slots (flow uses context only, e.g., `think`, `recommend`)
@@ -160,6 +168,7 @@ After finalizing all flows (Step D), fully specify each flow's **slot signature*
 3. **Default to optional.** Only mark a slot as `(req)` if the flow literally cannot execute without it. A `filter` needs a `condition`, but a `summarize` can default to "summarize everything."
 4. **Use `(elective)` for enumerated values.** When the slot's value comes from a fixed set (chart types, join types, cooking methods), mark it `(elective)`. This signals the Ambiguity Handler to present options rather than ask open-ended questions.
 5. **Unique signatures across the domain.** After assigning all slots, verify that no two flows share the same slot set + types. If two flows collide, differentiate by adding an optional slot to one, changing a type (req ↔ opt), or merging the flows.
+6. Eevery flow has at least one required slot. This slots is almost always the grounding slot which ties the flow to a specific entity in the domain's data model.
 
 **Slot patterns by flow type:**
 
@@ -252,7 +261,7 @@ Canonical notation: `{XXX}` (always 3 digits, digits always sorted, no repeating
 
 ### Flow Naming Rules
 
-Flow names must be **single tokens** — one word, no underscores, no compound names. This keeps the vocabulary compact, reduces ambiguity in NLU prediction, and matches how users naturally refer to actions.
+Flow names must be **single tokens** — one word, no underscores, no compound names. This keeps the vocabulary compact, reduces ambiguity in NLU detection, and matches how users naturally refer to actions.
 
 **Rules:**
 1. One word only (e.g., `browse`, `search`, `outline`) — never `browse_topics` or `search_posts`
@@ -301,7 +310,7 @@ Each flow (core or composite) belongs to exactly one intent. Assignment follows 
 
 ## Edge Flow Selection
 
-Edge flows are adjacent flows from neighboring intents that are commonly confused during NLU prediction. Used to expand the candidate set during flow prediction majority vote.
+Edge flows are adjacent flows from neighboring intents that are commonly confused during NLU prediction. Used to expand the candidate set during flow detection majority vote.
 
 - Pick 1–3 flows that a user's utterance might plausibly map to instead of this flow
 - Prefer flows from adjacent intents (e.g., a Read flow's edges might include a Prepare flow)
@@ -417,12 +426,11 @@ Recurring patterns across domains, described by role (not specific dact names). 
 | | retrieve + update + row | blank | `{46B}` | Find and address null or empty cells. One of 4 diagnosis types | dataset (req), column (opt), strategy (elective) | list |
 | | retrieve + update + deny | typo | `{46F}` | Detect likely typos or misspellings in text columns. One of 4 diagnosis types | dataset (req), column (opt) | list |
 | **Internal** | chat + query + user | recap | `{018}` | Pull a snippet from the current conversation (session scratchpad L1). ≠ peek (checks data state); ≠ recall (retrieves persistent user prefs) | key (opt) | (internal) |
-| | user + agent | think | `{089}` | Agent's internal reasoning step | — | (internal) |
 | | query + measure + agent | calculate | `{129}` | Perform basic arithmetic or comparison the agent cannot do reliably in its head (e.g., is 9.11 < 9.8) | expression (req) | (internal) |
-| | query + retrieve + agent | search | `{149}` | Search across datasets or columns for relevant data | query (req) | (internal) |
+| | query + retrieve + agent | search | `{149}` | Look up vetted FAQs and curated reference content (unstructured equivalent of `lookup`). ≠ retrieve (unvetted context from anywhere) | query (req) | (internal) |
 | | query + user + agent | peek | `{189}` | Quick internal check of data state before agent responds | dataset (opt) | (internal) |
-| | retrieve + user + agent | recall | `{489}` | Retrieve from agent memory (user prefs, L2). ≠ recap (session scratchpad); ≠ context (business docs) | key (opt), scope (opt) | (internal) |
-| | retrieve + agent + table | context | `{49A}` | Retrieve from organizational knowledge base (business docs, FAQs, domain rules, L3). ≠ recall (user prefs); ≠ search (scans datasets) | key (opt), source (opt) | (internal) |
+| | retrieve + user + agent | recall | `{489}` | Retrieve from agent memory (user prefs, L2). ≠ recap (session scratchpad) | key (opt), scope (opt) | (internal) |
+| | retrieve | retrieve | `{004}` | Fetch general business context from Memory Manager — unvetted documents, reports, or domain knowledge from any source (L3). ≠ search (vetted FAQs) | topic (opt), source (opt) | (internal) |
 
 **Rejected flows:**
 

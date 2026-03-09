@@ -14,7 +14,7 @@ Model-agnostic prompt interface. Assembles, executes, and validates prompts for 
 - **Persona**: per-domain config (tone, expertise boundaries) loaded from Configuration utility; composed into the system prompt alongside instructions — minimal, just a config block
 - **Output style** (concise/verbose, technical/casual, markdown/plain) is a per-call override of persona defaults, passed as a structured parameter
 - **Format standards**: All prompts follow the standard 8-slot format defined in the [Style Guide's Prompt Engineering section](../style_guide.md#prompt-engineering) — grounding data first, exemplars (count varies by module), JSON output, closing reminder
-- **Few-shot examples**: Intent classification and flow prediction prompts should include domain-specific few-shot examples. The scaffold's prompt files serve as the starting point for prompt development in new domains
+- **Few-shot examples**: Intent classification and flow detection prompts should include domain-specific few-shot examples. The scaffold's prompt files serve as the starting point for prompt development in new domains
 
 ### Prompt File Organization
 

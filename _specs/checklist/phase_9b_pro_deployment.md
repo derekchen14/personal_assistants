@@ -161,7 +161,7 @@ fi
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|

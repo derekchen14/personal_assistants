@@ -24,7 +24,7 @@ Every user turn follows this sequence:
 
 | Step | Owner | Action |
 |---|---|---|
-| 1 | NLU `think()` / `react()` | Predict intent and flow, fill slots |
+| 1 | NLU `think()` / `react()` | Classify intent and detect flow, fill slots |
 | 2 | PEX `execute()` | Run the active flow's policy and tools |
 | 3 | RES `respond()` | Route to `generate()` for text, `clarify()` for clarification, or `display()` for visuals as needed |
 
@@ -38,10 +38,15 @@ If `keep_going` is set on the dialogue state after step 3, the Agent loops back 
 
 The Agent owns a `World` instance — a session-scoped container that acts as the data registry and state archive. World stores:
 
-- **State history**: All prior `DialogueState` objects for the session
-- **Frame collection**: All frames produced by policies (the Agent's frame archive)
-- **Data registry**: Valid tables, columns, and per-table/column metadata for the current session
-- **Domain context**: Domain-specific session context (e.g., campaigns, channels for marketing; calendars for scheduling)
+- **State history** (`states: list[DialogueState]`): All prior DialogueState objects for the session
+- **Frame archive** (`frames: list[DisplayFrame]`): All frames produced by policies
+- **Flow Stack**: The session's flow stack instance
+- **Context Coordinator**: The session's context coordinator instance
+
+Modules receive World in their constructor and unpack what they need:
+- `NLU(config, ambiguity, engineer, world)` — returns `DialogueState` (no intermediate NLUResult)
+- `PEX(config, ambiguity, engineer, memory, world)` — returns `DisplayFrame` (no intermediate PEXResult); PEX does not write messages
+- `RES(config, ambiguity, engineer, world)` — returns `tuple[str, DisplayFrame]`
 
 World is not a core component — it lives inside the Agent and provides the session-level storage that individual components reference. Dialogue State tracks beliefs; World tracks what the agent has seen and produced.
 

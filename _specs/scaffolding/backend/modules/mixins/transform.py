@@ -12,7 +12,7 @@ from backend.assets.ontology import type_hierarchy, default_limit
 
 from utils.help import dax2flow, flow2dax
 from backend.components.engineer import PromptEngineer
-from backend.components.frame import Frame
+from backend.components.display_frame import DisplayFrame
 from backend.components.metadata import MetaData
 from backend.utilities.manipulations import *
 
@@ -31,7 +31,7 @@ class TransformMixin:
       self.actions.add('CLARIFY')
       flow.is_uncertain = False
       state.ambiguity.declare('specific')
-      frame = Frame(state.current_tab)
+      frame = DisplayFrame(state.current_tab)
       return frame, state
 
     if state.has_issues:

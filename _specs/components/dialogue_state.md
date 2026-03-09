@@ -91,6 +91,6 @@ The dialogue state contains the flow stack, which manages multiple workflows at 
 
 ## Confidence Tracking
 
-- Store top-N predictions with confidence scores for logging and debugging, N=top 3 flows.
+- Store top-N detections with confidence scores for logging and debugging, N=top 3 flows.
 - No automatic fallback trigger — the NLU is responsible for deciding when to engage the ambiguity handler
 - Confidence data is available for inspection but does not drive state transitions

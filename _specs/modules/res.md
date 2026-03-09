@@ -2,7 +2,7 @@
 
 The final stage of the agent pipeline. Consumes execution results and renders user-facing output — text responses, data visualizations, or both. Flow-agnostic: RES does not know which policy produced the result. It only needs the intent (from dialogue state) and the display frame.
 
-**Module principle**: RES is read-only on the data layer. Its only state mutation is flow lifecycle cleanup — popping completed flows from the stack.
+**Module principle**: RES is read-only on the data layer. Its only state mutation is flow lifecycle cleanup — popping completed flows from the stack. RES receives World in its constructor and accesses state/frame/context through it. RES handles unsupported flow messages (when PEX returns carryover with `{'unsupported': True}`). Return type: `tuple[str, DisplayFrame]`.
 
 - **Respond function**: top-level entry point that routes to the appropriate sub-function
 - **Generate function**: composes text responses via template-fill → naturalize pipeline

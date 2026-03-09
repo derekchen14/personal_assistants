@@ -1,493 +1,504 @@
-import numpy as np
+from __future__ import annotations
+
 import json
-from utils.help import dax2dact, dact2dax, dax2intent
-from collections import defaultdict
-
-from backend.constants import PROJECT_DIR
-from backend.components.state import DialogueState
-from backend.components.engineer import PromptEngineer
-from backend.modules.flow import flow_selection
-from backend.modules.experts.for_nlu import *
-from backend.prompts.for_nlu import *
-from backend.utilities.nlu_helpers import *
-from backend.utilities.search import extract_partial
-
-class NatLangUnderstanding(object):
-
-  def __init__(self, args, external_api, internal_api, storage):
-    self.verbose = args.verbose
-    self.debug_mode = args.debug
-    self.threshold = args.threshold
-    self.allow_alchemy = args.allow_dev_mode
-    self.reset_flags()
-    intent_data, dact_data = self._preprocess_seed()
-
-    self.regex = RegularExpressionParser(args.threshold, args.verbose)
-    self.embed = EmbeddingRetriever(args, intent_data, storage)
-    self.logreg = LogisticRegression(args, internal_api)
-    self.peft = FineTunedLearner(args, internal_api)
-    self.icl = InContextLearner(args, external_api)
-
-  def _preprocess_seed(self):
-    seed_data = json.load(open(os.path.join(PROJECT_DIR, 'database', 'storage', 'seed_data.json'), 'r'))
-    intent_data, dact_data, flow_data = seed_data['Intents'], seed_data['Dacts'], seed_data['Flows']
-    self.dax2flow = {flow['dax']: flow for flow in flow_data}          # flow has name, dax, and operations as keys
-    self.flow2dax = {flow['name']: flow['dax'] for flow in flow_data}  # holds full flow name
-    return intent_data, dact_data
-
-  def activate_command(self, regex_intent, regex_dax, context):
-    # for advanced developer control, not part of normal flow
-    if regex_intent == 'unknown':
-      regex_intent = dax2intent(regex_dax)
-
-    command_type, command_string = self.regex.command
-    if command_type in ['sql', 'python']:
-      self.shortcut = True
-
-    context.recent[-1].add_revision(command_string)
-    self.command = command_type, command_string
-    self.regex.command = "", ""
-    return (regex_intent, regex_dax, "", []), 1.0
-
-  def initial_prediction(self, context, prior_state):
-    # first pass of intent/dact/dax prediction
-    regex_intent, regex_dax, regex_score = self.regex(context, prior_state.get_dialog_act())
-    if regex_score == 1.0:
-      return self.activate_command(regex_intent, regex_dax, context)
-    elif regex_score > 0.9:
-      grouped_predictions = regex_intent, regex_dax, regex_intent, regex_dax
-      return grouped_predictions, regex_score
-
-    dact_string = prior_state.get_dialog_act('string')
-    prior_dialog_act = dact_string if dact_string else ''
-
-    icl_intent, icl_dax, _ = self.icl(context, "", prior_state.intent, prior_dialog_act)
-    grouped_pred = (icl_intent, icl_dax, 'placeholder', '000')
-    return grouped_pred, 0.9
-
-  def make_predictions(self, context, prior_state):
-    """ returns a predicted dialogue_acts in dax format """
-    predictions, score = self.initial_prediction(context, prior_state)
-    pred_intent, pred_dax, _, _ = predictions
-    return pred_intent, pred_dax, score
-
-  def validate_state(self, state, world, context):
-    state = self.fix_tables(state, world, context)
-    dax = state.get_dialog_act()
-
-    # make sure all table-column combos are unique
-    state = ensure_unique_tab_cols(state)
-    # check that all columns within a dialogue_state are valid
-    problem_cols = []
-    for entity in state.entities:
-      if not isinstance(entity['col'], str):
-        state.ambiguity.declare('partial')
-        continue
-      if entity['col'] == '*':
-        continue
-      if dax in ['005', '05C', '0BD']:
-        continue  # by definition, the new column to insert is missng from current columns
-      if entity['col'] not in world.valid_columns[entity['tab']]:
-        problem_cols.append((entity['col'], entity['tab']))
-
-    # attempt to repair problematic columns
-    attempts = 3
-    while len(problem_cols) > 0 and attempts > 0:
-      problem, p_table = problem_cols.pop(0)
-      print(f"  Problem column: {problem} in {p_table}")
-      match, m_col, m_table = self.icl.find_related_columns(problem, p_table, world.valid_columns)
-      print(f"  Fixed column: {m_col} in {m_table}")
-
-      # solid match, came make a direct swap
-      if match == 'no':
-        state.ambiguity.declare('partial', values=[problem])
-      elif m_table in world.valid_tables and m_col in world.valid_columns[m_table]:
-        corrected = []
-        for entity in state.entities:
-          if entity['tab'] == p_table and entity['col'] == problem:
-            corrected.append({'tab': m_table, 'col': m_col, 'ver': entity['ver']})
-          else:
-            corrected.append(entity)
-        state.entities = corrected
-        if match == 'maybe':
-          state.ambiguity.declare('confirmation', slot='source', values=[m_col])
-      else:
-        problem_cols.append((m_col, m_table))
-      attempts -= 1
-
-    # check if a different flow is more appropriate
-    if state.ambiguity.present() and state.has_active_flow():
-      state = self.check_for_fallback(state, world)
-
-    # set the current tab and the turn_id
-    if state.current_tab not in world.valid_tables:
-      prior_state = world.current_state()
-      state.current_tab = prior_state.current_tab
-    state.turn_id = context.recent[-1].turn_id
-    return state
-
-  def fix_tables(self, state, world, context):
-    # check that all tables within a dialogue_state are valid
-    if len(state.entities) == 0 or state.entities[0]['tab'] == 'all':
-      if state.current_tab in world.valid_tables:
-        pred_table = state.current_tab
-      else:
-        pred_table = self.icl.predict_table(state, world, context)
-      state.entities = [{'tab': pred_table, 'col': '*', 'ver': False}]
-      state.current_tab = pred_table
-
-    table_fixes = {}
-    has_problem = False
-    for entity in state.entities:
-      if entity['tab'] not in world.valid_tables:
-        problem_tab = entity['tab']
-        fixed_table = table_fixes.get(problem_tab, '')
-
-        if not fixed_table:
-          # just check casing first, since these are basic errors
-          if problem_tab.lower() in world.valid_tables:
-            table_fixes[problem_tab] = problem_tab.lower()
-          elif problem_tab.upper() in world.valid_tables:
-            table_fixes[problem_tab] = problem_tab.upper()
-          elif problem_tab.title() in world.valid_tables:
-            table_fixes[problem_tab] = problem_tab.title()
-          else:  # attempt to find the nearest valid table
-            nearest_tab = find_nearest_lexical(problem_tab, world.valid_tables)
-            if nearest_tab is None:
-              state.ambiguity.declare('partial')
-            else:
-              state.ambiguity.declare('confirmation', slot='table', values=[nearest_tab])
-              table_fixes[problem_tab] = nearest_tab
-        has_problem = True
-
-    if has_problem:
-      validated = []
-      for entity in state.entities:
-        if entity['tab'] in world.valid_tables:
-          validated.append(entity)
-        elif entity['tab'] in table_fixes:
-          entity['tab'] = table_fixes[entity['tab']]
-          validated.append(entity)
-      state.entities = validated
-    return state
-
-  def finalize_state(self, state, last_state):
-    # Run at the end to finalize the dialogue state, also reset the NLU for next turn
-    if self.score < 0:
-      state.ambiguity.declare('general')
-
-    if self.shortcut:  # this is a special command, so don't need to check for ambiguity
-      state.ambiguity.resolve()
-
-    if state.ambiguity.present():
-      level = state.ambiguity.lowest_level()
-      # if there is deep confusion, fallback to prior states to prevent damage from cascading
-      if level in ['general', 'partial']:
-        state = use_validated_entities(state, last_state)
-      state.thought = f"There is some {level} ambiguity I need to clarify with the user."
-      active_flow = state.get_flow(allow_interject=False)
-      if active_flow:
-        active_flow.is_uncertain = True
-
-    self.reset_flags()
-    if self.verbose:
-      print(f"  Dialogue state:\n{state}")
-      print(f"* Thought: {state.thought}")
-    return state
-
-  def reset_flags(self):
-    self.shortcut = False
-    self.active_flow = None
-    self.labels = {'intent': '' , 'dax': '', 'entities': [], 'score': 0}
-    self.score = 0.5
-    self.command = '', ''
-
-  def predict(self, context, world, gold_dax=''):
-    """
-    Input: context (w/ dialogue history), world (w/ prior states)
-    Output: prediction - intents, dacts, core, ops
-            score - the confidence of the prediction (float)
-    """
-    prior_state = world.current_state()
-    if self.golden_victory(gold_dax):
-      pred_intent, pred_dax, score = dax2intent(gold_dax), gold_dax, 0.99
-      pred_dax = self.preliminary_review(context, pred_dax, prior_state)
-    else:
-      pred_intent, pred_dax, score = self.make_predictions(context, prior_state)
-      pred_dax = self.preliminary_review(context, pred_dax, prior_state)
-
-      matching_intent = dax2intent(pred_dax)
-      if pred_intent != matching_intent:
-        pred_intent = matching_intent
-        print(f"  Made a repair to change intent to {pred_intent} so it aligns with the dax")
-      print(f"  Predicted dact: {dax2dact(pred_dax)} {{" + pred_dax + "}")
-
-    self.labels.update({'intent': pred_intent, 'dax': pred_dax, 'score': score})
-    if pred_dax in self.dax2flow:
-      self.active_flow = self.construct_flow(prior_state, pred_dax, world.valid_columns)
-    return pred_dax
-
-  def preliminary_review(self, context, pred_dax, prior_state):
-    """ Review the predicted dialog act and make any necessary adjustments """
-    if prior_state.has_plan:
-      self.accept_plan_proposal(context, pred_dax, prior_state)
-    # Perform sanity check for certain complex dialog acts
-    if pred_dax.startswith('46'):
-      pred_dax = self.resolve_single_issue(pred_dax, prior_state)
-    # Abort immediately if the predicted dialog act is unsupported
-    if pred_dax in ['248', '268', '023', '038', '23D', '136', '13A', '068', '06F', '368',
-                    '056', '456', '46D', '468', '008', '009', '00D']:
-      pred_dax = 'FFF'
-    return pred_dax
-
-  def accept_plan_proposal(self, context, pred_dax, prior_state):
-    # Check whether the user has accepted the agent's proposal
-    pred_flow_name = self.dax2flow[pred_dax]['name']
-    previous_flow = prior_state.get_flow()
-    full_flow_name = previous_flow.name(full=True)
-
-    if full_flow_name.startswith('Detect'):
-      # the proposal is a multi-step plan so accepting is a binary decision
-      if previous_flow.name() == 'insight':
-        if prior_state.has_plan:
-          prompt = plan_approval_prompt.format(history=context.compile_history())
-          prediction = PromptEngineer.apply_guardrails(self.icl.api.execute(prompt), 'json')
-          previous_flow.slots['plan'].approved = prediction['approval']
-      elif full_flow_name != pred_flow_name:
-        # proposal is a set of options, so accepting means selecting one of the options
-        previous_flow.slots['proposal'].add_one(extract_partial(pred_flow_name))
-
-  def resolve_single_issue(self, pred_dax, prior_state):
-    # Force the agent to resolve one issue at a time
-    predicted_flow = self.dax2flow[pred_dax]['name']
-    previous_flow = prior_state.get_flow(return_name=True)
-
-    if previous_flow.startswith('Detect') and previous_flow != predicted_flow:
-      pred_dax = self.flow2dax[previous_flow]
-    return pred_dax
-
-  def golden_victory(self, gold_dax):
-    success = False
-    if len(gold_dax) == 3 and self.allow_alchemy:
-      try:
-        gold_intent = dax2intent(gold_dax)
-        success = True
-      except(ValueError):
-        success = False
-    return success
-
-  def construct_flow(self, state, dax, valid_col_dict):
-    previous_flow = state.get_flow()
-    curr_flow_name = self.dax2flow[dax]['name']
-    prev_flow_name = state.get_flow(return_name=True)
-
-    if previous_flow and previous_flow.interjected and previous_flow.parent_type == 'Detect':
-      if dax.startswith('46') or 'E' in dax:
-        previous_flow.interjected = False  # The user has accepted the interjection
-      else:
-        issue_flow = state.flow_stack.pop()
-        state.has_issues = False
-        underlying_flow = state.get_flow()
-        if underlying_flow and underlying_flow.completed:
-          state.flow_stack.pop()
-
-    if (curr_flow_name == prev_flow_name) and not previous_flow.completed:
-      active_flow = previous_flow     # predicted the same flow, so just continue with the current one
-    elif curr_flow_name.startswith('Internal'):
-      active_flow = None              # captures {9DF} scenarios
-    else:
-      active_flow = flow_selection[dax](valid_col_dict)
-    return active_flow
-
-  def check_for_fallback(self, state, world):
-    current_flow = state.get_flow(allow_interject=False)
-    if current_flow.fall_back:
-      # create a new flow to replace the current one
-      new_dax = current_flow.fall_back
-      old_flow = state.flow_stack.pop()
-      state.store_dacts(dax=new_dax)
-      new_flow = flow_selection[new_dax](world.valid_columns)
-
-      # transfer any entities from the old flow to the new one
-      if old_flow.slots[old_flow.entity_slot].filled:
-        for entity in old_flow.slots[old_flow.entity_slot].values:
-          ent_slot = new_flow.entity_slot
-          new_flow.slots[ent_slot].add_one(**entity)
-
-      state.flow_stack.append(new_flow)
-      state.ambiguity.resolve()
-    return state
-
-  def stream_of_thought(self, context, world):
-    prior_state = world.current_state()
-    prior_entities = compile_state_entities(prior_state, world)
-    valid_col_dict = self.prepare_valid_columns(world)
-    valid_tabs = ', '.join(world.valid_tables)
-    valid_cols = PromptEngineer.column_rep(valid_col_dict, with_break=True)
-    self.labels['table_info'] = valid_cols, valid_tabs, prior_state.current_tab, prior_entities
-
-    if self.active_flow.parent_type == 'Detect' or self.labels['dax'] in ['001', '014', '14C']:
-      convo_history = context.compile_history(look_back=3)
-    elif self.labels['dax'] == '58A':
-      self.labels['preview'] = derived_tab_preview(world)
-      convo_history = context.compile_history(look_back=3)
-    else:
-      convo_history = context.compile_history()
-    return self.icl.stream_entity_prediction(self.labels, convo_history)
-
-  def prepare_valid_columns(self, world):
-    if self.labels['dax'] == '06E':
-      # attach a position number to each column
-      valid_col_dict = defaultdict(list)
-      for tab_name, column_names in world.valid_columns.items():
-        for idx, col_name in enumerate(column_names):
-          modified_name = f"{col_name} ({idx + 1})"
-          valid_col_dict[tab_name].append(modified_name)
-    elif self.labels['dax'] == '057':
-      # attach the datatypes to each column
-      valid_col_dict = defaultdict(list)
-      for tab_name, column_names in world.valid_columns.items():
-        tab_schema = world.metadata['schema'][tab_name]
-        for col_name in column_names:
-          column_info = tab_schema.get_type_info(col_name)
-          modified_name = f"{col_name} ({column_info['type']})"
-          valid_col_dict[tab_name].append(modified_name)
-    else:
-      valid_col_dict = world.valid_columns
-
-    return valid_col_dict
-
-  def build_from_previous(self, context, last_state, world, pred_dax, intent=''):
-    if world.are_valid_entities(last_state.entities):
-      entity_copy = last_state.entities.copy()
-    else:
-      entity_copy = [{'tab': last_state.current_tab, 'col': '*', 'ver': False}]
-
-    command_type, current_thought = '', ''
-    if intent == 'command':
-      command_type, current_thought = self.command
-    elif pred_dax.endswith('E'):      # confirm
-      if last_state.has_issues:
-        current_thought = "The user wants to take a look at the potential issues, so I will display them."
-      elif last_state.has_staging:
-        current_thought = "I should go ahead with inserting a few columns to move the task forward."
-      else:
-        current_thought = "The user is satisfied with the results, that's wonderful!"
-    elif pred_dax.endswith('F'):    # deny
-      if last_state.has_issues:
-        current_thought = "The user doesn't think these are real issues, so I will ignore them."
-      elif last_state.has_staging:
-        current_thought = "The user doesn't want me to insert new columns, we should move in a different direction."
-      else:
-        current_thought = "The user is not happy with the results. I should consider apologizing."
-
-    dialogue_state = DialogueState(entity_copy, dax=pred_dax, thought=current_thought)
-    dialogue_state = transfer_state_metadata(dialogue_state, last_state, context)
-    dialogue_state.command_type = command_type
-    return dialogue_state
-
-  def build_from_predictions(self, last_state, context, valid_col_dict, labels):
-    if len(labels['entities']) == 0:
-      labels['entities'] = last_state.entities.copy()
-    dialogue_state = DialogueState(**labels)
-    dialogue_state = transfer_state_metadata(dialogue_state, last_state, context)
-    return dialogue_state
-
-  def build_from_current(self, curr_state, last_state, context, world):
-    # store other relevant information
-    command_type, command_string = self.command
-    if command_type == 'flow_thought':
-      curr_state.thought = command_string
-    curr_state = transfer_state_metadata(curr_state, last_state, context)
-
-    curr_flow = self.active_flow
-    if curr_flow.is_uncertain:
-      level = 'partial' if len(self.labels['entities']) > 0 else 'general'
-      curr_state.ambiguity.declare(level)
-    if curr_flow.is_newborn:
-      curr_state.flow_stack.append(curr_flow)
-    if curr_state.natural_birth and context.num_utterances > 16:
-      curr_state = self.agent_initiated_issues(context, curr_state, world)
-      curr_flow.is_newborn = False
-    return curr_state
-
-  def agent_initiated_issues(self, context, state, world):
-    """ Either add or remove issue flows that are initiated by the agent """
-    preference = context.preferences.get_pref('caution')
-
-    if state.get_dialog_act() in ['001', '002', '003'] and preference in ['warning', 'alert']:
-      if state.has_issues and state.has_active_flow(1) and state.flow_stack[-2].interjected:
-        # we already found issues, but user ignored it by asking a new question
-        state = user_ignored_issues(state)
-      else:
-        # we pro-actively consider interjecting a Detect Flow
-        state = interject_issue_flow(preference, state, world)
-    return state
-
-  def contemplate(self, flow, state, context, world, spreadsheet):
-    # fills slot values based on thinking deeper, often involves calculating confidence to verify entities
-    if flow.entity_slot == 'source' and flow.slots[flow.entity_slot].filled:
-      entity = flow.slots[flow.entity_slot].values[0]
-      tab_name, col_name = entity['tab'], entity['col']
-    else:
-      return state
-
-    dax, prompt, valid_col_dict = state.get_dialog_act(), '', world.valid_columns
-    valid_col_str = PromptEngineer.column_rep(valid_col_dict, with_break=True)
-    convo_history = context.compile_history(look_back=3)
-    col_info = world.metadata['schema'][tab_name].get_type_info(col_name)
-    col_info.update(entity)
-
-    if dax in ['001', '01A', '003']:
-      prompt = compile_operations_prompt(convo_history, flow, state)
-    elif dax == '014':
-      prompt = describe_facts_prompt.format(columns=valid_col_str, history=convo_history)
-    elif dax == '002' and not flow.slots['metric'].is_initialized():
-      prompt = metric_name_prompt.format(history=convo_history, columns=valid_col_str)
-    elif dax == '02D' and not flow.slots['metric'].is_initialized():
-      prompt = segment_metric_prompt.format(history=convo_history)
-    elif dax == '05C' and flow.name() == 'merge':
-      valid_cols = ', '.join(valid_col_dict[tab_name]) + f' in {tab_name} table'
-      source_str = PromptEngineer.array_to_nl([ent['col'] for ent in flow.slots['source'].values], connector='and')
-      prompt = merge_col_confidence.format(history=convo_history, columns=valid_cols, entities=source_str)
-    elif dax == '5CD' and not flow.slots['delimiter'].filled:
-      prompt = compile_delimiter_prompt(col_info, flow, spreadsheet, convo_history)
-    elif dax == '057':
-      prompt = move_element_prompt.format(table=tab_name, columns=valid_col_str, history=convo_history)
-
-    if len(prompt) > 0:
-      raw_output = self.icl.api.execute(prompt)
-      prediction = PromptEngineer.apply_guardrails(raw_output, 'json')
-      flow.fill_slot_values(state.current_tab, prediction)
-    return state
-
-  def track_state(self, context, world):
-    pred_intent, pred_dax = self.labels['intent'], self.labels['dax']
-    last_state = world.current_state()
-
-    if self.shortcut:
-      dialogue_state = self.build_from_previous(context, last_state, world, pred_dax, 'command')
-
-    elif dax2dact(pred_dax) == 'agent + multiple + deny':
-      dialogue_state = last_state
-      dialogue_state.store_dacts(dax='9DF')
-      dialogue_state.intent = 'Internal'
-      dialogue_state.ambiguity.declare('general')
-
-    elif pred_intent == 'Converse':
-      if pred_dax in ['00A', '00B', '00C']:
-        dialogue_state = self.build_from_predictions(last_state, context, world.valid_columns, self.labels)
-      else:   # {004} for FAQs / {00E} for confirmation / {008} for user preferences
-        dialogue_state = self.build_from_previous(context, last_state, world, pred_dax, 'Converse')
-
-    elif self.active_flow:
-      self.labels['entities'].extend(self.active_flow.entity_values())
-      curr_state = DialogueState.from_dict(self.labels, last_state.current_tab)
-      # add extra information to the dialogue state, including the flow itself
-      dialogue_state = self.build_from_current(curr_state, last_state, context, world)
-    else:
-      dialogue_state = self.build_from_previous(context, last_state, world, pred_dax, pred_intent)
-      dialogue_state.ambiguity.declare('general')
-
-    dialogue_state = self.validate_state(dialogue_state, world, context)
-    return dialogue_state, last_state
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from types import MappingProxyType
+from typing import TYPE_CHECKING
+
+from backend.components.dialogue_state import DialogueState
+from backend.components.ambiguity_handler import AmbiguityHandler
+from backend.components.prompt_engineer import PromptEngineer
+from schemas.ontology import FLOW_CATALOG, Intent
+
+if TYPE_CHECKING:
+    from backend.components.world import World
+
+
+_SHORTCUTS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r'^(hi|hello|hey)\b', re.I), 'chat'),
+    (re.compile(r'^(help|what can you do)\b', re.I), 'chat'),
+    (re.compile(r'^(bye|goodbye|exit|quit)\b', re.I), 'chat'),
+    # Domain-specific: add shortcut patterns per assistant
+]
+
+_DAX_LOOKUP: dict[str, str] = {}
+for _fn, _flow in FLOW_CATALOG.items():
+    _dax_raw = _flow['dax'].strip('{}').upper()
+    _DAX_LOOKUP[_dax_raw] = _fn
+
+_DEV_PATTERN = re.compile(r'^/([0-9A-Fa-f]{3})\b\s*(.*)', re.DOTALL)
+
+_NUM_VOTERS = 2
+
+_ACTION_PATTERN = re.compile(
+    r'^(yes|yeah|yep|yup|ok|okay|sure|confirm|approve|accept|go ahead|'
+    r'no|nope|nah|cancel|dismiss|decline|reject|skip|nevermind|done|back)\s*[.!?]*$',
+    re.I,
+)
+
+
+class NLU:
+
+    def __init__(self, config: MappingProxyType, ambiguity: AmbiguityHandler,
+                 engineer: PromptEngineer, world: 'World'):
+        self.config = config
+        self.ambiguity = ambiguity
+        self.engineer = engineer
+        self.world = world
+
+    # ── Entry point ───────────────────────────────────────────────────
+
+    def understand(self, user_text: str, gold_dax: str | None = None) -> DialogueState:
+        prep = self.prepare(user_text)
+        if prep is not None:
+            return self.validate(prep)
+
+        if gold_dax or self._is_user_action(user_text):
+            state = self.react(user_text, gold_dax)
+        elif self._should_contemplate():
+            state = self.contemplate(user_text)
+        else:
+            state = self.think(user_text)
+
+        return self.validate(state)
+
+    # ── Public operational modes ──────────────────────────────────────
+
+    def prepare(self, user_text: str) -> DialogueState | None:
+        text = user_text.strip()
+
+        if not text:
+            return self._build_state('Converse', '{000}', 'chat', 1.0)
+
+        if len(text) < 2:
+            return self._build_state('Converse', '{000}', 'chat', 0.8)
+
+        match = _DEV_PATTERN.match(text)
+        if match:
+            dax_code = match.group(1).upper()
+            flow_name = _DAX_LOOKUP.get(dax_code)
+            if flow_name:
+                flow = FLOW_CATALOG[flow_name]
+                return self._build_state(
+                    intent=flow['intent'].value,
+                    dax=flow['dax'],
+                    flow_name=flow_name,
+                    confidence=0.99,
+                    slots={},
+                )
+
+        for pattern, flow_name in _SHORTCUTS:
+            if pattern.search(text):
+                flow = FLOW_CATALOG.get(flow_name)
+                if flow:
+                    return self._build_state(
+                        intent=flow['intent'].value,
+                        dax=flow['dax'],
+                        flow_name=flow_name,
+                        confidence=1.0,
+                    )
+        return None
+
+    def think(self, user_text: str) -> DialogueState:
+        result = self.predict(user_text)
+        state = self._build_state(
+            intent=result['intent'], dax=result['dax'],
+            flow_name=result['flow_name'], confidence=result['confidence'],
+            slots=result.get('slots', {}),
+        )
+        if self.ambiguity.needs_clarification(state.confidence):
+            self.ambiguity.declare(
+                'general',
+                metadata={'top_detection': state.flow_name},
+                observation=f'Low confidence ({state.confidence:.2f}) on '
+                            f'flow "{state.flow_name}"',
+            )
+        return state
+
+    def contemplate(self, user_text: str) -> DialogueState:
+        prev = self.world.current_state()
+        failed_flow = prev.flow_name if prev else None
+        failure_reason = self.ambiguity.observation or ''
+
+        detection = self._check_routing(user_text, failed_flow, failure_reason)
+        flow_name = detection['flow_name']
+
+        flow = FLOW_CATALOG.get(flow_name, {})
+        flow_intent = flow.get('intent', Intent.CONVERSE).value
+
+        if flow_intent not in ('Converse', 'Plan') and flow.get('slots'):
+            slots = self._fill_slots(user_text, flow_name)
+        else:
+            slots = detection.get('slots', {})
+
+        return self._build_state(
+            intent=flow_intent, dax=flow.get('dax', '{000}'),
+            flow_name=flow_name, confidence=detection['confidence'],
+            slots=slots,
+        )
+
+    def react(self, user_text: str, gold_dax: str | None = None) -> DialogueState:
+        if gold_dax:
+            return self._resolve_gold_dax(gold_dax, user_text)
+        result = self._process_action(user_text)
+        return self._build_state(
+            intent=result['intent'], dax=result['dax'],
+            flow_name=result['flow_name'], confidence=result.get('confidence', 1.0),
+            slots=result.get('slots', {}),
+        )
+
+    def validate(self, state: DialogueState) -> DialogueState:
+        flow = FLOW_CATALOG.get(state.flow_name)
+        if not flow:
+            state.intent = 'Converse'
+            state.dax = '{000}'
+            state.flow_name = 'chat'
+            state.confidence = 0.3
+            state.slots = {}
+            return state
+
+        catalog_intent = flow['intent'].value
+        if state.intent != catalog_intent:
+            state.intent = catalog_intent
+
+        state.dax = flow['dax']
+
+        valid_slot_names = set(flow.get('slots', {}).keys())
+        state.slots = {
+            k: v for k, v in state.slots.items()
+            if k in valid_slot_names
+        }
+
+        state = self._repair_entities(state, flow)
+
+        return state
+
+    # ── Entity repair ──────────────────────────────────────────────────
+
+    def _repair_entities(self, state: DialogueState,
+                         flow_info: dict) -> DialogueState:
+        slot_schema = flow_info.get('slots', {})
+        valid_values = self._get_valid_values()
+
+        for slot_name, value in list(state.slots.items()):
+            schema = slot_schema.get(slot_name, {})
+            slot_type = schema.get('type', 'FreeTextSlot')
+
+            if slot_type == 'FreeTextSlot':
+                continue
+
+            candidates = valid_values.get(slot_type, [])
+            if not candidates or value in candidates:
+                continue
+
+            repaired = False
+            for transform in (str.lower, str.upper, str.title):
+                if transform(value) in candidates:
+                    state.slots[slot_name] = transform(value)
+                    repaired = True
+                    break
+
+            if not repaired:
+                from difflib import get_close_matches
+                matches = get_close_matches(value, candidates, n=1, cutoff=0.6)
+                if matches:
+                    state.slots[slot_name] = matches[0]
+                    self.ambiguity.declare(
+                        'confirmation',
+                        metadata={'slot': slot_name, 'candidate': matches[0]},
+                        observation=f'Did you mean "{matches[0]}" for {slot_name}?',
+                    )
+                else:
+                    llm_result = self._llm_repair_slot(
+                        value, candidates, slot_name,
+                    )
+                    if llm_result:
+                        state.slots[slot_name] = llm_result
+                        self.ambiguity.declare(
+                            'confirmation',
+                            metadata={'slot': slot_name, 'candidate': llm_result},
+                        )
+                    else:
+                        self.ambiguity.declare(
+                            'partial',
+                            metadata={'slot': slot_name, 'invalid_value': value},
+                        )
+                        del state.slots[slot_name]
+        return state
+
+    def _llm_repair_slot(self, value: str, candidates: list[str],
+                         slot_name: str, max_attempts: int = 3) -> str | None:
+        for attempt in range(max_attempts):
+            system = (
+                f'The user said "{value}" for the slot "{slot_name}". '
+                f'Valid options are: {candidates}. '
+                f'Reply with ONLY the best matching valid option, '
+                f'or "NONE" if no match is reasonable.'
+            )
+            messages = [{'role': 'user', 'content': value}]
+            try:
+                response = self.engineer.call(
+                    system=system, messages=messages,
+                    call_site='nlu_repair_slot', max_tokens=64,
+                )
+                text = self._extract_text(response).strip()
+                if text in candidates:
+                    return text
+                if text == 'NONE':
+                    return None
+            except Exception:
+                continue
+        return None
+
+    def _get_valid_values(self) -> dict[str, list[str]]:
+        values: dict[str, list[str]] = {}
+        # Domain-specific: add static valid values per assistant
+
+        for flow_info in FLOW_CATALOG.values():
+            for slot_info in flow_info.get('slots', {}).values():
+                slot_type = slot_info.get('type', 'FreeTextSlot')
+                if slot_type == 'CategorySlot' and 'options' in slot_info:
+                    values.setdefault(slot_type, [])
+                    for opt in slot_info['options']:
+                        if opt not in values[slot_type]:
+                            values[slot_type].append(opt)
+        return values
+
+    # ── Prediction ────────────────────────────────────────────────────
+
+    def predict(self, user_text: str) -> dict:
+        intent = self._classify_intent(user_text)
+        detection = self._detect_flow(user_text, intent)
+        flow_name = detection['flow_name']
+
+        flow = FLOW_CATALOG.get(flow_name, {})
+        flow_intent = flow.get('intent', Intent.CONVERSE).value
+        skip_slots = flow_intent in ('Converse', 'Plan')
+
+        if skip_slots or not flow.get('slots'):
+            slots = detection.get('slots', {})
+        else:
+            slots = self._fill_slots(user_text, flow_name)
+
+        return {
+            'intent': flow_intent,
+            'dax': flow.get('dax', '{000}'),
+            'flow_name': flow_name,
+            'confidence': detection['confidence'],
+            'slots': slots,
+        }
+
+    # ── Prediction sub-tasks (private) ────────────────────────────────
+
+    def _classify_intent(self, user_text: str) -> str:
+        history = self.world.context.compile_history(turns=5)
+        system, messages = self.engineer.build_nlu_prompt(user_text, history)
+        response = self.engineer.call(
+            system=system, messages=messages,
+            call_site='nlu_intent', max_tokens=256,
+        )
+        parsed = self._parse_json(self._extract_text(response))
+        if parsed and parsed.get('intent'):
+            return parsed['intent']
+        return 'Converse'
+
+    def _detect_flow(self, user_text: str, intent: str | None = None) -> dict:
+        history = self.world.context.compile_history(turns=5)
+        system, messages = self.engineer.build_flow_prompt(
+            user_text, intent, history,
+        )
+
+        def _call_voter() -> dict | None:
+            try:
+                response = self.engineer.call(
+                    system=system, messages=messages,
+                    call_site='nlu_vote', max_tokens=512,
+                )
+                text = self._extract_text(response)
+                return self._parse_json(text)
+            except Exception as e:
+                print(f'NLU vote error: {e}')
+                return None
+
+        votes: list[dict] = []
+        with ThreadPoolExecutor(max_workers=_NUM_VOTERS) as pool:
+            futures = [pool.submit(_call_voter) for _ in range(_NUM_VOTERS)]
+            for future in as_completed(futures):
+                result = future.result()
+                if result and result.get('flow_name') in FLOW_CATALOG:
+                    votes.append(result)
+
+        if not votes:
+            return {
+                'intent': 'Converse', 'dax': '{000}',
+                'flow_name': 'chat', 'confidence': 0.3, 'slots': {},
+            }
+
+        return self._tally_votes(votes)
+
+    def _fill_slots(self, user_text: str, flow_name: str) -> dict:
+        history = self.world.context.compile_history(turns=5)
+        system, messages = self.engineer.build_slot_filling_prompt(
+            user_text, flow_name, history,
+        )
+        response = self.engineer.call(
+            system=system, messages=messages,
+            call_site='nlu_slots', max_tokens=512,
+        )
+        parsed = self._parse_json(self._extract_text(response))
+        if parsed and isinstance(parsed.get('slots'), dict):
+            return parsed['slots']
+        return {}
+
+    # ── Contemplate/React support (private) ───────────────────────────
+
+    def _check_routing(self, user_text: str, failed_flow: str | None,
+                       failure_reason: str) -> dict:
+        candidates = self._get_contemplate_candidates(failed_flow)
+        if not candidates:
+            return {'flow_name': 'chat', 'confidence': 0.5, 'slots': {}}
+
+        history = self.world.context.compile_history(turns=5)
+        system, messages = self.engineer.build_contemplate_prompt(
+            user_text, failed_flow or 'unknown', failure_reason,
+            candidates, history,
+        )
+        response = self.engineer.call(
+            system=system, messages=messages,
+            call_site='nlu_contemplate', max_tokens=512,
+        )
+        parsed = self._parse_json(self._extract_text(response))
+        if parsed and parsed.get('flow_name') in FLOW_CATALOG:
+            return {
+                'flow_name': parsed['flow_name'],
+                'confidence': float(parsed.get('confidence', 0.5)),
+                'slots': parsed.get('slots', {}),
+            }
+        return {'flow_name': 'chat', 'confidence': 0.5, 'slots': {}}
+
+    def _get_contemplate_candidates(self, failed_flow: str | None) -> list[str]:
+        candidates = set()
+        if failed_flow:
+            flow = FLOW_CATALOG.get(failed_flow, {})
+            for ef in flow.get('edge_flows', []):
+                candidates.add(ef)
+        active = self.world.flow_stack.get_active_flow()
+        if active and active.flow_name != failed_flow:
+            candidates.add(active.flow_name)
+        candidates.add('chat')
+        candidates.discard(failed_flow)
+        return sorted(candidates)
+
+    def _process_action(self, user_text: str) -> dict:
+        active = self.world.flow_stack.get_active_flow()
+        if active:
+            flow = FLOW_CATALOG.get(active.flow_name, {})
+            return {
+                'intent': flow.get('intent', Intent.CONVERSE).value,
+                'dax': flow.get('dax', '{000}'),
+                'flow_name': active.flow_name,
+                'confidence': 1.0,
+                'slots': active.slots,
+            }
+        return {
+            'intent': 'Converse', 'dax': '{000}',
+            'flow_name': 'chat', 'confidence': 0.8,
+        }
+
+    def _should_contemplate(self) -> bool:
+        if self.world.flow_stack.depth == 0:
+            return False
+        prev = self.world.current_state()
+        if not prev:
+            return False
+        return prev.has_issues or prev.keep_going
+
+    def _is_user_action(self, user_text: str) -> bool:
+        return bool(_ACTION_PATTERN.match(user_text.strip()))
+
+    # ── Support (private) ─────────────────────────────────────────────
+
+    def _build_state(self, intent: str, dax: str, flow_name: str,
+                     confidence: float, slots: dict | None = None) -> DialogueState:
+        prev = self.world.current_state()
+
+        state = DialogueState(self.config)
+        state.update(
+            intent=intent, dax=dax, flow_name=flow_name,
+            confidence=confidence, slots=slots,
+        )
+
+        if prev:
+            state.has_plan = prev.has_plan
+            state.natural_birth = prev.natural_birth
+
+        self.world.insert_state(state)
+        return state
+
+    def _tally_votes(self, votes: list[dict]) -> dict:
+        flow_counts: dict[str, list[dict]] = {}
+        for v in votes:
+            fn = v['flow_name']
+            flow_counts.setdefault(fn, []).append(v)
+
+        best_flow = max(flow_counts, key=lambda f: len(flow_counts[f]))
+        best_votes = flow_counts[best_flow]
+        agreement = len(best_votes) / len(votes)
+
+        avg_confidence = sum(
+            float(v.get('confidence', 0.5)) for v in best_votes
+        ) / len(best_votes)
+
+        if agreement == 1.0 and len(votes) >= 2:
+            final_confidence = min(avg_confidence + 0.15, 1.0)
+        elif agreement >= 0.5:
+            final_confidence = avg_confidence
+        else:
+            final_confidence = avg_confidence * 0.7
+
+        best_vote = max(best_votes, key=lambda v: float(v.get('confidence', 0)))
+        slots = best_vote.get('slots', {})
+
+        flow = FLOW_CATALOG[best_flow]
+        return {
+            'intent': flow['intent'].value,
+            'dax': flow['dax'],
+            'flow_name': best_flow,
+            'confidence': final_confidence,
+            'slots': slots,
+        }
+
+    def _resolve_gold_dax(self, gold_dax: str, user_text: str) -> DialogueState:
+        for flow_name, flow in FLOW_CATALOG.items():
+            if flow['dax'] == gold_dax:
+                return self._build_state(intent=flow['intent'].value, dax=gold_dax,
+                    flow_name=flow_name, confidence=0.99
+                )
+        return self._build_state('Converse', '{000}', 'chat', 0.5)
+
+    @staticmethod
+    def _extract_text(response) -> str:
+        text = ''
+        for block in response.content:
+            if block.type == 'text':
+                text += block.text
+        return text
+
+    @staticmethod
+    def _parse_json(text: str) -> dict | None:
+        text = text.strip()
+        if text.startswith('```'):
+            lines = text.split('\n')
+            lines = [l for l in lines if not l.strip().startswith('```')]
+            text = '\n'.join(lines)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group())
+                except json.JSONDecodeError:
+                    pass
+        return None

@@ -1,24 +1,24 @@
 # NLU — Natural Language Understanding
 
-Historically, this role was called dialogue state tracking. In this architecture, the tracking is split: NLU owns prediction and routing, while the [Dialogue State](../components/dialogue_state.md) component owns storage and belief tracking. NLU routes user requests toward up to 64 flows per domain.
+Historically, this role was called dialogue state tracking. In this architecture, the tracking is split: NLU owns detection and routing, while the [Dialogue State](../components/dialogue_state.md) component owns storage and belief tracking. NLU routes user requests toward up to 64 flows per domain.
 
-**Module principle**: NLU processes information but does not store it. It mutates the dialogue state object passed to it.
-  - React function: a fast instinctual response without hestitation
+**Module principle**: NLU processes information and produces a new DialogueState per new flow detected (Note: when the detected flow is the same as the previous flow, the existing state can simply be carried over). A new state is created and inserted into World for each new flow; carryover reuses the existing state on continuation.
+  - React function: a fast instinctual response without hestitation; largely in cases where there are user actions, and the confidence score is strictly greater than 0.95
   - Think function: a standard response that can handle ambiguity
-  - Contemplate function: a slower more deliberate response for thinking deeper
+  - Contemplate function: a slower more deliberate response for thinking deeper; ususally gets called when PEX encounters ambiguity, rather than in direct response to a user
 
 ## Think Function
 
 Called on every **user utterance**.
 
-- **Input**: Context coordinator, dialogue state, ambiguity handler, domain config
-- **Output**: Mutated dialogue state with predicted intent, predicted flow, confidence scores, and partially filled slots
+- **Input**: World (provides context coordinator, state history), ambiguity handler, prompt engineer, domain config
+- **Output**: Latest `DialogueState` inserted into World — predicted intent, detected flow, confidence scores, and partially filled slots
 
 Ambiguity is not a discrete step — it is an object passed through all steps. Any step can call `declare()` on the ambiguity handler at any time if it detects uncertainty.
 
 ### Pre-Hook: `prepare()`
 
-Cheap heuristic checks that run before spending tokens on prediction. On failure, notify the Agent (lighter-weight path — no flow stacked, no ambiguity handler), who passes the rejection to RES for a user-facing message.
+Cheap heuristic checks that run before spending tokens on detection. On failure, notify the Agent (lighter-weight path — no flow stacked, no ambiguity handler), who passes the rejection to RES for a user-facing message.
 
 Specific checks:
 
@@ -39,7 +39,7 @@ Single call to Claude Sonnet. Predicts one of 6 user-facing intents:
 
 The **Internal** intent is never predicted by NLU — it is triggered directly by the Agent for system housekeeping.
 
-### Step 2 — Flow Prediction (Majority Vote)
+### Step 2 — Flow Detection (Majority Vote)
 
 Every intent (including Converse and Plan) has flows. Each flow has a standardized name (**dact** — dialog act) and a 3-digit hex ID (**dax**). Dacts and dax codes are defined in domain config (see [Configuration](../utilities/configuration.md)).
 
@@ -66,16 +66,16 @@ If no majority after round 3 → declare **General** ambiguity via the ambiguity
 
 #### Flow Deduplication
 
-After flow prediction, check whether the predicted flow already exists on the stack in a **Pending** or **Active** state. If it does, **carry over** — continue with the existing flow rather than creating a new one. This prevents duplicate flows on the stack and naturally handles multi-turn interactions where the user continues working on the same task.
+After flow detection, check whether the detected flow already exists on the stack in a **Pending** or **Active** state. If it does, **carry over** — continue with the existing flow rather than creating a new one. This prevents duplicate flows on the stack and naturally handles multi-turn interactions where the user continues working on the same task.
 
-If the predicted flow is not on the stack (or only exists in Completed/Invalid state), create a new flow and push it onto the stack.
+If the detected flow is not on the stack (or only exists in Completed/Invalid state), create a new flow and push it onto the stack.
 
 ### Step 3 — Slot-Filling
 
 Runs only for **domain-specific intents** (Read, Prepare, Transform, Schedule). Converse and Plan skip this step.
 
 - Single model call (Sonnet), full conversation context from Context Coordinator
-- Extracts slot values for the predicted flow's slot schema
+- Extracts slot values for the detected flow's slot schema
 - Ambiguity can be declared at any point if a required slot cannot be resolved
 
 Plan flows are composed of other selectable flows and enable interactive multi-turn planning (similar to Claude Code's plan mode). Plan flows can technically nest other Plan flows for extra complexity, but this should be avoided.
@@ -84,7 +84,7 @@ Plan flows are composed of other selectable flows and enable interactive multi-t
 
 Validates and repairs the mutated dialogue state before returning:
 
-1. Predicted flow exists in the domain's dact registry
+1. Detected flow exists in the domain's dact registry
 2. Filled slots match the flow's slot schema
 3. No duplicate flows on the stack
 4. Confidence scores are well-formed
@@ -92,7 +92,7 @@ Validates and repairs the mutated dialogue state before returning:
 
 ## Contemplate Function
 
-Re-routes when the initial prediction fails. Called by the Agent after a flow encounters a hard failure and the ambiguity handler has been engaged.
+Re-routes when the initial detection fails. Called by the Agent after a flow encounters a hard failure and the ambiguity handler has been engaged.
 
 - **Input**: Context coordinator, dialogue state (with filled slots from failed flow), ambiguity handler (with declared ambiguity level + metadata), domain config
 - **Output**: Mutated dialogue state pointing to a different flow
@@ -101,7 +101,7 @@ Re-routes when the initial prediction fails. Called by the Agent after a flow en
 
 - **Exclude** the failed flow
 - **Restrict** to related flows using the ambiguity metadata
-- **Trust region**: The first predicted flow acts as a prior. The posterior (re-predicted flow) typically does not deviate far — like a trust region in optimization. Having already selected a flow provides information gain that narrows the likely fallback candidates.
+- **Trust region**: The first detected flow acts as a prior. The posterior (re-detected flow) typically does not deviate far — like a trust region in optimization. Having already selected a flow provides information gain that narrows the likely fallback candidates.
 
 ## React Function
 

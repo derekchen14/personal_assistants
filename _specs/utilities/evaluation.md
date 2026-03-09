@@ -83,12 +83,12 @@ Every module and component emits structured signals. Organized by source.
 | Source | Signal | When Emitted | Reference |
 |---|---|---|---|
 | NLU | Intent prediction + confidence | Every `think()` | [nlu.md § Step 1](../modules/nlu.md) |
-| NLU | Flow prediction + top-3 scores | Every `think()` | [nlu.md § Step 2](../modules/nlu.md) |
+| NLU | Flow detection + top-3 scores | Every `think()` | [nlu.md § Step 2](../modules/nlu.md) |
 | NLU | Multi-model vote agreement | Every majority vote round | [nlu.md § Step 2](../modules/nlu.md) |
 | NLU | Contemplate re-route | Every `contemplate()` | [nlu.md § Contemplate](../modules/nlu.md) |
 | NLU | Pre-hook check result (7 checks) | Every `think()` entry | [nlu.md § Pre-Hook](../modules/nlu.md) |
 | NLU | Post-hook check result (4 checks) | Every `think()` exit | [nlu.md § Post-Hook](../modules/nlu.md) |
-| PEX | Tool execution envelope | Every tool call | [pex.md § Step 2](../modules/pex.md) |
+| PEX | Tool calling envelope | Every tool call | [pex.md § Step 2](../modules/pex.md) |
 | PEX | Recovery attempt | Each recovery strategy tried | [pex.md § Recover](../modules/pex.md) |
 | PEX | Pre-hook check result (7 checks) | Every `execute()` entry | [pex.md § Pre-Hook](../modules/pex.md) |
 | PEX | Post-hook check result (5 checks) | Every `execute()` exit | [pex.md § Post-Hook](../modules/pex.md) |
@@ -180,7 +180,7 @@ Structured record accumulating per-session metrics. Populated during runtime fro
 |---|---|
 | Timing | Turn latencies per component (NLU, PEX, RES), total session duration |
 | Routing | Flows attempted, completed, invalid; re-route count and details |
-| Tool Execution | Calls, successes, failures, retries — grouped by `tool_id` |
+| Tool Calling | Calls, successes, failures, retries — grouped by `tool_id` |
 | Ambiguity | Declarations by level, resolution outcomes |
 | Prediction Quality | Vote rounds per turn, confidence scores, agreement ratios |
 | Self-Check | Rule-based results (4), LLM-based result (if enabled) |
@@ -227,8 +227,8 @@ routing:
   re_routes: 0
   re_route_details: []
 
-# --- Tool Execution ---
-tool_execution:
+# --- Tool Calling ---
+tool_calling:
   recipe_search: { calls: 2, successes: 2, failures: 0, retries: 0 }
   nutrition_lookup: { calls: 1, successes: 1, failures: 0, retries: 0 }
 
@@ -267,7 +267,7 @@ self_check:
 
 # --- Prompt Versions ---
 prompt_versions_used:
-  "nlu_flow_predict.v3": 4
+  "nlu_flow_detect.v3": 4
   "res_recipe_template.v2": 2
   "res_nutrition_template.v1": 1
   "res_clarification.v1": 1
@@ -328,9 +328,9 @@ Closes the loop between [Prompt Engineer](../components/prompt_engineer.md) chan
 
 Three pillars spanning NLU, PEX, and RES — covering the full pipeline with limited ongoing costs. When we manually test the agent, we check that it "did the right thing" and "gave the right result." These three pillars cover that intuitive sense.
 
-#### Workflow Prediction (NLU)
+#### Flow Detection (NLU)
 
-Did the agent predict the correct flow (from ~64 options)?
+Did the agent detect the correct flow (from ~64 options)?
 
 - **Metric**: Accuracy (0–100%)
 - **Granularity**: More specific than intent (8 options), less granular than slot-filling — the ideal level for pipeline confidence
@@ -338,7 +338,7 @@ Did the agent predict the correct flow (from ~64 options)?
 
 #### Trajectory Optimization (PEX)
 
-Did the agent choose the correct tool calls?
+Did the agent call the correct tools?
 
 - **Metric**: Four scoring modes (see § Scoring)
 - **Value**: Gets at the heart of agent behavior — correct actions lead to correct outcomes
@@ -402,20 +402,20 @@ JSON conversation format. Each test case: `convo_id`, `domain`, `available_data`
 
 ### Scoring
 
-#### Workflow Prediction Scoring
+#### Flow Detection Scoring
 
-Accuracy — predicted flow matches expected flow per turn. Measured across the full test suite.
+Accuracy — detected flow matches expected flow per turn. Measured across the full test suite.
 
 #### Trajectory Scoring Modes
 
-Four options for measuring tool call correctness. Suppose the correct path is `[recipe_search, nutrition_lookup, recipe_search, meal_plan_api]` within the `read_recipe` flow, and the agent predicted `[recipe_search, nutrition_lookup, meal_plan_api, recipe_search]` within the `nutrition_lookup` flow.
+Four options for measuring tool call correctness. Suppose the correct path is `[recipe_search, nutrition_lookup, recipe_search, meal_plan_api]` within the `read_recipe` flow, and the agent called `[recipe_search, nutrition_lookup, meal_plan_api, recipe_search]` within the `nutrition_lookup` flow.
 
 | Mode | Description | Result |
 |---|---|---|
 | Partial path | Correct tools in sequence until first error | 2/4 correct before mismatch = 50% |
 | Full path | All-or-nothing on exact tool sequence | Must match exactly = 0% or 100% |
 | Path nodes | Correct tools regardless of order | All 4 tools present = 100% |
-| Full workflow | Full path AND correct workflow prediction | Both must pass = 0% or 100% |
+| Full workflow | Full path AND correct flow detection | Both must pass = 0% or 100% |
 
 Default: **Full workflow** (strictest). Report all four for diagnostic insight.
 
@@ -441,7 +441,7 @@ Default: **Full workflow** (strictest). Report all four for diagnostic insight.
 
 | Metric | Regression Threshold |
 |---|---|
-| Workflow prediction accuracy | > 2% drop |
+| Flow detection accuracy | > 2% drop |
 | Trajectory (full workflow) | > 3% drop |
 | Final output (mean rubric score) | > 0.5 level drop |
 | Tool success rate | > 1% drop |
@@ -456,7 +456,7 @@ Three levels of flow-scoped testing.
 |---|---|---|
 | Unit | Single policy with mocked tools | Fast, isolated, no external calls |
 | Integration | Full NLU→PEX→RES for one flow | Sandboxed tools, real pipeline |
-| Edge flow confusion | Run edge flow test cases, verify flow is NOT predicted | Validates edge flow definitions in Configuration |
+| Edge flow confusion | Run edge flow test cases, verify flow is NOT detected | Validates edge flow definitions in Configuration |
 
 Edge flow confusion testing is the refinement referenced in [configuration.md § Edge Flow Selection](./configuration.md): "Based on historical confusion patterns — start with best guesses, refine from evaluation data."
 
@@ -488,7 +488,7 @@ Three primary loops connecting evaluation data back to system improvements.
 
 The evaluation infrastructure is designed to collect the signals needed for reinforcement fine-tuning (RFT) if and when we pursue it. Specifically:
 
-- **Trajectory data**: Every session records the complete flow sequence, tool calls, and outcomes (Session Record § Tool Execution, § Routing)
+- **Trajectory data**: Every session records the complete flow sequence, tool calls, and outcomes (Session Record § Tool Calling, § Routing)
 - **Reward signals**: Explicit user feedback (thumbs, corrections, ratings) and implicit signals (re-asks, abandonment, continued engagement) provide per-turn reward labels
 - **Prompt version attribution**: Links outcomes to specific prompt versions, enabling comparison of policy variants
 

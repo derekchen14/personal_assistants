@@ -18,7 +18,7 @@ from backend.db import get_db
 from backend.assets.ontology import error_responses, date_mappings, date_formats, time_formats, default_limit
 from backend.assets.ontology import missing_tokens, default_tokens, NA_string
 from backend.assets.descriptions import preloaded_descriptions
-from backend.components.frame import Frame
+from backend.components.display_frame import DisplayFrame
 from backend.components.engineer import PromptEngineer
 from backend.components.metadata.typechecks import TypeCheck
 from database.tables import UserDataSource
@@ -286,7 +286,7 @@ class MemoryDB(object):
             # store the new value as a problem in the shadow table
             one_prob = {'row_id': change.row,'column_name': change.col,'original_value': value,
                         'issue_type': 'problem', 'issue_subtype': 'unsupported', 'revised_term': None}
-            new_issue = pd.DataFrame([one_prob])
+            new_issue = pd.DataDisplayFrame([one_prob])
             self.shadow.issues[tab_name] = pd.concat([self.shadow.issues[tab_name], new_issue], ignore_index=True)
 
         if datatype != 'object':  # object columns already update themselves automatically
@@ -479,7 +479,7 @@ class MemoryDB(object):
         print(f"Error when attempting to display column {col_name} from shadow:", err)
         continue
 
-    frame = Frame(tab_name)
+    frame = DisplayFrame(tab_name)
     frame.set_data(db_output, fetch_query)
     frame.primary_key = self.primary_keys.get(tab_name, None)
     return frame
@@ -558,7 +558,7 @@ class ShadowDB(object):
 
   def initialize_issues(self, tab_name):
     issue_columns = ['row_id', 'column_name', 'issue_type', 'issue_subtype', 'original_value', 'revised_term']
-    self.issues[tab_name] = pd.DataFrame(columns=issue_columns)
+    self.issues[tab_name] = pd.DataDisplayFrame(columns=issue_columns)
     # Memory optimization for repeated strings
     self.issues[tab_name]['issue_type'] = self.issues[tab_name]['issue_type'].astype('category')
     self.issues[tab_name]['issue_subtype'] = self.issues[tab_name]['issue_subtype'].astype('category')
@@ -585,7 +585,7 @@ class ShadowDB(object):
         'revised_term': None  # Default for non-typo issues
       })
 
-    new_issues = pd.DataFrame(problems)
+    new_issues = pd.DataDisplayFrame(problems)
     self.issues[tab_name] = pd.concat([self.issues[tab_name], new_issues], ignore_index=True)
 
   def get_problematic_value(self, tab_name, column_name, row_id, default_value=NA_string):
@@ -1036,7 +1036,7 @@ class ShadowDB(object):
       blanks.append({'row_id': idx, 'issue_type': 'blank', 'issue_subtype': 'default', 'original_value': column.loc[idx]})
 
     if blanks and tab_name in self.issues:
-      new_issues = pd.DataFrame([{'column_name': properties['col_name'], **blank} for blank in blanks])
+      new_issues = pd.DataDisplayFrame([{'column_name': properties['col_name'], **blank} for blank in blanks])
       self.issues[tab_name] = pd.concat([self.issues[tab_name], new_issues], ignore_index=True)
 
   def store_uncategorized_column(self, tab_name, column, properties):

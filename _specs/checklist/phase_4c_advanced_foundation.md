@@ -105,7 +105,7 @@ Update the config loader to validate `oauth_providers` entries.
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|

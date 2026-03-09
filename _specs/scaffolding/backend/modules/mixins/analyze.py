@@ -14,7 +14,7 @@ from backend.utilities.manipulations import get_row_limit
 from utils.help import flow2dax
 from backend.modules.flow.formulas import Formula, Expression, Clause
 from backend.components.engineer import PromptEngineer
-from backend.components.frame import Frame
+from backend.components.display_frame import DisplayFrame
 
 class AnalyzeMixin:
   """ Methods that calculate metrics or KPI without changing the underlying data """

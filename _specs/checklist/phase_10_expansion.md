@@ -55,7 +55,7 @@ With 32 working flows, the NLU classifier needs more exemplars to distinguish be
 - Start with 10 sample utterances per flow (from Phase 7 artifacts)
 - Add exemplars for commonly confused flow pairs
 - Target ~32 exemplars in `for_experts.py` for intent prediction
-- Target ~32 exemplars for flow prediction
+- Target ~32 exemplars for flow detection
 - Add ~16 exemplars for `for_contemplate.py` re-routing decisions
 
 ### Step 4 — End-to-End Flow Testing
@@ -64,7 +64,7 @@ Test each newly enabled flow through the full pipeline:
 
 - Send a representative utterance via the frontend
 - Verify NLU classifies to the correct flow
-- Verify PEX executes the correct tools
+- Verify PEX calls the correct tools
 - Verify RES produces a natural response with appropriate block type
 - Check that the display frame renders correctly in the frontend
 
@@ -90,7 +90,7 @@ Based on evaluation results from Phase 9:
 With all 32 flows working:
 
 - Run the full offline evaluation suite
-- Record baseline scores for all three pillars (workflow prediction, trajectory, final output)
+- Record baseline scores for all three pillars (flow detection, trajectory, final output)
 - Set regression thresholds based on baselines
 - Create test cases for each flow (JSON conversation format)
 
@@ -119,7 +119,7 @@ Identify flow pairs that the NLU frequently confuses:
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|
@@ -138,7 +138,7 @@ Identify flow pairs that the NLU frequently confuses:
 
 - [ ] All 16 Batch 2 flows enabled and returning real responses (not "coming soon")
 - [ ] Each Batch 2 flow passes end-to-end testing via WebSocket
-- [ ] NLU exemplars expanded: ~32 for intent prediction, ~32 for flow prediction
+- [ ] NLU exemplars expanded: ~32 for intent prediction, ~32 for flow detection
 - [ ] `for_contemplate.py` has ~16 re-routing exemplars
 - [ ] No two flows have >10% confusion rate
 - [ ] Offline evaluation baseline scores recorded for all three pillars

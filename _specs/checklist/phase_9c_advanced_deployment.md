@@ -121,7 +121,7 @@ Additional security measures for advanced deployments:
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|

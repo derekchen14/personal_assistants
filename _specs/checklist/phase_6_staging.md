@@ -44,19 +44,13 @@ def client(self) -> anthropic.Anthropic:
 
 The client is only instantiated when an LLM call is actually made.
 
-### Step 3 — Canned Responses
+### Step 3 — Unsupported Flow Handling
 
-Add hard-coded responses for core Converse flows so the agent responds without needing the LLM:
+Unsupported flows (those without real policy implementations yet) are handled by the PEX/RES split:
+- **PEX**: Detects unsupported flows from the `_UNSUPPORTED` set, marks the flow complete with `{'unsupported': True}`, and returns the previous frame (carryover).
+- **RES**: Detects the unsupported marker on the active flow result and generates the user-facing message ("That feature isn't supported yet...").
 
-```python
-_CANNED = {
-    'chat': "Hi! I'm <name>, your <role>...",
-    'next': "Here's what we can work on next...",
-    'status': "Let me check where we are...",
-}
-```
-
-The canned check runs BEFORE intent routing in PEX so it works regardless of which intent the flow falls under.
+No `_CANNED` dict — all flows either execute real policies or go through the unsupported path.
 
 ### Step 4 — Environment and Keys
 
@@ -90,11 +84,11 @@ Verify the config loader successfully:
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|
-| Modify | `<domain>/backend/modules/pex.py` | Add `_CANNED` dict for core flows |
+| Modify | `<domain>/backend/modules/pex.py` | Add `_UNSUPPORTED` set for unimplemented flows |
 | Modify | `<domain>/backend/components/prompt_engineer.py` | Lazy client property |
 | Modify | `<domain>/init_backend.sh` | Source `shared/.keys` before `.env` |
 | Create | `<domain>/schemas/__init__.py` | Package init (if missing) |
@@ -144,9 +138,8 @@ All turn diagnostics use `INFO`. Reserve `WARNING` for recoverable issues (self-
 - [ ] Config loads and validates successfully
 - [ ] WebSocket connects without auth
 - [ ] Username greeting is received after sending username
-- [ ] Canned response for `chat` flow works
-- [ ] Canned response for `status` flow works
-- [ ] Canned response for `next` flow works
+- [ ] Unsupported flows return "not supported yet" message via RES
+- [ ] Supported flows execute real policies and return DisplayFrames
 - [ ] `.keys` file is not tracked by git
 - [ ] Agent `process_turn()` runs NLU → PEX → RES end-to-end
 - [ ] `keep_going` loop processes multiple flows in one turn

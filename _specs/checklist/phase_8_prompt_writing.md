@@ -76,7 +76,7 @@ The system prompt is injected as slot 2 (role and task) in every prompt assembly
 - Slot 5: `{"thought": "...", "intent": "..."}`
 - Slot 6: ~32 exemplars covering all intents (NLU classification needs the most examples)
 
-**Flow prediction** (`for_experts.py`):
+**Flow detection** (`for_experts.py`):
 - Slot 1: conversation history + active flow state
 - Slot 4: candidate dacts with descriptions (from predicted intent + edge flows)
 - Slot 5: `{"thought": "...", "flow": "...", "confidence": 0.0}`
@@ -183,7 +183,7 @@ Set up the template registry consumed by RES.
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|
@@ -208,7 +208,7 @@ Set up the template registry consumed by RES.
 - [ ] All prompts return parseable JSON
 - [ ] Classification prompts include `"thought"` key for chain-of-thought
 - [ ] NLU intent prediction has ~32 diverse exemplars
-- [ ] NLU flow prediction has ~32 exemplars covering edge cases
+- [ ] NLU flow detection has ~32 exemplars covering edge cases
 - [ ] PEX skill prompts inject slot 1 and slot 8 correctly around skill templates
 - [ ] RES naturalization produces natural-sounding output from filled templates
 - [ ] Template registry has base templates for all 7 intents

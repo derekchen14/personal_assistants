@@ -136,7 +136,7 @@ Update domain YAML to reflect pro tier:
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|

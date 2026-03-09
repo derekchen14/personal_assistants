@@ -117,7 +117,7 @@ Within each category, tools follow CRUD-style operation types:
 | update / patch | no | 10s |
 | delete | no | 5s |
 | analyze / compute | yes | 15–30s |
-| execute / run | no | varies |
+| dispatch / run | no | varies |
 | validate / check | yes | 5s |
 
 ## Tool Implementation
@@ -159,7 +159,7 @@ class RecipeService:
 ### Rules
 
 - **One class per system**: `RecipeService`, `GitHubService`, `SQLService`, `NutritionService`, etc.
-- **Methods follow naming**: `service.verb(params)` — mirrors the `entity_verb` tool naming convention. `recipe_service.search(query, filter)` corresponds to tool_id `recipe_search`.
+- **Methods follow naming**: `service.verb(params)` — mirrors the `verb_entity` tool naming convention. `recipe_service.search(query, filter)` corresponds to tool_id `search_recipes`.
 - **All methods return envelopes**: Success envelope (`status`, `result`, `metadata`) or error envelope (see [Error Contract](#error-contract)). No raw returns.
 - **Instantiated at startup**: Service classes are created once during domain initialization. Policies receive them via dependency injection — they never construct services themselves.
 - **Connection state lives on the class**: Database connections, API clients, auth tokens — all held as instance attributes. Methods are stateless beyond `self`.
@@ -356,11 +356,66 @@ shared/
 
 ## Naming Conventions
 
-- **Pattern**: `entity_verb` — `recipe_search`, `calendar_create`, `campaign_update`
+- **Pattern**: `verb_entity` — `search_recipes`, `create_calendar`, `update_campaign`
 - **Case**: snake_case, max 30 characters
 - **Verb** from a small set: search, get, create, update, delete, analyze, check, set, run
 - **Entity** = the key entity from Step B of [Flow Selection](./flow_selection.md)
 - When a tool serves multiple entities, use the primary entity
+
+## Design Patterns
+
+Practical guidelines distilled from tool design across multiple domains.
+
+### Split by Complexity, Not Just Entity
+
+When operations share an entity but differ in complexity or safeguards, make separate tools. The simpler tool handles the common case; the complex tool handles edge cases.
+
+- `merge_by_key` (clean FK, 3 params) vs `merge_tables` (complex multi-key joins, 4 params)
+- `format_column` (built-in patterns) vs `format_custom` (user-defined patterns, requires preview)
+- `dedupe_single_col` (one key column) vs `dedupe_columns` (composite key)
+
+### Max 5 Parameters Per Tool
+
+Keep input schemas flat and narrow. If a tool needs 6+ parameters, it's doing too much — split it into specialized tools. The 5-param limit forces you to find natural seams between operations.
+
+### Mega-Tool Smell
+
+A tool serving 10+ flows or using a broad `action` enum (`["outline", "expand", "revise", "brainstorm", "explain"]`) is doing too much. Split by operation type. Each resulting tool should serve 1–5 flows.
+
+### Parameters Can Subsume Tools
+
+Before creating a dedicated tool, check whether adding a parameter to an existing tool covers the same need. A boolean or enum parameter can replace an entire tool.
+
+- `modify_row` with `is_header=true` replaced the dedicated `modify_headers` tool
+- `manage_memory` with `level: L1|L2|L3` handles recap, recall, store, and retrieve — four flows, one tool
+
+### Shared Access Patterns Per Intent
+
+All flows in an intent should share cross-cutting tools that aren't the primary tool but provide useful context. Declare these as intent-level shared access, not per-flow.
+
+- All Clean/Transform flows share `describe_stats` (peek) + `semantic_layer` (schema context)
+- All Analyze flows share `describe_stats` + `execute_python` (calculate) + `semantic_layer`
+- All Draft/Revise flows share `get_post` (read current state before editing)
+
+### Code Execution as Escape Hatch
+
+`execute_python` and `execute_sql` should be available broadly but never be the *primary* tool for a flow. Each flow deserves a dedicated tool that captures its semantics — code execution handles edge cases the dedicated tool can't cover.
+
+### Component Tool Scoping
+
+Not all flows need all 3 component tools. Internal flows (recap, recall, retrieve, store) use only `coordinate_context` + `manage_memory` — no `read_flow_stack`, because Internal flows don't inspect the flow stack.
+
+### Orchestrator Flows Have No Unique Tools
+
+Plan flows that chain other intents' flows (insight, pipeline, outline, blueprint) have no unique domain tools. They orchestrate the tools from the flows they chain. Don't create a dedicated tool just because a flow exists.
+
+### Dedicated Tools Are Cheap
+
+If a flow has a unique operation that no other flow needs, give it a dedicated 1:1 tool. Don't try to shoehorn it into a shared tool — shared tools are for genuine overlap, not for consolidation. Tools are cheap to add and remove.
+
+### Entity Granularity
+
+Split tools along entity boundaries. If the domain has table/column/cell granularity, the modify family should reflect it: `modify_table`, `modify_column`, `modify_cell`. For post/section domains: `update_metadata` (post-level), `update_section` (section-level).
 
 ## Tool Manifest Entry
 
@@ -370,7 +425,7 @@ Each tool in the manifest declares these properties. PEX loads the manifest at s
 
 | Field | Type | Description |
 |---|---|---|
-| `tool_id` | string | Unique identifier, `entity_verb` pattern |
+| `tool_id` | string | Unique identifier, `verb_entity` pattern |
 | `name` | string | Human-readable display name |
 | `description` | string | What the tool does — for logging/debugging and skill prompt context |
 | `input_schema` | string | Path to input JSON Schema file |

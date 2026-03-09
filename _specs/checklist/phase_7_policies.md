@@ -47,7 +47,7 @@ Each policy has two parts:
 
 **LLM-driven skill**:
 - Tool selection: choose which tools to call and in what order
-- Tool execution: call tools, validate results, retry on failure
+- Tool calling: call tools, validate results, retry on failure
 - Context gathering: read conversation history, scratchpad, prior flow results
 - Result gathering: assemble structured output from tool results
 
@@ -80,6 +80,12 @@ Each skill template lives in `backend/prompts/skills/<dact>.md` and provides slo
 # <flow_name>
 
 <Flow description — what this flow accomplishes, one paragraph>
+
+Skill files should also explicitly call out constraints and requirements. We want the agent to be very clear about what it can and cannot do. For example, if a flow is designed to write a report to a external API, the skill should mention:
+  - tool allow-lists (which APIs can be called)
+  - permission scopes (read-only vs write)
+  - file boundaries (eg. the report should not exceed 1000 words, or must be in markdown format)
+  - rate limits
 
 ## Slot-to-Parameter Mapping
 
@@ -187,7 +193,7 @@ tests/
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|
@@ -219,5 +225,7 @@ tests/
 - [ ] Internal flows run as background tasks without user-facing output
 - [ ] Reflection loop works for flows that enable it
 - [ ] No two flows frequently confused (merge if so)
+- [ ] All flows execute real policies — no canned shortcuts remain
+- [ ] Unsupported flows progressively replaced with real policy implementations
 - [ ] Component tools (CC, MM, flow_stack) accessible to skills
 - [ ] End-to-end agent handles: simple query, multi-turn conversation, Plan decomposition

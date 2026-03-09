@@ -225,7 +225,7 @@ Store credentials in `.env` (never commit). Verify with a connectivity check scr
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|

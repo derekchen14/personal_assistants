@@ -68,7 +68,7 @@ User Preferences also stores successful flow trajectories as "playbooks" — reu
 
 **Promotion trigger**: When a flow completes successfully (Completed lifecycle state) and the user expresses satisfaction (explicit positive feedback or continued engagement without correction), the trajectory is promoted from the session scratchpad to User Preferences as a playbook.
 
-**Retrieval**: On future requests, after NLU predicts a flow, the policy checks User Preferences for playbooks with high semantic similarity to the current query. If a matching playbook is found (similarity above threshold), it is written deterministically to the session scratchpad before skill invocation. The skill receives the playbook as context — a proven recipe for handling this type of request — and can follow or adapt it.
+**Retrieval**: On future requests, after NLU detects a flow, the policy checks User Preferences for playbooks with high semantic similarity to the current query. If a matching playbook is found (similarity above threshold), it is written deterministically to the session scratchpad before skill invocation. The skill receives the playbook as context — a proven recipe for handling this type of request — and can follow or adapt it.
 
 **Storage format**: Playbooks are indexed by semantic embedding of `user_query`, retrievable via the same hybrid lookup as other preferences (embedding similarity for open-ended, direct flow ID lookup for exact matches).
 

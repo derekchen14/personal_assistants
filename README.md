@@ -53,17 +53,6 @@ Starting point for building personalized assistants in custom domains. The path:
 - [style_guide.md](./style_guide.md) — Coding conventions and project standards
 - [build_checklist.md](./checklist/start_here.md) — Phased implementation checklist
 
-## Open Questions
-
-Unresolved design decisions to address before or during implementation:
-
-- **Memory Manager**: Summarization trigger threshold is TBD. Chunking strategy for business context vector retrieval needs design.
-- **Templates**: `{% if %}` syntax used in template examples but the templating engine is never named (Jinja2? custom?).
-- **Frontend**: No architecture spec, no state management spec, no backend connection spec. Building blocks define the UI components but not the app shell.
-- **Persistence**: No database technology chosen for dialogue state, user preferences, business context, or checkpoints.
-- **Deployment**: No containerization, scaling, or multi-tenant spec.
-- **NLU `react()`**: Only 4 lines of description. Needs more detail on which user actions it handles and how it maps them to flows.
-
 ## Queued Domains and Terminology
 
 Three domains queued for implementation beyond the cooking example used throughout the specs.
@@ -123,3 +112,26 @@ assistants/
 ```
 
 See [build_checklist.md § Folder Structure](./checklist/start_here.md) for the full annotated tree with per-file descriptions and phase annotations. The checklist is the plan for implementation, which outlines the sequence of steps to build a domain agent from scratch.
+
+## Future Work
+
+Remaining gaps between the spec and implementations, identified during the spec-vs-code audit.
+
+### Components
+
+- **Dialogue State**: State history — diffs, snapshots, and rollback
+- **Flow Stack**: Behavioral methods on FlowEntry (`fill_slots_by_label`, `is_filled`, `needs_to_think`)
+- **Context Coordinator**: `completed_flows` tracking, fast-access `recent` window
+- **Prompt Engineer**: Streaming support, per-template versioning, token budget logging, structured output validation with retry
+- **Display Frame**: `chart_type` attribute, move block factory methods from frame to RES/Blocks
+- **Ambiguity Handler**: Auto-clear metadata at turn end, make `ask` sub-methods public
+- **Memory Manager**: Trajectory Playbooks, hybrid preference lookup, conversation summarization execution, inner class access pattern, chunking strategy for business context vector retrieval needs design.
+- **Persistence**: No database technology chosen for dialogue state, user preferences, business context, or checkpoints.
+- **Deployment**: No containerization, scaling, or multi-tenant spec.
+- Where can we apply the GAN or Reflection Loop pattern? One-shot generation is brittle, so we should add objective checks or adversarial graders wherever possible. Examples of checks include unit tests, lints, schema validation, compilation, or eval rubric.
+
+### Modules
+
+- **NLU**: `prepare()` missing checks (max length, exact repeat, reserved keywords, unsupported language), `validate()` duplicate flow check
+- **PEX**: `recover()` method (4-step escalation), `check()` missing checks (active flow exists, policy registered, elective slots, tool manifest, timeout), `verify()` missing checks (4 of 5)
+- **RES**: `start()` stack integrity check, `finish()` missing checks (3 of 4), multi-flow merge, user preferences for naturalization, streaming decision

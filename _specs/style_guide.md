@@ -36,6 +36,32 @@
 - 1-word names are too vague — add context
 - 5+ word names signal the function is doing too much — refactor into a class with focused methods
 
+## Terminology
+
+Standard verbs for core operations. Use consistently in code, comments, specs, and prompts.
+
+NLU makes **predictions** — an umbrella encompassing three sub-tasks:
+
+| Sub-task | Verb | Noun form | Example |
+|---|---|---|---|
+| Intents | classify | intent classification | "NLU classifies the intent" |
+| Flows | detect | flow detection | "NLU detects the flow" |
+| Slots | fill | slot-filling | "NLU fills the slots" |
+
+Other operations:
+
+| Operation | Verb | Noun form | Example |
+|---|---|---|---|
+| Policies | execute | policy execution | "PEX executes the policy" |
+| Language | understand | understanding | "NLU understands the utterance" |
+| Tools | call | tool calling | "the skill calls tools" |
+
+Naming conventions:
+- Intent names are capitalized: Purchase, Explore (not "purchase")
+- Flow names are lowercase: browse, scope (not "Browse")
+- Module names are uppercase in prose: NLU, PEX, RES (not "Nlu", "Pex")
+- Module filenames are lowercase without underscores: nlu.py, pex.md
+
 ## Imports
 
 Order: `stdlib` → `third-party` → `local`, alphabetized within each group.
@@ -116,7 +142,7 @@ Exemplar count varies by prompt complexity and how much the task depends on patt
 
 | Prompt type | Count | Rationale |
 |---|---|---|
-| NLU `think()` — intent prediction, flow detection | ~32 | High-cardinality classification across 48 flows; examples are the primary teaching signal |
+| NLU `think()` — intent prediction, flow detection | ~32 | High-cardinality detection across 48 flows; examples are the primary teaching signal |
 | NLU `contemplation()` | ~16 | Multi-step reasoning with fewer categories but subtle distinctions |
 | PEX skill/policy prompts | 7-10 | Moderate complexity; balanced between examples and instructions |
 | RES response generation | 3-5 | Output shaped more by instructions and persona than by pattern-matching |

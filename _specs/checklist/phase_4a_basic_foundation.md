@@ -203,7 +203,7 @@ Create stub modules with all entry points. Each module method should log a messa
 
 **NLU** (`modules/nlu.py`):
 - `prepare()` — pre-hook (7 checks), return pass/fail
-- `think()` — intent prediction, flow prediction, slot-filling
+- `think()` — intent prediction, flow detection, slot-filling
 - `contemplate()` — re-routing with narrowed search space
 - `react()` — lightweight processing for user actions
 - `validate()` — post-hook (5 checks)
@@ -287,7 +287,7 @@ npm run dev -- --port "${FRONTEND_PORT:-5173}"
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|

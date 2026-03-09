@@ -40,13 +40,112 @@ Every flow inherits these methods from `BaseFlow`:
 
 These methods are distinct from the lifecycle states below — they describe *how* a flow prepares for execution, while lifecycle states describe *where* a flow is in the stack.
 
+## Slots, Tools, and the Flow-Execution Relationship
+
+A flow binds two concerns together:
+
+- **Slots** — what NLU extracts from the user's utterance. Slots drive ambiguity detection and slot-filling. They determine *what* the user wants to act on.
+- **Tools** — what PEX can call to execute the action. Tools drive the policy's execution plan. They determine *how* the action gets carried out.
+
+```
+Flow
+├── slots: {slot_name: SlotInstance, ...}    # NLU fills these
+└── tools: [tool_name, ...]                 # PEX calls these
+```
+
+### Slot Type Hierarchy — 12 Universal + 4 Domain-Specific
+
+Every domain defines exactly **16 slot types**: 12 universal types shared across all assistants, plus 4 domain-specific types selected by that domain. Each domain's `flow_stack/slots.py` contains all 16 class definitions directly (self-contained, no cross-module slot imports).
+
+#### Universal Slots (12)
+
+```
+BaseSlot
+├── GroupSlot            # multiple items in a list
+│   ├── SourceSlot       # references existing entities (grounding)
+│   │   ├── TargetSlot   # new entities being created
+│   │   └── RemovalSlot  # entities being removed
+│   ├── FreeTextSlot     # free-form text or operations
+│   ├── ChecklistSlot    # ordered steps to check off
+│   └── ProposalSlot     # options to select from
+├── LevelSlot            # single numeric value
+│   ├── PositionSlot     # non-negative integer position
+│   ├── ProbabilitySlot  # 0-1 range [domain-specific, common option]
+│   └── ScoreSlot        # any numeric value [domain-specific, common option]
+├── CategorySlot         # exactly one from a predefined set (8 max, mutually exclusive)
+├── ExactSlot            # specific token or phrase
+├── DictionarySlot       # key-value pairs
+└── RangeSlot            # start/stop interval (often date range)
+```
+
+#### Grounding Slots
+
+**SourceSlot** references existing entities. Each entity is `{tab, col, row, ver, rel}` — the hierarchy is built into a single slot. The `entity_part` parameter is optional; when omitted, the slot accepts any entity type.
+
+Each domain defines its own grounding entities:
+
+| Domain | Grounding entities |
+|--------|-------------|
+| Dana (Data Analysis) | table, column, row |
+| Hugo (Blog Writing) | post, section, note, platform |
+
+A flow's grounding slot should be named **`'source'`** (matching `BaseFlow.entity_slot`). One SourceSlot handles the full entity hierarchy — do not split entity parts into separate slots, since a single entity `{tab, col, row}` already encodes the full reference. Not every flow requires a grounding slot (e.g., `chat`, `brainstorm`).
+
+**TargetSlot → SourceSlot**: Entities being created (new columns, new rows, new posts).
+
+**RemovalSlot → SourceSlot**: Entities being deleted or removed.
+
+#### Domain-Specific Slots (4 per domain)
+
+Each domain selects 4 additional slot types. Some are common options (like ProbabilitySlot, ScoreSlot) that most domains will include; others are truly unique to the domain. All are real `BaseSlot` subclasses.
+
+| Domain | Common options | Domain-unique |
+|--------|---------------|---------------|
+| Dana | ProbabilitySlot, ScoreSlot | **ChartSlot** (chart reference), **FunctionSlot** (executable code) |
+| Hugo | ProbabilitySlot, ScoreSlot | **PlatformSlot** (publishing destination), **ImageSlot** (hero image, diagram) |
+
+This 12+4 pattern is the scalable architecture for adding new domains. When creating a new assistant:
+1. Copy the 12 universal slot classes from any existing domain's `slots.py`
+2. Select common options (ProbabilitySlot, ScoreSlot) if the domain needs them
+3. Define domain-unique slot types as `BaseSlot` subclasses (total domain-specific = 4)
+4. Define the domain's grounding entity vocabulary
+
+### Elective Rule
+
+A slot's priority is one of: `required`, `optional`, `elective`.
+
+- **required** — must be filled before execution
+- **optional** — enhances execution but not needed
+- **elective** — at least one elective slot must be filled (choice among alternatives)
+
+**The elective constraint**: A flow with elective slots must have ≥2 elective options. A single elective is meaningless — convert it to `required` (if the flow needs it) or `optional` (if it doesn't). The `summarize` flow with `chart` and `table` as electives is valid (pick at least one artifact to summarize). A flow with only `format: elective` is invalid — make it `required` or `optional`.
+
+### CategorySlot Constraints
+
+A CategorySlot's options list must be:
+- **Mutually exclusive** — selecting one option rules out all others
+- **At most 8 options** — if you need more than 8, the taxonomy is too fine-grained for a slot; consider grouping or using FreeTextSlot instead
+
+### ExactSlot as Category Extension
+
+When a CategorySlot covers the common cases but users may need values beyond the predefined set, pair it with an ExactSlot as electives. The user fills either the category (pick from the list) or the exact slot (provide a custom value):
+
+```python
+self.slots = {
+    'custom_tone': ExactSlot(priority='elective'),
+    'chosen_tone': CategorySlot(['formal', 'casual', 'technical', ...], priority='elective'),
+}
+```
+
+This preserves the structured options for NLU prediction while allowing open-ended input when needed.
+
 ## Data Structure
 
 The data structure is a **stack** (not a dict or list or queue) to ensure we only ever have one "active" flow:
 
 - When issues get complicated, we **stack on** new flows
 - When flows are completed, they get **popped off**
-- When a flow is incorrectly predicted, we may **fall back** to other flows
+- When a flow is incorrectly detected, we may **fall back** to other flows
 
 **Stack Depth**: There is no explicit stack depth limit. The 64-flow-per-domain cap in dialogue_state is an ontology limit (how many flow *types* exist in a domain), not a stack limit. In practice, stacks are shallow (2–5 flows).
 
@@ -59,7 +158,7 @@ Each flow on the stack is in exactly one of four states:
 | **Pending** | Stacked but not yet active — waiting its turn (e.g., queued in a plan). |
 | **Active** | Top of the stack; currently being executed by the policy. |
 | **Completed** | Successfully finished; will be popped during the RES pre-hook. |
-| **Invalid** | Incorrectly predicted or encountered a hard failure; will be popped during fallback. |
+| **Invalid** | Incorrectly detected or encountered a hard failure; will be popped during fallback. |
 
 ## Concurrency Model
 
@@ -127,7 +226,7 @@ Failure recovery is owned by the Agent, not the flow stack itself. When a flow e
 1. **Policy recovery** — The policy in PEX first tries flow-specific recovery (retry, alternative tool call, etc.)
 2. **Declare ambiguity** — If recovery fails, the policy declares an ambiguity at the relevant level via the ambiguity handler
 3. **Agent decides** — The Agent inspects the ambiguity and chooses one of:
-   - **Re-route**: Send to NLU `contemplate` to re-predict and find a fallback flow
+   - **Re-route**: Send to NLU `contemplate` to re-detect and find a fallback flow
    - **Skip**: Skip the failed step and continue to the next flow in the plan (sets `keep_going`)
 4. **Resolution** — If either method succeeds, the ambiguity is resolved
 5. **Escalate** — If neither works, or if the Agent decides there is no recourse (often when the ambiguity level is `general`), go straight to RES to ask the user for clarification

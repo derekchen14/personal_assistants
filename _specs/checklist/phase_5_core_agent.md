@@ -29,7 +29,7 @@ Implement the state tracking component. The dialogue state grounds the agent in 
 - **Serialization**: `serialize()` → JSON dict, `from_dict(labels)` → reconstruct from persistence or NLU labels
 - **State history**: Diffs after every turn, full snapshots when >1 completed flows are popped
 - **Rollback**: Reconstruct any prior state by replaying diffs from the nearest snapshot
-- **Confidence tracking**: Store top-3 predictions with scores
+- **Confidence tracking**: Store top-3 detections with scores
 
 **Reference**: [dialogue_state.md](../components/dialogue_state.md)
 
@@ -43,7 +43,7 @@ Implement the stack data structure within dialogue state.
 - **Stack operations**: push, pop, peek — single active flow at top
 - **Flow lifecycle**: Pending → Active → Completed/Invalid states
 - **Flow class hierarchy**: BaseFlow with intent-specific parent classes, each flow inherits `fill_slots_by_label()`, `fill_slot_values()`, `is_filled()`, `needs_to_think()`, `serialize()`
-- **Deduplication**: Check if predicted flow already exists on stack in Pending/Active state; carry over if so
+- **Deduplication**: Check if detected flow already exists on stack in Pending/Active state; carry over if so
 - **Plan flow lifecycle**: Plan flow at stack bottom, sub-flows above, `plan_id` tracking, replanning check between sub-flows
 - **Fallback protocol**: Create new flow, best-effort slot mapping, mark old Invalid, push new
 - **Concurrency model**: Single-threaded user-facing flows, parallel Internal flows with dependency annotations
@@ -145,9 +145,11 @@ Implement full natural language understanding.
 
 **Implement**:
 - **`prepare()` pre-hook** — 7 checks: empty input, min length (2 chars), max length (1024 tokens), exact repeat, command shortcuts (Tier 0), system-reserved keywords, unsupported language
+- **Constructor**: `NLU(config, ambiguity, engineer, world)` — receives World, accesses context via `world.context`
+- **Output**: Returns `DialogueState` (no intermediate NLUResult). New state inserted into `world.insert_state()` per new flow detection; carryover reuses existing state.
 - **`think()`**:
   - Step 1 — Intent prediction: single Sonnet call, predict one of 6 user-facing intents (Internal never predicted)
-  - Step 2 — Flow prediction: majority vote (3 escalating rounds). Round 1: Sonnet + Gemini Flash (2/2 agree). Round 2: + Opus + Gemini Pro (3/4). Round 3: + Opus with extended thinking (3/5). No majority after 3 → General ambiguity. Flow deduplication check after prediction.
+  - Step 2 — Flow detection: majority vote (3 escalating rounds). Round 1: Sonnet + Gemini Flash (2/2 agree). Round 2: + Opus + Gemini Pro (3/4). Round 3: + Opus with extended thinking (3/5). No majority after 3 → General ambiguity. Flow deduplication check after detection.
   - Step 3 — Slot-filling: single Sonnet call for domain-specific intents only (Converse/Plan skip). Full conversation context.
 - **`contemplate()`** — single Opus call with narrowed search space: exclude failed flow, restrict to related flows using ambiguity metadata, trust region principle
 - **`react()`** — lightweight processing for user actions (no prompts, deterministic mapping to dialogue state)
@@ -162,6 +164,8 @@ Implement the policy execution engine.
 **File**: `backend/modules/pex.py`
 
 **Implement**:
+- **Constructor**: `PEX(config, ambiguity, engineer, memory, world)` — receives World, accesses flow stack via `world.flow_stack`, context via `world.context`
+- **Output**: Returns `tuple[DisplayFrame, bool]` (no intermediate PEXResult). PEX does not write messages — unsupported flows return carryover frame. Tool calls recorded as CC action turns.
 - **`check()` pre-hook** — 7 checks: active flow exists, policy registered, required slots filled, elective slots satisfied, tool manifest valid, timeout configured, Lethal Trifecta gate
 - **`execute()`**:
   - Step 1 — Slot review: pull active flow, check missing slots, fill from CC/MM, declare ambiguity if still missing
@@ -185,6 +189,8 @@ Implement the response generator.
 **File**: `backend/modules/res.py`
 
 **Implement**:
+- **Constructor**: `RES(config, ambiguity, engineer, world)` — receives World, accesses state via `world.current_state()`, flow stack via `world.flow_stack`, context via `world.context`
+- **Output**: Returns `tuple[str, DisplayFrame]`. Handles unsupported flow messages (detects `active.result.get('unsupported')`).
 - **`start()` pre-hook** — 4 checks: pop Completed flows (retain as full objects), snapshot trigger (>1 completed), pop Invalid flows, stack integrity
 - **`respond()`** — entry point. Routes to generate/clarify/display via lightweight Haiku call. May invoke multiple sub-functions per turn.
 - **`generate()`**:
@@ -217,7 +223,7 @@ Wire the full turn pipeline in `backend/agent.py`.
   - Tier 1: PEX repair loop (within execute, up to 4 attempts)
   - Tier 2: Agent cascade — re-route → skip → escalate
 - **Internal flow triggering**: Agent triggers Internal flows directly, parallelizes independent ones
-- **World instance**: Session-scoped container with state history, frame collection, data registry, domain context
+- **World instance**: Session-scoped container with `states[]`, `frames[]`, `flow_stack`, `context`. Modules receive World and unpack what they need. Constructor signatures: `NLU(config, ambiguity, engineer, world)`, `PEX(config, ambiguity, engineer, memory, world)`, `RES(config, ambiguity, engineer, world)`
 
 **Reference**: [architecture.md § Agent](../architecture.md)
 
@@ -242,7 +248,7 @@ On failure: set `has_issues`, emit signal, return to Agent.
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|
@@ -272,7 +278,7 @@ On failure: set `has_issues`, emit signal, return to Agent.
 - [ ] Ambiguity handler declares and resolves at all 4 levels
 - [ ] Memory manager reads/writes scratchpad, preferences, business context
 - [ ] NLU `prepare()` rejects invalid input (empty, too long, repeat)
-- [ ] NLU `think()` predicts intent and flow (test with hard-coded exemplars)
+- [ ] NLU `think()` classifies intent and detects flow (test with hard-coded exemplars)
 - [ ] PEX `execute()` runs a skill and creates a frame
 - [ ] PEX `recover()` escalates through the recovery ladder
 - [ ] RES `generate()` fills a template and naturalizes it

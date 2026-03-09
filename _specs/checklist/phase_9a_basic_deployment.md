@@ -144,7 +144,7 @@ Backend and frontend run in separate terminal tabs. Verify `init_backend.sh` and
 
 ---
 
-## Files to Modify/Create
+## File Changes Summary
 
 | Action | File | Description |
 |---|---|---|

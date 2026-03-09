@@ -5,7 +5,7 @@ import plotly.graph_objs as go
 
 from backend.prompts.mixins.for_visualize import *
 from backend.components.engineer import PromptEngineer
-from backend.components.frame import Frame
+from backend.components.display_frame import DisplayFrame
 
 class VisualizeMixin:
   """ Methods that manage the visualizations, graphs, charts, or dashboards """
@@ -27,7 +27,7 @@ class VisualizeMixin:
       frame.signal_failure('code_generation', db_output)
     else:
       tab_name = state.entities[0]['tab'] if len(state.entities) > 0 else state.current_tab
-      frame = Frame(tab_name, 'derived', source='plotly')
+      frame = DisplayFrame(tab_name, 'derived', source='plotly')
       frame.set_data(db_output, sql_query)
       if world.has_data() and world.frames[-1].properties.get('converted', False):
         frame.properties['converted'] = True
@@ -140,7 +140,7 @@ class VisualizeMixin:
       prompt = design_prompt.format(df_tables=self.database.tab_desc, history=context.compile_history(), thought=state.thought)
       db_output, code = self.database.manipulate_data(context, state, prompt, world.valid_tables)
       if code == 'error':
-        frame = Frame(state.current_tab)
+        frame = DisplayFrame(state.current_tab)
         frame.signal_failure('code_generation', db_output.strip())
       else:
         frame = self.validate_dataframe(db_output, code, 'pandas', state, tab_type='direct')

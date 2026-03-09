@@ -9,7 +9,7 @@ from backend.utilities.manipulations import unique_value_distribution
 from backend.utilities.pex_helpers import count_tab_cols
 from backend.components.engineer import PromptEngineer
 from backend.components.metadata import MetaData
-from backend.components.frame import Frame
+from backend.components.display_frame import DisplayFrame
 from backend.modules.flow import flow_selection
 
 class DetectMixin:
@@ -20,7 +20,7 @@ class DetectMixin:
     if not flow.slots['source'].filled:
       self.actions.add('CLARIFY')
       slot_desc = 'source table or column'
-      state.ambiguity.declare('confirmation', flow=flow.name(), slot=slot_desc, values=[state.current_tab], generate=True)
+      state.ambiguity.declare('confirmation', flow=flow.name(), slot=slot_desc, values=[state.current_tab], generation={'lexicalize': True})
       return None
 
     table_name = flow.slots['source'].table_name()
@@ -66,7 +66,7 @@ class DetectMixin:
         state.has_issues = False
         return previous_frame, state
 
-      frame = Frame(tab_name)
+      frame = DisplayFrame(tab_name)
       frame.issues_entity = {'tab': tab_name, 'col': col_name, 'flow': flow.name()}
 
     state.has_issues = True
