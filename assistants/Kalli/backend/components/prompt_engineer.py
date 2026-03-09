@@ -313,7 +313,7 @@ class PromptEngineer:
 
         system = (
             f'{self.build_system_prompt()}\n\n'
-            'You are re-evaluating a failed flow prediction. '
+            'You are re-evaluating a failed flow detection. '
             'Respond with only valid JSON.'
         )
 

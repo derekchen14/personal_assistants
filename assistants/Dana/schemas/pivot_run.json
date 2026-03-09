@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "dataset": {"type": "string", "description": "Dataset name"},
+    "index": {"type": "string", "description": "Column for row labels"},
+    "columns": {"type": "string", "description": "Column for column headers"},
+    "values": {"type": "string", "description": "Column for cell values"},
+    "aggfunc": {"type": "string", "description": "Aggregation function (sum, mean, count)"}
+  },
+  "required": ["dataset", "index", "columns", "values"]
+}

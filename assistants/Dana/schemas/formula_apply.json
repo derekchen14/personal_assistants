@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "dataset": {"type": "string", "description": "Dataset name"},
+    "column": {"type": "string", "description": "New column name for the result"},
+    "formula": {"type": "string", "description": "Python expression using column names (e.g., 'price * quantity')"}
+  },
+  "required": ["dataset", "column", "formula"]
+}

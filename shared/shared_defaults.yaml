@@ -4,6 +4,7 @@
 
 environment: dev                    # dev | prod — controls logging, guardrails
 tier: basic                         # basic | pro | advanced — controls auth and deployment complexity
+debug: false                        # true = skip RES naturalize, deterministic output for testing
 
 models:
   default:

@@ -24,6 +24,12 @@ export const displayLayout = derived(
     },
 );
 
+export function clearFrames() {
+    activeFrame.set(null);
+    topFrame.set(null);
+    bottomFrame.set(null);
+}
+
 export function setFrame(frame: FrameData) {
     console.log('[display] setFrame type=%s panel=%s show=%s', frame.type, frame.panel, frame.show);
     activeFrame.set(frame);

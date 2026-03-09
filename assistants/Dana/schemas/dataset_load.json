@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {"type": "string", "description": "Name or identifier of the dataset to load"},
+    "source": {"type": "string", "description": "File path, URL, or 'seed' for built-in datasets"},
+    "format": {"type": "string", "enum": ["csv", "json", "excel", "seed"], "description": "Data format"}
+  },
+  "required": ["name"]
+}

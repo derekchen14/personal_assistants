@@ -22,7 +22,7 @@
 </script>
 
 {#if title}
-    <h3 class="text-sm font-medium mb-3">{title}</h3>
+    <h3 class="text-sm font-medium mb-3 text-[var(--color-secondary)]">{title}</h3>
 {/if}
 
 {#if items.length > 0}

@@ -93,6 +93,12 @@ function createConversationStore() {
             ws.send({ text: text.trim() });
         },
 
+        reset() {
+            if (!ws?.connected) return;
+            ws.send({ reset: true });
+            update((s) => ({ ...s, messages: [], typing: false }));
+        },
+
         disconnect() {
             ws?.disconnect();
             update((s) => ({ ...s, connected: false }));

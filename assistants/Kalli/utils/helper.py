@@ -74,7 +74,7 @@ def flow_names_by_intent(intent: Intent) -> list[str]:
     """Return sorted flow names for an intent.
 
     >>> flow_names_by_intent(Intent.CONVERSE)
-    ['chat', 'dismiss', 'endorse', 'feedback', 'next_step', 'preference', 'style']
+    ['chat', 'dismiss', 'endorse', 'feedback', 'next', 'preference', 'style']
     """
     return sorted(
         name for name, flow in FLOW_CATALOG.items()

@@ -15,11 +15,12 @@ class DialogueState:
         self.confidence: float = 0.0
         self.slots: dict = {}
         self.turn_count: int = 0
-        self.top_predictions: list[dict] = []
+        self.top_detections: list[dict] = []
 
         self.keep_going: bool = False
         self.has_issues: bool = False
         self.has_plan: bool = False
+        self.structured_plan: dict = {}
         self.natural_birth: bool = True
 
     def update(self, intent: str, dax: str, flow_name: str,
@@ -38,8 +39,8 @@ class DialogueState:
             if hasattr(self, key):
                 setattr(self, key, value)
 
-    def set_top_predictions(self, predictions: list[dict]):
-        self.top_predictions = predictions[:3]
+    def set_top_detections(self, detections: list[dict]):
+        self.top_detections = detections[:3]
 
     def reset(self):
         self.intent = None
@@ -48,10 +49,11 @@ class DialogueState:
         self.confidence = 0.0
         self.slots = {}
         self.turn_count = 0
-        self.top_predictions = []
+        self.top_detections = []
         self.keep_going = False
         self.has_issues = False
         self.has_plan = False
+        self.structured_plan = {}
         self.natural_birth = True
 
     def serialize(self) -> dict:
@@ -62,10 +64,11 @@ class DialogueState:
             'confidence': self.confidence,
             'slots': self.slots,
             'turn_count': self.turn_count,
-            'top_predictions': self.top_predictions,
+            'top_detections': self.top_detections,
             'keep_going': self.keep_going,
             'has_issues': self.has_issues,
             'has_plan': self.has_plan,
+            'structured_plan': self.structured_plan,
             'natural_birth': self.natural_birth,
         }
 
@@ -78,9 +81,10 @@ class DialogueState:
         state.confidence = data.get('confidence', 0.0)
         state.slots = data.get('slots', {})
         state.turn_count = data.get('turn_count', 0)
-        state.top_predictions = data.get('top_predictions', [])
+        state.top_detections = data.get('top_detections', [])
         state.keep_going = data.get('keep_going', False)
         state.has_issues = data.get('has_issues', False)
         state.has_plan = data.get('has_plan', False)
+        state.structured_plan = data.get('structured_plan', {})
         state.natural_birth = data.get('natural_birth', True)
         return state

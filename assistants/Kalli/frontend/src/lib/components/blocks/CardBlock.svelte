@@ -10,7 +10,7 @@
 
 <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
     {#if title}
-        <h3 class="text-sm font-medium mb-3">{title}</h3>
+        <h3 class="text-sm font-medium mb-3 text-[var(--color-secondary)]">{title}</h3>
     {/if}
     {#if Object.keys(fields).length > 0}
         <div class="space-y-2">

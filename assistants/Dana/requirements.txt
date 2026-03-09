@@ -1,0 +1,27 @@
+# Dana — Data Analysis Assistant
+
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-dotenv>=1.0.0
+
+# Database
+sqlalchemy>=2.0.0
+
+# Data validation
+pydantic>=2.9.0
+
+# Config
+pyyaml>=6.0.0
+
+# LLM providers
+anthropic>=0.40.0
+google-genai>=1.0.0
+
+# WebSocket
+websockets>=13.0
+
+# Data analysis
+pandas>=2.2.0
+matplotlib>=3.9.0
+pandasql>=0.7.3

@@ -231,8 +231,8 @@ _Output_
 
 
 FLOW_INSTRUCTIONS = (
-    'Given the predicted intent and conversation context, classify the user '
-    'utterance into the most specific flow.\n\n'
+    'Given the predicted intent and conversation context, detect the most '
+    'specific flow for the user utterance.\n\n'
     'Each flow has a dax code, description, and slots. Pick the flow that '
     'best matches what the user wants to accomplish.\n\n'
     'If multiple flows could match, prefer:\n'
@@ -266,7 +266,7 @@ Intent: Converse
 User: "what should I do next?"
 _Output_
 ```json
-{{"thought": "Asking for next step guidance.", "flow_name": "next_step", "confidence": 0.95, "slots": {{}}}}
+{{"thought": "Asking for next step guidance.", "flow_name": "next", "confidence": 0.95, "slots": {{}}}}
 ```
 ---
 Intent: Converse
@@ -301,7 +301,7 @@ Intent: Explore
 User: "what lessons have we recorded?"
 _Output_
 ```json
-{{"thought": "Browsing stored lessons.", "flow_name": "review_lessons", "confidence": 0.90, "slots": {{}}}}
+{{"thought": "Browsing stored lessons.", "flow_name": "lessons", "confidence": 0.90, "slots": {{}}}}
 ```
 ---
 Intent: Explore
@@ -385,7 +385,7 @@ Intent: Design
 User: "suggest some flows for the Deliver intent"
 _Output_
 ```json
-{{"thought": "Asking agent to suggest new flows.", "flow_name": "suggest_flow", "confidence": 0.90, "slots": {{"intent_hint": "Deliver"}}}}
+{{"thought": "Asking agent to suggest new flows.", "flow_name": "suggest", "confidence": 0.90, "slots": {{"intent_hint": "Deliver"}}}}
 ```
 ---
 Intent: Design
@@ -420,7 +420,7 @@ Intent: Deliver
 User: "ok export everything"
 _Output_
 ```json
-{{"thought": "Confirming export.", "flow_name": "confirm_export", "confidence": 0.90, "slots": {{}}}}
+{{"thought": "Confirming export.", "flow_name": "confirm", "confidence": 0.90, "slots": {{}}}}
 ```
 ---
 Intent: Plan
@@ -466,10 +466,10 @@ _Output_
 ```
 ---
 Intent: Design
-User: "edit the revise_flow — change the description"
+User: "edit the rework flow — change the description"
 _Output_
 ```json
-{{"thought": "Revising an in-progress flow design.", "flow_name": "revise_flow", "confidence": 0.85, "slots": {{"flow_name": "revise_flow", "field": "description"}}}}
+{{"thought": "Revising an in-progress flow design.", "flow_name": "rework", "confidence": 0.85, "slots": {{"flow_name": "rework", "field": "description"}}}}
 ```
 '''
 

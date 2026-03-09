@@ -4,53 +4,52 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from backend.modules.nlu import NLUResult
-    from backend.modules.pex import PEXResult
+    from backend.components.dialogue_state import DialogueState
+    from backend.components.display_frame import DisplayFrame
 
 
 _SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'skills'
 
-_BATCH_1 = {'publish_post', 'cross_post', 'schedule_post', 'preview_published'}
+_BATCH_1 = {'release', 'syndicate', 'schedule', 'preview'}
 _BATCH_2: set[str] = set()
 
 
 class PublishPolicy:
 
     def __init__(self, components: dict):
-        self.prompt_engineer = components['prompt_engineer']
-        self.context = components['context']
+        self.engineer = components['engineer']
         self.memory = components['memory']
-        self.display = components['display']
+        self.world = components['world']
         self._get_tools_fn = components['get_tools']
 
     def execute(self, flow_name: str, flow_info: dict,
-                nlu_result: 'NLUResult', tool_dispatcher) -> 'PEXResult':
-        from backend.modules.pex import PEXResult
+                state: 'DialogueState', tool_dispatcher) -> 'DisplayFrame':
+        from backend.components.display_frame import DisplayFrame
 
         if flow_name in _BATCH_2:
-            return PEXResult(
-                message="That feature is coming soon — stay tuned!",
-                block_type='default',
-            )
+            frame = DisplayFrame(self.world.config)
+            frame.set_frame('default', {'content': "That feature is coming soon — stay tuned!"})
+            return frame
 
-        return self._llm_execute(flow_name, flow_info, nlu_result, tool_dispatcher)
+        return self._llm_execute(flow_name, flow_info, state, tool_dispatcher)
 
-    def _llm_execute(self, flow_name, flow_info, nlu_result, tool_dispatcher):
-        from backend.modules.pex import PEXResult
+    def _llm_execute(self, flow_name, flow_info, state, tool_dispatcher):
+        from backend.components.display_frame import DisplayFrame
 
         skill_prompt = self._load_skill_template(flow_name)
-        system, messages = self.prompt_engineer.build_skill_prompt(
-            flow_name, flow_info, nlu_result.slots,
-            self.context.compile_history(turns=5),
+        system, messages = self.engineer.build_skill_prompt(
+            flow_name, flow_info, state.slots,
+            self.world.context.compile_history(turns=5),
             self.memory.read_scratchpad(),
             skill_prompt=skill_prompt,
         )
         tools = self._get_tools_fn(flow_name, flow_info)
 
-        text, tool_log = self.prompt_engineer.call_with_tools(
+        text, tool_log = self.engineer.call_with_tools(
             system, messages, tools, tool_dispatcher, call_site='skill',
         )
 
+        frame = DisplayFrame(self.world.config)
         block_type = flow_info.get('output', 'toast')
         block_data = {'flow_name': flow_name, 'content': text}
         for entry in tool_log:
@@ -59,12 +58,8 @@ class PublishPolicy:
                 result_data = result.get('result', {})
                 if isinstance(result_data, dict):
                     block_data.update(result_data)
-        self.display.set_frame(block_type, block_data, source=flow_name)
-
-        return PEXResult(
-            message=text, block_type=block_type,
-            block_data=block_data, tool_log=tool_log,
-        )
+        frame.set_frame(block_type, block_data, source=flow_name)
+        return frame
 
     def _load_skill_template(self, flow_name: str) -> str | None:
         path = _SKILL_DIR / f'{flow_name}.md'

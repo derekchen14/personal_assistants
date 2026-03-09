@@ -55,7 +55,7 @@ FLOW_CATALOG = {
         'edge_flows': ['summarize', 'inspect'],
         'policy_path': 'policies.explore_policies.status',
     },
-    'review_lessons': {
+    'lessons': {
         'dax': '{01B}',
         'intent': Intent.EXPLORE,
         'description': 'Browse stored lessons and patterns',
@@ -65,7 +65,7 @@ FLOW_CATALOG = {
         },
         'output': 'list',
         'edge_flows': ['recall', 'lookup'],
-        'policy_path': 'policies.explore_policies.review_lessons',
+        'policy_path': 'policies.explore_policies.lessons',
     },
     'lookup': {
         'dax': '{01C}',
@@ -76,7 +76,7 @@ FLOW_CATALOG = {
             'section': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'card',
-        'edge_flows': ['explain', 'read_spec'],
+        'edge_flows': ['explain', 'study'],
         'policy_path': 'policies.explore_policies.lookup',
     },
     'recommend': {
@@ -254,7 +254,7 @@ FLOW_CATALOG = {
         'description': 'Review proposed core dacts for the domain',
         'slots': {},
         'output': 'list',
-        'edge_flows': ['compose', 'suggest_flow'],
+        'edge_flows': ['compose', 'suggest'],
         'policy_path': 'policies.design_policies.propose',
     },
     'compose': {
@@ -270,7 +270,7 @@ FLOW_CATALOG = {
         'edge_flows': ['propose', 'validate'],
         'policy_path': 'policies.design_policies.compose',
     },
-    'revise_flow': {
+    'rework': {
         'dax': '{03D}',
         'intent': Intent.DESIGN,
         'description': 'Revise an in-progress flow design',
@@ -280,7 +280,7 @@ FLOW_CATALOG = {
         },
         'output': 'card',
         'edge_flows': ['refine', 'compose'],
-        'policy_path': 'policies.design_policies.revise_flow',
+        'policy_path': 'policies.design_policies.rework',
     },
     'approve': {
         'dax': '{0AE}',
@@ -305,7 +305,7 @@ FLOW_CATALOG = {
         'edge_flows': ['dismiss', 'approve'],
         'policy_path': 'policies.design_policies.decline',
     },
-    'suggest_flow': {
+    'suggest': {
         'dax': '{39A}',
         'intent': Intent.DESIGN,
         'description': 'Agent suggests new flows; user reviews',
@@ -316,7 +316,7 @@ FLOW_CATALOG = {
         },
         'output': 'card',
         'edge_flows': ['propose', 'compose'],
-        'policy_path': 'policies.design_policies.suggest_flow',
+        'policy_path': 'policies.design_policies.suggest',
     },
     'refine': {
         'dax': '{3AD}',
@@ -328,7 +328,7 @@ FLOW_CATALOG = {
             'change': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'card',
-        'edge_flows': ['revise_flow', 'validate'],
+        'edge_flows': ['rework', 'validate'],
         'policy_path': 'policies.design_policies.refine',
     },
     'validate': {
@@ -354,14 +354,14 @@ FLOW_CATALOG = {
         'edge_flows': ['ontology', 'preview'],
         'policy_path': 'policies.deliver_policies.generate',
     },
-    'confirm_export': {
+    'confirm': {
         'dax': '{04E}',
         'intent': Intent.DELIVER,
         'description': 'Confirm and execute the file export',
         'slots': {},
         'output': 'confirmation',
         'edge_flows': ['generate', 'package'],
-        'policy_path': 'policies.deliver_policies.confirm_export',
+        'policy_path': 'policies.deliver_policies.confirm',
     },
     'preview': {
         'dax': '{4AD}',
@@ -391,7 +391,7 @@ FLOW_CATALOG = {
         'description': 'Generate a build report with lessons learned',
         'slots': {},
         'output': 'card',
-        'edge_flows': ['review_lessons', 'summarize'],
+        'edge_flows': ['lessons', 'summarize'],
         'policy_path': 'policies.deliver_policies.report',
     },
     'package': {
@@ -404,7 +404,7 @@ FLOW_CATALOG = {
             },
         },
         'output': 'list',
-        'edge_flows': ['generate', 'confirm_export'],
+        'edge_flows': ['generate', 'confirm'],
         'policy_path': 'policies.deliver_policies.package',
     },
 
@@ -421,14 +421,14 @@ FLOW_CATALOG = {
         'edge_flows': ['explain', 'feedback'],
         'policy_path': 'policies.converse_policies.chat',
     },
-    'next_step': {
+    'next': {
         'dax': '{019}',
         'intent': Intent.CONVERSE,
         'description': 'Ask Kalli what to do next',
         'slots': {},
         'output': 'card',
-        'edge_flows': ['summarize', 'suggest_flow'],
-        'policy_path': 'policies.converse_policies.next_step',
+        'edge_flows': ['summarize', 'suggest'],
+        'policy_path': 'policies.converse_policies.next',
     },
     'feedback': {
         'dax': '{029}',
@@ -472,7 +472,7 @@ FLOW_CATALOG = {
             'action': {'type': 'FreeTextSlot', 'priority': 'required'},
         },
         'output': 'toast',
-        'edge_flows': ['approve', 'next_step'],
+        'edge_flows': ['approve', 'next'],
         'policy_path': 'policies.converse_policies.endorse',
     },
     'dismiss': {
@@ -530,7 +530,7 @@ FLOW_CATALOG = {
             'count': {'type': 'LevelSlot', 'priority': 'optional'},
         },
         'output': 'list',
-        'edge_flows': ['compose', 'suggest_flow'],
+        'edge_flows': ['compose', 'suggest'],
         'policy_path': 'policies.plan_policies.expand',
     },
     'redesign': {
@@ -580,7 +580,7 @@ FLOW_CATALOG = {
         'edge_flows': ['recap', 'remember'],
         'policy_path': 'policies.internal_policies.recall',
     },
-    'read_spec': {
+    'study': {
         'dax': '{29C}',
         'intent': Intent.INTERNAL,
         'description': 'Internally read a spec file to answer a question',
@@ -590,18 +590,18 @@ FLOW_CATALOG = {
         },
         'output': '(internal)',
         'edge_flows': ['lookup', 'explain'],
-        'policy_path': 'policies.internal_policies.read_spec',
+        'policy_path': 'policies.internal_policies.study',
     },
-    'auto_validate': {
+    'audit': {
         'dax': '{39D}',
         'intent': Intent.INTERNAL,
         'description': 'Internally validate config consistency',
         'slots': {},
         'output': '(internal)',
         'edge_flows': ['validate', 'compare'],
-        'policy_path': 'policies.internal_policies.auto_validate',
+        'policy_path': 'policies.internal_policies.audit',
     },
-    'auto_generate': {
+    'emit': {
         'dax': '{49A}',
         'intent': Intent.INTERNAL,
         'description':
@@ -613,7 +613,7 @@ FLOW_CATALOG = {
         },
         'output': '(internal)',
         'edge_flows': ['generate', 'ontology'],
-        'policy_path': 'policies.internal_policies.auto_generate',
+        'policy_path': 'policies.internal_policies.emit',
     },
 }
 

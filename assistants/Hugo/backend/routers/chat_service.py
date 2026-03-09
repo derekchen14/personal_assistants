@@ -3,7 +3,8 @@ import traceback
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.manager import get_or_create_agent, cleanup_agent
+from backend.manager import get_or_create_agent, cleanup_agent, reset_agent
+from backend.utilities.services import PostService
 
 chat_router = APIRouter()
 
@@ -37,14 +38,28 @@ async def chat(websocket: WebSocket):
         agent = get_or_create_agent(username)
         queue = _get_queue(username)
 
-        await queue.put({
+        post_svc = PostService()
+        posts_result = post_svc.search()
+        post_items = posts_result.get('result', [])
+
+        welcome_frame = {
+            'type': 'list',
+            'show': True,
+            'data': {'title': 'Your Posts', 'items': post_items},
+            'source': 'welcome',
+            'panel': 'top',
+        } if post_items else None
+
+        welcome_response = {
             'message': f"Hey {username}! What are we writing today?",
             'raw_utterance': '',
             'actions': [],
             'interaction': {'type': 'default', 'show': False, 'data': {}},
             'code_snippet': None,
-            'frame': None,
-        })
+            'frame': welcome_frame,
+        }
+
+        await queue.put(welcome_response)
 
         async def sender(q: asyncio.Queue):
             while True:
@@ -62,6 +77,28 @@ async def chat(websocket: WebSocket):
         while True:
             try:
                 body = await websocket.receive_json()
+
+                if body.get('reset'):
+                    reset_agent(username)
+                    post_svc_r = PostService()
+                    posts_r = post_svc_r.search()
+                    items_r = posts_r.get('result', [])
+                    reset_frame = {
+                        'type': 'list',
+                        'show': True,
+                        'data': {'title': 'Your Posts', 'items': items_r},
+                        'source': 'welcome',
+                        'panel': 'top',
+                    } if items_r else None
+                    await queue.put({
+                        'message': f"Hey {username}! What are we writing today?",
+                        'raw_utterance': '',
+                        'actions': [],
+                        'interaction': {'type': 'default', 'show': False, 'data': {}},
+                        'code_snippet': None,
+                        'frame': reset_frame,
+                    })
+                    continue
 
                 user_text = body.get('text', '') or body.get('currentMessage', '')
                 user_actions = body.get('lastAction', [])

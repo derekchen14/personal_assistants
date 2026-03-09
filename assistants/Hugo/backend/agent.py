@@ -3,16 +3,15 @@ from __future__ import annotations
 import logging
 
 from config import load_config
-from backend.modules.nlu import NLU, NLUResult
+from backend.modules.nlu import NLU
 from backend.modules.pex import PEX
 from backend.modules.res import RES
 from backend.components.dialogue_state import DialogueState
-from backend.components.flow_stack import FlowStack
-from backend.components.context_coordinator import ContextCoordinator
-from backend.components.prompt_engineer import PromptEngineer
 from backend.components.display_frame import DisplayFrame
+from backend.components.prompt_engineer import PromptEngineer
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.memory_manager import MemoryManager
+from backend.components.world import World
 
 
 log = logging.getLogger(__name__)
@@ -27,94 +26,89 @@ class Agent:
         self.config = load_config()
         self.conversation_id: str | None = None
 
-        self.dialogue_state = DialogueState(self.config)
-        self.flow_stack = FlowStack(self.config)
-        self.context = ContextCoordinator(self.config)
-        self.prompt_engineer = PromptEngineer(self.config)
-        self.display = DisplayFrame(self.config)
-        self.ambiguity = AmbiguityHandler(self.config)
+        self.world = World(self.config)
+        self.engineer = PromptEngineer(self.config)
+        self.ambiguity = AmbiguityHandler(self.config, engineer=self.engineer)
         self.memory = MemoryManager(self.config)
 
-        self.nlu = NLU(
-            self.config, self.dialogue_state, self.context,
-            self.ambiguity, self.prompt_engineer,
-        )
-        self.pex = PEX(
-            self.config, self.dialogue_state, self.flow_stack,
-            self.context, self.prompt_engineer, self.memory,
-            self.display, self.ambiguity,
-        )
-        self.res = RES(
-            self.config, self.dialogue_state, self.flow_stack,
-            self.context, self.prompt_engineer, self.display,
-            self.ambiguity, self.memory,
-        )
+        self.nlu = NLU(self.config, self.ambiguity, self.engineer, self.world)
+        self.pex = PEX(self.config, self.ambiguity, self.engineer, self.memory, self.world)
+        self.res = RES(self.config, self.ambiguity, self.engineer, self.world)
 
-    def handle_turn(self, user_text: str, user_actions: list | None = None,
-                    gold_dax: str | None = None) -> dict:
-        self.context.add_turn('User', user_text)
+    def take_turn(self, user_text: str, user_actions: list | None = None,
+                  gold_dax: str | None = None) -> dict:
+        self.world.context.add_turn('User', user_text)
 
+        # Resolve any pending ambiguity from the previous turn.
         if self.ambiguity.present():
-            self.ambiguity.resolve()
+            if user_actions:
+                # User actions are explicit — always resolve immediately.
+                self.ambiguity.resolve()
+            else:
+                # TODO: pass user_text + ambiguity context to a model to
+                # check whether the user's utterance actually resolves the
+                # ambiguity.  For now, optimistically resolve.
+                self.ambiguity.resolve()
 
-        nlu_result = self.nlu.understand(user_text, gold_dax)
+        state = self.nlu.understand(user_text, gold_dax)
 
-        intent_val = nlu_result.intent.value if hasattr(nlu_result.intent, 'value') else nlu_result.intent
-        log.info('intent: %s {%s}, %s; score=%.2f, %s',
-                 nlu_result.flow_name, nlu_result.dax,
-                 intent_val, nlu_result.confidence, nlu_result.slots or {})
+        intent_val = state.intent.value if hasattr(state.intent, 'value') else state.intent
+        log.info(f"{state.intent}: {state.flow_name} {{{state.dax}}}; "
+                 f"Confidence: {state.confidence:.2f}; Slots: {state.slots or {}}")
 
-        if not self._self_check(nlu_result):
+        if not self._self_check(state):
             return self._fallback_response(
                 "I'm having trouble understanding. Could you try rephrasing?"
             )
 
-        pex_result = None
+        frame = None
         keep_going = True
         rounds = 0
 
         while keep_going and rounds < _MAX_KEEP_GOING:
-            pex_result, keep_going = self.pex.execute(nlu_result)
+            frame, keep_going = self.pex.execute(state)
             rounds += 1
             log.info('  pex round=%d  keep_going=%s', rounds, keep_going)
 
             if keep_going:
-                active = self.flow_stack.get_active_flow()
+                active = self.world.flow_stack.get_active_flow()
                 if active:
-                    nlu_result = NLUResult(
+                    new_state = DialogueState(self.config)
+                    new_state.update(
                         intent=active.intent,
                         dax=active.dax,
                         flow_name=active.flow_name,
                         confidence=1.0,
                         slots=active.slots,
                     )
+                    new_state.keep_going = True
+                    self.world.insert_state(new_state)
+                    state = new_state
 
-        if pex_result.tool_log:
-            tools_used = [e.get('tool') for e in pex_result.tool_log]
-            log.info('  tools=%s', tools_used)
-        if self.display.has_content():
-            log.info('  frame=%s  source=%s',
-                     self.display.block_type, self.display.source)
+        if frame and frame.has_content():
+            log.info('  frame=%s  source=%s', frame.block_type, frame.source)
 
-        response = self.res.respond(pex_result)
+        utterance, frame = self.res.respond(frame)
 
-        if self.memory.should_summarize(self.dialogue_state.turn_count):
-            self.context.save_checkpoint(
+        if self.memory.should_summarize(state.turn_count):
+            self.world.context.save_checkpoint(
                 'auto_summarize',
-                data={'turn_count': self.dialogue_state.turn_count},
+                data={'turn_count': state.turn_count},
             )
 
-        return response
+        return self._build_payload(utterance, frame)
 
-    def _self_check(self, nlu_result) -> bool:
-        if nlu_result.confidence < 0.1:
+    # ── Self-check gate ───────────────────────────────────────────────
+
+    def _self_check(self, state: DialogueState) -> bool:
+        if state.confidence < 0.1:
             return False
-        if not nlu_result.flow_name:
+        if not state.flow_name:
             return False
         return True
 
     def _fallback_response(self, message: str) -> dict:
-        self.context.add_turn('Agent', message, turn_type='agent_response')
+        self.world.context.add_turn('Agent', message, turn_type='agent_response')
         return {
             'message': message,
             'raw_utterance': message,
@@ -124,11 +118,46 @@ class Agent:
             'frame': None,
         }
 
+    def _build_payload(self, utterance: str, frame: DisplayFrame) -> dict:
+        frame_data = None
+        if frame and frame.has_content():
+            frame_data = {
+                'type': frame.block_type,
+                'show': True,
+                'data': frame.data,
+                'source': frame.source,
+                'display_name': frame.display_name,
+                'panel': frame.panel,
+            }
+
+        state = self.world.current_state()
+        interaction = {
+            'type': frame.block_type if frame and frame.has_content() else 'default',
+            'show': frame.block_type != 'default' if frame else False,
+            'data': frame.data if frame and frame.has_content() else {},
+        }
+
+        message = utterance
+        if not message and not frame_data:
+            if state and state.intent not in ('Internal', 'Plan'):
+                message = (
+                    "I've processed your request. Let me know if you need "
+                    "anything else."
+                )
+
+        return {
+            'message': message,
+            'raw_utterance': utterance,
+            'actions': [],
+            'interaction': interaction,
+            'code_snippet': None,
+            'frame': frame_data,
+        }
+
+    # ── Session management ────────────────────────────────────────────
+
     def reset(self):
-        self.dialogue_state.reset()
-        self.flow_stack.clear()
-        self.context.reset()
-        self.display.clear()
+        self.world.reset()
         self.ambiguity.resolve()
         self.memory.clear_scratchpad()
         self.conversation_id = None

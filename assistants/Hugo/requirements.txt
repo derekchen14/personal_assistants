@@ -14,8 +14,9 @@ pydantic>=2.9.0
 # Config
 pyyaml>=6.0.0
 
-# LLM provider
+# LLM providers
 anthropic>=0.40.0
+google-genai>=1.0.0
 
 # WebSocket
 websockets>=13.0

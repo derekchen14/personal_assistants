@@ -2,10 +2,27 @@
 
 import asyncio
 import traceback
+from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.manager import get_or_create_agent, cleanup_agent
+from backend.manager import get_or_create_agent, cleanup_agent, reset_agent
+
+_ASSISTANTS_DIR = Path(__file__).resolve().parents[2].parent
+
+
+def _discover_assistants() -> list[dict]:
+    items = []
+    for entry in sorted(_ASSISTANTS_DIR.iterdir()):
+        if not entry.is_dir() or entry.name == 'Kalli':
+            continue
+        readme = entry / 'README.md'
+        if not readme.exists():
+            continue
+        lines = readme.read_text(encoding='utf-8').splitlines()
+        name = lines[0].lstrip('# ').strip() if lines else entry.name
+        items.append({'name': name})
+    return items
 
 chat_router = APIRouter()
 
@@ -39,13 +56,22 @@ async def chat(websocket: WebSocket):
         agent = get_or_create_agent(username)
         queue = _get_queue(username)
 
+        assistants = _discover_assistants()
+        welcome_frame = {
+            'type': 'list',
+            'show': True,
+            'data': {'title': 'Existing Assistants', 'items': assistants},
+            'source': 'welcome',
+            'panel': 'top',
+        } if assistants else None
+
         await queue.put({
             'message': f"Hey {username}! What assistant are we building?",
             'raw_utterance': '',
             'actions': [],
             'interaction': {'type': 'default', 'show': False, 'data': {}},
             'code_snippet': None,
-            'frame': None,
+            'frame': welcome_frame,
         })
 
         async def sender(q: asyncio.Queue):
@@ -64,6 +90,29 @@ async def chat(websocket: WebSocket):
         while True:
             try:
                 body = await websocket.receive_json()
+
+                if body.get('reset'):
+                    reset_agent(username)
+                    reset_items = _discover_assistants()
+                    reset_frame = {
+                        'type': 'list',
+                        'show': True,
+                        'data': {
+                            'title': 'Existing Assistants',
+                            'items': reset_items,
+                        },
+                        'source': 'welcome',
+                        'panel': 'top',
+                    } if reset_items else None
+                    await queue.put({
+                        'message': f"Hey {username}! What assistant are we building?",
+                        'raw_utterance': '',
+                        'actions': [],
+                        'interaction': {'type': 'default', 'show': False, 'data': {}},
+                        'code_snippet': None,
+                        'frame': reset_frame,
+                    })
+                    continue
 
                 user_text = body.get('text', '') or body.get('currentMessage', '')
                 user_actions = body.get('lastAction', [])

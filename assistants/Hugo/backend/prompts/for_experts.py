@@ -7,7 +7,7 @@ INTENT_INSTRUCTIONS = (
     'create new posts, add/refine sections\n'
     '- Revise: deep revision, polish sections, adjust tone, check consistency, '
     'format for publication, accept/reject changes, compare drafts\n'
-    '- Publish: publish, cross-post, schedule, preview, confirm/cancel publication\n'
+    '- Publish: publish, cross-post, schedule, preview, promote, cancel publication\n'
     '- Converse: greetings, next step, feedback, preferences, style, '
     'endorse/dismiss suggestions\n'
     '- Plan: plan a post, plan revision, content calendar, research plan, '
@@ -147,8 +147,8 @@ _Output_
 
 
 FLOW_INSTRUCTIONS = (
-    'Given the predicted intent and conversation context, classify the user '
-    'utterance into the most specific flow.\n\n'
+    'Given the predicted intent and conversation context, detect the most '
+    'specific flow for the user utterance.\n\n'
     'Each flow has a dax code, description, and slots. Pick the flow that '
     'best matches what the user wants to accomplish.\n\n'
     'If multiple flows could match, prefer:\n'

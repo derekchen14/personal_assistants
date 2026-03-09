@@ -10,7 +10,7 @@
     },
     "platform": {
       "type": "string",
-      "enum": ["blog", "substack", "linkedin", "twitter"],
+      "enum": ["substack", "twitter", "linkedin", "mt1t"],
       "description": "Target platform"
     },
     "action": {

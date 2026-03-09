@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "properties": {
+    "query": {"type": "string", "description": "SQL query to execute against loaded datasets"},
+    "dataset": {"type": "string", "description": "Primary dataset name for the query context"}
+  },
+  "required": ["query"]
+}

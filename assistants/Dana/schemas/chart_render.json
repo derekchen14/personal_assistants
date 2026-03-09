@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "dataset": {"type": "string", "description": "Dataset name"},
+    "chart_type": {"type": "string", "enum": ["bar", "line", "pie", "scatter", "histogram"], "description": "Type of chart"},
+    "x": {"type": "string", "description": "Column for x-axis"},
+    "y": {"type": "string", "description": "Column for y-axis"},
+    "title": {"type": "string", "description": "Chart title"},
+    "color": {"type": "string", "description": "Column for color grouping"}
+  },
+  "required": ["dataset", "chart_type"]
+}

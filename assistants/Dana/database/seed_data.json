@@ -1,0 +1,32 @@
+{
+  "sales": {
+    "description": "Monthly sales data across regions and products",
+    "columns": ["month", "region", "product", "units_sold", "revenue", "cost"],
+    "rows": [
+      {"month": "2024-01", "region": "North", "product": "Widget A", "units_sold": 150, "revenue": 4500.00, "cost": 2250.00},
+      {"month": "2024-01", "region": "South", "product": "Widget A", "units_sold": 200, "revenue": 6000.00, "cost": 3000.00},
+      {"month": "2024-01", "region": "North", "product": "Widget B", "units_sold": 80, "revenue": 3200.00, "cost": 1920.00},
+      {"month": "2024-01", "region": "South", "product": "Widget B", "units_sold": 120, "revenue": 4800.00, "cost": 2880.00},
+      {"month": "2024-02", "region": "North", "product": "Widget A", "units_sold": 170, "revenue": 5100.00, "cost": 2550.00},
+      {"month": "2024-02", "region": "South", "product": "Widget A", "units_sold": 190, "revenue": 5700.00, "cost": 2850.00},
+      {"month": "2024-02", "region": "North", "product": "Widget B", "units_sold": 95, "revenue": 3800.00, "cost": 2280.00},
+      {"month": "2024-02", "region": "South", "product": "Widget B", "units_sold": 110, "revenue": 4400.00, "cost": 2640.00},
+      {"month": "2024-03", "region": "North", "product": "Widget A", "units_sold": 200, "revenue": 6000.00, "cost": 3000.00},
+      {"month": "2024-03", "region": "South", "product": "Widget A", "units_sold": 220, "revenue": 6600.00, "cost": 3300.00},
+      {"month": "2024-03", "region": "North", "product": "Widget B", "units_sold": 100, "revenue": 4000.00, "cost": 2400.00},
+      {"month": "2024-03", "region": "South", "product": "Widget B", "units_sold": 130, "revenue": 5200.00, "cost": 3120.00}
+    ]
+  },
+  "inventory": {
+    "description": "Current inventory levels by warehouse",
+    "columns": ["product", "warehouse", "quantity", "reorder_level", "unit_price", "last_updated"],
+    "rows": [
+      {"product": "Widget A", "warehouse": "WH-North", "quantity": 500, "reorder_level": 100, "unit_price": 30.00, "last_updated": "2024-03-15"},
+      {"product": "Widget A", "warehouse": "WH-South", "quantity": 350, "reorder_level": 100, "unit_price": 30.00, "last_updated": "2024-03-15"},
+      {"product": "Widget B", "warehouse": "WH-North", "quantity": 200, "reorder_level": 50, "unit_price": 40.00, "last_updated": "2024-03-14"},
+      {"product": "Widget B", "warehouse": "WH-South", "quantity": 180, "reorder_level": 50, "unit_price": 40.00, "last_updated": "2024-03-14"},
+      {"product": "Widget C", "warehouse": "WH-North", "quantity": 75, "reorder_level": 25, "unit_price": 55.00, "last_updated": "2024-03-13"},
+      {"product": "Widget C", "warehouse": "WH-South", "quantity": 60, "reorder_level": 25, "unit_price": 55.00, "last_updated": "2024-03-13"}
+    ]
+  }
+}

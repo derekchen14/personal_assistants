@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "platform_status",
+  "description": "Check publication status of a post on a specific platform",
+  "type": "object",
+  "properties": {
+    "post_id": {
+      "type": "string",
+      "description": "Post ID or platform-specific identifier to check"
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["substack", "twitter", "linkedin", "mt1t"],
+      "description": "Platform to check status on"
+    }
+  },
+  "required": ["post_id", "platform"],
+  "additionalProperties": false
+}

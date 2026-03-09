@@ -68,7 +68,7 @@ def _validate(config: dict) -> None:
         raise ValueError('models.default is required')
 
 
-def load_config() -> MappingProxyType:
+def load_config(overrides: dict | None = None) -> MappingProxyType:
     """Load, merge, validate, and freeze the config.
 
     Returns a deeply-frozen MappingProxyType. Raises ValueError if
@@ -77,5 +77,7 @@ def load_config() -> MappingProxyType:
     shared = _load_yaml(_SHARED)
     domain = _load_yaml(_DOMAIN)
     merged = _merge_configs(shared, domain)
+    if overrides:
+        merged.update(overrides)
     _validate(merged)
     return _deep_freeze(merged)

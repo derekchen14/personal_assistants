@@ -1,5 +1,5 @@
 CONTEMPLATE_INSTRUCTIONS = (
-    'The initial flow prediction failed or had low confidence. '
+    'The initial flow detection failed or had low confidence. '
     'Re-evaluate the user utterance with the additional context below.\n\n'
     'Consider:\n'
     '1. The failed flow and why it may have been wrong\n'
@@ -57,7 +57,7 @@ _Output_
 ---
 Failed flow: status (empty result)
 User: "what have we done so far?"
-Candidates: summarize, status, review_lessons
+Candidates: summarize, status, lessons
 _Output_
 ```json
 {{"thought": "Status returned empty — try summarize for a broader progress overview.", "flow_name": "summarize", "confidence": 0.80}}
@@ -82,13 +82,13 @@ _Output_
 ---
 Failed flow: generate (prerequisites not met)
 User: "export everything"
-Candidates: confirm_export, generate, preview
+Candidates: confirm, generate, preview
 _Output_
 ```json
 {{"thought": "Generate failed on prerequisites. Route to preview so user can see what's ready.", "flow_name": "preview", "confidence": 0.75}}
 ```
 ---
-Failed flow: next_step
+Failed flow: next
 User: "hmm"
 History: Agent just gave a next step suggestion
 Candidates: chat, feedback, endorse
@@ -133,10 +133,10 @@ _Output_
 ---
 Failed flow: feedback
 User: "I think the flow catalog needs more Explore flows"
-Candidates: expand, suggest_flow, feedback
+Candidates: expand, suggest, feedback
 _Output_
 ```json
-{{"thought": "User is suggesting design expansion, not just giving feedback.", "flow_name": "suggest_flow", "confidence": 0.80}}
+{{"thought": "User is suggesting design expansion, not just giving feedback.", "flow_name": "suggest", "confidence": 0.80}}
 ```
 ---
 Failed flow: decline (no active proposal)

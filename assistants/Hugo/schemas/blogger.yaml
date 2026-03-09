@@ -17,8 +17,15 @@ models:
       temperature: 0.5
     nlu:
       model_id: claude-sonnet-4-5-20250929
-    nlu_vote:
+    nlu_vote_haiku:
+      provider: anthropic
       model_id: claude-haiku-4-5-20251001
+    nlu_vote_sonnet:
+      provider: anthropic
+      model_id: claude-sonnet-4-5-20250929
+    nlu_vote_gemini:
+      provider: google
+      model_id: gemini-2.0-flash
 
 persona:
   tone: conversational
@@ -47,7 +54,7 @@ guardrails:
     enabled: true
     sensitivity: medium
 
-key_entities: [post, section, draft]
+key_entities: [post, section, note, platform]
 
 display:
   types: [Default, Dynamic]
@@ -62,8 +69,8 @@ tools:
     input_schema: schemas/post_search.json
     idempotent: true
     timeout_ms: 5000
-    accesses_private_data: false
-    receives_untrusted_input: false
+    accesses_private_data: true
+    receives_untrusted_input: true
     communicates_externally: false
     requires_approval: false
     cache_ttl_ms: 30000
@@ -75,7 +82,7 @@ tools:
     input_schema: schemas/post_get.json
     idempotent: true
     timeout_ms: 5000
-    accesses_private_data: false
+    accesses_private_data: true
     receives_untrusted_input: false
     communicates_externally: false
     requires_approval: false
@@ -89,7 +96,7 @@ tools:
     idempotent: false
     timeout_ms: 5000
     accesses_private_data: false
-    receives_untrusted_input: false
+    receives_untrusted_input: true
     communicates_externally: false
     requires_approval: false
 
@@ -100,7 +107,19 @@ tools:
     input_schema: schemas/post_update.json
     idempotent: false
     timeout_ms: 5000
-    accesses_private_data: false
+    accesses_private_data: true
+    receives_untrusted_input: true
+    communicates_externally: false
+    requires_approval: false
+
+  post_delete:
+    tool_id: post_delete
+    name: "Delete post"
+    description: "Delete a post from the local database"
+    input_schema: schemas/post_delete.json
+    idempotent: false
+    timeout_ms: 5000
+    accesses_private_data: true
     receives_untrusted_input: false
     communicates_externally: false
     requires_approval: false
@@ -113,7 +132,7 @@ tools:
     idempotent: true
     timeout_ms: 30000
     accesses_private_data: false
-    receives_untrusted_input: false
+    receives_untrusted_input: true
     communicates_externally: false
     requires_approval: false
 
@@ -136,7 +155,7 @@ tools:
     input_schema: schemas/platform_publish.json
     idempotent: false
     timeout_ms: 15000
-    accesses_private_data: false
+    accesses_private_data: true
     receives_untrusted_input: false
     communicates_externally: true
     requires_approval: false
@@ -153,5 +172,17 @@ tools:
     communicates_externally: false
     requires_approval: false
     cache_ttl_ms: 300000
+
+  platform_status:
+    tool_id: platform_status
+    name: "Check platform status"
+    description: "Check publication status of a post on a specific platform"
+    input_schema: schemas/platform_status.json
+    idempotent: true
+    timeout_ms: 10000
+    accesses_private_data: true
+    receives_untrusted_input: false
+    communicates_externally: true
+    requires_approval: false
 
 # Template registry populated in Phase 7 (Prompt Writing)

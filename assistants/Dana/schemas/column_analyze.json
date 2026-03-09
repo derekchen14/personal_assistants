@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "dataset": {"type": "string", "description": "Dataset name"},
+    "column": {"type": "string", "description": "Column name to analyze"},
+    "metrics": {"type": "array", "items": {"type": "string"}, "description": "Metrics to compute: min, max, mean, median, std, nulls, unique"}
+  },
+  "required": ["dataset", "column"]
+}

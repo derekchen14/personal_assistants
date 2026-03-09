@@ -6,7 +6,7 @@ Plan to add a batch of new flows at once.
 
 - Analyze current flow catalog for coverage gaps
 - Propose a batch of new flows targeting the specified intent or count
-- Push edge flows (compose, suggest_flow) for the expansion process
+- Push edge flows (compose, suggest) for the expansion process
 
 ## Slots
 

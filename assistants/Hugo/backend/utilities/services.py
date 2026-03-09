@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import subprocess
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +30,35 @@ def _save_posts(posts: list[dict]):
     )
 
 
-class PostService:
+def _slugify(text: str) -> str:
+    slug = text.lower().strip()
+    slug = re.sub(r'[^\w\s-]', '', slug)
+    slug = re.sub(r'[\s_]+', '-', slug)
+    return re.sub(r'-+', '-', slug).strip('-')[:80]
+
+
+class ToolService:
+
+    def _success(self, result, **metadata):
+        envelope = {'status': 'success', 'result': result}
+        if metadata:
+            envelope['metadata'] = metadata
+        return envelope
+
+    def _error(self, category: str, message: str,
+               retryable: bool = False, **metadata):
+        envelope = {
+            'status': 'error',
+            'error_category': category,
+            'message': message,
+            'retryable': retryable,
+        }
+        if metadata:
+            envelope['metadata'] = metadata
+        return envelope
+
+
+class PostService(ToolService):
 
     def search(self, query: str = '', status: str | None = None,
                category: str | None = None, limit: int = 20) -> dict:
@@ -49,14 +80,14 @@ class PostService:
             })
             if len(results) >= limit:
                 break
-        return {'status': 'success', 'result': results, 'count': len(results)}
+        return self._success(results, count=len(results))
 
     def get(self, post_id: str) -> dict:
         posts = _load_posts()
         for p in posts:
             if p['post_id'] == post_id:
-                return {'status': 'success', 'result': p}
-        return {'status': 'error', 'message': f'Post not found: {post_id}'}
+                return self._success(p)
+        return self._error('not_found', f'Post not found: {post_id}')
 
     def create(self, title: str, topic: str | None = None,
                category: str | None = None) -> dict:
@@ -76,7 +107,7 @@ class PostService:
         }
         posts.append(post)
         _save_posts(posts)
-        return {'status': 'success', 'result': post}
+        return self._success(post)
 
     def update(self, post_id: str, updates: dict) -> dict:
         posts = _load_posts()
@@ -87,39 +118,45 @@ class PostService:
                         p[k] = v
                 p['updated_at'] = _now()
                 _save_posts(posts)
-                return {'status': 'success', 'result': p}
-        return {'status': 'error', 'message': f'Post not found: {post_id}'}
+                return self._success(p)
+        return self._error('not_found', f'Post not found: {post_id}')
+
+    def delete(self, post_id: str) -> dict:
+        posts = _load_posts()
+        for i, p in enumerate(posts):
+            if p['post_id'] == post_id:
+                removed = posts.pop(i)
+                _save_posts(posts)
+                return self._success(
+                    {'post_id': post_id, 'title': removed.get('title', '')},
+                    action='deleted',
+                )
+        return self._error('not_found', f'Post not found: {post_id}')
 
 
-class ContentService:
+class ContentService(ToolService):
 
     def generate(self, content_type: str, topic: str | None = None,
                  source_text: str | None = None,
                  instructions: str | None = None) -> dict:
-        return {
-            'status': 'success',
-            'result': {
-                'content_type': content_type,
-                'topic': topic,
-                'instructions': instructions,
-                'generated': True,
-                'note': 'Content generation delegated to LLM via skill prompt',
-            },
-        }
+        return self._success({
+            'content_type': content_type,
+            'topic': topic,
+            'instructions': instructions,
+            'generated': True,
+            'note': 'Content generation delegated to LLM via skill prompt',
+        })
 
     def format(self, content: str, platform: str,
                format_type: str = 'blog') -> dict:
-        return {
-            'status': 'success',
-            'result': {
-                'formatted_content': content,
-                'platform': platform,
-                'format_type': format_type,
-            },
-        }
+        return self._success({
+            'formatted_content': content,
+            'platform': platform,
+            'format_type': format_type,
+        })
 
 
-class PlatformService:
+class PlatformService(ToolService):
 
     def __init__(self):
         self._publishers: dict[str, PlatformPublisher] = {
@@ -139,23 +176,23 @@ class PlatformService:
                 'type': pub.platform_type,
                 'max_length': pub.max_length,
             })
-        return {'status': 'success', 'result': result}
+        return self._success(result)
 
     def publish(self, post_id: str, platform: str,
                 action: str = 'publish', scheduled_at: str | None = None) -> dict:
         pub = self._publishers.get(platform)
         if not pub:
             available = ', '.join(self._publishers.keys())
-            return {
-                'status': 'error',
-                'message': f'Unknown platform: {platform}. Available: {available}',
-            }
+            return self._error(
+                'invalid_input',
+                f'Unknown platform: {platform}. Available: {available}',
+            )
         if not pub.is_connected():
-            return {
-                'status': 'error',
-                'message': f'{pub.display_name} is not connected. '
-                           f'Set {pub.required_env_vars()} in .keys or .env.',
-            }
+            return self._error(
+                'auth_error',
+                f'{pub.display_name} is not connected. '
+                f'Set {pub.required_env_vars()} in .keys or .env.',
+            )
 
         post_svc = PostService()
         post_result = post_svc.get(post_id)
@@ -169,16 +206,32 @@ class PlatformService:
             return pub.schedule(post, scheduled_at or '')
         elif action == 'unpublish':
             return pub.unpublish(post)
-        return {'status': 'error', 'message': f'Unknown action: {action}'}
+        return self._error('invalid_input', f'Unknown action: {action}')
+
+    def get_status(self, post_id: str, platform: str) -> dict:
+        pub = self._publishers.get(platform)
+        if not pub:
+            available = ', '.join(self._publishers.keys())
+            return self._error(
+                'invalid_input',
+                f'Unknown platform: {platform}. Available: {available}',
+            )
+        if not pub.is_connected():
+            return self._error(
+                'auth_error',
+                f'{pub.display_name} is not connected. '
+                f'Set {pub.required_env_vars()} in .keys or .env.',
+            )
+        return pub.get_status(post_id)
 
     def format_for_platform(self, content: str, platform: str) -> dict:
         pub = self._publishers.get(platform)
         if not pub:
-            return {'status': 'error', 'message': f'Unknown platform: {platform}'}
+            return self._error('invalid_input', f'Unknown platform: {platform}')
         return pub.format_content(content)
 
 
-class PlatformPublisher:
+class PlatformPublisher(ToolService):
 
     display_name: str = ''
     platform_type: str = ''
@@ -191,17 +244,22 @@ class PlatformPublisher:
         return []
 
     def publish(self, post: dict) -> dict:
-        return {'status': 'error', 'message': 'Not implemented'}
+        return self._error('server_error', 'Not implemented')
 
     def schedule(self, post: dict, scheduled_at: str) -> dict:
-        return {'status': 'error', 'message': 'Scheduling not supported on this platform'}
+        return self._error('platform_error', 'Scheduling not supported on this platform')
 
     def unpublish(self, post: dict) -> dict:
-        return {'status': 'error', 'message': 'Unpublish not supported on this platform'}
+        return self._error('platform_error', 'Unpublish not supported on this platform')
+
+    def get_status(self, post_id: str) -> dict:
+        return self._error('platform_error', 'Status check not supported on this platform')
 
     def format_content(self, content: str) -> dict:
-        return {'status': 'success', 'result': {'formatted': content}}
+        return self._success({'formatted': content})
 
+
+# ── Substack (smart stub) ────────────────────────────────────────────
 
 class SubstackPublisher(PlatformPublisher):
 
@@ -210,53 +268,109 @@ class SubstackPublisher(PlatformPublisher):
     max_length = None
 
     def is_connected(self) -> bool:
-        return bool(os.getenv('SUBSTACK_API_KEY'))
+        return True
 
     def required_env_vars(self) -> list[str]:
-        return ['SUBSTACK_API_KEY', 'SUBSTACK_PUBLICATION_ID']
+        return []
 
     def publish(self, post: dict) -> dict:
-        # TODO: Implement Substack API integration
-        # POST https://substack.com/api/v1/drafts
-        # Headers: Authorization: Bearer {SUBSTACK_API_KEY}
-        # Body: { title, body_html, publication_id, type: "newsletter" }
+        html = self._markdown_to_html(post.get('content', ''))
+        title = post.get('title', 'Untitled')
+        full_html = f'<h1>{title}</h1>\n{html}'
+
+        tmp = Path(tempfile.gettempdir()) / f'substack_{post["post_id"]}.html'
+        tmp.write_text(full_html, encoding='utf-8')
+
         return {
-            'status': 'stub',
-            'message': 'Substack publishing not yet wired. Post ready for manual upload.',
+            'status': 'manual_required',
+            'message': (
+                'Substack has no public API. Content has been formatted as '
+                'Substack-ready HTML. Copy-paste from the file below into '
+                'the Substack editor.'
+            ),
             'result': {
                 'post_id': post['post_id'],
                 'platform': 'substack',
-                'title': post.get('title', ''),
-                'content_length': len(post.get('content', '')),
+                'title': title,
+                'file_path': str(tmp),
+                'content_length': len(full_html),
                 'action': 'publish',
             },
         }
 
     def schedule(self, post: dict, scheduled_at: str) -> dict:
-        # TODO: Substack supports scheduling via draft_created_at
-        return {
-            'status': 'stub',
-            'message': f'Substack scheduling not yet wired. Target: {scheduled_at}',
-            'result': {
-                'post_id': post['post_id'],
-                'platform': 'substack',
-                'scheduled_at': scheduled_at,
-                'action': 'schedule',
-            },
-        }
+        result = self.publish(post)
+        if result.get('result'):
+            result['result']['scheduled_at'] = scheduled_at
+            result['result']['action'] = 'schedule'
+            result['message'] += f' Target publish date: {scheduled_at}'
+        return result
+
+    def get_status(self, post_id: str) -> dict:
+        return self._error(
+            'platform_error',
+            'Substack has no public API — cannot check publication status.',
+        )
 
     def format_content(self, content: str) -> dict:
-        # Substack accepts HTML. Convert markdown to HTML here.
-        return {
-            'status': 'success',
-            'result': {
-                'formatted': content,
-                'format': 'html',
-                'platform': 'substack',
-                'note': 'Substack accepts HTML body content',
-            },
-        }
+        html = self._markdown_to_html(content)
+        return self._success({
+            'formatted': html,
+            'format': 'html',
+            'platform': 'substack',
+        })
 
+    def _markdown_to_html(self, md: str) -> str:
+        lines = md.split('\n')
+        html_lines = []
+        in_code_block = False
+        in_list = False
+
+        for line in lines:
+            if line.startswith('```'):
+                if in_code_block:
+                    html_lines.append('</code></pre>')
+                    in_code_block = False
+                else:
+                    lang = line[3:].strip()
+                    cls = f' class="language-{lang}"' if lang else ''
+                    html_lines.append(f'<pre><code{cls}>')
+                    in_code_block = True
+                continue
+
+            if in_code_block:
+                html_lines.append(line)
+                continue
+
+            if line.startswith('# '):
+                html_lines.append(f'<h2>{line[2:]}</h2>')
+            elif line.startswith('## '):
+                html_lines.append(f'<h3>{line[3:]}</h3>')
+            elif line.startswith('### '):
+                html_lines.append(f'<h4>{line[4:]}</h4>')
+            elif line.startswith('- ') or line.startswith('* '):
+                if not in_list:
+                    html_lines.append('<ul>')
+                    in_list = True
+                html_lines.append(f'<li>{line[2:]}</li>')
+            else:
+                if in_list:
+                    html_lines.append('</ul>')
+                    in_list = False
+                if line.strip():
+                    formatted = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', line)
+                    formatted = re.sub(r'\*(.+?)\*', r'<em>\1</em>', formatted)
+                    formatted = re.sub(r'`(.+?)`', r'<code>\1</code>', formatted)
+                    html_lines.append(f'<p>{formatted}</p>')
+
+        if in_list:
+            html_lines.append('</ul>')
+        if in_code_block:
+            html_lines.append('</code></pre>')
+        return '\n'.join(html_lines)
+
+
+# ── Twitter/X ─────────────────────────────────────────────────────────
 
 class TwitterPublisher(PlatformPublisher):
 
@@ -279,48 +393,98 @@ class TwitterPublisher(PlatformPublisher):
         ]
 
     def publish(self, post: dict) -> dict:
-        # TODO: Implement Twitter API v2 integration
-        # POST https://api.twitter.com/2/tweets
-        # OAuth 1.0a signing with consumer + access tokens
-        # Body: { text: "..." }
-        # For threads: chain tweets with reply_to_tweet_id
-        return {
-            'status': 'stub',
-            'message': 'Twitter publishing not yet wired. Post ready for manual posting.',
-            'result': {
+        try:
+            import tweepy
+        except ImportError:
+            return self._error(
+                'server_error',
+                'tweepy is not installed. Run: pip install tweepy',
+            )
+
+        client = tweepy.Client(
+            consumer_key=os.getenv('TWITTER_API_KEY'),
+            consumer_secret=os.getenv('TWITTER_API_SECRET'),
+            access_token=os.getenv('TWITTER_ACCESS_TOKEN'),
+            access_token_secret=os.getenv('TWITTER_ACCESS_SECRET'),
+        )
+
+        content = post.get('content', '') or post.get('title', '')
+        tweets = self._split_into_tweets(content)
+        posted_ids = []
+
+        try:
+            reply_to = None
+            for i, text in enumerate(tweets):
+                resp = client.create_tweet(
+                    text=text,
+                    in_reply_to_tweet_id=reply_to,
+                )
+                tweet_id = resp.data['id']
+                posted_ids.append(tweet_id)
+                reply_to = tweet_id
+
+            return self._success({
                 'post_id': post['post_id'],
                 'platform': 'twitter',
-                'title': post.get('title', ''),
-                'thread_count': self._estimate_thread_count(post),
+                'tweet_ids': posted_ids,
+                'tweet_count': len(posted_ids),
+                'thread': len(posted_ids) > 1,
                 'action': 'publish',
-            },
-        }
+            })
+        except tweepy.TweepyException as e:
+            return self._error(
+                'platform_error', f'Twitter API error: {e}',
+                retryable='rate' in str(e).lower(),
+            )
 
     def schedule(self, post: dict, scheduled_at: str) -> dict:
-        # TODO: Twitter supports scheduled tweets via scheduled_at parameter
-        return {
-            'status': 'stub',
-            'message': f'Twitter scheduling not yet wired. Target: {scheduled_at}',
-            'result': {
-                'post_id': post['post_id'],
-                'platform': 'twitter',
-                'scheduled_at': scheduled_at,
-                'action': 'schedule',
-            },
-        }
+        return self._error(
+            'platform_error',
+            'Twitter free/basic API does not support native scheduling.',
+        )
+
+    def get_status(self, post_id: str) -> dict:
+        try:
+            import tweepy
+        except ImportError:
+            return self._error('server_error', 'tweepy is not installed.')
+
+        client = tweepy.Client(
+            consumer_key=os.getenv('TWITTER_API_KEY'),
+            consumer_secret=os.getenv('TWITTER_API_SECRET'),
+            access_token=os.getenv('TWITTER_ACCESS_TOKEN'),
+            access_token_secret=os.getenv('TWITTER_ACCESS_SECRET'),
+        )
+
+        try:
+            resp = client.get_tweet(
+                post_id, tweet_fields=['created_at', 'public_metrics'],
+            )
+            if resp.data:
+                return self._success({
+                    'platform': 'twitter',
+                    'tweet_id': post_id,
+                    'text': resp.data.text,
+                    'created_at': str(resp.data.created_at),
+                    'metrics': resp.data.public_metrics,
+                    'live': True,
+                    'url': f'https://x.com/i/status/{post_id}',
+                })
+            return self._error('not_found', f'Tweet not found: {post_id}')
+        except tweepy.TweepyException as e:
+            return self._error(
+                'platform_error', f'Twitter API error: {e}',
+                retryable='rate' in str(e).lower(),
+            )
 
     def format_content(self, content: str) -> dict:
         tweets = self._split_into_tweets(content)
-        return {
-            'status': 'success',
-            'result': {
-                'formatted': tweets,
-                'format': 'thread',
-                'platform': 'twitter',
-                'tweet_count': len(tweets),
-                'note': f'Split into {len(tweets)}-tweet thread',
-            },
-        }
+        return self._success({
+            'formatted': tweets,
+            'format': 'thread',
+            'platform': 'twitter',
+            'tweet_count': len(tweets),
+        })
 
     def _split_into_tweets(self, content: str) -> list[str]:
         words = content.split()
@@ -343,11 +507,14 @@ class TwitterPublisher(PlatformPublisher):
         return max(1, len(content) // self.max_length + 1)
 
 
+# ── LinkedIn ──────────────────────────────────────────────────────────
+
 class LinkedInPublisher(PlatformPublisher):
 
     display_name = 'LinkedIn'
     platform_type = 'social'
     max_length = 3000
+    _API_BASE = 'https://api.linkedin.com/v2'
 
     def is_connected(self) -> bool:
         return bool(os.getenv('LINKEDIN_ACCESS_TOKEN'))
@@ -355,36 +522,139 @@ class LinkedInPublisher(PlatformPublisher):
     def required_env_vars(self) -> list[str]:
         return ['LINKEDIN_ACCESS_TOKEN', 'LINKEDIN_PERSON_URN']
 
-    def publish(self, post: dict) -> dict:
-        # TODO: Implement LinkedIn API integration
-        # POST https://api.linkedin.com/v2/posts
-        # Headers: Authorization: Bearer {LINKEDIN_ACCESS_TOKEN}
-        # Body: { author, commentary, visibility, distribution, lifecycleState }
-        return {
-            'status': 'stub',
-            'message': 'LinkedIn publishing not yet wired. Post ready for manual posting.',
-            'result': {
-                'post_id': post['post_id'],
-                'platform': 'linkedin',
-                'title': post.get('title', ''),
-                'content_length': len(post.get('content', '')),
-                'action': 'publish',
+    def _client(self):
+        import httpx
+        return httpx.Client(
+            base_url=self._API_BASE,
+            headers={
+                'Authorization': f'Bearer {os.getenv("LINKEDIN_ACCESS_TOKEN")}',
+                'Content-Type': 'application/json',
+                'X-Restli-Protocol-Version': '2.0.0',
             },
+            timeout=15.0,
+        )
+
+    def publish(self, post: dict) -> dict:
+        try:
+            import httpx
+        except ImportError:
+            return self._error('server_error', 'httpx is not installed. Run: pip install httpx')
+
+        person_urn = os.getenv('LINKEDIN_PERSON_URN', '')
+        content = post.get('content', '') or post.get('title', '')
+        formatted = self._format_for_linkedin(content, post.get('metadata', {}))
+
+        body = {
+            'author': person_urn,
+            'commentary': formatted,
+            'visibility': 'PUBLIC',
+            'distribution': {
+                'feedDistribution': 'MAIN_FEED',
+                'targetEntities': [],
+                'thirdPartyDistributionChannels': [],
+            },
+            'lifecycleState': 'PUBLISHED',
         }
+
+        try:
+            with self._client() as client:
+                resp = client.post('/posts', json=body)
+                if resp.status_code == 201:
+                    post_urn = resp.headers.get('x-restli-id', '')
+                    return self._success({
+                        'post_id': post['post_id'],
+                        'platform': 'linkedin',
+                        'post_urn': post_urn,
+                        'content_length': len(formatted),
+                        'action': 'publish',
+                    })
+                elif resp.status_code == 401:
+                    return self._error(
+                        'auth_error',
+                        'LinkedIn access token expired or invalid. Refresh the token.',
+                        retryable=True,
+                    )
+                elif resp.status_code == 429:
+                    return self._error(
+                        'rate_limit',
+                        'LinkedIn rate limit exceeded. Try again later.',
+                        retryable=True,
+                    )
+                else:
+                    return self._error(
+                        'platform_error',
+                        f'LinkedIn API error {resp.status_code}: {resp.text}',
+                        retryable=resp.status_code >= 500,
+                    )
+        except httpx.HTTPError as e:
+            return self._error(
+                'server_error', f'LinkedIn request failed: {e}', retryable=True,
+            )
+
+    def schedule(self, post: dict, scheduled_at: str) -> dict:
+        return self._error(
+            'platform_error',
+            'LinkedIn API does not support native scheduling. '
+            'Use the schedule flow to set a reminder instead.',
+        )
+
+    def get_status(self, post_id: str) -> dict:
+        try:
+            import httpx
+        except ImportError:
+            return self._error('server_error', 'httpx is not installed.')
+
+        try:
+            with self._client() as client:
+                resp = client.get(f'/posts/{post_id}')
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return self._success({
+                        'platform': 'linkedin',
+                        'post_urn': post_id,
+                        'lifecycle_state': data.get('lifecycleState', 'unknown'),
+                        'live': data.get('lifecycleState') == 'PUBLISHED',
+                        'created_at': data.get('createdAt'),
+                    })
+                elif resp.status_code == 404:
+                    return self._error('not_found', f'LinkedIn post not found: {post_id}')
+                else:
+                    return self._error(
+                        'platform_error',
+                        f'LinkedIn API error {resp.status_code}: {resp.text}',
+                        retryable=resp.status_code >= 500,
+                    )
+        except httpx.HTTPError as e:
+            return self._error('server_error', f'LinkedIn request failed: {e}', retryable=True)
 
     def format_content(self, content: str) -> dict:
-        truncated = content[:self.max_length] if len(content) > self.max_length else content
-        return {
-            'status': 'success',
-            'result': {
-                'formatted': truncated,
-                'format': 'text',
-                'platform': 'linkedin',
-                'truncated': len(content) > self.max_length,
-                'note': 'LinkedIn posts support plain text with basic formatting',
-            },
-        }
+        formatted = self._format_for_linkedin(content, {})
+        return self._success({
+            'formatted': formatted,
+            'format': 'text',
+            'platform': 'linkedin',
+            'truncated': len(content) > self.max_length,
+        })
 
+    def _format_for_linkedin(self, content: str, metadata: dict) -> str:
+        text = re.sub(r'#{1,6}\s+', '', content)
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+        text = re.sub(r'\*(.+?)\*', r'\1', text)
+        text = re.sub(r'`(.+?)`', r'\1', text)
+        text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
+        text = re.sub(r'\[(.+?)\]\((.+?)\)', r'\1 (\2)', text)
+
+        tags = metadata.get('tags', [])
+        if tags:
+            hashtags = ' '.join(f'#{t.replace(" ", "")}' for t in tags)
+            text = f'{text}\n\n{hashtags}'
+
+        if len(text) > self.max_length:
+            text = text[:self.max_length - 3] + '...'
+        return text
+
+
+# ── MT1T (Jekyll + GitHub Pages) ──────────────────────────────────────
 
 class MT1TPublisher(PlatformPublisher):
 
@@ -393,50 +663,189 @@ class MT1TPublisher(PlatformPublisher):
     max_length = None
 
     def is_connected(self) -> bool:
-        return bool(os.getenv('MT1T_API_KEY'))
+        repo = os.getenv('MT1T_REPO_PATH', '')
+        return bool(repo) and Path(repo).is_dir()
 
     def required_env_vars(self) -> list[str]:
-        return ['MT1T_API_KEY', 'MT1T_BASE_URL']
+        return ['MT1T_REPO_PATH']
+
+    def _repo_path(self) -> Path:
+        return Path(os.getenv('MT1T_REPO_PATH', ''))
+
+    def _posts_dir(self) -> Path:
+        return self._repo_path() / '_posts'
+
+    def _drafts_dir(self) -> Path:
+        return self._repo_path() / '_drafts'
+
+    def _build_filename(self, post: dict) -> str:
+        date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        slug = _slugify(post.get('title', 'untitled'))
+        return f'{date}-{slug}.md'
+
+    def _build_frontmatter(self, post: dict) -> str:
+        title = post.get('title', 'Untitled')
+        now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        meta = post.get('metadata', {})
+        tags = meta.get('tags', [])
+        color = meta.get('color', 'rgb(214, 93, 14)')
+
+        tag_str = ', '.join(tags) if tags else ''
+        return (
+            '---\n'
+            'layout: post\n'
+            f'title: "{title}"\n'
+            f"date: '{now}'\n"
+            f'tags: [{tag_str}]\n'
+            f'color: {color}\n'
+            'excerpt_separator: <!--more-->\n'
+            '---\n'
+        )
+
+    def _git(self, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ['git', *args],
+            cwd=self._repo_path(),
+            capture_output=True, text=True, timeout=30,
+        )
 
     def publish(self, post: dict) -> dict:
-        # TODO: Implement MT1T blog API integration
-        # The endpoint and auth method depend on the blog's CMS
-        # (Ghost, WordPress, custom, etc.)
-        # POST {MT1T_BASE_URL}/api/posts
-        # Headers: Authorization: Bearer {MT1T_API_KEY}
-        # Body: { title, html, status: "published", tags, ... }
-        return {
-            'status': 'stub',
-            'message': 'MT1T publishing not yet wired. Post ready for manual upload.',
-            'result': {
-                'post_id': post['post_id'],
-                'platform': 'mt1t',
-                'title': post.get('title', ''),
-                'content_length': len(post.get('content', '')),
-                'action': 'publish',
-            },
-        }
+        posts_dir = self._posts_dir()
+        if not posts_dir.exists():
+            return self._error(
+                'server_error',
+                f'_posts directory not found at {posts_dir}',
+            )
+
+        filename = self._build_filename(post)
+        filepath = posts_dir / filename
+        content = self._build_frontmatter(post) + '\n' + post.get('content', '')
+        filepath.write_text(content, encoding='utf-8')
+
+        result = self._git('add', str(filepath))
+        if result.returncode != 0:
+            return self._error('server_error', f'git add failed: {result.stderr}')
+
+        title = post.get('title', 'Untitled')
+        result = self._git('commit', '-m', f'Publish: {title}')
+        if result.returncode != 0:
+            return self._error('server_error', f'git commit failed: {result.stderr}')
+
+        result = self._git('push')
+        if result.returncode != 0:
+            return self._error(
+                'server_error', f'git push failed: {result.stderr}', retryable=True,
+            )
+
+        return self._success({
+            'post_id': post['post_id'],
+            'platform': 'mt1t',
+            'filename': filename,
+            'file_path': str(filepath),
+            'action': 'publish',
+        })
 
     def schedule(self, post: dict, scheduled_at: str) -> dict:
-        # TODO: Most blog CMS platforms support scheduling via published_at
-        return {
-            'status': 'stub',
-            'message': f'MT1T scheduling not yet wired. Target: {scheduled_at}',
-            'result': {
-                'post_id': post['post_id'],
+        drafts_dir = self._drafts_dir()
+        drafts_dir.mkdir(parents=True, exist_ok=True)
+
+        filename = self._build_filename(post)
+        filepath = drafts_dir / filename
+
+        meta = dict(post.get('metadata', {}))
+        meta['publish_date'] = scheduled_at
+        post_copy = {**post, 'metadata': meta}
+
+        content = self._build_frontmatter(post_copy) + '\n' + post.get('content', '')
+        filepath.write_text(content, encoding='utf-8')
+
+        return self._success({
+            'post_id': post['post_id'],
+            'platform': 'mt1t',
+            'filename': filename,
+            'file_path': str(filepath),
+            'scheduled_at': scheduled_at,
+            'action': 'schedule',
+            'note': 'Written to _drafts/. Move to _posts/ on publish date.',
+        })
+
+    def unpublish(self, post: dict) -> dict:
+        posts_dir = self._posts_dir()
+        slug = _slugify(post.get('title', ''))
+        matches = list(posts_dir.glob(f'*-{slug}.md'))
+
+        if not matches:
+            return self._error(
+                'not_found',
+                f'No published post matching "{post.get("title", "")}" found in _posts/',
+            )
+
+        filepath = matches[0]
+        result = self._git('rm', str(filepath))
+        if result.returncode != 0:
+            return self._error('server_error', f'git rm failed: {result.stderr}')
+
+        title = post.get('title', 'Untitled')
+        result = self._git('commit', '-m', f'Unpublish: {title}')
+        if result.returncode != 0:
+            return self._error('server_error', f'git commit failed: {result.stderr}')
+
+        result = self._git('push')
+        if result.returncode != 0:
+            return self._error(
+                'server_error', f'git push failed: {result.stderr}', retryable=True,
+            )
+
+        return self._success({
+            'post_id': post['post_id'],
+            'platform': 'mt1t',
+            'filename': filepath.name,
+            'action': 'unpublish',
+        })
+
+    def get_status(self, post_id: str) -> dict:
+        post_svc = PostService()
+        post_result = post_svc.get(post_id)
+        if post_result['status'] != 'success':
+            return post_result
+        post = post_result['result']
+
+        slug = _slugify(post.get('title', ''))
+        posts_dir = self._posts_dir()
+        matches = list(posts_dir.glob(f'*-{slug}.md'))
+
+        if matches:
+            filepath = matches[0]
+            return self._success({
                 'platform': 'mt1t',
-                'scheduled_at': scheduled_at,
-                'action': 'schedule',
-            },
-        }
+                'post_id': post_id,
+                'filename': filepath.name,
+                'file_path': str(filepath),
+                'live': True,
+            })
+
+        drafts_dir = self._drafts_dir()
+        draft_matches = list(drafts_dir.glob(f'*-{slug}.md'))
+        if draft_matches:
+            return self._success({
+                'platform': 'mt1t',
+                'post_id': post_id,
+                'filename': draft_matches[0].name,
+                'file_path': str(draft_matches[0]),
+                'live': False,
+                'status': 'draft',
+            })
+
+        return self._success({
+            'platform': 'mt1t',
+            'post_id': post_id,
+            'live': False,
+            'status': 'not_published',
+        })
 
     def format_content(self, content: str) -> dict:
-        return {
-            'status': 'success',
-            'result': {
-                'formatted': content,
-                'format': 'markdown',
-                'platform': 'mt1t',
-                'note': 'MT1T accepts markdown or HTML',
-            },
-        }
+        return self._success({
+            'formatted': content,
+            'format': 'markdown',
+            'platform': 'mt1t',
+        })

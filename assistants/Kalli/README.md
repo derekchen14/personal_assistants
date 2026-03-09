@@ -12,7 +12,7 @@ Kalli follows the POMDP-based agent architecture defined in `_specs/`. Every use
 User message → NLU → PEX → RES → Response
 ```
 
-- **NLU** (Natural Language Understanding) — Two-step classification: predicts intent (Sonnet), then predicts flow with majority vote (Sonnet + Haiku in parallel). Unanimous agreement boosts confidence +0.15.
+- **NLU** (Natural Language Understanding) — Two-step classification: classifies intent (Sonnet), then detects flow with majority vote (Sonnet + Haiku in parallel). Unanimous agreement boosts confidence +0.15.
 - **PEX** (Policy Execution) — Routes to the correct policy file, loads skill templates, invokes tools via agentic loop (Opus).
 - **RES** (Response Synthesis) — Template fill → naturalization → display frame assembly.
 

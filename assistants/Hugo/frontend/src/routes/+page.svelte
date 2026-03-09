@@ -1,7 +1,7 @@
 <script lang="ts">
     import { conversation, type Message } from '$lib/stores/conversation';
-    import { setFrame, topFrame, bottomFrame, displayLayout } from '$lib/stores/display';
-    import { layoutMode, type LayoutMode } from '$lib/stores/ui';
+    import { setFrame, clearFrames, topFrame, bottomFrame, displayLayout } from '$lib/stores/display';
+    import FlowMenu from '$lib/components/FlowMenu.svelte';
     import BlockRenderer from '$lib/components/blocks/BlockRenderer.svelte';
     import { tick } from 'svelte';
 
@@ -36,6 +36,15 @@
         }
     }
 
+    function onFlowSelect(dax: string) {
+        messageInput = `/${dax} ${messageInput}`;
+    }
+
+    function onReset() {
+        conversation.reset();
+        clearFrames();
+    }
+
     $effect(() => {
         const msgs = $conversation.messages;
         const last = msgs[msgs.length - 1];
@@ -53,13 +62,6 @@
             }
         });
     });
-
-    function cycleLayout() {
-        layoutMode.update((m) => {
-            const modes: LayoutMode[] = ['split', 'top', 'bottom'];
-            return modes[(modes.indexOf(m) + 1) % modes.length];
-        });
-    }
 </script>
 
 {#if !$conversation.connected}
@@ -89,90 +91,84 @@
     <!-- Chat interface -->
     <div class="flex-1 flex gap-3 overflow-hidden">
         <!-- Dialogue panel -->
-        {#if $layoutMode !== 'bottom'}
-            <div class="flex flex-col {$layoutMode === 'top' ? 'flex-1' : 'w-1/3'}">
-                <!-- Header -->
-                <div class="h-12 flex items-center justify-between px-4 border-b border-[var(--color-border)] border-t-2 border-t-[var(--color-accent)]">
-                    <span class="text-sm font-medium">Hugo</span>
-                    <button onclick={cycleLayout} class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-                        {$layoutMode}
+        <div class="flex flex-col w-1/3">
+            <!-- Header -->
+            <div class="h-12 flex items-center justify-between px-4 border-b border-[var(--color-border)] border-t-2 border-t-[var(--color-secondary)]">
+                <span class="text-lg font-medium text-[var(--color-secondary)]" style="font-family: var(--font-display)">Hugo</span>
+                <FlowMenu onselect={onFlowSelect} onreset={onReset} />
+            </div>
+
+            <!-- Messages -->
+            <div bind:this={chatContainer} class="flex-1 overflow-y-auto p-4 space-y-3">
+                {#each $conversation.messages as msg (msg.id)}
+                    <div class="flex" class:justify-end={msg.role === 'user'}>
+                        <div
+                            class="max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap {msg.role === 'user' ? 'bg-[var(--color-user-bubble)]' : 'bg-[var(--color-agent-bubble)] border border-[var(--color-border)]'}"
+                        >
+                            {msg.text}
+                        </div>
+                    </div>
+                {/each}
+                {#if $conversation.typing}
+                    <div class="flex">
+                        <div class="px-4 py-2.5 rounded-2xl bg-[var(--color-agent-bubble)] border border-[var(--color-border)] text-sm text-[var(--color-text-muted)]">
+                            <span class="inline-flex gap-1">
+                                <span class="animate-bounce" style="animation-delay: 0ms">.</span>
+                                <span class="animate-bounce" style="animation-delay: 150ms">.</span>
+                                <span class="animate-bounce" style="animation-delay: 300ms">.</span>
+                            </span>
+                        </div>
+                    </div>
+                {/if}
+            </div>
+
+            <!-- Input -->
+            <div class="p-4 border-t border-[var(--color-border)]">
+                <div class="flex gap-2">
+                    <input
+                        type="text"
+                        bind:value={messageInput}
+                        onkeydown={handleKeydown}
+                        placeholder="Message Hugo..."
+                        class="flex-1 px-4 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                    />
+                    <button
+                        onclick={handleSend}
+                        class="px-4 py-2 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors"
+                    >
+                        Send
                     </button>
                 </div>
+            </div>
+        </div>
 
-                <!-- Messages -->
-                <div bind:this={chatContainer} class="flex-1 overflow-y-auto p-4 space-y-3">
-                    {#each $conversation.messages as msg (msg.id)}
-                        <div class="flex" class:justify-end={msg.role === 'user'}>
-                            <div
-                                class="max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap {msg.role === 'user' ? 'bg-[var(--color-user-bubble)]' : 'bg-[var(--color-agent-bubble)] border border-[var(--color-border)]'}"
-                            >
-                                {msg.text}
-                            </div>
-                        </div>
-                    {/each}
-                    {#if $conversation.typing}
-                        <div class="flex">
-                            <div class="px-4 py-2.5 rounded-2xl bg-[var(--color-agent-bubble)] border border-[var(--color-border)] text-sm text-[var(--color-text-muted)]">
-                                <span class="inline-flex gap-1">
-                                    <span class="animate-bounce" style="animation-delay: 0ms">.</span>
-                                    <span class="animate-bounce" style="animation-delay: 150ms">.</span>
-                                    <span class="animate-bounce" style="animation-delay: 300ms">.</span>
-                                </span>
-                            </div>
+        <!-- Display panel -->
+        <div class="flex flex-col flex-1 bg-[var(--color-display-bg)] rounded-lg">
+            <!-- Top container -->
+            {#if $displayLayout === 'top' || $displayLayout === 'split'}
+                <div class="flex flex-col grow-[2] h-0 overflow-y-auto p-4">
+                    {#if $topFrame}
+                        <BlockRenderer frame={$topFrame} />
+                    {/if}
+                </div>
+            {/if}
+
+            {#if $displayLayout === 'split'}
+                <div class="border-t border-[var(--color-border)]"></div>
+            {/if}
+
+            <!-- Bottom container -->
+            {#if $displayLayout === 'bottom' || $displayLayout === 'split'}
+                <div class="flex flex-col grow-[2] h-0 overflow-y-auto p-4">
+                    {#if $bottomFrame}
+                        <BlockRenderer frame={$bottomFrame} />
+                    {:else}
+                        <div class="flex items-center justify-center h-full text-[var(--color-text-muted)] text-sm">
+                            Blocks will appear here
                         </div>
                     {/if}
                 </div>
-
-                <!-- Input -->
-                <div class="p-4 border-t border-[var(--color-border)]">
-                    <div class="flex gap-2">
-                        <input
-                            type="text"
-                            bind:value={messageInput}
-                            onkeydown={handleKeydown}
-                            placeholder="Message Hugo..."
-                            class="flex-1 px-4 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
-                        />
-                        <button
-                            onclick={handleSend}
-                            class="px-4 py-2 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors"
-                        >
-                            Send
-                        </button>
-                    </div>
-                </div>
-            </div>
-        {/if}
-
-        <!-- Display panel -->
-        {#if $layoutMode !== 'top'}
-            <div class="flex flex-col flex-1 bg-[var(--color-display-bg)] rounded-lg">
-                <!-- Top container -->
-                {#if $displayLayout === 'top' || $displayLayout === 'split'}
-                    <div class="flex flex-col grow-[2] h-0 overflow-y-auto p-4">
-                        {#if $topFrame}
-                            <BlockRenderer frame={$topFrame} />
-                        {/if}
-                    </div>
-                {/if}
-
-                {#if $displayLayout === 'split'}
-                    <div class="border-t border-[var(--color-border)]"></div>
-                {/if}
-
-                <!-- Bottom container -->
-                {#if $displayLayout === 'bottom' || $displayLayout === 'split'}
-                    <div class="flex flex-col grow-[2] h-0 overflow-y-auto p-4">
-                        {#if $bottomFrame}
-                            <BlockRenderer frame={$bottomFrame} />
-                        {:else}
-                            <div class="flex items-center justify-center h-full text-[var(--color-text-muted)] text-sm">
-                                Blocks will appear here
-                            </div>
-                        {/if}
-                    </div>
-                {/if}
-            </div>
-        {/if}
+            {/if}
+        </div>
     </div>
 {/if}
