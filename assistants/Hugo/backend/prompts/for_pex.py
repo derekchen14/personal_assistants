@@ -9,14 +9,16 @@ SKILL_SYSTEM_SUFFIX = (
 )
 
 
-def build_skill_system(base_system: str, flow_name: str, flow_info: dict,
-                       skill_prompt: str | None, filled_slots: dict,
-                       scratchpad: dict) -> str:
+def build_skill_system(base_system: str, flow,
+                       skill_prompt: str | None, scratchpad: dict) -> str:
+    flow_name = flow.name()
+    filled_slots = flow.slot_values_dict()
+
     parts = [base_system]
     parts.append(
         f'\n\nYou are executing the "{flow_name}" flow.\n'
-        f'Purpose: {flow_info.get("description", "")}\n'
-        f'Intent: {flow_info.get("intent", "")}\n'
+        f'Purpose: {flow.goal}\n'
+        f'Intent: {flow.intent}\n'
     )
 
     if skill_prompt:

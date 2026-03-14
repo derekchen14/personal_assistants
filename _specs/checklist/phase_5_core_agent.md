@@ -23,13 +23,12 @@ Implement the state tracking component. The dialogue state grounds the agent in 
 **File**: `backend/components/dialogue_state.py`
 
 **Implement**:
-- **Predicted state**: Hierarchical with two levels — intent (7 modes) and flow (up to 64 per domain)
-- **Slot-filling**: Slot priority system (Required, Elective, Optional) with type validation against the 16 slot types
+- **Predicted state**: `pred_intent` (one of 7 intents) and `flow_name` (up to 64 per domain). No `dax` or `slots` on the state — slots live on the flow instance in the flow stack.
+- **Flow candidates**: `pred_flows: list[dict]` stores alternative flow detections from NLU (replaces `top_detections`)
 - **Flags**: `keep_going`, `has_issues`, `has_plan`, `natural_birth`
-- **Serialization**: `serialize()` → JSON dict, `from_dict(labels)` → reconstruct from persistence or NLU labels
+- **Serialization**: `serialize()` → JSON dict, `from_dict(data, config)` → reconstruct from persistence
 - **State history**: Diffs after every turn, full snapshots when >1 completed flows are popped
 - **Rollback**: Reconstruct any prior state by replaying diffs from the nearest snapshot
-- **Confidence tracking**: Store top-3 detections with scores
 
 **Reference**: [dialogue_state.md](../components/dialogue_state.md)
 
@@ -37,12 +36,14 @@ Implement the state tracking component. The dialogue state grounds the agent in 
 
 Implement the stack data structure within dialogue state.
 
-**File**: `backend/components/flow_stack.py`
+**File**: `backend/components/flow_stack/` (stack.py, slots.py, parents.py, flows.py, __init__.py)
 
 **Implement**:
 - **Stack operations**: push, pop, peek — single active flow at top
 - **Flow lifecycle**: Pending → Active → Completed/Invalid states
-- **Flow class hierarchy**: BaseFlow with intent-specific parent classes, each flow inherits `fill_slots_by_label()`, `fill_slot_values()`, `is_filled()`, `needs_to_think()`, `serialize()`
+- **No FlowEntry**: BaseFlow IS the entry — each flow instance carries both domain definition (slots, tools, intent) and runtime state (flow_id, status, plan_id, turn_ids, result). FlowStack instantiates flow classes directly on push.
+- **`flow_classes` dict**: Maps flow names (not DAX codes) to flow classes (not instances). Passed to FlowStack at construction. `push(flow_name)` looks up the class, instantiates it, and sets runtime fields. Slots are NOT filled during push.
+- **Flow class hierarchy**: BaseFlow with intent-specific parent classes. Key methods: `fill_slots_by_label()`, `fill_slot_values(values: dict)`, `slot_values_dict()`, `is_filled()`, `to_dict()`, `name(full=False)`, `get(key, default)`, `serialize()`
 - **Deduplication**: Check if detected flow already exists on stack in Pending/Active state; carry over if so
 - **Plan flow lifecycle**: Plan flow at stack bottom, sub-flows above, `plan_id` tracking, replanning check between sub-flows
 - **Fallback protocol**: Create new flow, best-effort slot mapping, mark old Invalid, push new
@@ -58,8 +59,10 @@ Implement structured turn storage and retrieval.
 
 **Implement**:
 - **Turn structure**: `turn_id`, role (agent/user/system), form (text/speech/image/action), content
-- **Fast-access window**: `recent` list of last 7 utterance-type turns, pre-filtered
-- **`compile_history(turns, keep_system)`**: Primary retrieval method. Small lookbacks use fast-access window; larger ones scan full history
+- **`compile_history(look_back, keep_system)`**: Returns a formatted string of recent conversation for prompt context
+- **`full_conversation(keep_system)`**: Returns all utterance turns as formatted strings
+- **`recent_turns(n)`**: Returns last n raw turn dicts
+- **`last_user_turn`**: Property returning the last user turn dict
 - **Completed flows tracking**: Convenience index of flows finished during session
 - **Checkpoints**: Bundle full turn history + dialogue state snapshots, created at session end
 - **Turn–flow mapping**: CC stores turns with `turn_id`; flows hold pointers to their `turn_id`s
@@ -146,7 +149,10 @@ Implement full natural language understanding.
 **Implement**:
 - **`prepare()` pre-hook** — 7 checks: empty input, min length (2 chars), max length (1024 tokens), exact repeat, command shortcuts (Tier 0), system-reserved keywords, unsupported language
 - **Constructor**: `NLU(config, ambiguity, engineer, world)` — receives World, accesses context via `world.context`
+- **`understand(user_text, context, gold_dax)`**: Main entry point. Takes user text, context coordinator, and optional gold DAX for eval mode. Returns `DialogueState`.
 - **Output**: Returns `DialogueState` (no intermediate NLUResult). New state inserted into `world.insert_state()` per new flow detection; carryover reuses existing state.
+- **Flow push**: NLU owns flow instantiation via `_push_or_get(flow_name)` — pushes new flows onto the stack or finds existing ones. PEX does not push flows.
+- **`call_text` / `apply_guardrails`**: LLM call helpers for intent/flow prediction with structured output validation
 - **`think()`**:
   - Step 1 — Intent prediction: single Sonnet call, predict one of 6 user-facing intents (Internal never predicted)
   - Step 2 — Flow detection: majority vote (3 escalating rounds). Round 1: Sonnet + Gemini Flash (2/2 agree). Round 2: + Opus + Gemini Pro (3/4). Round 3: + Opus with extended thinking (3/5). No majority after 3 → General ambiguity. Flow deduplication check after detection.
@@ -164,16 +170,14 @@ Implement the policy execution engine.
 **File**: `backend/modules/pex.py`
 
 **Implement**:
-- **Constructor**: `PEX(config, ambiguity, engineer, memory, world)` — receives World, accesses flow stack via `world.flow_stack`, context via `world.context`
-- **Output**: Returns `tuple[DisplayFrame, bool]` (no intermediate PEXResult). PEX does not write messages — unsupported flows return carryover frame. Tool calls recorded as CC action turns.
-- **`check()` pre-hook** — 7 checks: active flow exists, policy registered, required slots filled, elective slots satisfied, tool manifest valid, timeout configured, Lethal Trifecta gate
-- **`execute()`**:
-  - Step 1 — Slot review: pull active flow, check missing slots, fill from CC/MM, declare ambiguity if still missing
-  - Step 2 — Tool invocations: assemble skill prompt, provide tools (flow-specific + component), skill runs autonomously in a loop. Code guardrails applied before execution. Optional reflection loop for creative/complex flows. LATS for Plan decomposition.
-  - Step 3 — Result processing: branch by outcome (success → create Frame, failure → partial data + warning, uncertain → enter recovery). Route by intent (domain → Frame, Converse → scratchpad, Plan → stack sub-flows, Internal → scratchpad)
-  - Step 4 — Flow completion: store Frame, update lifecycle (Completed/Active), set flags, verification, scratchpad update
-- **`recover()`** — escalation ladder: retry skill → gather context (Internal flows) → re-route via contemplate → escalate to user
-- **`verify()` post-hook** — 5 checks: state consistency, slots intact, output well-formed, no duplicate flows, flags coherent
+- **Constructor**: `PEX(config, ambiguity, engineer, memory, world)` — receives World, accesses flow stack via `world.flow_stack`. Stores `self.flow_stack` for convenience. Components dict passes `'config': config` (not `'world': world`).
+- **`execute(state, context)`**: Takes DialogueState and ContextCoordinator as parameters. Gets active flow from flow stack (does NOT push flows — NLU handles that). Returns `tuple[DisplayFrame, bool]`.
+- **`_tools` dict**: Domain tools registered as `(service_instance, method_name)` tuples. Dispatch via `getattr(service, method_name)(**tool_input)`.
+- **`get_tools_for_flow(flow)`**: Takes a flow instance (not `flow_name, flow_info`). Combines component tool definitions with flow's declared tools from config manifest.
+- **`_check(flow, context)` pre-hook**: Reads required slots from `flow.slots` (slot objects with `.priority` and `.filled`). Fills missing slots via `flow.fill_slot_values({name: value})`. Lethal Trifecta gate on tool capabilities.
+- **Policy dispatch**: Routes by `active_flow.intent` to registered policy classes. Policies receive `(active_flow, state, context, dispatch_tool)`.
+- **Tool dispatch**: `_dispatch_tool` routes domain tools via `_tools` dict, component tools via internal methods. All returns use error envelope with `retryable` field.
+- **`_verify()` post-hook**: State consistency, slots intact, output well-formed, no duplicate flows, flags coherent
 
 **Skill output contract** — every skill returns one of:
 - `success`: `{"outcome": "success", "data": {...}, "scratchpad_entries": [...]}`
@@ -215,8 +219,11 @@ Implement the response generator.
 Wire the full turn pipeline in `backend/agent.py`.
 
 **Implement**:
-- **Turn pipeline**: NLU `think()`/`react()` → PEX `execute()` → RES `respond()`
-- **`keep_going` loop**: After RES, if flag set, loop back to PEX with next flow
+- **Turn pipeline**: NLU `understand(user_text, context)` → PEX `execute(state, context)` → RES `respond()`
+- **Turn-type tracking**: User utterances tagged `turn_type='utterance'`, NLU metadata tagged `turn_type='meta'`, agent responses tagged `turn_type='utterance'`, tool calls tagged `turn_type='action'`
+- **Context threading**: Pass `self.world.context` explicitly to `nlu.understand()` and `pex.execute()` — modules receive context as a parameter, not extracted from world internally
+- **`state.pred_intent`**: Use `pred_intent` (not `intent`) throughout the pipeline — in NLU system turns, build_payload, and logging
+- **`keep_going` loop**: After PEX, if flag set, log with `active.intent` and `active.name()` and loop back to PEX with next flow
 - **Mid-plan replanning**: When `has_plan` set, check between RES and PEX iterations whether remaining plan still makes sense
 - **Input validation routing**: NLU `prepare()` failures → skip pipeline → RES rejection message. PEX `has_issues` → Agent receives control.
 - **Failure handling** — two tiers:
@@ -253,7 +260,7 @@ On failure: set `has_issues`, emit signal, return to Agent.
 | Action | File | Description |
 |---|---|---|
 | Modify | `<domain>/backend/components/dialogue_state.py` | Full implementation |
-| Modify | `<domain>/backend/components/flow_stack.py` | Full implementation |
+| Modify | `<domain>/backend/components/flow_stack/` | Full implementation (stack.py, slots.py, parents.py, flows.py, __init__.py) |
 | Modify | `<domain>/backend/components/context_coordinator.py` | Full implementation |
 | Modify | `<domain>/backend/components/prompt_engineer.py` | Full implementation |
 | Modify | `<domain>/backend/components/display_frame.py` | Full implementation |
@@ -269,17 +276,24 @@ On failure: set `has_issues`, emit signal, return to Agent.
 ## Verification
 
 - [ ] Dialogue state serializes/deserializes correctly (round-trip test)
-- [ ] Flow stack push/pop/peek work correctly
+- [ ] Flow stack push/pop/peek work correctly with `flow_classes` dict
 - [ ] Flow lifecycle transitions are valid (no invalid state transitions)
+- [ ] BaseFlow carries runtime state (flow_id, status, plan_id, turn_ids, result)
 - [ ] Context coordinator stores and retrieves turns
-- [ ] `compile_history()` returns correct turns from fast-access window
+- [ ] `compile_history()` returns formatted string of recent conversation
+- [ ] `recent_turns()` returns raw turn dicts
 - [ ] Prompt Engineer makes LLM calls and parses responses
 - [ ] Display frame holds data and maps to block types
 - [ ] Ambiguity handler declares and resolves at all 4 levels
 - [ ] Memory manager reads/writes scratchpad, preferences, business context
 - [ ] NLU `prepare()` rejects invalid input (empty, too long, repeat)
-- [ ] NLU `think()` classifies intent and detects flow (test with hard-coded exemplars)
-- [ ] PEX `execute()` runs a skill and creates a frame
-- [ ] PEX `recover()` escalates through the recovery ladder
+- [ ] NLU `understand(user_text, context)` classifies intent and detects flow
+- [ ] NLU pushes flows via `_push_or_get` (PEX does not push)
+- [ ] PEX `execute(state, context)` runs a skill and creates a frame
+- [ ] PEX uses `_tools` dict with `(service, method_name)` tuples
+- [ ] PEX `get_tools_for_flow(flow)` takes flow instance
 - [ ] RES `generate()` fills a template and naturalizes it
 - [ ] RES `display()` maps frames to blocks
+- [ ] Agent uses `state.pred_intent` throughout pipeline
+- [ ] Agent passes context explicitly to NLU and PEX
+- [ ] Agent tracks turn types (utterance, meta, action)

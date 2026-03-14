@@ -1,6 +1,13 @@
 from schemas.ontology import DACT_CATALOG, FLOW_CATALOG, Intent
 
 
+# Build DAX lookup once at import
+_DAX_LOOKUP = {
+    cat['dax'].strip('{}').upper(): name
+    for name, cat in FLOW_CATALOG.items()
+}
+
+
 def dax2dact(dax: str) -> list[str]:
     hex_to_dact = {v['hex']: k for k, v in DACT_CATALOG.items()}
     raw = dax.strip('{}')
@@ -15,45 +22,50 @@ def dact2dax(dact_names: list[str]) -> str:
 
 
 def flow2dax(flow_name: str) -> str | None:
-    flow = FLOW_CATALOG.get(flow_name)
-    return flow['dax'] if flow else None
+    cat = FLOW_CATALOG.get(flow_name)
+    return cat['dax'] if cat else None
 
 
 def dax2flow(dax: str) -> str | None:
-    for name, flow in FLOW_CATALOG.items():
-        if flow['dax'] == dax:
-            return name
-    return None
+    code = dax.strip('{}').upper()
+    return _DAX_LOOKUP.get(code)
 
 
 def flows_by_intent(intent: Intent) -> dict:
     return {
-        name: flow for name, flow in FLOW_CATALOG.items()
-        if flow['intent'] == intent
+        name: cat for name, cat in FLOW_CATALOG.items()
+        if cat.get('intent') == intent
     }
 
 
 def flow_names_by_intent(intent: Intent) -> list[str]:
     return sorted(
-        name for name, flow in FLOW_CATALOG.items()
-        if flow['intent'] == intent
+        name for name, cat in FLOW_CATALOG.items()
+        if cat.get('intent') == intent
     )
 
 
 def all_dax_codes() -> list[str]:
-    return sorted(flow['dax'] for flow in FLOW_CATALOG.values())
+    return sorted(cat['dax'] for cat in FLOW_CATALOG.values())
 
 
 def edge_flows_for(flow_name: str) -> list[str]:
-    flow = FLOW_CATALOG.get(flow_name)
-    return flow['edge_flows'] if flow else []
+    cat = FLOW_CATALOG.get(flow_name, {})
+    return cat.get('edge_flows', [])
+
+
+def output_for_flow(flow_name: str) -> str:
+    cat = FLOW_CATALOG.get(flow_name, {})
+    return cat.get('output', 'list')
 
 
 def required_slots(flow_name: str) -> list[str]:
-    flow = FLOW_CATALOG.get(flow_name)
-    if not flow:
+    from backend.components.flow_stack import flow_classes
+    cls = flow_classes.get(flow_name)
+    if not cls:
         return []
+    inst = cls()
     return [
-        slot_name for slot_name, slot in flow['slots'].items()
-        if slot['priority'] == 'required'
+        slot_name for slot_name, slot in inst.slots.items()
+        if slot.priority == 'required'
     ]

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from schemas.ontology import FLOW_CATALOG, Intent
 
 if TYPE_CHECKING:
+    from backend.components.context_coordinator import ContextCoordinator
     from backend.components.dialogue_state import DialogueState
     from backend.components.display_frame import DisplayFrame
 
@@ -28,43 +29,45 @@ class PlanPolicy:
     def __init__(self, components: dict):
         self.engineer = components['engineer']
         self.memory = components['memory']
-        self.world = components['world']
+        self.config = components['config']
+        self.flow_stack = components['flow_stack']
         self._get_tools_fn = components['get_tools']
 
     def execute(self, flow_name: str, flow_info: dict,
-                state: 'DialogueState', tool_dispatcher) -> 'DisplayFrame':
+                state: 'DialogueState', context: 'ContextCoordinator',
+                filled_slots: dict, tool_dispatcher) -> 'DisplayFrame':
         from backend.components.display_frame import DisplayFrame
 
         if flow_name in _BATCH_2:
-            frame = DisplayFrame(self.world.config)
+            frame = DisplayFrame(self.config)
             frame.set_frame('default', {'content': "That feature is coming soon — stay tuned!"}, source=flow_name)
             return frame
 
         handler = getattr(self, f'_do_{flow_name}', None)
         if handler:
-            return handler(flow_info, state, tool_dispatcher)
+            return handler(flow_info, state, context, filled_slots, tool_dispatcher)
 
         structured_plan = state.structured_plan
 
         if not structured_plan:
-            return self._generate_plan(flow_name, flow_info, state, tool_dispatcher)
+            return self._generate_plan(flow_name, flow_info, state, context, filled_slots, tool_dispatcher)
         if not state.has_plan:
-            return self._handle_approval(flow_name, flow_info, state, tool_dispatcher)
-        return self._verify_and_continue(flow_name, flow_info, state, tool_dispatcher)
+            return self._handle_approval(flow_name, flow_info, state, context, filled_slots, tool_dispatcher)
+        return self._verify_and_continue(flow_name, flow_info, state, context, filled_slots, tool_dispatcher)
 
     # ── Onboard (auto-approve) ───────────────────────────────────────
 
-    def _do_onboard(self, flow_info, state, tool_dispatcher):
+    def _do_onboard(self, flow_info, state, context, filled_slots, tool_dispatcher):
         from backend.components.display_frame import DisplayFrame
 
         structured_plan = state.structured_plan
         if structured_plan and state.has_plan:
-            return self._verify_and_continue('onboard', flow_info, state, tool_dispatcher)
+            return self._verify_and_continue('onboard', flow_info, state, context, filled_slots, tool_dispatcher)
 
         skill_prompt = self._load_skill_template('onboard')
         system, messages = self.engineer.build_skill_prompt(
-            'onboard', flow_info, state.slots,
-            self.world.context.compile_history(turns=5),
+            'onboard', flow_info, filled_slots,
+            context.compile_history(look_back=5),
             self.memory.read_scratchpad(),
             skill_prompt=skill_prompt,
         )
@@ -88,13 +91,13 @@ class PlanPolicy:
 
         state.structured_plan = structured_plan
 
-        plan_flow = self.world.flow_stack.get_active_flow()
+        plan_flow = self.flow_stack.get_active_flow()
         plan_id = plan_flow.flow_id if plan_flow else None
         self._push_next_sub_flow(state, plan_id)
 
         state.update_flags(has_plan=True, keep_going=True)
 
-        frame = DisplayFrame(self.world.config)
+        frame = DisplayFrame(self.config)
         frame.set_frame('list', {
             'title': f'Plan: {flow_info.get("description", "onboard")}',
             'content': freeform,
@@ -104,13 +107,13 @@ class PlanPolicy:
 
     # ── Mode A: Generate plan ────────────────────────────────────────
 
-    def _generate_plan(self, flow_name, flow_info, state, tool_dispatcher):
+    def _generate_plan(self, flow_name, flow_info, state, context, filled_slots, tool_dispatcher):
         from backend.components.display_frame import DisplayFrame
 
         skill_prompt = self._load_skill_template(flow_name)
         system, messages = self.engineer.build_skill_prompt(
-            flow_name, flow_info, state.slots,
-            self.world.context.compile_history(turns=5),
+            flow_name, flow_info, filled_slots,
+            context.compile_history(look_back=5),
             self.memory.read_scratchpad(),
             skill_prompt=skill_prompt,
         )
@@ -127,7 +130,7 @@ class PlanPolicy:
 
         state.structured_plan = structured_plan
 
-        frame = DisplayFrame(self.world.config)
+        frame = DisplayFrame(self.config)
         frame.set_frame('default', {
             'flow_name': flow_name,
             'content': freeform,
@@ -136,19 +139,14 @@ class PlanPolicy:
 
     # ── Mode B: Handle approval ──────────────────────────────────────
 
-    def _handle_approval(self, flow_name, flow_info, state, tool_dispatcher):
-        recent = self.world.context.compile_history(turns=1)
-        user_text = ''
-        for turn in reversed(recent):
-            if turn.get('speaker') == 'User':
-                user_text = turn.get('text', '')
-                break
+    def _handle_approval(self, flow_name, flow_info, state, context, filled_slots, tool_dispatcher):
+        user_text = context.last_user_text or ''
 
         if not _APPROVE_PATTERN.match(user_text.strip()):
             state.structured_plan = {}
-            return self._generate_plan(flow_name, flow_info, state, tool_dispatcher)
+            return self._generate_plan(flow_name, flow_info, state, context, filled_slots, tool_dispatcher)
 
-        plan_flow = self.world.flow_stack.get_active_flow()
+        plan_flow = self.flow_stack.get_active_flow()
         plan_id = plan_flow.flow_id if plan_flow else None
 
         self._push_next_sub_flow(state, plan_id)
@@ -156,7 +154,7 @@ class PlanPolicy:
         state.update_flags(has_plan=True, keep_going=True)
 
         from backend.components.display_frame import DisplayFrame
-        frame = DisplayFrame(self.world.config)
+        frame = DisplayFrame(self.config)
         frame.set_frame('default', {
             'flow_name': flow_name,
             'content': 'Plan approved — executing now.',
@@ -165,7 +163,7 @@ class PlanPolicy:
 
     # ── Mode C: Verify and continue ──────────────────────────────────
 
-    def _verify_and_continue(self, flow_name, flow_info, state, tool_dispatcher):
+    def _verify_and_continue(self, flow_name, flow_info, state, context, filled_slots, tool_dispatcher):
         from backend.components.display_frame import DisplayFrame
 
         structured_plan = state.structured_plan
@@ -194,8 +192,8 @@ class PlanPolicy:
         all_done = all(sf['status'] == 'completed' for sf in sub_flows)
 
         if all_done:
-            self.world.flow_stack.mark_complete(result={'flow_name': flow_name})
-            frame = DisplayFrame(self.world.config)
+            self.flow_stack.mark_complete(result={'flow_name': flow_name})
+            frame = DisplayFrame(self.config)
             frame.set_frame('default', {
                 'flow_name': flow_name,
                 'content': f'Plan completed: {structured_plan.get("description", flow_name)}',
@@ -203,12 +201,12 @@ class PlanPolicy:
             state.update_flags(keep_going=False)
             return frame
 
-        plan_flow = self.world.flow_stack.get_active_flow()
+        plan_flow = self.flow_stack.get_active_flow()
         plan_id = plan_flow.flow_id if plan_flow else None
         self._push_next_sub_flow(state, plan_id)
         state.update_flags(keep_going=True)
 
-        frame = DisplayFrame(self.world.config)
+        frame = DisplayFrame(self.config)
         completed_names = [sf['flow_name'] for sf in sub_flows if sf['status'] == 'completed']
         frame.set_frame('default', {
             'flow_name': flow_name,
@@ -230,22 +228,16 @@ class PlanPolicy:
                 sf['status'] = 'completed'
                 continue
 
-            intent_val = flow_info['intent']
-            if hasattr(intent_val, 'value'):
-                intent_val = intent_val.value
+            intent_val = flow_info['intent'].value
 
             if intent_val == Intent.INTERNAL.value:
-                self.world.flow_stack.push(
-                    flow_name, flow_info['dax'], intent_val,
-                    slots=sf.get('slots', {}), plan_id=plan_id,
-                )
+                flow = self.flow_stack.push(flow_name, plan_id=plan_id)
+                flow.fill_slot_values(sf.get('slots', {}))
                 sf['status'] = 'in_progress'
                 continue
 
-            self.world.flow_stack.push(
-                flow_name, flow_info['dax'], intent_val,
-                slots=sf.get('slots', {}), plan_id=plan_id,
-            )
+            flow = self.flow_stack.push(flow_name, plan_id=plan_id)
+            flow.fill_slot_values(sf.get('slots', {}))
             sf['status'] = 'in_progress'
             break
 

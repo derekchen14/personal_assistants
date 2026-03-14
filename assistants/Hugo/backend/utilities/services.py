@@ -10,24 +10,69 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _DB_DIR = Path(__file__).resolve().parents[2] / 'database'
-_POSTS_FILE = _DB_DIR / 'posts.json'
+_CONTENT_DIR = _DB_DIR / 'content'
+_METADATA_FILE = _CONTENT_DIR / 'metadata.json'
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _load_posts() -> list[dict]:
-    if _POSTS_FILE.exists():
-        return json.loads(_POSTS_FILE.read_text(encoding='utf-8'))
+def _load_metadata() -> list[dict]:
+    if _METADATA_FILE.exists():
+        data = json.loads(_METADATA_FILE.read_text(encoding='utf-8'))
+        return data.get('entries', [])
     return []
 
 
-def _save_posts(posts: list[dict]):
-    _DB_DIR.mkdir(parents=True, exist_ok=True)
-    _POSTS_FILE.write_text(
-        json.dumps(posts, indent=2, default=str), encoding='utf-8',
+def _save_metadata(entries: list[dict]):
+    _CONTENT_DIR.mkdir(parents=True, exist_ok=True)
+    _METADATA_FILE.write_text(
+        json.dumps({'entries': entries}, indent=2, default=str),
+        encoding='utf-8',
     )
+
+
+def _read_content(filename: str) -> str:
+    """Read .md file, strip YAML frontmatter, return body."""
+    filepath = _CONTENT_DIR / filename
+    if not filepath.exists():
+        return ''
+    text = filepath.read_text(encoding='utf-8')
+    if text.startswith('---'):
+        end = text.find('---', 3)
+        if end != -1:
+            return text[end + 3:].strip()
+    return text
+
+
+def _write_content(filename: str, frontmatter: dict, body: str):
+    """Write .md file with YAML frontmatter."""
+    filepath = _CONTENT_DIR / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    lines = ['---']
+    for k, v in frontmatter.items():
+        if isinstance(v, list):
+            lines.append(f'{k}: [{", ".join(str(i) for i in v)}]')
+        else:
+            lines.append(f'{k}: "{v}"' if isinstance(v, str) and ' ' in v else f'{k}: {v}')
+    lines.append('---')
+    lines.append('')
+    lines.append(body)
+    filepath.write_text('\n'.join(lines), encoding='utf-8')
+
+
+def _compute_preview(body: str, max_len: int = 300) -> str:
+    clean = body.replace('<!--more-->', '')
+    for para in clean.split('\n\n'):
+        stripped = para.strip()
+        if not stripped or stripped.startswith('#') or stripped.startswith('!['):
+            continue
+        preview = re.sub(r'<[^>]+>', '', stripped)
+        if len(preview) > max_len:
+            preview = preview[:max_len].rsplit(' ', 1)[0] + '...'
+        return preview
+    return ''
 
 
 def _slugify(text: str) -> str:
@@ -60,73 +105,196 @@ class ToolService:
 
 class PostService(ToolService):
 
+    def list_preview(self, limit: int = 100) -> dict:
+        entries = _load_metadata()
+        previews = []
+        for e in entries[:limit]:
+            previews.append({
+                'post_id': e['post_id'],
+                'title': e['title'],
+                'status': e.get('status'),
+                'category': e.get('category'),
+                'metadata': {'tags': e.get('tags', []), 'color': e.get('color')},
+                'created_at': e.get('created_at'),
+                'updated_at': e.get('updated_at'),
+                'preview': e.get('preview', ''),
+            })
+        return self._success(previews, count=len(previews))
+
     def search(self, query: str = '', status: str | None = None,
                category: str | None = None, limit: int = 20) -> dict:
-        posts = _load_posts()
+        entries = _load_metadata()
         results = []
-        for p in posts:
-            if query and query.lower() not in json.dumps(p).lower():
+        q = (query or '').lower()
+        for e in entries:
+            if q:
+                searchable = ' '.join([
+                    e.get('title', ''),
+                    e.get('category', '') or '',
+                    ' '.join(e.get('tags', [])),
+                ]).lower()
+                if q not in searchable:
+                    continue
+            if status and e.get('status') != status:
                 continue
-            if status and p.get('status') != status:
-                continue
-            if category and category.lower() not in (p.get('category', '') or '').lower():
+            if category and category.lower() not in (e.get('category', '') or '').lower():
                 continue
             results.append({
-                'post_id': p['post_id'],
-                'title': p['title'],
-                'status': p['status'],
-                'category': p.get('category'),
-                'updated_at': p.get('updated_at'),
+                'post_id': e['post_id'],
+                'title': e['title'],
+                'status': e.get('status'),
+                'category': e.get('category'),
+                'updated_at': e.get('updated_at'),
             })
             if len(results) >= limit:
                 break
         return self._success(results, count=len(results))
 
     def get(self, post_id: str) -> dict:
-        posts = _load_posts()
-        for p in posts:
-            if p['post_id'] == post_id:
-                return self._success(p)
+        entries = _load_metadata()
+        for e in entries:
+            if e['post_id'] == post_id:
+                content = _read_content(e['filename'])
+                # Extract sections from ## headings
+                sections = []
+                for line in content.split('\n'):
+                    if line.startswith('## '):
+                        sections.append(line[3:].strip())
+                result = {
+                    'post_id': e['post_id'],
+                    'title': e['title'],
+                    'status': e.get('status'),
+                    'category': e.get('category'),
+                    'metadata': {'tags': e.get('tags', []), 'color': e.get('color')},
+                    'created_at': e.get('created_at'),
+                    'updated_at': e.get('updated_at'),
+                    'content': content,
+                    'sections': sections,
+                    'word_count': e.get('word_count', 0),
+                }
+                return self._success(result)
         return self._error('not_found', f'Post not found: {post_id}')
 
     def create(self, title: str, topic: str | None = None,
-               category: str | None = None) -> dict:
-        posts = _load_posts()
-        post = {
-            'post_id': str(uuid.uuid4())[:8],
+               category: str | None = None,
+               type: str | None = None) -> dict:
+        entries = _load_metadata()
+        post_id = str(uuid.uuid4())[:8]
+        slug = _slugify(title) + '.md'
+        status = type if type in ('draft', 'note') else 'draft'
+        directory = 'notes' if status == 'note' else 'drafts'
+        filename = f'{directory}/{slug}'
+        now = _now()
+
+        (_CONTENT_DIR / directory).mkdir(parents=True, exist_ok=True)
+        _write_content(filename, {'title': title}, '')
+
+        entry = {
+            'post_id': post_id,
+            'title': title,
+            'status': status,
+            'category': category,
+            'tags': [],
+            'color': '',
+            'created_at': now,
+            'updated_at': now,
+            'preview': '',
+            'word_count': 0,
+            'filename': filename,
+        }
+        entries.append(entry)
+        _save_metadata(entries)
+
+        return self._success({
+            'post_id': post_id,
             'title': title,
             'topic': topic,
             'category': category,
-            'status': 'draft',
+            'status': status,
             'content': '',
-            'outline': [],
             'sections': [],
             'metadata': {},
-            'created_at': _now(),
-            'updated_at': _now(),
-        }
-        posts.append(post)
-        _save_posts(posts)
-        return self._success(post)
+            'created_at': now,
+            'updated_at': now,
+        })
 
     def update(self, post_id: str, updates: dict) -> dict:
-        posts = _load_posts()
-        for p in posts:
-            if p['post_id'] == post_id:
+        entries = _load_metadata()
+        for e in entries:
+            if e['post_id'] == post_id:
+                # Update metadata fields
+                for k in ('title', 'category', 'tags', 'color'):
+                    if k in updates:
+                        e[k] = updates[k]
+                if 'metadata' in updates:
+                    meta = updates['metadata']
+                    if 'tags' in meta:
+                        e['tags'] = meta['tags']
+                    if 'color' in meta:
+                        e['color'] = meta['color']
+
+                # Handle content update
+                if 'content' in updates:
+                    body = updates['content']
+                    fm = {'title': e['title']}
+                    if e.get('tags'):
+                        fm['tags'] = e['tags']
+                    if e.get('color'):
+                        fm['color'] = e['color']
+                    _write_content(e['filename'], fm, body)
+                    e['preview'] = _compute_preview(body)
+                    e['word_count'] = len(re.sub(r'<[^>]+>', '', body).split())
+
+                # Handle status change (move file between dirs)
+                new_status = updates.get('status')
+                if new_status and new_status != e.get('status'):
+                    old_path = _CONTENT_DIR / e['filename']
+                    slug = Path(e['filename']).name
+                    if new_status == 'published':
+                        new_filename = f'posts/{slug}'
+                    elif new_status == 'note':
+                        new_filename = f'notes/{slug}'
+                    else:
+                        new_filename = f'drafts/{slug}'
+                    new_path = _CONTENT_DIR / new_filename
+                    new_path.parent.mkdir(parents=True, exist_ok=True)
+                    if old_path.exists():
+                        old_path.rename(new_path)
+                    e['filename'] = new_filename
+                    e['status'] = new_status
+
+                e['updated_at'] = _now()
+                _save_metadata(entries)
+
+                # Return full object for compatibility
+                content = _read_content(e['filename'])
+                result = {
+                    'post_id': e['post_id'],
+                    'title': e['title'],
+                    'status': e.get('status'),
+                    'category': e.get('category'),
+                    'metadata': {'tags': e.get('tags', []), 'color': e.get('color')},
+                    'created_at': e.get('created_at'),
+                    'updated_at': e.get('updated_at'),
+                    'content': content,
+                }
+                # Merge any extra keys from updates
                 for k, v in updates.items():
-                    if k != 'post_id':
-                        p[k] = v
-                p['updated_at'] = _now()
-                _save_posts(posts)
-                return self._success(p)
+                    if k not in result and k != 'post_id':
+                        result[k] = v
+                return self._success(result)
         return self._error('not_found', f'Post not found: {post_id}')
 
     def delete(self, post_id: str) -> dict:
-        posts = _load_posts()
-        for i, p in enumerate(posts):
-            if p['post_id'] == post_id:
-                removed = posts.pop(i)
-                _save_posts(posts)
+        entries = _load_metadata()
+        for i, e in enumerate(entries):
+            if e['post_id'] == post_id:
+                removed = entries.pop(i)
+                _save_metadata(entries)
+                # Delete the .md file
+                filepath = _CONTENT_DIR / removed['filename']
+                if filepath.exists():
+                    filepath.unlink()
                 return self._success(
                     {'post_id': post_id, 'title': removed.get('title', '')},
                     action='deleted',

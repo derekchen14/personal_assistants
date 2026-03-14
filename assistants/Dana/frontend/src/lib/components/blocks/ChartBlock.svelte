@@ -7,9 +7,9 @@
     let dataset = $derived((data.dataset as string) || '');
 </script>
 
-<div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+<div class="p-4">
     {#if title}
-        <h3 class="text-sm font-medium mb-3 text-[var(--color-secondary)]">{title}</h3>
+        <h3 class="text-sm font-medium mb-3 text-[var(--secondary)]">{title}</h3>
     {/if}
     {#if imageBase64}
         <img
@@ -18,11 +18,11 @@
             class="w-full rounded"
         />
     {:else}
-        <div class="flex items-center justify-center h-48 text-[var(--color-text-muted)] text-sm">
+        <div class="flex items-center justify-center h-48 text-[var(--muted)] text-sm">
             Chart rendering...
         </div>
     {/if}
     {#if dataset}
-        <p class="text-xs text-[var(--color-text-muted)] mt-2">Source: {dataset}</p>
+        <p class="text-xs text-[var(--muted)] mt-2">Source: {dataset}</p>
     {/if}
 </div>

@@ -13,7 +13,7 @@ Adjust the tone or style across a blog post.
 
 ## Slots
 - `tone` (elective): Target tone (casual, professional, witty, etc.)
-- `post_id` (required): The post to adjust
+- `source` (required): The post (by title or ID) to adjust
 
 ## Output
 The tone-adjusted content with a note on the changes applied.

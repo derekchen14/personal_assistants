@@ -9,7 +9,7 @@ Compare style or structure across multiple posts.
 - Suggest improvements for consistency
 
 ## Slots
-- `post_ids` (required): Group of post IDs to compare
+- `source` (required): The posts (by title or ID) to compare
 
 ## Output
 A comparison card showing similarities and differences.

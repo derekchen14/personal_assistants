@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from backend.components.context_coordinator import ContextCoordinator
 from backend.components.dialogue_state import DialogueState
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
@@ -47,20 +47,22 @@ class NLU:
         self.ambiguity = ambiguity
         self.engineer = engineer
         self.world = world
+        self.flow_stack = world.flow_stack
 
     # ── Entry point ───────────────────────────────────────────────────
 
-    def understand(self, user_text: str, gold_dax: str | None = None) -> DialogueState:
+    def understand(self, user_text: str, context: ContextCoordinator,
+                   gold_dax: str | None = None) -> DialogueState:
         prep = self.prepare(user_text)
         if prep is not None:
             return self.validate(prep)
 
         if gold_dax or self._is_user_action(user_text):
-            state = self.react(user_text, gold_dax)
+            state = self.react(user_text, context, gold_dax)
         elif self._should_contemplate():
-            state = self.contemplate(user_text)
+            state = self.contemplate(user_text, context)
         else:
-            state = self.think(user_text)
+            state = self.think(user_text, context)
 
         return self.validate(state)
 
@@ -70,44 +72,45 @@ class NLU:
         text = user_text.strip()
 
         if not text:
-            return self._build_state('Converse', '{000}', 'chat', 1.0)
+            state = self._build_state('chat', 1.0)
+            self._push_or_get('chat')
+            return state
 
         if len(text) < 2:
-            return self._build_state('Converse', '{000}', 'chat', 0.8)
+            state = self._build_state('chat', 0.8)
+            self._push_or_get('chat')
+            return state
 
         match = _DEV_PATTERN.match(text)
         if match:
             dax_code = match.group(1).upper()
             flow_name = _DAX_LOOKUP.get(dax_code)
             if flow_name:
-                flow = FLOW_CATALOG[flow_name]
-                return self._build_state(
-                    intent=flow['intent'].value,
-                    dax=flow['dax'],
-                    flow_name=flow_name,
-                    confidence=0.99,
-                    slots={},
-                )
+                state = self._build_state(flow_name, 0.99)
+                self._push_or_get(flow_name)
+                return state
 
         for pattern, flow_name in _SHORTCUTS:
             if pattern.search(text):
                 flow = FLOW_CATALOG.get(flow_name)
                 if flow:
-                    return self._build_state(
-                        intent=flow['intent'].value,
-                        dax=flow['dax'],
-                        flow_name=flow_name,
-                        confidence=1.0,
-                    )
+                    state = self._build_state(flow_name, 1.0)
+                    self._push_or_get(flow_name)
+                    return state
         return None
 
-    def think(self, user_text: str) -> DialogueState:
-        result = self.predict(user_text)
-        state = self._build_state(
-            intent=result['intent'], dax=result['dax'],
-            flow_name=result['flow_name'], confidence=result['confidence'],
-            slots=result.get('slots', {}),
-        )
+    def think(self, user_text: str, context: ContextCoordinator) -> DialogueState:
+        result = self.predict(user_text, context)
+        flow_name = result['flow_name']
+        slots = result.get('slots', {})
+
+        state = self._build_state(flow_name, result['confidence'])
+        state.pred_flows = [
+            {'flow_name': result['flow_name'], 'confidence': result['confidence']},
+        ]
+
+        self._push_or_get(flow_name, slots)
+
         if self.ambiguity.needs_clarification(state.confidence):
             self.ambiguity.declare(
                 'general',
@@ -117,65 +120,55 @@ class NLU:
             )
         return state
 
-    def contemplate(self, user_text: str) -> DialogueState:
+    def contemplate(self, user_text: str, context: ContextCoordinator) -> DialogueState:
         prev = self.world.current_state()
         failed_flow = prev.flow_name if prev else None
         failure_reason = self.ambiguity.observation or ''
 
-        detection = self._check_routing(user_text, failed_flow, failure_reason)
+        detection = self._check_routing(user_text, context, failed_flow, failure_reason)
         flow_name = detection['flow_name']
 
         flow = FLOW_CATALOG.get(flow_name, {})
         flow_intent = flow.get('intent', Intent.CONVERSE).value
 
         if flow_intent not in ('Converse', 'Plan') and flow.get('slots'):
-            slots = self._fill_slots(user_text, flow_name)
+            slots = self._fill_slots(user_text, context, flow_name)
         else:
             slots = detection.get('slots', {})
 
-        return self._build_state(
-            intent=flow_intent, dax=flow.get('dax', '{000}'),
-            flow_name=flow_name, confidence=detection['confidence'],
-            slots=slots,
-        )
+        state = self._build_state(flow_name, detection['confidence'])
+        self._push_or_get(flow_name, slots)
+        return state
 
-    def react(self, user_text: str, gold_dax: str | None = None) -> DialogueState:
+    def react(self, user_text: str, context: ContextCoordinator,
+              gold_dax: str | None = None) -> DialogueState:
         if gold_dax:
             return self._resolve_gold_dax(gold_dax, user_text)
         result = self._process_action(user_text)
-        return self._build_state(
-            intent=result['intent'], dax=result['dax'],
-            flow_name=result['flow_name'], confidence=result.get('confidence', 1.0),
-            slots=result.get('slots', {}),
-        )
+        flow_name = result['flow_name']
+        slots = result.get('slots', {})
+
+        state = self._build_state(flow_name, result.get('confidence', 1.0))
+        self._push_or_get(flow_name, slots)
+        return state
 
     def validate(self, state: DialogueState) -> DialogueState:
         flow = FLOW_CATALOG.get(state.flow_name)
         if not flow:
-            state.intent = 'Converse'
-            state.dax = '{000}'
+            state.pred_intent = 'Converse'
             state.flow_name = 'chat'
             state.confidence = 0.3
-            state.slots = {}
             return state
 
         catalog_intent = flow['intent'].value
-        if state.intent != catalog_intent:
-            state.intent = catalog_intent
-
-        state.dax = flow['dax']
-
-        valid_slot_names = set(flow.get('slots', {}).keys())
-        state.slots = {
-            k: v for k, v in state.slots.items()
-            if k in valid_slot_names
-        }
+        if state.pred_intent != catalog_intent:
+            state.pred_intent = catalog_intent
 
         return state
 
-    def predict(self, user_text: str) -> dict:
-        intent = self._classify_intent(user_text)
-        detection = self._detect_flow(user_text, intent)
+    def predict(self, user_text: str, context: ContextCoordinator) -> dict:
+        intent = self._classify_intent(user_text, context)
+        detection = self._detect_flow(user_text, context, intent)
         flow_name = detection['flow_name']
 
         flow = FLOW_CATALOG.get(flow_name, {})
@@ -185,11 +178,10 @@ class NLU:
         if skip_slots or not flow.get('slots'):
             slots = detection.get('slots', {})
         else:
-            slots = self._fill_slots(user_text, flow_name)
+            slots = self._fill_slots(user_text, context, flow_name)
 
         return {
             'intent': flow_intent,
-            'dax': flow.get('dax', '{000}'),
             'flow_name': flow_name,
             'confidence': detection['confidence'],
             'slots': slots,
@@ -197,32 +189,32 @@ class NLU:
 
     # ── Prediction sub-tasks (private) ────────────────────────────────
 
-    def _classify_intent(self, user_text: str) -> str:
-        history = self.world.context.compile_history(turns=5)
-        system, messages = self.engineer.build_nlu_prompt(user_text, history)
-        response = self.engineer.call(
+    def _classify_intent(self, user_text: str, context: ContextCoordinator) -> str:
+        history_text = context.compile_history(look_back=5)
+        system, messages = self.engineer.build_nlu_prompt(user_text, history_text)
+        raw = self.engineer.call_text(
             system=system, messages=messages,
             call_site='nlu_intent', max_tokens=256,
         )
-        parsed = self._parse_json(self._extract_text(response))
+        parsed = self.engineer.apply_guardrails(raw)
         if parsed and parsed.get('intent'):
             return parsed['intent']
         return 'Converse'
 
-    def _detect_flow(self, user_text: str, intent: str | None = None) -> dict:
-        history = self.world.context.compile_history(turns=5)
+    def _detect_flow(self, user_text: str, context: ContextCoordinator,
+                     intent: str | None = None) -> dict:
+        history_text = context.compile_history(look_back=5)
         system, messages = self.engineer.build_flow_prompt(
-            user_text, intent, history,
+            user_text, intent, history_text,
         )
 
         def _call_voter() -> dict | None:
             try:
-                response = self.engineer.call(
+                raw = self.engineer.call_text(
                     system=system, messages=messages,
                     call_site='nlu_vote', max_tokens=512,
                 )
-                text = self._extract_text(response)
-                return self._parse_json(text)
+                return self.engineer.apply_guardrails(raw)
             except Exception as e:
                 print(f'NLU vote error: {e}')
                 return None
@@ -237,44 +229,45 @@ class NLU:
 
         if not votes:
             return {
-                'intent': 'Converse', 'dax': '{000}',
                 'flow_name': 'chat', 'confidence': 0.3, 'slots': {},
             }
 
         return self._tally_votes(votes)
 
-    def _fill_slots(self, user_text: str, flow_name: str) -> dict:
-        history = self.world.context.compile_history(turns=5)
+    def _fill_slots(self, user_text: str, context: ContextCoordinator,
+                    flow_name: str) -> dict:
+        history_text = context.compile_history(look_back=5)
         system, messages = self.engineer.build_slot_filling_prompt(
-            user_text, flow_name, history,
+            user_text, flow_name, history_text,
         )
-        response = self.engineer.call(
+        raw = self.engineer.call_text(
             system=system, messages=messages,
             call_site='nlu_slots', max_tokens=512,
         )
-        parsed = self._parse_json(self._extract_text(response))
+        parsed = self.engineer.apply_guardrails(raw)
         if parsed and isinstance(parsed.get('slots'), dict):
             return parsed['slots']
         return {}
 
     # ── Contemplate/React support (private) ───────────────────────────
 
-    def _check_routing(self, user_text: str, failed_flow: str | None,
+    def _check_routing(self, user_text: str, context: ContextCoordinator,
+                       failed_flow: str | None,
                        failure_reason: str) -> dict:
         candidates = self._get_contemplate_candidates(failed_flow)
         if not candidates:
             return {'flow_name': 'chat', 'confidence': 0.5, 'slots': {}}
 
-        history = self.world.context.compile_history(turns=5)
+        history_text = context.compile_history(look_back=5)
         system, messages = self.engineer.build_contemplate_prompt(
             user_text, failed_flow or 'unknown', failure_reason,
-            candidates, history,
+            candidates, history_text,
         )
-        response = self.engineer.call(
+        raw = self.engineer.call_text(
             system=system, messages=messages,
             call_site='nlu_contemplate', max_tokens=512,
         )
-        parsed = self._parse_json(self._extract_text(response))
+        parsed = self.engineer.apply_guardrails(raw)
         if parsed and parsed.get('flow_name') in FLOW_CATALOG:
             return {
                 'flow_name': parsed['flow_name'],
@@ -289,7 +282,7 @@ class NLU:
             flow = FLOW_CATALOG.get(failed_flow, {})
             for ef in flow.get('edge_flows', []):
                 candidates.add(ef)
-        active = self.world.flow_stack.get_active_flow()
+        active = self.flow_stack.get_active_flow()
         if active and active.flow_name != failed_flow:
             candidates.add(active.flow_name)
         candidates.add('chat')
@@ -297,23 +290,19 @@ class NLU:
         return sorted(candidates)
 
     def _process_action(self, user_text: str) -> dict:
-        active = self.world.flow_stack.get_active_flow()
+        active = self.flow_stack.get_active_flow()
         if active:
-            flow = FLOW_CATALOG.get(active.flow_name, {})
             return {
-                'intent': flow.get('intent', Intent.CONVERSE).value,
-                'dax': flow.get('dax', '{000}'),
                 'flow_name': active.flow_name,
                 'confidence': 1.0,
                 'slots': active.slots,
             }
         return {
-            'intent': 'Converse', 'dax': '{000}',
             'flow_name': 'chat', 'confidence': 0.8,
         }
 
     def _should_contemplate(self) -> bool:
-        if self.world.flow_stack.depth == 0:
+        if self.flow_stack.depth == 0:
             return False
         prev = self.world.current_state()
         if not prev:
@@ -325,14 +314,19 @@ class NLU:
 
     # ── Support (private) ─────────────────────────────────────────────
 
-    def _build_state(self, intent: str, dax: str, flow_name: str,
-                     confidence: float, slots: dict | None = None) -> DialogueState:
+    def _build_state(self, flow_name: str, confidence: float) -> DialogueState:
+        flow = FLOW_CATALOG.get(flow_name)
+        if flow:
+            intent_val = flow['intent'].value
+        else:
+            intent_val = 'Converse'
+
         prev = self.world.current_state()
 
         state = DialogueState(self.config)
         state.update(
-            intent=intent, dax=dax, flow_name=flow_name,
-            confidence=confidence, slots=slots,
+            pred_intent=intent_val, flow_name=flow_name,
+            confidence=confidence,
         )
 
         if prev:
@@ -341,6 +335,18 @@ class NLU:
 
         self.world.insert_state(state)
         return state
+
+    def _push_or_get(self, flow_name: str, slots: dict | None = None):
+        existing = self.flow_stack.find_by_name(flow_name)
+        if existing:
+            if slots:
+                existing.fill_slot_values(slots)
+            return existing
+
+        flow = self.flow_stack.push(flow_name)
+        if slots:
+            flow.fill_slot_values(slots)
+        return flow
 
     def _tally_votes(self, votes: list[dict]) -> dict:
         flow_counts: dict[str, list[dict]] = {}
@@ -366,10 +372,7 @@ class NLU:
         best_vote = max(best_votes, key=lambda v: float(v.get('confidence', 0)))
         slots = best_vote.get('slots', {})
 
-        flow = FLOW_CATALOG[best_flow]
         return {
-            'intent': flow['intent'].value,
-            'dax': flow['dax'],
             'flow_name': best_flow,
             'confidence': final_confidence,
             'slots': slots,
@@ -378,36 +381,7 @@ class NLU:
     def _resolve_gold_dax(self, gold_dax: str, user_text: str) -> DialogueState:
         for flow_name, flow in FLOW_CATALOG.items():
             if flow['dax'] == gold_dax:
-                return self._build_state(
-                    intent=flow['intent'].value,
-                    dax=gold_dax,
-                    flow_name=flow_name,
-                    confidence=1.0,
-                )
-        return self._build_state('Converse', '{000}', 'chat', 0.5)
-
-    @staticmethod
-    def _extract_text(response) -> str:
-        text = ''
-        for block in response.content:
-            if block.type == 'text':
-                text += block.text
-        return text
-
-    @staticmethod
-    def _parse_json(text: str) -> dict | None:
-        text = text.strip()
-        if text.startswith('```'):
-            lines = text.split('\n')
-            lines = [l for l in lines if not l.strip().startswith('```')]
-            text = '\n'.join(lines)
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group())
-                except json.JSONDecodeError:
-                    pass
-        return None
+                state = self._build_state(flow_name, 1.0)
+                self._push_or_get(flow_name)
+                return state
+        return self._build_state('chat', 0.5)

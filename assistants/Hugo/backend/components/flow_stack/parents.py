@@ -20,6 +20,19 @@ class BaseFlow(object):
     self.stage = ''
     self.entity_slot = 'source'
 
+    self.flow_id: str = ''
+    self.status: str = ''
+    self.plan_id: str | None = None
+    self.turn_ids: list[str] = []
+    self.result: dict | None = None
+
+  @property
+  def intent(self):
+    return self.parent_type
+
+  def get(self, key, default=None):
+    return getattr(self, key, default)
+
   def name(self, full=False):
     if full:
       return f'{self.parent_type}({self.flow_type})'
@@ -45,15 +58,98 @@ class BaseFlow(object):
     all_required = all(s.filled for s in self.slots.values() if s.priority == 'required')
     return all_required and at_least_one_elective
 
-  def fill_slots_by_label(self, labels):
-    """System 1: Fast entity extraction from NLU prediction labels."""
-    raise NotImplementedError
+  def fill_slots_by_label(self, labels: dict):
+    """System 1: Targeted single-slot fill from PEX label extraction.
+    Labels format: {slot_name: extracted_value}
+    Routes entity-slot values through validate_entity so domain parents
+    can override for early validation (e.g. checking post existence).
+    """
+    for slot_name, value in labels.items():
+      if slot_name not in self.slots or value is None:
+        continue
+      if slot_name == self.entity_slot:
+        entity = value if isinstance(value, dict) else {'post': str(value)}
+        self.validate_entity(entity)
+      else:
+        self.fill_slot_values({slot_name: value})
+    return self.is_filled()
 
-  def fill_slot_values(self, context, memory):
-    """System 2: Deeper contemplation to fill remaining slots."""
-    raise NotImplementedError
+  def fill_slot_values(self, values: dict):
+    """Transfer prediction values onto slot objects."""
+    if not values:
+      return
+    # Alias mapping: LLM may use common names that differ from slot names
+    _ALIASES = {'title': 'target', 'post': 'source', 'post_id': 'source'}
+    for slot_name, value in values.items():
+      slot = self.slots.get(slot_name)
+      if not slot:
+        # Try alias
+        alias = _ALIASES.get(slot_name)
+        if alias:
+          slot = self.slots.get(alias)
+      if not slot or not value:
+        continue
+      # Dispatch based on value type and slot type
+      st = getattr(slot, 'slot_type', '')
+      if isinstance(value, list) and st in ('source', 'target', 'removal'):
+        for item in value:
+          if isinstance(item, dict):
+            slot.add_one(**item)
+          else:
+            slot.add_one(post=str(item))
+      elif isinstance(value, dict) and st == 'dictionary':
+        predefined = set(slot.value.keys()) if hasattr(slot, 'value') and isinstance(slot.value, dict) else set()
+        if predefined == {'key', 'value'} and not any(k in predefined for k in value):
+          # LLM returned {actual_key: actual_value} instead of {key: ..., value: ...}
+          for k, v in value.items():
+            slot.add_one(key='key', val=str(k))
+            slot.add_one(key='value', val=str(v))
+            break  # only first entry
+        else:
+          for k, v in value.items():
+            slot.add_one(key=str(k), val=str(v))
+      elif isinstance(value, dict) and hasattr(slot, 'add_one'):
+        try:
+          slot.add_one(**value)
+        except TypeError:
+          # Unknown keys in dict — extract post/sec if possible
+          post = value.get('post', value.get('title', str(value)))
+          sec = value.get('sec', value.get('section', ''))
+          if st in ('source', 'target', 'removal'):
+            slot.add_one(post=str(post), sec=str(sec))
+          else:
+            slot.add_one(str(post))
+      elif hasattr(slot, 'assign_one'):
+        slot.assign_one(value)
+      elif hasattr(slot, 'add_one'):
+        if st in ('source', 'target', 'removal'):
+          slot.add_one(post=str(value))
+        elif st == 'dictionary':
+          slot.add_one(key=str(value), val='')
+        elif st == 'range' and isinstance(value, str):
+          slot.add_one(start=value)
+        else:
+          slot.add_one(value)
+      else:
+        slot.value = str(value)
 
-  def validate_entity(self, entity, current_context):
+  def slot_values_dict(self) -> dict:
+    """Read filled slot values as a flat dict (for prompt serialization)."""
+    return {
+      sn: slot.to_dict() for sn, slot in self.slots.items()
+      if slot.filled or (slot.criteria == 'multiple' and slot.to_dict())
+         or (slot.criteria == 'numeric' and slot.to_dict())
+    }
+
+  def to_dict(self) -> dict:
+    return {
+      'flow_id': self.flow_id, 'flow_name': self.flow_type,
+      'dax': self.dax, 'intent': self.parent_type,
+      'status': self.status, 'slots': self.slot_values_dict(),
+      'plan_id': self.plan_id, 'turn_ids': self.turn_ids,
+    }
+
+  def validate_entity(self, entity):
     """Add entity to the primary grounding slot. Override in domain parents for validation."""
     if self.entity_slot in self.slots:
       self.slots[self.entity_slot].add_one(**entity)
@@ -86,27 +182,11 @@ class ResearchParentFlow(BaseFlow):
     super().__init__()
     self.parent_type = 'Research'
 
-  def fill_slots_by_label(self, labels):
-    """Research flows expect NLU to identify post/section entities.
-    Label format: {"prediction": {"result": [{"tab": <post>, "col": <section>}]}}
-    """
-    current_context = labels.get('current_post', '')
-    for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_context)
-    return self.is_filled()
-
 
 class DraftParentFlow(BaseFlow):
   def __init__(self):
     super().__init__()
     self.parent_type = 'Draft'
-
-  def fill_slots_by_label(self, labels):
-    """Draft flows expect NLU to identify the target post and section context."""
-    current_context = labels.get('current_post', '')
-    for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_context)
-    return self.is_filled()
 
 
 class ReviseParentFlow(BaseFlow):
@@ -114,25 +194,11 @@ class ReviseParentFlow(BaseFlow):
     super().__init__()
     self.parent_type = 'Revise'
 
-  def fill_slots_by_label(self, labels):
-    """Revise flows expect NLU to identify the post/section to revise."""
-    current_context = labels.get('current_post', '')
-    for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_context)
-    return self.is_filled()
-
 
 class PublishParentFlow(BaseFlow):
   def __init__(self):
     super().__init__()
     self.parent_type = 'Publish'
-
-  def fill_slots_by_label(self, labels):
-    """Publish flows expect NLU to identify the post and platform."""
-    current_context = labels.get('current_post', '')
-    for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_context)
-    return self.is_filled()
 
 
 class ConverseParentFlow(BaseFlow):

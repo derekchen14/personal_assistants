@@ -156,6 +156,77 @@ class RecipeService:
         ...
 ```
 
+### PEX Registration: `_tools` Dict with `(service, method_name)` Tuples
+
+PEX registers domain tools in a `_tools` dict that maps tool names to `(service_instance, method_name)` tuples. This pattern keeps dispatch simple and avoids a separate registry abstraction.
+
+```python
+class PEX:
+    def __init__(self, config, ambiguity, engineer, memory, world):
+        # ... standard init ...
+
+        # Domain-specific service classes
+        self._recipe_service = RecipeService(db_conn, config)
+        self._nutrition_service = NutritionService(config)
+
+        # Tool registry: tool_name → (service, method_name)
+        self._tools: dict[str, tuple[object, str]] = {
+            'recipe_search': (self._recipe_service, 'search'),
+            'recipe_get': (self._recipe_service, 'get'),
+            'recipe_create': (self._recipe_service, 'create'),
+            'nutrition_lookup': (self._nutrition_service, 'lookup'),
+        }
+```
+
+### Tool Dispatch
+
+The `_dispatch_tool` method handles all tool calls. Domain tools are dispatched via `_tools` using `getattr`; component tools (context_coordinator, memory_manager, flow_stack) are dispatched via internal methods.
+
+```python
+def _dispatch_tool(self, tool_name: str, tool_input: dict) -> dict:
+    try:
+        if tool_name in self._tools:
+            service, method_name = self._tools[tool_name]
+            method = getattr(service, method_name)
+            return method(**tool_input)
+        elif tool_name == 'context_coordinator':
+            return self._dispatch_context_tool(tool_input)
+        elif tool_name == 'memory_manager':
+            return self.memory.dispatch_tool(tool_input.get('action', ''), tool_input)
+        elif tool_name == 'flow_stack':
+            return self._dispatch_flow_stack_tool(tool_input)
+        else:
+            return {
+                'status': 'error',
+                'error_category': 'invalid_input',
+                'message': f'Unknown tool: {tool_name}',
+                'retryable': False,
+            }
+    except Exception as e:
+        return {
+            'status': 'error',
+            'error_category': 'server_error',
+            'message': f'{type(e).__name__}: {e}',
+            'retryable': False,
+        }
+```
+
+Component tools (context_coordinator, memory_manager, flow_stack) are NOT in the `_tools` dict. They are handled by dedicated `_dispatch_*_tool` methods inside PEX, since they access internal component state rather than external services.
+
+### Tool Definitions for Skills
+
+`get_tools_for_flow(flow)` assembles the tool list for a skill invocation. It combines the component tool definitions (always available) with the flow's declared tools (looked up from the config manifest).
+
+```python
+def get_tools_for_flow(self, flow) -> list[dict]:
+    tools = list(self._component_tool_definitions())
+    for tool_name in flow.tools:
+        tool_def = self._get_tool_def(tool_name)
+        if tool_def:
+            tools.append(tool_def)
+    return tools
+```
+
 ### Rules
 
 - **One class per system**: `RecipeService`, `GitHubService`, `SQLService`, `NutritionService`, etc.

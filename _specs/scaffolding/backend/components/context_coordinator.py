@@ -10,7 +10,6 @@ class ContextCoordinator:
         self.config = config
         self._history: list[dict] = []
         self._checkpoints: list[dict] = []
-        self._fast_window_size: int = 7
 
     def add_turn(self, speaker: str, text: str,
                  form: str = 'text', turn_type: str | None = None) -> str:
@@ -26,26 +25,32 @@ class ContextCoordinator:
         self._history.append(turn)
         return turn_id
 
-    def compile_history(self, turns: int = 5,
-                        keep_system: bool = False) -> list[dict]:
+    def compile_history(self, look_back: int = 5, keep_system: bool = True) -> str:
+        """Return recent conversation as a formatted string for prompt context."""
+        turns = self.full_conversation(keep_system=keep_system)
+        recent = turns[-look_back:]
+        return '\n'.join(recent)
+
+    def full_conversation(self, keep_system: bool = True) -> list[str]:
+        """Return all utterance turns as formatted strings."""
+        allowed = {'User', 'Agent'}
         if keep_system:
-            source = self._history
-        else:
-            source = [t for t in self._history if t['speaker'] != 'System']
-        return source[-turns:]
+            allowed.add('System')
+        return [
+            f"{t['speaker']}: {t['text']}"
+            for t in self._history
+            if t['speaker'] in allowed
+        ]
+
+    def recent_turns(self, n: int = 3) -> list[dict]:
+        """Return last n raw turn dicts."""
+        return self._history[-n:]
 
     def get_turn(self, turn_id: str) -> dict | None:
         for turn in self._history:
             if turn['turn_id'] == turn_id:
                 return turn
         return None
-
-    def get_recent(self) -> list[dict]:
-        utterances = [
-            t for t in self._history
-            if t['speaker'] in ('User', 'Agent')
-        ]
-        return utterances[-self._fast_window_size:]
 
     def save_checkpoint(self, label: str, data: dict | None = None):
         self._checkpoints.append({
@@ -74,4 +79,11 @@ class ContextCoordinator:
         for turn in reversed(self._history):
             if turn['speaker'] == 'User':
                 return turn['text']
+        return None
+
+    @property
+    def last_user_turn(self) -> dict | None:
+        for turn in reversed(self._history):
+            if turn['speaker'] == 'User':
+                return turn
         return None

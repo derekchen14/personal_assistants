@@ -10,7 +10,7 @@ Accept and finalize a revision to a blog post.
 - Suggest next steps: `format_post` to prepare for publication, or `publish_post` to go live
 
 ## Slots
-- `post_id` (required): The post whose revision is accepted
+- `source` (required): The post (by title or ID) whose revision is accepted
 - `comment` (optional): Note about the accepted revision
 
 ## Output

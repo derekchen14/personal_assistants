@@ -63,7 +63,7 @@ def nlu(minimal_config):
     ambiguity = MagicMock()
     engineer = PromptEngineer(minimal_config)
     world = MagicMock()
-    world.context.compile_history.return_value = []
+    world.context.compile_history.return_value = ''
     return NLU(minimal_config, ambiguity, engineer, world)
 
 

@@ -10,7 +10,7 @@ Cancel or unpublish a post.
 - If `reason` is provided, log it for reference
 
 ## Slots
-- `post_id` (required): The post to cancel/unpublish
+- `source` (required): The post (by title or ID) to cancel/unpublish
 - `reason` (optional): Why the publication is being cancelled
 
 ## Output

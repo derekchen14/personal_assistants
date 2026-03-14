@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from types import MappingProxyType
@@ -9,7 +8,9 @@ from typing import TYPE_CHECKING
 from backend.components.dialogue_state import DialogueState
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
+from backend.components.flow_stack import flow_classes
 from schemas.ontology import FLOW_CATALOG, Intent
+from utils.helper import _DAX_LOOKUP, edge_flows_for
 
 if TYPE_CHECKING:
     from backend.components.world import World
@@ -24,11 +25,6 @@ _SHORTCUTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r'\bwhat.*(next|now)\b', re.I), 'recommend'),
     (re.compile(r'\bstatus\b', re.I), 'describe'),
 ]
-
-_DAX_LOOKUP: dict[str, str] = {}
-for _fn, _flow in FLOW_CATALOG.items():
-    _dax_raw = _flow['dax'].strip('{}').upper()
-    _DAX_LOOKUP[_dax_raw] = _fn
 
 _DEV_PATTERN = re.compile(r'^/([0-9A-Fa-f]{3})\b\s*(.*)', re.DOTALL)
 
@@ -53,15 +49,17 @@ class NLU:
         self.ambiguity = ambiguity
         self.engineer = engineer
         self.world = world
+        self.flow_stack = world.flow_stack
 
     # ── Entry point ───────────────────────────────────────────────────
 
-    def understand(self, user_text: str, gold_dax: str | None = None) -> DialogueState:
+    def understand(self, user_text, context, gold_dax) -> DialogueState:
         prep = self.prepare(user_text)
         if prep is not None:
             return self.validate(prep)
 
-        if gold_dax or self._is_user_action(user_text):
+        user_turn = context.last_user_turn
+        if gold_dax or (user_turn and user_turn.get('turn_type') == 'action'):
             state = self.react(user_text, gold_dax)
         elif self._should_contemplate():
             state = self.contemplate(user_text)
@@ -75,45 +73,35 @@ class NLU:
     def prepare(self, user_text: str) -> DialogueState | None:
         text = user_text.strip()
 
-        if not text:
-            return self._build_state('Converse', '{000}', 'chat', 1.0)
-
         if len(text) < 2:
-            return self._build_state('Converse', '{000}', 'chat', 0.8)
+            return self._build_state('chat', 0.8)
 
         match = _DEV_PATTERN.match(text)
         if match:
             dax_code = match.group(1).upper()
             flow_name = _DAX_LOOKUP.get(dax_code)
             if flow_name:
-                flow = FLOW_CATALOG[flow_name]
-                return self._build_state(
-                    intent=flow['intent'].value,
-                    dax=flow['dax'],
-                    flow_name=flow_name,
-                    confidence=0.99,
-                    slots={},
-                )
+                return self._build_state(flow_name=flow_name, confidence=0.99)
 
         for pattern, flow_name in _SHORTCUTS:
             if pattern.search(text):
-                flow = FLOW_CATALOG.get(flow_name)
-                if flow:
-                    return self._build_state(
-                        intent=flow['intent'].value,
-                        dax=flow['dax'],
-                        flow_name=flow_name,
-                        confidence=1.0,
-                    )
+                if flow_name in FLOW_CATALOG:
+                    return self._build_state(flow_name=flow_name, confidence=1.0)
         return None
 
     def think(self, user_text: str) -> DialogueState:
         result = self.predict(user_text)
+        flow_name = result['flow_name']
+
+        flow = self._push_or_get(flow_name)
+        if flow and result.get('slots'):
+            flow.fill_slot_values(result['slots'])
+
         state = self._build_state(
-            intent=result['intent'], dax=result['dax'],
-            flow_name=result['flow_name'], confidence=result['confidence'],
-            slots=result.get('slots', {}),
+            flow_name=flow_name, confidence=result['confidence'],
         )
+        state.pred_flows = result.get('pred_flows', [])
+
         if self.ambiguity.needs_clarification(state.confidence):
             self.ambiguity.declare(
                 'general',
@@ -130,71 +118,72 @@ class NLU:
 
         detection = self._check_routing(user_text, failed_flow, failure_reason)
         flow_name = detection['flow_name']
+        flow_intent = FLOW_CATALOG.get(flow_name, {}).get('intent', Intent.CONVERSE)
 
-        flow = FLOW_CATALOG.get(flow_name, {})
-        flow_intent = flow.get('intent', Intent.CONVERSE).value
-
-        if flow_intent not in ('Converse', 'Plan') and flow.get('slots'):
-            slots = self._fill_slots(user_text, flow_name)
+        if flow_intent not in (Intent.CONVERSE, Intent.PLAN):
+            cls = flow_classes.get(flow_name)
+            if cls and cls().slots:
+                slots = self._fill_slots(user_text, flow_name)
+            else:
+                slots = detection.get('slots', {})
         else:
             slots = detection.get('slots', {})
 
+        flow = self._push_or_get(flow_name)
+        if flow and slots:
+            flow.fill_slot_values(slots)
+
         return self._build_state(
-            intent=flow_intent, dax=flow.get('dax', '{000}'),
             flow_name=flow_name, confidence=detection['confidence'],
-            slots=slots,
         )
 
     def react(self, user_text: str, gold_dax: str | None = None) -> DialogueState:
         if gold_dax:
             return self._resolve_gold_dax(gold_dax, user_text)
         result = self._process_action(user_text)
+        flow_name = result['flow_name']
+
+        flow = self._push_or_get(flow_name)
+        if flow and result.get('slots'):
+            flow.fill_slot_values(result['slots'])
+
         return self._build_state(
-            intent=result['intent'], dax=result['dax'],
-            flow_name=result['flow_name'], confidence=result.get('confidence', 1.0),
-            slots=result.get('slots', {}),
+            flow_name=flow_name, confidence=result.get('confidence', 1.0),
         )
 
     def validate(self, state: DialogueState) -> DialogueState:
-        flow = FLOW_CATALOG.get(state.flow_name)
-        if not flow:
-            state.intent = 'Converse'
-            state.dax = '{000}'
+        cat = FLOW_CATALOG.get(state.flow_name)
+        if not cat:
+            state.pred_intent = 'Converse'
             state.flow_name = 'chat'
             state.confidence = 0.3
-            state.slots = {}
             return state
 
-        catalog_intent = flow['intent'].value
-        if state.intent != catalog_intent:
-            state.intent = catalog_intent
+        catalog_intent = cat['intent']
+        if state.pred_intent != catalog_intent:
+            state.pred_intent = catalog_intent
 
-        state.dax = flow['dax']
-
-        valid_slot_names = set(flow.get('slots', {}).keys())
-        state.slots = {
-            k: v for k, v in state.slots.items()
-            if k in valid_slot_names
-        }
-
-        state = self._repair_entities(state, flow)
+        flow = self.flow_stack.find_by_name(state.flow_name)
+        if flow:
+            state = self._repair_entities(state, flow)
 
         return state
 
     # ── Entity repair ──────────────────────────────────────────────────
 
     def _repair_entities(self, state: DialogueState,
-                         flow_info: dict) -> DialogueState:
-        slot_schema = flow_info.get('slots', {})
+                         flow) -> DialogueState:
+        from backend.components.flow_stack.slots import FreeTextSlot
+
         valid_values = self._get_valid_values()
+        slot_vals = flow.slot_values_dict()
 
-        for slot_name, value in list(state.slots.items()):
-            schema = slot_schema.get(slot_name, {})
-            slot_type = schema.get('type', 'FreeTextSlot')
-
-            if slot_type == 'FreeTextSlot':
+        for slot_name, value in list(slot_vals.items()):
+            slot = flow.slots.get(slot_name)
+            if not slot or isinstance(slot, FreeTextSlot):
                 continue
 
+            slot_type = type(slot).__name__
             candidates = valid_values.get(slot_type, [])
             if not candidates or value in candidates:
                 continue
@@ -202,7 +191,7 @@ class NLU:
             repaired = False
             for transform in (str.lower, str.upper, str.title):
                 if transform(value) in candidates:
-                    state.slots[slot_name] = transform(value)
+                    slot.value = transform(value)
                     repaired = True
                     break
 
@@ -210,7 +199,7 @@ class NLU:
                 from difflib import get_close_matches
                 matches = get_close_matches(value, candidates, n=1, cutoff=0.6)
                 if matches:
-                    state.slots[slot_name] = matches[0]
+                    slot.value = matches[0]
                     self.ambiguity.declare(
                         'confirmation',
                         metadata={'slot': slot_name, 'candidate': matches[0]},
@@ -221,7 +210,7 @@ class NLU:
                         value, candidates, slot_name,
                     )
                     if llm_result:
-                        state.slots[slot_name] = llm_result
+                        slot.value = llm_result
                         self.ambiguity.declare(
                             'confirmation',
                             metadata={'slot': slot_name, 'candidate': llm_result},
@@ -231,7 +220,7 @@ class NLU:
                             'partial',
                             metadata={'slot': slot_name, 'invalid_value': value},
                         )
-                        del state.slots[slot_name]
+                        slot.reset()
         return state
 
     def _llm_repair_slot(self, value: str, candidates: list[str],
@@ -245,11 +234,10 @@ class NLU:
             )
             messages = [{'role': 'user', 'content': value}]
             try:
-                response = self.engineer.call(
+                text = self.engineer.call_text(
                     system=system, messages=messages,
                     call_site='nlu_repair_slot', max_tokens=64,
-                )
-                text = self._extract_text(response).strip()
+                ).strip()
                 if text in candidates:
                     return text
                 if text == 'NONE':
@@ -259,6 +247,8 @@ class NLU:
         return None
 
     def _get_valid_values(self) -> dict[str, list[str]]:
+        from backend.components.flow_stack.slots import CategorySlot
+
         values: dict[str, list[str]] = {}
         values['CategorySlot'] = [
             'inner', 'left', 'right', 'outer',
@@ -268,14 +258,14 @@ class NLU:
             'drop', 'fill_mean', 'fill_zero', 'fill_forward',
         ]
 
-        for flow_info in FLOW_CATALOG.values():
-            for slot_info in flow_info.get('slots', {}).values():
-                slot_type = slot_info.get('type', 'FreeTextSlot')
-                if slot_type == 'CategorySlot' and 'options' in slot_info:
-                    values.setdefault(slot_type, [])
-                    for opt in slot_info['options']:
-                        if opt not in values[slot_type]:
-                            values[slot_type].append(opt)
+        for name, cls in flow_classes.items():
+            inst = cls()
+            for slot in inst.slots.values():
+                if isinstance(slot, CategorySlot):
+                    values.setdefault('CategorySlot', [])
+                    for opt in slot.options:
+                        if opt not in values['CategorySlot']:
+                            values['CategorySlot'].append(opt)
         return values
 
     # ── Prediction ────────────────────────────────────────────────────
@@ -285,41 +275,42 @@ class NLU:
         detection = self._detect_flow(user_text, intent)
         flow_name = detection['flow_name']
 
-        flow = FLOW_CATALOG.get(flow_name, {})
-        flow_intent = flow.get('intent', Intent.CONVERSE).value
-        skip_slots = flow_intent in ('Converse', 'Plan')
+        flow_intent = FLOW_CATALOG.get(flow_name, {}).get('intent', Intent.CONVERSE)
+        skip_slots = flow_intent in (Intent.CONVERSE, Intent.PLAN)
 
-        if skip_slots or not flow.get('slots'):
+        cls = flow_classes.get(flow_name)
+        has_slots = bool(cls and cls().slots) if cls else False
+
+        if skip_slots or not has_slots:
             slots = detection.get('slots', {})
         else:
             slots = self._fill_slots(user_text, flow_name)
 
         return {
-            'intent': flow_intent,
-            'dax': flow.get('dax', '{000}'),
             'flow_name': flow_name,
             'confidence': detection['confidence'],
             'slots': slots,
+            'pred_flows': detection.get('pred_flows', []),
         }
 
     # ── Prediction sub-tasks (private) ────────────────────────────────
 
     def _classify_intent(self, user_text: str) -> str:
-        history = self.world.context.compile_history(turns=5)
-        system, messages = self.engineer.build_nlu_prompt(user_text, history)
-        response = self.engineer.call(
+        history_text = self.world.context.compile_history(look_back=5)
+        system, messages = self.engineer.build_nlu_prompt(user_text, history_text)
+        text = self.engineer.call_text(
             system=system, messages=messages,
             call_site='nlu_intent', max_tokens=256,
         )
-        parsed = self._parse_json(self._extract_text(response))
+        parsed = self.engineer.apply_guardrails(text)
         if parsed and parsed.get('intent'):
             return parsed['intent']
         return 'Converse'
 
     def _detect_flow(self, user_text: str, intent: str | None = None) -> dict:
-        history = self.world.context.compile_history(turns=5)
+        history_text = self.world.context.compile_history(look_back=5)
         system, messages = self.engineer.build_flow_prompt(
-            user_text, intent, history,
+            user_text, intent, history_text,
         )
 
         def _call_voter(voter: dict) -> dict | None:
@@ -328,7 +319,7 @@ class NLU:
                     system=system, messages=messages,
                     call_site=voter['call_site'], max_tokens=512,
                 )
-                parsed = self._parse_json(text)
+                parsed = self.engineer.apply_guardrails(text)
                 if parsed:
                     parsed['_model'] = voter['label']
                     parsed['_weight'] = voter['weight']
@@ -349,22 +340,22 @@ class NLU:
 
         if not votes:
             return {
-                'intent': 'Converse', 'dax': '{000}',
                 'flow_name': 'chat', 'confidence': 0.3, 'slots': {},
+                'pred_flows': [{'flow_name': 'chat', 'confidence': 0.3}],
             }
 
         return self._tally_votes(votes)
 
     def _fill_slots(self, user_text: str, flow_name: str) -> dict:
-        history = self.world.context.compile_history(turns=5)
+        history_text = self.world.context.compile_history(look_back=5)
         system, messages = self.engineer.build_slot_filling_prompt(
-            user_text, flow_name, history,
+            user_text, flow_name, history_text,
         )
-        response = self.engineer.call(
+        text = self.engineer.call_text(
             system=system, messages=messages,
             call_site='nlu_slots', max_tokens=512,
         )
-        parsed = self._parse_json(self._extract_text(response))
+        parsed = self.engineer.apply_guardrails(text)
         if parsed and isinstance(parsed.get('slots'), dict):
             return parsed['slots']
         return {}
@@ -377,16 +368,16 @@ class NLU:
         if not candidates:
             return {'flow_name': 'chat', 'confidence': 0.5, 'slots': {}}
 
-        history = self.world.context.compile_history(turns=5)
+        history_text = self.world.context.compile_history(look_back=5)
         system, messages = self.engineer.build_contemplate_prompt(
             user_text, failed_flow or 'unknown', failure_reason,
-            candidates, history,
+            candidates, history_text,
         )
-        response = self.engineer.call(
+        text = self.engineer.call_text(
             system=system, messages=messages,
             call_site='nlu_contemplate', max_tokens=512,
         )
-        parsed = self._parse_json(self._extract_text(response))
+        parsed = self.engineer.apply_guardrails(text)
         if parsed and parsed.get('flow_name') in FLOW_CATALOG:
             return {
                 'flow_name': parsed['flow_name'],
@@ -398,34 +389,29 @@ class NLU:
     def _get_contemplate_candidates(self, failed_flow: str | None) -> list[str]:
         candidates = set()
         if failed_flow:
-            flow = FLOW_CATALOG.get(failed_flow, {})
-            for ef in flow.get('edge_flows', []):
+            for ef in edge_flows_for(failed_flow):
                 candidates.add(ef)
-        active = self.world.flow_stack.get_active_flow()
-        if active and active.flow_name != failed_flow:
-            candidates.add(active.flow_name)
+        flow = self.flow_stack.get_active_flow()
+        if flow and flow.name() != failed_flow:
+            candidates.add(flow.name())
         candidates.add('chat')
         candidates.discard(failed_flow)
         return sorted(candidates)
 
     def _process_action(self, user_text: str) -> dict:
-        active = self.world.flow_stack.get_active_flow()
-        if active:
-            flow = FLOW_CATALOG.get(active.flow_name, {})
+        flow = self.flow_stack.get_active_flow()
+        if flow:
             return {
-                'intent': flow.get('intent', Intent.CONVERSE).value,
-                'dax': flow.get('dax', '{000}'),
-                'flow_name': active.flow_name,
+                'flow_name': flow.name(),
                 'confidence': 1.0,
-                'slots': active.slots,
+                'slots': flow.slot_values_dict(),
             }
         return {
-            'intent': 'Converse', 'dax': '{000}',
             'flow_name': 'chat', 'confidence': 0.8,
         }
 
     def _should_contemplate(self) -> bool:
-        if self.world.flow_stack.depth == 0:
+        if self.flow_stack.depth == 0:
             return False
         prev = self.world.current_state()
         if not prev:
@@ -437,19 +423,32 @@ class NLU:
 
     # ── Support (private) ─────────────────────────────────────────────
 
-    def _build_state(self, intent: str, dax: str, flow_name: str,
-                     confidence: float, slots: dict | None = None) -> DialogueState:
+    def _push_or_get(self, flow_name: str):
+        """Push a new flow or return existing one on the stack."""
+        existing = self.flow_stack.find_by_name(flow_name)
+        if existing:
+            return existing
+        try:
+            return self.flow_stack.push(flow_name)
+        except (ValueError, RuntimeError):
+            return None
+
+    def _build_state(self, flow_name: str,
+                     confidence: float) -> DialogueState:
         prev = self.world.current_state()
+        cat = FLOW_CATALOG.get(flow_name, {})
+        pred_intent = cat.get('intent', Intent.CONVERSE)
 
         state = DialogueState(self.config)
         state.update(
-            intent=intent, dax=dax, flow_name=flow_name,
-            confidence=confidence, slots=slots,
+            pred_intent=pred_intent, flow_name=flow_name,
+            confidence=confidence,
         )
 
         if prev:
             state.has_plan = prev.has_plan
             state.natural_birth = prev.natural_birth
+            state.active_dataset = prev.active_dataset
 
         self.world.insert_state(state)
         return state
@@ -467,51 +466,47 @@ class NLU:
         best_flow = max(flow_weights, key=flow_weights.get)
         final_confidence = flow_weights[best_flow] / total_weight
 
+        ranked = sorted(flow_weights.items(), key=lambda x: x[1], reverse=True)
+        pred_flows = [
+            {'flow_name': fn, 'confidence': w / total_weight}
+            for fn, w in ranked
+        ]
+
         best_vote = max(
             flow_votes[best_flow],
             key=lambda v: v.get('_weight', 0),
         )
         slots = best_vote.get('slots', {})
 
-        flow = FLOW_CATALOG[best_flow]
         return {
-            'intent': flow['intent'].value,
-            'dax': flow['dax'],
             'flow_name': best_flow,
             'confidence': final_confidence,
             'slots': slots,
+            'pred_flows': pred_flows,
         }
 
     def _resolve_gold_dax(self, gold_dax: str, user_text: str) -> DialogueState:
-        for flow_name, flow in FLOW_CATALOG.items():
-            if flow['dax'] == gold_dax:
-                return self._build_state(intent=flow['intent'].value, dax=gold_dax,
-                    flow_name=flow_name, confidence=0.99
-                )
-        return self._build_state('Converse', '{000}', 'chat', 0.5)
+        for flow_name, cat in FLOW_CATALOG.items():
+            if cat['dax'] == gold_dax:
+                slots = self._extract_gold_slots(flow_name, user_text)
+                flow = self._push_or_get(flow_name)
+                if flow and slots:
+                    flow.fill_slot_values(slots)
+                return self._build_state(flow_name=flow_name, confidence=0.99)
+        return self._build_state('chat', 0.5)
 
     @staticmethod
-    def _extract_text(response) -> str:
-        text = ''
-        for block in response.content:
-            if block.type == 'text':
-                text += block.text
-        return text
-
-    @staticmethod
-    def _parse_json(text: str) -> dict | None:
-        text = text.strip()
-        if text.startswith('```'):
-            lines = text.split('\n')
-            lines = [l for l in lines if not l.strip().startswith('```')]
-            text = '\n'.join(lines)
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group())
-                except json.JSONDecodeError:
-                    pass
-        return None
+    def _extract_gold_slots(flow_name: str, user_text: str) -> dict:
+        result = {}
+        text = user_text.strip()
+        if not text:
+            return result
+        cls = flow_classes.get(flow_name)
+        if not cls:
+            return result
+        inst = cls()
+        for slot_name, slot in inst.slots.items():
+            if slot.priority == 'required':
+                result[slot_name] = text
+                break
+        return result

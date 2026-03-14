@@ -114,7 +114,7 @@ Hex digit assignment is fluid — assign digits 0–F to the 16 core dacts in wh
 
 Compose 2–3 core dacts to form composite flows. Up to 64 total flows per domain. Start with 3 flows per intent (21 total) as a draft — enough to validate the grammar without overcommitting. Target **48 flows** per domain (16 below the max of 64, leaving breathing room for future additions). In practice, **32 flows** is a good v1 starting point — enough coverage without over-building.
 
-The full catalog (64 flows) should distribute **7-10 flows per intent**. Fewer than 7 → the intent may be too narrow (merge or reclassify). More than 10 → too broad (split or move flows). At 32 flows (starting point), distribute proportionally (~4-5 per intent).
+At **48 flows** (target), distribute **5-8 flows per intent**. Fewer than 5 → the intent may be too narrow (merge or reclassify). More than 8 → too broad (split or move flows). At 32 flows (starting point), distribute proportionally (~4-5 per intent). At 64 flows (ceiling), 7-10 per intent.
 
 **Beam search process for expanding beyond the initial 21:**
 
@@ -139,6 +139,7 @@ The full catalog (64 flows) should distribute **7-10 flows per intent**. Fewer t
 6. **Near-synonym flows.** "create" ≈ "scaffold", "scan" ≈ "query", "scorecard" ≈ "dashboard". If a user's utterance could plausibly trigger either, one must go.
 7. **Agent behavior disguised as a flow.** Some agent actions (asking for clarification, gathering context) happen within other flows, not as standalone user-triggered tasks. Exception: when the agent's output is the task (e.g., "warn" produces a visible warning).
 8. **Slot masquerading as a flow.** If the "flow" is really just a parameter value of another flow, it's a slot — not a flow. Examples: chart type (scatter, histogram) is a slot of `plot`; competitor name is a slot of `research`; time-of-day is a slot of `tune`.
+9. **Pipeline step disguised as a flow.** If a flow only exists to gate another flow (e.g., `preview` before `confirm` before `deploy`), it's a pipeline step — not an independent action. Merge the gate into the downstream flow as automatic behavior. Each flow should be independently useful.
 
 **Good patterns — signs a flow is pulling its weight:**
 
@@ -306,7 +307,7 @@ Each flow (core or composite) belongs to exactly one intent. Assignment follows 
 - Universal verbs (insert/update/delete) take their standard intent unless a domain verb overrides
 - Nouns and adjectives specialize the flow but don't typically override the verb-determined intent
 
-**Balance check**: After assigning all flows, verify each intent has 7-10 in the full catalog. Rebalance by reclassifying borderline composites or revisiting intent boundaries.
+**Balance check**: After assigning all flows, verify each intent has 5-8 flows (at 48 total). Rebalance by reclassifying borderline composites or revisiting intent boundaries.
 
 ## Edge Flow Selection
 
@@ -729,3 +730,68 @@ Note: domain verbs are `read`, `write`, `run`, `ship` — not "trace" or "code",
 |---|---|---|---|
 | daypart | tune + ad + channel | Time-of-day targeting is a parameter you set within `tune`, not a separate task — "optimize delivery for mornings" is just tuning with a time slot filled in | #8 Slot as flow |
 | rebalance | tune + channel + paid | Identical slot signature to `allocate` — both need the same inputs (channels + budget amounts) and produce the same output. If slots match, it's the same flow | #4 Same slots |
+
+## Universal DAX Codes
+
+The first 8 single-dact codes `{000}`–`{007}` are **reserved** across all domains. Each corresponds to a standalone dact primitive representing one of the most fundamental user actions. Every domain must assign a flow to each.
+
+| DAX | Semantic slot | Description |
+|-----|--------------|-------------|
+| `{000}` | chat | Open conversation, non-domain talk |
+| `{001}` | search | Find by keyword over curated content |
+| `{002}` | outline | Generate structure or scope |
+| `{003}` | compose | Create something new from scratch |
+| `{004}` | share | Distribute, amplify, or export |
+| `{005}` | insert | Add a new element |
+| `{006}` | update | Revise or edit an existing element |
+| `{007}` | delete | Remove an element |
+
+The flow *name* is domain-specific — a cooking agent's `{001}` might be called `browse`, while a data agent's is `query` — but the *semantic slot* is universal. Multi-dact codes (`{05A}`, `{3BD}`, etc.) are for domain-specific refinements.
+
+**Process:** When building a new domain's flow catalog, assign `{000}`–`{007}` before designing any other flows. This locks in the foundation and prevents cascading renames later. If a domain already has flows that fit these slots, promote them; if not, create the missing ones.
+
+### Design Lessons
+
+These principles emerged from applying universal DAX codes across multiple domains:
+
+1. **Assign universal codes first, not last.** Retrofitting `{000}`–`{007}` onto an existing catalog causes cascading renames, DAX reassignments, and ripple effects across policies, prompts, tests, and frontends. Designing these 8 flows first avoids that rework.
+
+2. **Merge near-synonym flows early.** If two flows serve nearly the same user task, one will be removed eventually — and every file that references it (skill prompts, policy batches, tests, frontend configs, seed data) must be updated. Catching overlaps before building those artifacts saves significant effort. Examples: a "compose" flow that overlaps with "propose", or an "amend" flow that overlaps with "rework".
+
+3. **Flow names must be verbs.** Every dact primitive is a verb because flows represent actions. A noun-based flow name (e.g., "intent" instead of "declare") is ambiguous — it's unclear whether the user is performing the action or the system is detecting it. If a proposed flow name is a noun, find the verb it implies.
+
+4. **Dact labels are domain-specific; dact positions are not.** The hex index of a dact in `DACT_CATALOG` is fixed across all domains, but the human-readable label should match domain vocabulary. An onboarding agent might label its dact `scope` where a blog agent labels the same position `outline`. The position ensures cross-domain consistency; the label ensures domain fluency.
+
+5. **`{001}` is curated search, not retrieval.** The distinction matters: `{001}` is user-initiated keyword search over vetted, curated content. Unvetted retrieval from any source (e.g., a general knowledge base) is a different operation and belongs in a multi-dact Internal flow. This parallels the `search` vs `retrieve` distinction in the Internal intent.
+
+6. **`{003}` is the creative/generative slot.** The common thread across domains is producing something new — writing from scratch, proposing a plan, generating a draft. This is distinct from `{006}` (update), which modifies existing content. If a candidate for `{003}` feels more like editing, it probably belongs at `{006}` instead.
+
+7. **Flows are independent actions, not pipeline steps.** Each flow should be useful on its own, not just as a precondition for another flow. A design like `generate → preview → confirm` forces a linear sequence and creates flows that only exist to gate the next step. Instead, design each flow as a standalone action the user might invoke independently: `test`, `deploy`, `secure`, `version`. If a step is always required before another action, make it automatic behavior within that action (e.g., `deploy` auto-generates a build report — no separate `report` flow needed).
+
+8. **Separate "collecting new" from "modifying existing."** Two intents that touch the same entities can be distinct if one gathers fresh information and the other iterates on what exists. Kalli's Gather (collect requirements from scratch) vs Personalize (revise existing config) is a clear example. Hugo has Research (find new material) vs Revise (edit existing drafts). If an intent feels overloaded, check whether it's conflating creation and modification — splitting along that line often resolves it.
+
+## Starter Pack
+
+Every assistant has numerous flows that are fairly domain-agnostic. In addition to the 8 universal DAX codes, there are also some in Converse and Internal that are usually shared. These can kick-start a new domain's flow catalog.
+
+### Converse Flows
+
+| Semantic slot | Example names | Description |
+|---------------|---------------|-------------|
+| **explain** | explain | Agent explains what it did or plans to do |
+| **preference** | preference | User sets a persistent preference (L2) |
+| **undo** | undo | Reverse the most recent domain action |
+| **recommend** | recommend, suggest, next | Agent proactively suggests a next step |
+| **affirm** | approve, endorse | User accepts the agent's suggestion |
+| **negate** | reject, dismiss | User declines the agent's suggestion |
+
+### Internal Flows
+
+| Semantic slot | Example names | Description |
+|---------------|---------------|-------------|
+| **recap** | recap | Read from session scratchpad (L1) |
+| **recall** | recall | Look up persistent user preferences (L2) |
+| **retrieve** | retrieve | Fetch unvetted business context (L3) |
+| **search** | search | Look up vetted FAQs and curated content |
+
+Not every domain needs all of these — Kalli omits `undo` because onboarding actions aren't destructive. But most domains will want the full set of ~18 (8 universal + 6 converse + 4 internal) before designing domain-specific flows.

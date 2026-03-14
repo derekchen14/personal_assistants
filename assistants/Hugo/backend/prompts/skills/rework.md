@@ -12,7 +12,7 @@ Major revision of draft content based on feedback or quality review.
 - Preserve the author's voice while improving quality
 
 ## Slots
-- `post_id` (required): The post to revise
+- `source` (required): The post (by title or ID) to revise
 - `section` (optional): Specific section to focus on
 
 ## Output

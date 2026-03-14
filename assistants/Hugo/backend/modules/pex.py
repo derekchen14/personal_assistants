@@ -9,20 +9,18 @@ from backend.components.display_frame import DisplayFrame
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.memory_manager import MemoryManager
-from backend.utilities.services import PostService, ContentService, PlatformService
+from backend.utilities.services import PostService, ContentService, PlatformService as ChannelService
 from backend.modules.policies import (
     ConversePolicy, ResearchPolicy, DraftPolicy, RevisePolicy,
     PublishPolicy, PlanPolicy, InternalPolicy,
 )
-from schemas.ontology import FLOW_CATALOG, Intent
+from schemas.ontology import Intent
 
 if TYPE_CHECKING:
+    from backend.components.context_coordinator import ContextCoordinator
     from backend.components.world import World
-
-
-_UNSUPPORTED = {
-    'tidy', 'suggest',
-}
+_UNSUPPORTED: set[str] = set()
+_POST_INTENTS = {Intent.RESEARCH, Intent.DRAFT, Intent.REVISE, Intent.PUBLISH}
 
 
 class PEX:
@@ -35,12 +33,13 @@ class PEX:
         self.engineer = engineer
         self.memory = memory
         self.world = world
+        self.flow_stack = world.flow_stack
 
         self._post_service = PostService()
         self._content_service = ContentService()
-        self._platform_service = PlatformService()
+        self._channel_service = ChannelService()
 
-        self._tool_registry: dict[str, tuple[object, str]] = {
+        self._tools: dict[str, tuple[object, str]] = {
             'post_search':       (self._post_service, 'search'),
             'post_get':          (self._post_service, 'get'),
             'post_create':       (self._post_service, 'create'),
@@ -48,111 +47,72 @@ class PEX:
             'post_delete':       (self._post_service, 'delete'),
             'content_generate':  (self._content_service, 'generate'),
             'content_format':    (self._content_service, 'format'),
-            'platform_publish':  (self._platform_service, 'publish'),
-            'platform_list':     (self._platform_service, 'list_platforms'),
-            'platform_status':   (self._platform_service, 'get_status'),
+            'channel_publish':   (self._channel_service, 'publish'),
+            'channel_list':      (self._channel_service, 'list_platforms'),
+            'channel_status':    (self._channel_service, 'get_status'),
         }
 
         components = {
             'engineer': engineer,
             'memory': memory,
-            'world': world,
+            'config': config,
+            'ambiguity': ambiguity,
             'get_tools': self.get_tools_for_flow,
         }
+        plan_components = {**components, 'flow_stack': self.flow_stack}
         self._policies: dict[str, object] = {
-            Intent.CONVERSE.value: ConversePolicy(components),
-            Intent.RESEARCH.value: ResearchPolicy(components),
-            Intent.DRAFT.value: DraftPolicy(components),
-            Intent.REVISE.value: RevisePolicy(components),
-            Intent.PUBLISH.value: PublishPolicy(components),
-            Intent.PLAN.value: PlanPolicy(components),
-            Intent.INTERNAL.value: InternalPolicy(components),
+            Intent.CONVERSE: ConversePolicy(components),
+            Intent.RESEARCH: ResearchPolicy(components),
+            Intent.DRAFT: DraftPolicy(components),
+            Intent.REVISE: RevisePolicy(components),
+            Intent.PUBLISH: PublishPolicy(components),
+            Intent.PLAN: PlanPolicy(plan_components),
+            Intent.INTERNAL: InternalPolicy(components),
         }
 
-    def execute(self, state: DialogueState) -> tuple[DisplayFrame, bool]:
-        flow_name = state.flow_name
-        flow_info = FLOW_CATALOG.get(flow_name)
-        if not flow_info:
+    def execute(self, state: DialogueState,
+                context: 'ContextCoordinator') -> tuple[DisplayFrame, bool]:
+        active_flow = self.flow_stack.get_active_flow()
+        if not active_flow:
             frame = DisplayFrame(self.config)
             return frame, False
 
-        check_result = self._check(state, flow_info)
+        flow_name = active_flow.name()
+
+        check_result = self._security_check(active_flow)
         if check_result:
             return check_result, False
 
-        existing = self.world.flow_stack.find_by_name(flow_name)
-        if existing:
-            flow_entry = existing
-        else:
-            flow_entry = self.world.flow_stack.push(
-                flow_name, state.dax, state.intent,
-                slots=state.slots,
-            )
-
         if flow_name in _UNSUPPORTED:
-            self.world.flow_stack.mark_complete(result={'unsupported': True})
+            self.flow_stack.mark_complete(result={'unsupported': True})
             frame = self.world.latest_frame() or DisplayFrame(self.config)
             return frame, False
 
-        intent_val = state.intent
-        if hasattr(intent_val, 'value'):
-            intent_val = intent_val.value
-        policy = self._policies.get(intent_val)
+        policy = self._policies.get(active_flow.intent)
         if policy:
             frame = policy.execute(
-                flow_name, flow_info, state, self._dispatch_tool,
+                active_flow, state, context, self._dispatch_tool,
             )
         else:
             frame = DisplayFrame(self.config)
 
-        if intent_val != Intent.PLAN.value:
-            self.world.flow_stack.mark_complete(result={'flow_name': flow_name})
+        if active_flow.intent != Intent.PLAN:
+            self.flow_stack.mark_complete(result={'flow_name': flow_name})
         self.world.insert_frame(frame)
 
-        if frame.has_content():
-            text_summary = frame.data.get('content', '')
-            if text_summary:
-                self.memory.write_scratchpad(
-                    f'flow:{flow_name}',
-                    f'{flow_name}: {text_summary[:200]}',
-                )
+        if active_flow.intent in _POST_INTENTS:
+            self._update_active_post(active_flow)
 
         self._verify()
 
         keep_going = state.keep_going
         return frame, keep_going
 
-    # ── Pre-hook ─────────────────────────────────────────────────────
+    # -- Pre-hook ---------------------------------------------------------
 
-    def _check(self, state: DialogueState,
-               flow_info: dict) -> DisplayFrame | None:
-        if state.flow_name in _UNSUPPORTED:
-            return None
-
-        required_missing = []
-        for slot_name, slot_info in flow_info.get('slots', {}).items():
-            if slot_info.get('priority') == 'required':
-                if slot_name not in state.slots or not state.slots[slot_name]:
-                    required_missing.append(slot_name)
-
-        if required_missing:
-            for slot_name in list(required_missing):
-                filled = self._fill_from_context(slot_name, flow_info)
-                if filled:
-                    state.slots[slot_name] = filled
-                    required_missing.remove(slot_name)
-
-        if required_missing:
-            self.ambiguity.declare(
-                'specific',
-                metadata={'missing_slots': required_missing},
-                observation=f'I need the following to proceed: {", ".join(required_missing)}',
-            )
-            frame = DisplayFrame(self.config)
-            frame.set_frame('default', {'message': self.ambiguity.ask()})
-            return frame
-
-        tools = self.get_tools_for_flow(state.flow_name, flow_info)
+    def _security_check(self, flow) -> DisplayFrame | None:
+        """Check for lethal trifecta tool capability violations."""
+        tools = self.get_tools_for_flow(flow)
         for tool in tools:
             caps = tool.get('capabilities', {})
             if (caps.get('accesses_private_data')
@@ -177,18 +137,18 @@ class PEX:
 
         return None
 
-    def _fill_from_context(self, slot_name: str, flow_info: dict) -> str | None:
-        scratchpad_val = self.memory.read_scratchpad(slot_name)
-        if scratchpad_val:
-            return scratchpad_val
+    def _update_active_post(self, flow):
+        """Update dialogue state's active_post from the flow's source slot."""
+        source_slot = flow.slots.get('source')
+        if source_slot and source_slot.filled:
+            val = source_slot.to_dict()
+            post = val[0].get('post', '') if isinstance(val, list) and val else str(val)
+            if post:
+                state = self.world.current_state()
+                if state:
+                    state.active_post = post
 
-        recent = self.world.context.compile_history(turns=3)
-        for turn in reversed(recent):
-            if turn['speaker'] == 'User' and slot_name.lower() in turn['text'].lower():
-                return turn['text']
-        return None
-
-    # ── Tool dispatch ────────────────────────────────────────────────
+    # -- Tool dispatch ----------------------------------------------------
 
     def _dispatch_tool(self, tool_name: str, tool_input: dict) -> dict:
         self.world.context.add_turn(
@@ -196,8 +156,8 @@ class PEX:
             turn_type='action',
         )
         try:
-            if tool_name in self._tool_registry:
-                service, method_name = self._tool_registry[tool_name]
+            if tool_name in self._tools:
+                service, method_name = self._tools[tool_name]
                 method = getattr(service, method_name)
                 return method(**tool_input)
             elif tool_name == 'context_coordinator':
@@ -228,12 +188,12 @@ class PEX:
         action = params.get('action', '')
         if action == 'get_history':
             turns = params.get('turns', 3)
-            history = self.world.context.compile_history(turns=turns)
+            history = self.world.context.compile_history(look_back=turns)
             return {'status': 'success', 'result': history}
         elif action == 'get_turn':
-            turn_id = params.get('turn_id', '')
-            turn = self.world.context.get_turn(turn_id)
-            return {'status': 'success', 'result': turn}
+            turn_id = params.get('turn_id', 0)
+            turn = self.world.context.get_turn(int(turn_id))
+            return {'status': 'success', 'result': turn.utt(as_dict=True) if turn else None}
         elif action == 'get_checkpoint':
             label = params.get('label', '')
             cp = self.world.context.get_checkpoint(label)
@@ -243,20 +203,20 @@ class PEX:
     def _dispatch_flow_stack_tool(self, params: dict) -> dict:
         action = params.get('action', '')
         if action == 'get_slots':
-            active = self.world.flow_stack.get_active_flow()
-            if active:
-                return {'status': 'success', 'result': active.slots}
+            flow = self.flow_stack.get_active_flow()
+            if flow:
+                return {'status': 'success', 'result': flow.slot_values_dict()}
             return {'status': 'success', 'result': {}}
         elif action == 'get_flow_meta':
-            active = self.world.flow_stack.get_active_flow()
-            if active:
-                return {'status': 'success', 'result': active.to_dict()}
+            flow = self.flow_stack.get_active_flow()
+            if flow:
+                return {'status': 'success', 'result': flow.to_dict()}
             return {'status': 'success', 'result': None}
         elif action == 'get_stack':
-            return {'status': 'success', 'result': self.world.flow_stack.to_list()}
+            return {'status': 'success', 'result': self.flow_stack.to_list()}
         return {'status': 'error', 'message': f'Unknown action: {action}'}
 
-    # ── Tool definitions ─────────────────────────────────────────────
+    # -- Tool definitions -------------------------------------------------
 
     @staticmethod
     def _thaw(obj):
@@ -278,42 +238,13 @@ class PEX:
             'capabilities': self._thaw(tool.get('capabilities', {})),
         }
 
-    def get_tools_for_flow(self, flow_name: str, flow_info: dict) -> list[dict]:
-        tools = []
-        intent = flow_info.get('intent', Intent.CONVERSE)
-        intent_val = intent.value if hasattr(intent, 'value') else str(intent)
-
-        tools.extend(self._component_tool_definitions())
-
-        if intent_val in ('Research', 'Draft', 'Revise', 'Publish'):
-            tools.append(self._get_tool_def('post_search'))
-            tools.append(self._get_tool_def('post_get'))
-
-        if intent_val in ('Draft',):
-            tools.append(self._get_tool_def('post_create'))
-            tools.append(self._get_tool_def('post_update'))
-            tools.append(self._get_tool_def('content_generate'))
-
-        if intent_val in ('Revise',):
-            tools.append(self._get_tool_def('post_update'))
-            tools.append(self._get_tool_def('content_generate'))
-            tools.append(self._get_tool_def('content_format'))
-
-        if intent_val in ('Publish',):
-            tools.append(self._get_tool_def('post_delete'))
-            tools.append(self._get_tool_def('platform_publish'))
-            tools.append(self._get_tool_def('platform_list'))
-            tools.append(self._get_tool_def('platform_status'))
-            tools.append(self._get_tool_def('content_format'))
-
-        if intent_val in ('Converse',):
-            tools.append(self._get_tool_def('post_search'))
-
-        if intent_val in ('Plan',):
-            tools.append(self._get_tool_def('post_search'))
-            tools.append(self._get_tool_def('post_get'))
-
-        return [t for t in tools if t is not None]
+    def get_tools_for_flow(self, flow) -> list[dict]:
+        tools = list(self._component_tool_definitions())
+        for tool_name in flow.tools:
+            tool_def = self._get_tool_def(tool_name)
+            if tool_def:
+                tools.append(tool_def)
+        return tools
 
     def _component_tool_definitions(self) -> list[dict]:
         return [
@@ -325,7 +256,7 @@ class PEX:
                     'properties': {
                         'action': {'type': 'string', 'enum': ['get_history', 'get_turn', 'get_checkpoint']},
                         'turns': {'type': 'integer'},
-                        'turn_id': {'type': 'string'},
+                        'turn_id': {'type': 'integer'},
                         'label': {'type': 'string'},
                     },
                     'required': ['action'],
@@ -357,9 +288,9 @@ class PEX:
             },
         ]
 
-    # ── Post-hook ────────────────────────────────────────────────────
+    # -- Post-hook --------------------------------------------------------
 
     def _verify(self):
         state = self.world.current_state()
-        if state and state.keep_going and not self.world.flow_stack.get_pending_flows():
+        if state and state.keep_going and not self.flow_stack.get_pending_flows():
             state.keep_going = False

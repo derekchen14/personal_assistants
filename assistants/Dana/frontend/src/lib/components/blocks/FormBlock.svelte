@@ -17,26 +17,26 @@
     }
 </script>
 
-<div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+<div class="p-4">
     {#if title}
         <h3 class="text-sm font-medium mb-3">{title}</h3>
     {/if}
     <div class="space-y-3">
         {#each fields as field}
             <div>
-                <label class="block text-xs text-[var(--color-text-muted)] mb-1">
+                <label class="block text-xs text-[var(--muted)] mb-1">
                     {field.label}{field.required ? ' *' : ''}
                 </label>
                 <input
                     type={field.type || 'text'}
                     bind:value={values[field.name]}
-                    class="w-full px-3 py-1.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                    class="w-full px-3 py-1.5 rounded bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
                 />
             </div>
         {/each}
         <button
             onclick={handleSubmit}
-            class="px-4 py-1.5 rounded bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white text-sm transition-colors"
+            class="px-4 py-1.5 rounded bg-[var(--accent)] hover:bg-[var(--accent-dark)] text-white text-sm transition-colors"
         >
             Submit
         </button>

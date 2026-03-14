@@ -1,70 +1,141 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+from backend.modules.policies.base import BasePolicy
 
 if TYPE_CHECKING:
     from backend.components.dialogue_state import DialogueState
+    from backend.components.context_coordinator import ContextCoordinator
     from backend.components.display_frame import DisplayFrame
+    from backend.components.flow_stack.parents import BaseFlow
 
 
-_SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'skills'
+class DraftPolicy(BasePolicy):
 
-_BATCH_1 = {'outline', 'select', 'expand', 'write', 'create', 'brainstorm'}
-_BATCH_2: set[str] = set()
+    def execute(self, flow: 'BaseFlow', state: 'DialogueState',
+                context: 'ContextCoordinator', tools) -> 'DisplayFrame':
+        match flow.name():
+            case 'outline': return self.outline_policy(flow, state, context, tools)
+            case 'refine': return self.refine_policy(flow, state, context, tools)
+            case 'expand': return self.expand_policy(flow, state, context, tools)
+            case 'compose': return self.compose_policy(flow, state, context, tools)
+            case 'add': return self.add_policy(flow, state, context, tools)
+            case 'create': return self.create_policy(flow, state, context, tools)
+            case 'brainstorm': return self.brainstorm_policy(flow, state, context, tools)
+            case _:
+                return self.build_frame('default', {'content': ''})
 
+    def outline_policy(self, flow, state, context, tools):
+        if not flow.slots.get('topic', None) or not flow.slots['topic'].filled:
+            convo_history = context.compile_history(look_back=3)
+            text = self.engineer.call(convo_history, system="Extract the topic the user wants to outline for the blog post or note.")
+            flow.fill_slots_by_label({'topic': self._parse_value(text)})
+            if not flow.slots['topic'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'topic'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-class DraftPolicy:
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('card', block_data, source='outline')
 
-    def __init__(self, components: dict):
-        self.engineer = components['engineer']
-        self.memory = components['memory']
-        self.world = components['world']
-        self._get_tools_fn = components['get_tools']
+    def refine_policy(self, flow, state, context, tools):
+        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
+            identifier = self.extract_source(flow, state)
+            if identifier:
+                flow.fill_slots_by_label({'source': identifier})
+            if not flow.slots.get('source') or not flow.slots['source'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-    def execute(self, flow_name: str, flow_info: dict,
-                state: 'DialogueState', tool_dispatcher) -> 'DisplayFrame':
-        from backend.components.display_frame import DisplayFrame
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('card', block_data, source='refine')
 
-        if flow_name in _BATCH_2:
-            frame = DisplayFrame(self.world.config)
-            frame.set_frame('default', {'content': "That feature is coming soon — stay tuned!"})
-            return frame
+    def expand_policy(self, flow, state, context, tools):
+        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
+            identifier = self.extract_source(flow, state)
+            if identifier:
+                flow.fill_slots_by_label({'source': identifier})
+            if not flow.slots.get('source') or not flow.slots['source'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-        return self._llm_execute(flow_name, flow_info, state, tool_dispatcher)
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('card', block_data, source='expand')
 
-    def _llm_execute(self, flow_name, flow_info, state, tool_dispatcher):
-        from backend.components.display_frame import DisplayFrame
+    def compose_policy(self, flow, state, context, tools):
+        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
+            identifier = self.extract_source(flow, state)
+            if identifier:
+                flow.fill_slots_by_label({'source': identifier})
+            if not flow.slots.get('source') or not flow.slots['source'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-        skill_prompt = self._load_skill_template(flow_name)
-        system, messages = self.engineer.build_skill_prompt(
-            flow_name, flow_info, state.slots,
-            self.world.context.compile_history(turns=5),
-            self.memory.read_scratchpad(),
-            skill_prompt=skill_prompt,
-        )
-        tools = self._get_tools_fn(flow_name, flow_info)
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('card', block_data, source='compose')
 
-        text, tool_log = self.engineer.call_with_tools(
-            system, messages, tools, tool_dispatcher, call_site='skill',
-        )
+    def add_policy(self, flow, state, context, tools):
+        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
+            identifier = self.extract_source(flow, state)
+            if identifier:
+                flow.fill_slots_by_label({'source': identifier})
+            if not flow.slots.get('source') or not flow.slots['source'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-        frame = DisplayFrame(self.world.config)
-        block_type = flow_info.get('output', 'card')
-        block_data = {'flow_name': flow_name, 'content': text}
-        for entry in tool_log:
-            result = entry.get('result', {})
-            if result.get('status') == 'success':
-                result_data = result.get('result', {})
-                if isinstance(result_data, dict):
-                    block_data.update(result_data)
-                elif isinstance(result_data, list):
-                    block_data['items'] = result_data
-        frame.set_frame(block_type, block_data, source=flow_name)
-        return frame
+        if not flow.slots.get('target', None) or not flow.slots['target'].filled:
+            self.ambiguity.declare('specific', metadata={'missing_slot': 'target'})
+            return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-    def _load_skill_template(self, flow_name: str) -> str | None:
-        path = _SKILL_DIR / f'{flow_name}.md'
-        if path.exists():
-            return path.read_text(encoding='utf-8')
-        return None
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('card', block_data, source='add')
+
+    def create_policy(self, flow, state, context, tools):
+        if not flow.slots.get('title', None) or not flow.slots['title'].filled:
+            self.ambiguity.declare('specific', metadata={'missing_slot': 'title'})
+            return self.build_frame('default', {'content': self.ambiguity.ask()})
+
+        slots = flow.slot_values_dict()
+        title = slots.get('title', 'Untitled')
+        post_type = slots.get('type', 'draft')
+        topic = slots.get('topic', '')
+
+        create_params = {
+            'title': title,
+            'status': 'note' if post_type == 'note' else 'draft',
+        }
+        if topic:
+            create_params['topic'] = topic
+
+        result = tools('post_create', create_params)
+
+        if result.get('status') == 'success':
+            post = result.get('result', {})
+            return self.build_frame('card', {
+                'post_id': post.get('post_id', ''),
+                'title': post.get('title', title),
+                'status': post.get('status', post_type),
+                'content': post.get('content', ''),
+            }, source='create')
+        else:
+            return self.build_frame('default', {
+                'content': f'Created new {post_type} "{title}".',
+            })
+
+    def brainstorm_policy(self, flow, state, context, tools):
+        if not flow.slots.get('topic', None) or not flow.slots['topic'].filled:
+            convo_history = context.compile_history(look_back=3)
+            text = self.engineer.call(convo_history, system="Extract the topic the user wants to brainstorm about.")
+            flow.fill_slots_by_label({'topic': self._parse_value(text)})
+            if not flow.slots['topic'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'topic'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
+
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('card', block_data, source='brainstorm')

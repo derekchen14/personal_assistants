@@ -1,0 +1,1135 @@
+{
+  "entries": [
+    {
+      "post_id": "ca769e6f",
+      "title": "Tips to Maximizing Daily Energy",
+      "status": "note",
+      "category": "health",
+      "tags": [
+        "health",
+        "productivity"
+      ],
+      "color": "",
+      "created_at": "2026-03-12T05:47:32.627483+00:00",
+      "updated_at": "2026-03-12T05:47:32.627483+00:00",
+      "preview": "A running list of things that actually work for maintaining energy throughout the day, based on years of experimentation.",
+      "word_count": 284,
+      "filename": "notes/energy.md"
+    },
+    {
+      "post_id": "e393b1dc",
+      "title": "My Favorite Cookies",
+      "status": "note",
+      "category": "food",
+      "tags": [
+        "food",
+        "baking"
+      ],
+      "color": "",
+      "created_at": "2026-03-12T05:47:32.627380+00:00",
+      "updated_at": "2026-03-12T05:47:32.627380+00:00",
+      "preview": "Here are my favorite cookies, ranked by how likely I am to eat the entire batch in one sitting.",
+      "word_count": 174,
+      "filename": "notes/cookies.md"
+    },
+    {
+      "post_id": "dec2dc43",
+      "title": "Generate a table of content",
+      "status": "draft",
+      "category": "toc.js",
+      "tags": [
+        "toc.js",
+        "kramdown",
+        "Markdown",
+        "Customization"
+      ],
+      "color": "",
+      "created_at": "2026-03-12T05:47:32.627020+00:00",
+      "updated_at": "2026-03-12T05:47:32.627020+00:00",
+      "preview": "\n* TOC\n{:toc}",
+      "word_count": 539,
+      "filename": "drafts/table-of-contents.md"
+    },
+    {
+      "post_id": "749c7b5f",
+      "title": "Markup: Syntax Highlighting",
+      "status": "draft",
+      "category": "code",
+      "tags": [
+        "code"
+      ],
+      "color": "",
+      "created_at": "2026-03-12T05:47:32.626802+00:00",
+      "updated_at": "2026-03-12T05:47:32.626802+00:00",
+      "preview": "Syntax highlighting[^1] is a feature that displays source code. \nThis feature facilitates writing in a structured language such as a programming language or a markup language as it makes import things visually distinct.",
+      "word_count": 179,
+      "filename": "drafts/syntax-highlighting.md"
+    },
+    {
+      "post_id": "07d64034",
+      "title": "ML as Software 2.0",
+      "status": "draft",
+      "category": "thoughts",
+      "tags": [
+        "thoughts",
+        "trends"
+      ],
+      "color": "",
+      "created_at": "2026-03-12T05:47:32.626276+00:00",
+      "updated_at": "2026-03-12T05:47:32.626276+00:00",
+      "preview": "We've heard from Andrej Karpathy that ML is software 2.0.  But what does this mean on a practical level.  We know it is different, but if (as a company) we want to embrace this difference, what should we do?",
+      "word_count": 406,
+      "filename": "drafts/ml-as-software_2.md"
+    },
+    {
+      "post_id": "1ff23b50",
+      "title": "Insights around Attention Mechanism",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-12T05:47:32.625914+00:00",
+      "updated_at": "2026-03-12T05:47:32.625914+00:00",
+      "preview": "The attention mechanism is used in all sorts of deep learning tasks, most notably Neural Machine Translation (NMT).  Some thoughts on how it works:",
+      "word_count": 392,
+      "filename": "drafts/insights-around-attention-mechanism.md"
+    },
+    {
+      "post_id": "7449ae4c",
+      "title": "History of Seq2Seq",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-12T05:47:32.625710+00:00",
+      "updated_at": "2026-03-12T05:47:32.625710+00:00",
+      "preview": "Even though deep networks have been successfully used in many applications, until recently, they\nhave mainly been used in classification: mapping a fixed-length vector to an output category [21].\nFor structured problems, such as mapping one variable-length sequence to another...",
+      "word_count": 329,
+      "filename": "drafts/history-of-seq2seq.md"
+    },
+    {
+      "post_id": "4c1b3412",
+      "title": "Expectation Maximization",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-12T05:47:32.625342+00:00",
+      "updated_at": "2026-03-12T05:47:32.625342+00:00",
+      "preview": "Expectation maximization is often used to fill in blanks when there is missing data by imputing those values by considering what makes the most sense.  Use cases include anomaly detection, market segmentation, speech recognition and basic clustering.  The algorithm operates by iteratively...",
+      "word_count": 155,
+      "filename": "drafts/expectation-maximization.md"
+    },
+    {
+      "post_id": "ca915e0f",
+      "title": "Components of Dialogue Systems",
+      "status": "draft",
+      "category": "Lorem",
+      "tags": [
+        "Lorem",
+        "Color"
+      ],
+      "color": "turquoise",
+      "created_at": "2026-03-12T05:47:32.625020+00:00",
+      "updated_at": "2026-03-12T05:47:32.625020+00:00",
+      "preview": "The key components of a dialogue system are a Dialogue State Tracker (DST) for NLU, Policy Manager (PM) for deciding on actions, and a Response Generator (RG) for NLG.  Traditionally, many of these services are built in a modular manner, where even one piece could end up being an entire company. ...",
+      "word_count": 832,
+      "filename": "drafts/components-of-dial-sys.md"
+    },
+    {
+      "post_id": "5eb5f7bc",
+      "title": "Tech Stuff example",
+      "status": "draft",
+      "category": "Test",
+      "tags": [
+        "Test",
+        "Markdown"
+      ],
+      "color": "",
+      "created_at": "2026-03-12T05:47:32.624633+00:00",
+      "updated_at": "2026-03-12T05:47:32.624633+00:00",
+      "preview": "Because if you put some code in your blog, you would at least make it:",
+      "word_count": 686,
+      "filename": "drafts/code-example.md"
+    },
+    {
+      "post_id": "2091aafc",
+      "title": "Ambiguity is the Bottleneck",
+      "status": "published",
+      "category": "ai",
+      "tags": [
+        "ai",
+        "dialogue",
+        "startups"
+      ],
+      "color": "green",
+      "created_at": "2025-08-07T00:00:00+00:00",
+      "updated_at": "2025-08-07T00:00:00+00:00",
+      "preview": "The prevailing trend on social media is that AGI is right around the corner, but cracks begin to appear as soon as we consider the type of progress we have made and just how far we have to go to create something useful for [most people](https://derekchen14.substack.com/p/agi-for-the-rest-of-us)....",
+      "word_count": 2661,
+      "filename": "posts/ambiguity-is-the-bottleneck.md"
+    },
+    {
+      "post_id": "588610e9",
+      "title": "Solving the Long Tail of Data Acquisition",
+      "status": "published",
+      "category": "data-strategy",
+      "tags": [
+        "data-strategy",
+        "product-strategy",
+        "research",
+        "startups"
+      ],
+      "color": "blue",
+      "created_at": "2022-10-24T00:00:00+00:00",
+      "updated_at": "2022-10-24T00:00:00+00:00",
+      "preview": "The deep learning revolution was initiated not by intelligent algorithms alone, but with the help of powerful compute and access to data. While models have continued to improve and compute power has continued to advance, progress on data collection has not been so fortunate.  Data labeling...",
+      "word_count": 2382,
+      "filename": "posts/long-tail-of-data-acquisition.md"
+    },
+    {
+      "post_id": "95b2cdda",
+      "title": "Is Reinforcement Learning a Good Fit for Dialogue?",
+      "status": "published",
+      "category": "modeling",
+      "tags": [
+        "modeling",
+        "rl",
+        "dialogue",
+        "product-strategy"
+      ],
+      "color": "green",
+      "created_at": "2022-07-28T00:00:00+00:00",
+      "updated_at": "2022-07-28T00:00:00+00:00",
+      "preview": "On the surface, reinforcement learning (RL) seems like a great method for solving dialogue tasks.  We can easily model the problem as a POMDP where the partially observed state represents the user's intent.  During each turn, the dialogue agent must make a decision about how to respond. This action...",
+      "word_count": 1765,
+      "filename": "posts/is-rl-a-good-fit-for-dialogue.md"
+    },
+    {
+      "post_id": "03a2d3d6",
+      "title": "Prerequisites for a Conversational AI Revolution",
+      "status": "published",
+      "category": "ai",
+      "tags": [
+        "ai",
+        "startups",
+        "trends",
+        "lists"
+      ],
+      "color": "red",
+      "created_at": "2022-06-14T00:00:00+00:00",
+      "updated_at": "2022-06-14T00:00:00+00:00",
+      "preview": "Conversational AI was all the rage a few years back, when people were shouting from the rooftops that chatbots were going to take over the world.  But for all the fanfare and hullabaloo, the trumpeting of a new era has given away lately to a low, dull roar.  Depending on who you ask, we either have...",
+      "word_count": 1274,
+      "filename": "posts/conversational-ai-revolution.md"
+    },
+    {
+      "post_id": "53d90659",
+      "title": "Building User Simulators for Scalable Dialogue Systems",
+      "status": "published",
+      "category": "modeling",
+      "tags": [
+        "modeling",
+        "rl",
+        "dialogue"
+      ],
+      "color": "purple",
+      "created_at": "2022-05-24T00:00:00+00:00",
+      "updated_at": "2022-05-24T00:00:00+00:00",
+      "preview": "Training dialogue agents for real-life use cases is immensely difficult since manual data annotation quickly hits scaling issues.  One way around this is to build a user simulator which can theoretically then generate tons of examples for the agent to learn from.  However, to build a system...",
+      "word_count": 701,
+      "filename": "posts/building-user-simulators.md"
+    },
+    {
+      "post_id": "b2fd5ec6",
+      "title": "Data Augmentation for Scalable Product Development",
+      "status": "published",
+      "category": "data-strategy",
+      "tags": [
+        "data-strategy",
+        "product-strategy",
+        "startups"
+      ],
+      "color": "",
+      "created_at": "2022-03-11T00:00:00+00:00",
+      "updated_at": "2022-03-11T00:00:00+00:00",
+      "preview": "Data augmentation methods are a staple when training computer vision models, with methods like flipping, resizing, cropping and blurring used so ubiquitously that they are a foregone conclusion in most systems.[^1] These methods help improve model robustness such that anyway you change the image of...",
+      "word_count": 2276,
+      "filename": "posts/data-augmentation-for-scalable-product.md"
+    },
+    {
+      "post_id": "009377c2",
+      "title": "Designing Meaning Representations for Dialogue Systems",
+      "status": "published",
+      "category": "data-strategy",
+      "tags": [
+        "data-strategy",
+        "explainer",
+        "dialogue"
+      ],
+      "color": "",
+      "created_at": "2021-11-26T00:00:00+00:00",
+      "updated_at": "2021-11-26T00:00:00+00:00",
+      "preview": "In order for a virtual assistant to be useful, the agent should do more than just information retrieval and basic chit-chat.  Rather than pattern recognition on the response level, the agent should be able to perform pattern recognition on the discourse level so it can mimic human-reasoning (even...",
+      "word_count": 1736,
+      "filename": "posts/designing-meaning-representation.md"
+    },
+    {
+      "post_id": "2a32f559",
+      "title": "Data Collection Best Practices",
+      "status": "published",
+      "category": "ai",
+      "tags": [
+        "ai",
+        "data-strategy",
+        "explainer",
+        "lists"
+      ],
+      "color": "blue",
+      "created_at": "2021-09-11T00:00:00+00:00",
+      "updated_at": "2021-09-11T00:00:00+00:00",
+      "preview": "The first step to truly becoming an [AI-first](https://morethanoneturn.com/2021/05/23/embracing-ai-first.html) company is to adopt a [data-centric](http://datacentricai.org/) view, which naturally implies taking data collection seriously as a core competency of the business.  Even before involving...",
+      "word_count": 2410,
+      "filename": "posts/data-collection-best-practices.md"
+    },
+    {
+      "post_id": "d2c6dcd8",
+      "title": "Proper Assessment of Data Value",
+      "status": "published",
+      "category": "ai",
+      "tags": [
+        "ai",
+        "data-strategy",
+        "explainer"
+      ],
+      "color": "",
+      "created_at": "2021-07-24T00:00:00+00:00",
+      "updated_at": "2021-07-24T00:00:00+00:00",
+      "preview": "Data is the new oil.  It underpins an undeniable aspect of growth in the popularity and dominance of deep learning.  But is all data created equal? What makes some data points worth more than others?  How could we go about calculating what each data point is worth?  If data is so important, we...",
+      "word_count": 2644,
+      "filename": "posts/proper-assessment-data.md"
+    },
+    {
+      "post_id": "47d4af0e",
+      "title": "Meta Reinforcement Learning",
+      "status": "published",
+      "category": "rl",
+      "tags": [
+        "rl",
+        "explainer"
+      ],
+      "color": "",
+      "created_at": "2021-06-01T00:00:00+00:00",
+      "updated_at": "2021-06-01T00:00:00+00:00",
+      "preview": "This post will explore meta reinforcement learning with only minimal math.  We attempt to dive into the core concepts without making it too complicated.",
+      "word_count": 1554,
+      "filename": "posts/meta-rl.md"
+    },
+    {
+      "post_id": "8c91754b",
+      "title": "Embracing the AI-First Paradigm",
+      "status": "published",
+      "category": "ai",
+      "tags": [
+        "ai",
+        "startups",
+        "trends"
+      ],
+      "color": "",
+      "created_at": "2021-05-23T00:00:00+00:00",
+      "updated_at": "2021-05-23T00:00:00+00:00",
+      "preview": "When the web first appeared, many folks adopted the new technology by porting over existing physical assets (ie. magazines and newspapers) to appear on a website with almost no changes.  When smartphones began to take hold, those same people ported over their existing websites onto a smaller...",
+      "word_count": 1150,
+      "filename": "posts/embracing-ai-first.md"
+    },
+    {
+      "post_id": "20ebfc09",
+      "title": "2020 Year End Review (Part 2)",
+      "status": "published",
+      "category": "conference",
+      "tags": [
+        "conference",
+        "trends"
+      ],
+      "color": "",
+      "created_at": "2020-12-30T00:00:00+00:00",
+      "updated_at": "2020-12-30T00:00:00+00:00",
+      "preview": "Continuing on the thoughts described in [Part 1](https://morethanoneturn.com/2020/12/28/emnlp-2020-highlights.html), we now describe two trends around dialogue and NLP research. In the previous post, we discussed how data strategy is playing an increasingly important role in the development of...",
+      "word_count": 1768,
+      "filename": "posts/year-end-review-2020.md"
+    },
+    {
+      "post_id": "502f9b44",
+      "title": "EMNLP 2020 Highlights",
+      "status": "published",
+      "category": "conference",
+      "tags": [
+        "conference",
+        "trends"
+      ],
+      "color": "",
+      "created_at": "2020-12-28T00:00:00+00:00",
+      "updated_at": "2020-12-28T00:00:00+00:00",
+      "preview": "This is nominally a review of trends from the EMNLP 2020, but also serves as the end of year review.  As this (crazy) year comes to a close, we take a moment to reflect on what has happened in the world of NLP and specifically in relation to Dialogue Modeling and Natural Language Understanding. ...",
+      "word_count": 1157,
+      "filename": "posts/emnlp-2020-highlights.md"
+    },
+    {
+      "post_id": "cde2b26c",
+      "title": "Measuring Uncertainty",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2020-07-29T20:06:00+00:00",
+      "updated_at": "2020-07-29T20:06:00+00:00",
+      "preview": "Compared to typical goal-oriented dialogue systems, interactive dialogue agents not only aim to solve the task at hand, but also engage with the user by asking questions. &nbsp;Questions can be used to push the conversation forward or to spark some new ideas, but for now we will focus on the use of...",
+      "word_count": 1810,
+      "filename": "posts/measuring-uncertainty.md"
+    },
+    {
+      "post_id": "e005ba27",
+      "title": "Deciding when to Ask Questions",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2020-06-28T18:15:06+00:00",
+      "updated_at": "2020-06-28T18:15:06+00:00",
+      "preview": "Performing active learning on data annotation is to decide when the model should query the expert annotator for more samples. &nbsp;Note the parallel with dialogue, which is to decide when the agent should ask a clarification question to the customer for more details on their intent. &nbsp;Such a...",
+      "word_count": 740,
+      "filename": "posts/deciding-when-to-ask-questions.md"
+    },
+    {
+      "post_id": "51a65e0b",
+      "title": "Calculating Uncertainty over Beliefs",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2020-01-05T23:17:47+00:00",
+      "updated_at": "2020-01-05T23:17:47+00:00",
+      "preview": "A key sub-issue in designing conversational agents is being able to reliably calculate uncertainty over the model's beliefs. &nbsp;In doing so, the model would be able to recognize when it does not understand something, and appropriately ask for clarification. &nbsp;Thus, we can imagine the output...",
+      "word_count": 1159,
+      "filename": "posts/calculating-uncertainty-over-beliefs.md"
+    },
+    {
+      "post_id": "1a9b93a2",
+      "title": "AI as Feature or Foundation",
+      "status": "published",
+      "category": "trends",
+      "tags": [
+        "trends",
+        "machine-learning",
+        "startups"
+      ],
+      "color": "",
+      "created_at": "2020-01-01T23:53:56+00:00",
+      "updated_at": "2020-01-01T23:53:56+00:00",
+      "preview": "For awhile from 2015 to 2020 it seemed as if every start-up touted itself to be powered by AI. &nbsp;The buzz around artificial intelligence has faded a bit, probably because it's clear that AGI is not just around the corner and also because the media is always looking for the next shiny thing to...",
+      "word_count": 934,
+      "filename": "posts/ai-as-feature-or-foundation.md"
+    },
+    {
+      "post_id": "d5a52b5d",
+      "title": "Phases of Dialogue Adoption",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2019-06-04T14:55:16+00:00",
+      "updated_at": "2019-06-04T14:55:16+00:00",
+      "preview": "Dialogue systems and chatbots are going through the same cycle of adoption seen in previous technology growth curves. &nbsp;As a quick primer, we note that mobile experienced the same four phases as it has expanded from technical oddity to ubiquitous usage. &nbsp;In particular, in the first phase,...",
+      "word_count": 776,
+      "filename": "posts/phases-of-dialogue-adoption.md"
+    },
+    {
+      "post_id": "0943fc9e",
+      "title": "Color Post",
+      "status": "draft",
+      "category": "Test",
+      "tags": [
+        "Test",
+        "Color",
+        "Markdown"
+      ],
+      "color": "brown",
+      "created_at": "2019-05-18T00:00:00+00:00",
+      "updated_at": "2019-05-18T00:00:00+00:00",
+      "preview": "This is an idea that came from [xukimseven/HardCandy-Jekyll](https://github.com/xukimseven/HardCandy-Jekyll) \nlooking at this cheerful and colorful them, I wanted to enable something similar for mine.",
+      "word_count": 130,
+      "filename": "drafts/color-post.md"
+    },
+    {
+      "post_id": "3ee7442b",
+      "title": "Label Formats for Intent Classification",
+      "status": "published",
+      "category": "lists",
+      "tags": [
+        "lists",
+        "research"
+      ],
+      "color": "",
+      "created_at": "2019-05-13T17:53:21+00:00",
+      "updated_at": "2019-05-13T17:53:21+00:00",
+      "preview": "When trying to understand user belief, a NLU model attempts to track the intent over the length of the conversation. &nbsp;However, what format should this intent be represented? &nbsp;Is it continuous or discrete? &nbsp;It it directly passed into the Policy Manager or should it be augmented first?...",
+      "word_count": 288,
+      "filename": "posts/levels-of-intent-classification.md"
+    },
+    {
+      "post_id": "8c3d1809",
+      "title": "Tiling Tensors in PyTorch",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2019-03-11T19:06:59+00:00",
+      "updated_at": "2019-03-11T19:06:59+00:00",
+      "preview": "Suppose you had sample = tensor([[3,5,4] &nbsp; [0,2,1]])",
+      "word_count": 164,
+      "filename": "posts/tiling-tensors-in-pytorch.md"
+    },
+    {
+      "post_id": "2ad15767",
+      "title": "Top 10  Secrets to Building Effective Dialogue Agents",
+      "status": "published",
+      "category": "dialogue",
+      "tags": [
+        "dialogue"
+      ],
+      "color": "",
+      "created_at": "2019-01-11T19:11:28+00:00",
+      "updated_at": "2019-01-11T19:11:28+00:00",
+      "preview": "Some notes to remember when building intelligent task oriented dialogue agents:",
+      "word_count": 285,
+      "filename": "posts/lessons-on-building-effective-dialogue-agents.md"
+    },
+    {
+      "post_id": "601388d4",
+      "title": "Intent Tracking For Task Oriented Dialogue - Best Paper Award Winner",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2018-12-21T01:46:06+00:00",
+      "updated_at": "2018-12-21T01:46:06+00:00",
+      "preview": "Another quarter, another class project on task oriented dialogue agents! &nbsp;This quarter I completed a paper studying the details of Intent Tracking within UW Graduate Machine Learning - CSE 546. &nbsp; And this time around, the paper won the award for best paper in the class!",
+      "word_count": 300,
+      "filename": "posts/best-paper-award-winner.md"
+    },
+    {
+      "post_id": "f305cf0c",
+      "title": "Focus of Dialogue Agents",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2018-11-11T01:12:34+00:00",
+      "updated_at": "2018-11-11T01:12:34+00:00",
+      "preview": "What exactly is the task we are trying to solve in task-oriented dialogue modeling? &nbsp; Is there a different goal for academic research vs industry application? &nbsp;First, note that I am already segmenting into chit-chat vs. goal-oriented dialogue. Despite this, even with the realm of...",
+      "word_count": 526,
+      "filename": "posts/focus-of-dialogue-agents.md"
+    },
+    {
+      "post_id": "adf3e867",
+      "title": "7) Automated Evaluation: Handling uncertainty and ambiguity in dialogue",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2018-10-08T15:29:45+00:00",
+      "updated_at": "2018-10-08T15:29:45+00:00",
+      "preview": "Problem: Training function is imprecise (i.e. BLEU score)",
+      "word_count": 238,
+      "filename": "posts/7-automated-evaluation-handling-uncertainty-and-ambiguity-in-dialogue.md"
+    },
+    {
+      "post_id": "cb367626",
+      "title": "Dialog State Tracking Models",
+      "status": "published",
+      "category": "dialogue",
+      "tags": [
+        "dialogue"
+      ],
+      "color": "",
+      "created_at": "2018-06-16T21:41:16+00:00",
+      "updated_at": "2018-06-16T21:41:16+00:00",
+      "preview": "Thoughts on some of the latest and greatest as of mid-2018.",
+      "word_count": 2325,
+      "filename": "posts/dialog-state-tracking-models.md"
+    },
+    {
+      "post_id": "5d3e9ced",
+      "title": "CS224n Poster Session 2018",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2018-03-23T15:45:45+00:00",
+      "updated_at": "2018-03-23T15:45:45+00:00",
+      "preview": "Once again building on End-to-End Task Oriented Dialog.  Now with a Transformer:\n![cs224n_poster](/content/images/2018/03/cs224n_poster.png)",
+      "word_count": 13,
+      "filename": "posts/cs224n-poster-session-2018.md"
+    },
+    {
+      "post_id": "5472d9fc",
+      "title": "Dialog Agent Framework",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2018-01-04T18:09:00+00:00",
+      "updated_at": "2018-01-04T18:09:00+00:00",
+      "preview": "(aka. How the technical part of the building a intelligent agent might work)",
+      "word_count": 571,
+      "filename": "posts/dialog_agent_framework.md"
+    },
+    {
+      "post_id": "22eeb820",
+      "title": "Task-Oriented Dialog Agents",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2017-12-03T20:42:05+00:00",
+      "updated_at": "2017-12-03T20:42:05+00:00",
+      "preview": "[Link to 1st Paper](https://www.dropbox.com/s/o573a81j4dms6jv/goal-oriented-dialog-cs229.pdf?dl=0)",
+      "word_count": 624,
+      "filename": "posts/task-oriented-dialog-agents.md"
+    },
+    {
+      "post_id": "94200833",
+      "title": "TrumpBot: a Chatbot that Sounds like Trump",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2017-05-03T16:18:00+00:00",
+      "updated_at": "2017-05-03T16:18:00+00:00",
+      "preview": "Trained a Seq2Seq model with attention and incorporated a Pointer Sentinel mechanism for handling OOV. Data was collected by manually scraping and cleaning presidential debates, interviews, related speeches, and Twitter. Results seemed promising since the model output was reflective of Trump's...",
+      "word_count": 61,
+      "filename": "posts/trumpbot-build-a-chatbot-that-sounds-like-trump.md"
+    },
+    {
+      "post_id": "a3a7482f",
+      "title": "100 Research Papers in 100 Days (LM Edition)",
+      "status": "published",
+      "category": "nlp",
+      "tags": [
+        "nlp",
+        "research",
+        "lists",
+        "trends"
+      ],
+      "color": "",
+      "created_at": "2017-03-29T22:05:21+00:00",
+      "updated_at": "2017-03-29T22:05:21+00:00",
+      "preview": "This is Part III of 100 in 100 series:",
+      "word_count": 6314,
+      "filename": "posts/100-research-papers-in-100-days-lm-edition.md"
+    },
+    {
+      "post_id": "c0c361c2",
+      "title": "Deep Learning for Recommendation Systems",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-11-19T00:00:03+00:00",
+      "updated_at": "2016-11-19T00:00:03+00:00",
+      "preview": "[**Wide & Deep Learning for Recommender Systems**](https://arxiv.org/abs/1606.07792)\n(*Cheng, Koc, Harmsen, Shaked, Chandra, Aradhye, Anderson, et. al.*)",
+      "word_count": 606,
+      "filename": "posts/deep-learning-for-recommendation-systems.md"
+    },
+    {
+      "post_id": "2571fc8a",
+      "title": "Speech Recognition and Synthesis at Human Parity",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-11-17T17:12:12+00:00",
+      "updated_at": "2016-11-17T17:12:12+00:00",
+      "preview": "Microsoft Research has made a number of advancements in order to achieve this momentous accomplishment. First, they measured the human error rate on NIST\u2019s 2000 conversational telephone speech recognition task, which consists of two parts: the Switchboard\nand CallHome subsets, with 5.9% and 11.3%...",
+      "word_count": 1508,
+      "filename": "posts/speech-recognition-and-synthesis-at-human-parity-2.md"
+    },
+    {
+      "post_id": "0478ccc0",
+      "title": "Training a Neural Network",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-10-22T17:37:58+00:00",
+      "updated_at": "2016-10-22T17:37:58+00:00",
+      "preview": "`(aka. Living a Successful Life)`",
+      "word_count": 1543,
+      "filename": "posts/training-a-neural-network.md"
+    },
+    {
+      "post_id": "59b892cc",
+      "title": "Creating Great Products",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-10-17T20:24:56+00:00",
+      "updated_at": "2016-10-17T20:24:56+00:00",
+      "preview": "Building a product can be quite simple, but the best ones include insights from human behavior, algorithmic efficiency, and usability.  To start, an engineer might build a sophisticated app that uses some cutting edge technology. It is a non-trivial feat which required:",
+      "word_count": 313,
+      "filename": "posts/creating-great-products.md"
+    },
+    {
+      "post_id": "dd493cf2",
+      "title": "L1 vs. L2 Regularization",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-10-17T06:05:27+00:00",
+      "updated_at": "2016-10-17T06:05:27+00:00",
+      "preview": "It's straightforward to see that L1 and L2 regularization both prefer small numbers, but it is harder to see the intuition in how they get there.",
+      "word_count": 196,
+      "filename": "posts/regularization.md"
+    },
+    {
+      "post_id": "9140254e",
+      "title": "100 Research Papers in 100 Days (Image Edition)",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-10-15T14:04:00+00:00",
+      "updated_at": "2016-10-15T14:04:00+00:00",
+      "preview": "[**Identity Mappings in Deep Residual Networks**](http://arxiv.org/abs/1603.05027) *(He, Zhang, Ren, Sun)* [Read: Sept 23rd]",
+      "word_count": 2173,
+      "filename": "posts/100-research-papers-in-100-days-image-edition.md"
+    },
+    {
+      "post_id": "41161f00",
+      "title": "100 Research Papers in 100 Days (NLP Edition)",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-10-11T03:30:18+00:00",
+      "updated_at": "2016-10-11T03:30:18+00:00",
+      "preview": "The pace of machine learning research is advancing at such a breakneck pace, the only way to keep up is to read every single day.  So awhile back, 100 days ago to be exact, I decided to read one paper every single day - the first thing to tackle every morning.  The organization is split up into two...",
+      "word_count": 16870,
+      "filename": "posts/100-research-papers-in-100-days-2.md"
+    },
+    {
+      "post_id": "44400694",
+      "title": "Deep NLP from Deep Learning Summer School",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-09-16T22:18:21+00:00",
+      "updated_at": "2016-09-16T22:18:21+00:00",
+      "preview": "*Notes from Kyunghyun Cho's lecture during Montreal's Deep Learning Summer School*",
+      "word_count": 2028,
+      "filename": "posts/deep-nlp.md"
+    },
+    {
+      "post_id": "fa711788",
+      "title": "Why Generative Models?",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-09-08T17:52:00+00:00",
+      "updated_at": "2016-09-08T17:52:00+00:00",
+      "preview": "Recently, there has been a lot of talk around generative models as the next big thing in deep learning.  There are articles about general adversarial networks, variational autoencoders, PixelRNNs, and perhaps some reinforcement learning augmentation.  But why all this sudden interest?  Why not...",
+      "word_count": 480,
+      "filename": "posts/why-generative-models.md"
+    },
+    {
+      "post_id": "7f5f28bc",
+      "title": "Competing Goals when Training Recommendation Systems",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-08-29T03:08:03+00:00",
+      "updated_at": "2016-08-29T03:08:03+00:00",
+      "preview": "Although not intractable, the problem of training recommendation systems includes many difficult components that must be resolved in order to have practical use in the real world.  Based on my current understanding, there are three separate problem domains:",
+      "word_count": 878,
+      "filename": "posts/competing-goals-when-training-recommendation-systems.md"
+    },
+    {
+      "post_id": "c5d68f50",
+      "title": "Clothing Ontologies for Fashion Recommendations",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-08-21T03:50:58+00:00",
+      "updated_at": "2016-08-21T03:50:58+00:00",
+      "preview": "Within the Beyond Clothing Ontologies: Modeling Fashion with Subjective Influence Networks, the authors Kurt Bollacker, Natalia D\u00edaz-Rodr\u00edguez, Xian Li (from Stitch Fix) have presented a supplementary fashion ontology for modeling out the relationships of clothing that go beyond other existing...",
+      "word_count": 599,
+      "filename": "posts/review-of-beyond-clothing-ontologies.md"
+    },
+    {
+      "post_id": "b5581b85",
+      "title": "Optimizing RecSys Training",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-06-23T16:25:14+00:00",
+      "updated_at": "2016-06-23T16:25:14+00:00",
+      "preview": "Given the goal of creating an optimal recommendation system, one could consider using a neural turing machine (NTM) with a \"programmable\" head performing read/write operations on the various inputs in order to generate a prediction.  The inputs would be encoding of the situation (shopping for...",
+      "word_count": 516,
+      "filename": "posts/optimizing-recsys-training.md"
+    },
+    {
+      "post_id": "6847adfa",
+      "title": "What Paul Graham looks for in a start-up",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-06-21T04:31:00+00:00",
+      "updated_at": "2016-06-21T04:31:00+00:00",
+      "preview": "Founders over Ideas",
+      "word_count": 101,
+      "filename": "posts/what-paul-graham-looks-for-in-a-start-up.md"
+    },
+    {
+      "post_id": "4fb35970",
+      "title": "Applications of Deep Learning",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-05-17T05:39:32+00:00",
+      "updated_at": "2016-05-17T05:39:32+00:00",
+      "preview": "While most of the media is harping on AI taking over the world, the reality of the field is much more mundane, but no less impactful.  We are already seeing many applications in the medical field with Enlitic and MetaMind diagnosing illnesses and potential dangers far sooner and faster than a...",
+      "word_count": 118,
+      "filename": "posts/applications-of-deep-learning.md"
+    },
+    {
+      "post_id": "ada33cb1",
+      "title": "VIV and the Future of Digital Assistants",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-05-15T19:04:58+00:00",
+      "updated_at": "2016-05-15T19:04:58+00:00",
+      "preview": "Recently VIV debuted its flagship product at TechCrunch Disrupt to great fanfare, but unfortunately the results didn't quite match up to the hype.  Let's first talk about what they did right.  The founders at VIV have spent a lot of time thinking about what the ideal experience for a digital...",
+      "word_count": 1094,
+      "filename": "posts/viv-and-the-future-of-digital-assistants-2.md"
+    },
+    {
+      "post_id": "00a84479",
+      "title": "Memory Error when Training in AWS GPUs",
+      "status": "published",
+      "category": "machine-learning",
+      "tags": [
+        "machine-learning",
+        "aws",
+        "gpu"
+      ],
+      "color": "",
+      "created_at": "2016-03-07T00:00:00+00:00",
+      "updated_at": "2016-03-07T00:00:00+00:00",
+      "preview": "For my Stanford [Convolutional Neural Networks course](http://cs231n.stanford.edu), I partnered with a brilliant friend of mine to analyze images from a collection of 40,000 digitized works of art by classifying them according to artist, genre, and location.  After some standard pre-processing, we...",
+      "word_count": 1110,
+      "filename": "posts/memory-error-when-training-keras-in-aws-gpus.md"
+    },
+    {
+      "post_id": "d7b63e38",
+      "title": "Difference between LSTM and GRU for RNNs",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-02-19T15:25:00+00:00",
+      "updated_at": "2016-02-19T15:25:00+00:00",
+      "preview": "So if you've started studying RNNs, and you heard that LSTMs and GRUs at the type of RNNs you should use because vanilla RNNs suffer from the vanishing gradient problem.  That makes sense because the hidden state is passed along for each iteration, so when back-propagating, the same Jacobian matrix...",
+      "word_count": 490,
+      "filename": "posts/difference-between-lstm-and-gru-for-rnns.md"
+    },
+    {
+      "post_id": "2ccce135",
+      "title": "When you just a beginner and already at the top of the leaderboards",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-01-31T10:51:43+00:00",
+      "updated_at": "2016-01-31T10:51:43+00:00",
+      "preview": "A couple of days ago, I found out that I had achieved partial Internet fame! Unfortunately, it was for a negative reason due to a simple misunderstanding.  A random person took a screenshot of a Twitter exchange I had with the founder of [Keras](https://twitter.com/fchollet), in which I mentioned...",
+      "word_count": 484,
+      "filename": "posts/when-you-just-a-beginner-and-already-at-the-top-of-the-leaderboards.md"
+    },
+    {
+      "post_id": "ff92e02d",
+      "title": "Deep Learning using GPUs in the Cloud",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2016-01-11T04:16:29+00:00",
+      "updated_at": "2016-01-11T04:16:29+00:00",
+      "preview": "Recent advances in Deep Learning have come about for a couple of key reasons, not the least of which is the enormous growth of available data.  But if overwhelming amounts of data are required to reach peak performance, how does one actually go about managing the unmanageable?  In other words, how...",
+      "word_count": 1366,
+      "filename": "posts/training-on-big-data.md"
+    },
+    {
+      "post_id": "b78d75a4",
+      "title": "Getting Started with Machine Learning in Python",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2015-12-26T00:56:22+00:00",
+      "updated_at": "2015-12-26T00:56:22+00:00",
+      "preview": "Recently, you've read numerous HN articles telling you machine learning is the future. You've heard that Google uses it for [search](http://www.bloomberg.com/news/articles/2015-10-26/google-turning-its-lucrative-web-search-over-to-ai-machines), Facebook uses it to [detect...",
+      "word_count": 1388,
+      "filename": "posts/getting-started-with-machine-learning-in-python.md"
+    },
+    {
+      "post_id": "a2926525",
+      "title": "The Hype of Machine Learning",
+      "status": "published",
+      "category": "machine-learning",
+      "tags": [
+        "machine-learning",
+        "trends"
+      ],
+      "color": "",
+      "created_at": "2015-11-22T02:01:00+00:00",
+      "updated_at": "2015-11-22T02:01:00+00:00",
+      "preview": "Many folks in the tech industry are [skeptical](http://www.kdnuggets.com/2015/01/deep-learning-flaws-universal-machine-learning.html) about the hype of machine learning, since the world has been promised to them before, but the reality hasn't really panned out.  In fact this has happened so many...",
+      "word_count": 820,
+      "filename": "posts/the-hype-of-machine-learning.md"
+    },
+    {
+      "post_id": "0fc0582a",
+      "title": "Contact",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2015-10-23T20:42:00+00:00",
+      "updated_at": "2015-10-23T20:42:00+00:00",
+      "preview": "Email me at derekchen 14 @ gmail.",
+      "word_count": 7,
+      "filename": "posts/contact.md"
+    },
+    {
+      "post_id": "6b8aa706",
+      "title": "Common Pitfalls in Machine Learning",
+      "status": "published",
+      "category": "machine-learning",
+      "tags": [
+        "machine-learning",
+        "research"
+      ],
+      "color": "",
+      "created_at": "2015-09-16T01:44:45+00:00",
+      "updated_at": "2015-09-16T01:44:45+00:00",
+      "preview": "Machine Learning is hard because:",
+      "word_count": 286,
+      "filename": "posts/common-pitfalls-in-machine-learning.md"
+    },
+    {
+      "post_id": "15ede09c",
+      "title": "Feature images",
+      "status": "draft",
+      "category": "Test",
+      "tags": [
+        "Test",
+        "Lorem"
+      ],
+      "color": "",
+      "created_at": "2014-11-29T00:00:00+00:00",
+      "updated_at": "2014-11-29T00:00:00+00:00",
+      "preview": "Hopefully you will find enough information about how to set images in your blog here.\nThis is an example of a post which includes a feature image specified in the front matter of the post. \nThe feature image spans the full-width of the page, and is shown with the title on permalink pages:",
+      "word_count": 305,
+      "filename": "drafts/feature-images.md"
+    },
+    {
+      "post_id": "8bff2b47",
+      "title": "Markdown and HTML",
+      "status": "draft",
+      "category": "Test",
+      "tags": [
+        "Test",
+        "Markdown"
+      ],
+      "color": "",
+      "created_at": "2014-11-28T00:00:00+00:00",
+      "updated_at": "2014-11-28T00:00:00+00:00",
+      "preview": "Jekyll supports the use of [Markdown](http://daringfireball.net/projects/markdown/syntax) with inline HTML tags which makes it easier to quickly write posts with Jekyll, without having to worry too much about text formatting. A sample of the formatting follows.",
+      "word_count": 229,
+      "filename": "drafts/markdown-and-html.md"
+    },
+    {
+      "post_id": "4f0d913e",
+      "title": "What's your title",
+      "status": "draft",
+      "category": "Test",
+      "tags": [
+        "Test",
+        "Lorem"
+      ],
+      "color": "",
+      "created_at": "2014-11-27T00:00:00+00:00",
+      "updated_at": "2014-11-27T00:00:00+00:00",
+      "preview": "This is an example of a post which includes a feature image that has a\ntext, where you don't want to redisplay the title.\nMind your image size in order for the text to be displayed where you want it to.\nThe only limit is your imagination.",
+      "word_count": 137,
+      "filename": "drafts/whats-your-title.md"
+    },
+    {
+      "post_id": "70f6ec21",
+      "title": "The Real Lorem Ipsum",
+      "status": "draft",
+      "category": "Lorem",
+      "tags": [
+        "Lorem",
+        "Color"
+      ],
+      "color": "turquoise",
+      "created_at": "2014-11-26T00:00:00+00:00",
+      "updated_at": "2014-11-26T00:00:00+00:00",
+      "preview": "from _\"de Finibus Bonorum et Malorum\"_ written by Cicero in 45 BC.\n \nFind out more on [lipsum.com](https://www.lipsum.com/). And if you like colors, check out the [http color trends](https://www.w3schools.com/colors/colors_trends.asp) from w3schools.",
+      "word_count": 720,
+      "filename": "drafts/default-template.md"
+    },
+    {
+      "post_id": "11be3b39",
+      "title": "Keywords for SEO",
+      "status": "note",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-12T23:24:14.299646+00:00",
+      "updated_at": "2026-03-12T23:24:14.299646+00:00",
+      "preview": "",
+      "word_count": 0,
+      "filename": "notes/keywords-for-seo.md"
+    },
+    {
+      "post_id": "86a02402",
+      "title": "Fine-Tuning LLMs for Production",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-13T06:34:40.608689+00:00",
+      "updated_at": "2026-03-13T06:34:40.608689+00:00",
+      "preview": "",
+      "word_count": 0,
+      "filename": "drafts/fine-tuning-llms-for-production.md"
+    },
+    {
+      "post_id": "b85c7052",
+      "title": "Fine-Tuning LLMs for Production",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-13T06:37:39.595631+00:00",
+      "updated_at": "2026-03-13T06:37:39.595631+00:00",
+      "preview": "",
+      "word_count": 0,
+      "filename": "drafts/fine-tuning-llms-for-production.md"
+    },
+    {
+      "post_id": "7dbe1494",
+      "title": "Fine-Tuning LLMs for Production",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-13T06:43:39.127702+00:00",
+      "updated_at": "2026-03-13T06:43:39.127702+00:00",
+      "preview": "",
+      "word_count": 0,
+      "filename": "drafts/fine-tuning-llms-for-production.md"
+    },
+    {
+      "post_id": "9db556f8",
+      "title": "Fine-Tuning LLMs for Production",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-13T06:48:17.523227+00:00",
+      "updated_at": "2026-03-13T06:48:17.523227+00:00",
+      "preview": "",
+      "word_count": 0,
+      "filename": "drafts/fine-tuning-llms-for-production.md"
+    },
+    {
+      "post_id": "e6c272e3",
+      "title": "Topics to Write about",
+      "status": "note",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-13T06:53:11.028287+00:00",
+      "updated_at": "2026-03-13T16:10:22.743596+00:00",
+      "preview": "Definitions, use cases, comparisons, FAQs, technical explanations",
+      "word_count": 7,
+      "filename": "notes/ideas-for-the-dialogue-agents-series.md"
+    },
+    {
+      "post_id": "6112e1b5",
+      "title": "Fine-Tuning LLMs for Production",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-13T06:55:25.171609+00:00",
+      "updated_at": "2026-03-13T06:55:25.171609+00:00",
+      "preview": "",
+      "word_count": 0,
+      "filename": "drafts/fine-tuning-llms-for-production.md"
+    },
+    {
+      "post_id": "39daefbf",
+      "title": "ideas for the dialogue agents series",
+      "status": "note",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-13T07:01:00.190486+00:00",
+      "updated_at": "2026-03-13T07:01:00.190486+00:00",
+      "preview": "",
+      "word_count": 0,
+      "filename": "notes/ideas-for-the-dialogue-agents-series.md"
+    },
+    {
+      "post_id": "8a5ca570",
+      "title": "Fine-Tuning LLMs for Production",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-13T07:09:45.542543+00:00",
+      "updated_at": "2026-03-13T07:09:45.542543+00:00",
+      "preview": "",
+      "word_count": 0,
+      "filename": "drafts/fine-tuning-llms-for-production.md"
+    },
+    {
+      "post_id": "3331969e",
+      "title": "ideas for the dialogue agents series",
+      "status": "note",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-03-13T07:15:08.204466+00:00",
+      "updated_at": "2026-03-13T07:15:08.204466+00:00",
+      "preview": "",
+      "word_count": 0,
+      "filename": "notes/ideas-for-the-dialogue-agents-series.md"
+    }
+  ]
+}

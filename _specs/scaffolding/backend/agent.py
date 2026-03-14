@@ -42,15 +42,15 @@ class Agent:
     # ── Main loop ────────────────────────────────────────────────────
 
     def take_turn(self, user_text: str) -> dict:
-        self.world.context.add_turn('User', user_text)
+        self.world.context.add_turn('User', user_text, turn_type='utterance')
 
         if self.ambiguity.present():
             self.ambiguity.resolve()
 
-        state = self.nlu.understand(user_text)
+        state = self.nlu.understand(user_text, self.world.context)
         self.world.context.add_turn(
             'System',
-            f'[NLU] intent={state.intent} flow={state.flow_name} '
+            f'[NLU] intent={state.pred_intent} flow={state.flow_name} '
             f'confidence={state.confidence:.2f}',
             turn_type='meta',
         )
@@ -63,16 +63,21 @@ class Agent:
         last_frame = None
 
         while keep_going and rounds < _MAX_KEEP_GOING:
-            frame, keep_going = self.pex.execute(state)
+            frame, keep_going = self.pex.execute(state, self.world.context)
             last_frame = frame
             rounds += 1
             if keep_going:
-                state = self.nlu.understand(user_text)
+                active = self.world.flow_stack.get_active_flow()
+                if active:
+                    log.info(
+                        'keep_going round %d: intent=%s flow=%s',
+                        rounds, active.intent, active.name(),
+                    )
 
         response = self.res.respond(state, last_frame)
 
         agent_text = response.get('message', '')
-        self.world.context.add_turn('Agent', agent_text)
+        self.world.context.add_turn('Agent', agent_text, turn_type='utterance')
 
         if self.memory.should_summarize(self.world.context.turn_count):
             self._trigger_summarization()
@@ -91,6 +96,7 @@ class Agent:
     def _fallback_response(self, user_text: str) -> dict:
         self.world.context.add_turn(
             'Agent', "I'm not sure I understand. Could you rephrase that?",
+            turn_type='utterance',
         )
         return {
             'conversation_id': self.conversation_id,
@@ -105,7 +111,7 @@ class Agent:
             'message': response.get('message', ''),
             'display': response.get('display'),
             'clarification': response.get('clarification', False),
-            'intent': state.intent,
+            'intent': state.pred_intent,
             'flow': state.flow_name,
             'confidence': state.confidence,
         }

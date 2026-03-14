@@ -85,15 +85,6 @@ class TestPropose:
         assert re.search(r'(dact|propos|action|token)', result['message'], re.I)
 
 
-class TestCompose:
-    def test_compose(self, agent):
-        """Composing flows routes to compose flow."""
-        result = agent.take_turn('Generate the flows from the dact grammar')
-        state = agent.world.current_state()
-        assert state.flow_name == 'compose'
-        assert re.search(r'(flow|compos|generat|grammar)', result['message'], re.I)
-
-
 # ── Deliver ──────────────────────────────────────────────────────────
 
 class TestGenerate:

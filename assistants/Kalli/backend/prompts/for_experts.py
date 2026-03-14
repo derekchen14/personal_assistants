@@ -7,8 +7,8 @@ INTENT_INSTRUCTIONS = (
     'entities, lessons, revisions)\n'
     '- **Design**: User is reviewing, approving, rejecting, or refining '
     'flow/dact proposals\n'
-    '- **Deliver**: User wants to generate, export, or preview final output '
-    'files\n'
+    '- **Deliver**: User wants to generate, test, deploy, secure, or version '
+    'the assistant\n'
     '- **Converse**: General chat, asking what to do next, giving feedback, '
     'greetings, small talk\n'
     '- **Plan**: User wants to start a multi-step process (full onboarding, '
@@ -132,10 +132,10 @@ _Output_
 {{"thought": "Refining a flow's design attributes.", "intent": "Design"}}
 ```
 ---
-User: "show me the composed flows for Provide"
+User: "show me the proposed flows for Provide"
 _Output_
 ```json
-{{"thought": "Reviewing composed flows — design iteration.", "intent": "Design"}}
+{{"thought": "Reviewing proposed flows — design iteration.", "intent": "Design"}}
 ```
 ---
 User: "generate the final config files"
@@ -150,10 +150,10 @@ _Output_
 {{"thought": "Requesting specific file generation.", "intent": "Deliver"}}
 ```
 ---
-User: "preview what the YAML will look like"
+User: "run the tests before we deploy"
 _Output_
 ```json
-{{"thought": "Previewing generated output before committing.", "intent": "Deliver"}}
+{{"thought": "User wants to validate the assistant before deployment.", "intent": "Deliver"}}
 ```
 ---
 User: "let's build an assistant for a cooking app"
@@ -287,7 +287,7 @@ Intent: Explore
 User: "look up the display frame spec"
 _Output_
 ```json
-{{"thought": "Looking up a specific spec file.", "flow_name": "lookup", "confidence": 0.95, "slots": {{"spec_name": "display_frame"}}}}
+{{"thought": "Looking up a specific spec file.", "flow_name": "browse", "confidence": 0.95, "slots": {{"source": "display_frame"}}}}
 ```
 ---
 Intent: Explore
@@ -361,13 +361,6 @@ _Output_
 ```
 ---
 Intent: Design
-User: "show the composed flows"
-_Output_
-```json
-{{"thought": "Reviewing composed flow catalog.", "flow_name": "compose", "confidence": 0.90, "slots": {{}}}}
-```
----
-Intent: Design
 User: "approve the read_recipe flow"
 _Output_
 ```json
@@ -410,17 +403,17 @@ _Output_
 ```
 ---
 Intent: Deliver
-User: "let me preview the YAML first"
+User: "run the full test suite"
 _Output_
 ```json
-{{"thought": "Previewing output before committing.", "flow_name": "preview", "confidence": 0.90, "slots": {{"file_type": "yaml"}}}}
+{{"thought": "Running validation tests.", "flow_name": "test", "confidence": 0.90, "slots": {{"scope": "full"}}}}
 ```
 ---
 Intent: Deliver
-User: "ok export everything"
+User: "push it to staging"
 _Output_
 ```json
-{{"thought": "Confirming export.", "flow_name": "confirm", "confidence": 0.90, "slots": {{}}}}
+{{"thought": "Deploying to staging environment.", "flow_name": "deploy", "confidence": 0.90, "slots": {{"environment": "staging"}}}}
 ```
 ---
 Intent: Plan

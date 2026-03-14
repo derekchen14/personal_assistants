@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class Intent(str, Enum):
+class Intent:
     PLAN = 'Plan'
     CONVERSE = 'Converse'
     INTERNAL = 'Internal'

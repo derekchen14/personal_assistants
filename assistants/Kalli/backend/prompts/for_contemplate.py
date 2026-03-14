@@ -21,12 +21,12 @@ CONTEMPLATE_OUTPUT_SHAPE = (
 
 CONTEMPLATE_EXEMPLARS = '''
 ---
-Failed flow: lookup (low confidence)
+Failed flow: browse (low confidence)
 User: "what is the NLU?"
-Candidates: explain, lookup, chat
+Candidates: explain, browse, chat
 _Output_
 ```json
-{{"thought": "User is asking for a concept explanation, not a spec file lookup.", "flow_name": "explain", "confidence": 0.85}}
+{{"thought": "User is asking for a concept explanation, not a spec file browse.", "flow_name": "explain", "confidence": 0.85}}
 ```
 ---
 Failed flow: scope (missing required slots)
@@ -49,10 +49,10 @@ _Output_
 ---
 Failed flow: explain (tool error)
 User: "tell me about memory manager"
-Candidates: lookup, explain, chat
+Candidates: browse, explain, chat
 _Output_
 ```json
-{{"thought": "Explain failed due to tool error. Try lookup to read the spec directly.", "flow_name": "lookup", "confidence": 0.80}}
+{{"thought": "Explain failed due to tool error. Try browse to read the spec directly.", "flow_name": "browse", "confidence": 0.80}}
 ```
 ---
 Failed flow: status (empty result)
@@ -65,10 +65,10 @@ _Output_
 ---
 Failed flow: propose (no config data)
 User: "show me the dacts"
-Candidates: compose, propose, lookup
+Candidates: propose, browse, chat
 _Output_
 ```json
-{{"thought": "Propose failed because no config is set up yet. Compose might work if dacts exist, otherwise chat.", "flow_name": "compose", "confidence": 0.65}}
+{{"thought": "Propose failed because no config is set up yet. Browse might show what's defined so far.", "flow_name": "browse", "confidence": 0.65}}
 ```
 ---
 Failed flow: persona (low confidence)
@@ -81,11 +81,11 @@ _Output_
 ```
 ---
 Failed flow: generate (prerequisites not met)
-User: "export everything"
-Candidates: confirm, generate, preview
+User: "just test what we have so far"
+Candidates: test, generate, package
 _Output_
 ```json
-{{"thought": "Generate failed on prerequisites. Route to preview so user can see what's ready.", "flow_name": "preview", "confidence": 0.75}}
+{{"thought": "Generate failed on prerequisites. Route to test so user can validate what's ready.", "flow_name": "test", "confidence": 0.75}}
 ```
 ---
 Failed flow: next
@@ -117,7 +117,7 @@ _Output_
 ---
 Failed flow: chat (tool error on spec_read)
 User: "how are components organized?"
-Candidates: explain, lookup, chat
+Candidates: explain, browse, chat
 _Output_
 ```json
 {{"thought": "User wants architecture explanation — explain is the right flow.", "flow_name": "explain", "confidence": 0.85}}
@@ -148,12 +148,12 @@ _Output_
 {{"thought": "User is responding 'no' to a clarification, not declining a proposal. Route to chat.", "flow_name": "chat", "confidence": 0.70}}
 ```
 ---
-Failed flow: compose (empty catalog)
+Failed flow: propose (empty catalog)
 User: "what flows exist?"
-Candidates: status, compose, lookup
+Candidates: status, propose, browse
 _Output_
 ```json
-{{"thought": "No flows composed yet. Status can show what config is defined.", "flow_name": "status", "confidence": 0.75}}
+{{"thought": "No flows proposed yet. Status can show what config is defined.", "flow_name": "status", "confidence": 0.75}}
 ```
 '''
 

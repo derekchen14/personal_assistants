@@ -12,7 +12,7 @@ Expand an outline into full prose for a blog post.
 - Include transitions between sections for flow
 
 ## Slots
-- `post_id` (required): The post to expand
+- `source` (required): The post (by title or ID) to expand
 - `section` (optional): Specific section to expand
 
 ## Output

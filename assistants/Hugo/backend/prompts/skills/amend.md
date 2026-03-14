@@ -12,7 +12,7 @@ Request further changes to a revision.
 
 ## Slots
 - `feedback` (required): What changes are needed
-- `post_id` (required): The post to change
+- `source` (required): The post (by title or ID) to change
 
 ## Output
 Acknowledgment of the requested changes with a plan for addressing them.

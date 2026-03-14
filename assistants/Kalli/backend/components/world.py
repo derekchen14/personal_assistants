@@ -4,7 +4,7 @@ from types import MappingProxyType
 
 from backend.components.dialogue_state import DialogueState
 from backend.components.display_frame import DisplayFrame
-from backend.components.flow_stack import FlowStack
+from backend.components.flow_stack import FlowStack, flow_classes
 from backend.components.context_coordinator import ContextCoordinator
 
 
@@ -14,7 +14,7 @@ class World:
         self.config = config
         self.states: list[DialogueState] = []
         self.frames: list[DisplayFrame] = []
-        self.flow_stack = FlowStack(config)
+        self.flow_stack = FlowStack(config, flow_classes)
         self.context = ContextCoordinator(config)
 
     def current_state(self) -> DialogueState | None:

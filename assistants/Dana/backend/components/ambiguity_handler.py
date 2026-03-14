@@ -71,35 +71,27 @@ class AmbiguityHandler:
 
         if self._generation.get('lexicalize'):
             prompt = self.engineer.build_clarification_prompt(
-                level, meta, obs, history=[],
+                level, meta, obs, history_text='',
             )
             return prompt
 
         if self._generation.get('naturalize'):
             system, messages = self.engineer.build_naturalize_prompt(
-                obs or '', [], None,
+                obs or '', '', None,
             )
-            response = self.engineer.call(
+            text = self.engineer.call_text(
                 system=system, messages=messages,
                 call_site='ambiguity_naturalize', max_tokens=512,
             )
-            return self._extract_text(response) or obs or ''
+            return text.strip() or obs or ''
 
         if self._generation.get('compile'):
             prompt = self.engineer.build_clarification_prompt(
-                level, meta, obs, history=[],
+                level, meta, obs, history_text='',
             )
             return prompt
 
         return ''
-
-    @staticmethod
-    def _extract_text(response) -> str:
-        text = ''
-        for block in response.content:
-            if block.type == 'text':
-                text += block.text
-        return text
 
     def resolve(self):
         self._level = None

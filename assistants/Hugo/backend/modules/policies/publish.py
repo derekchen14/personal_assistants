@@ -1,68 +1,121 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+from backend.modules.policies.base import BasePolicy
 
 if TYPE_CHECKING:
     from backend.components.dialogue_state import DialogueState
+    from backend.components.context_coordinator import ContextCoordinator
     from backend.components.display_frame import DisplayFrame
+    from backend.components.flow_stack.parents import BaseFlow
 
 
-_SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'skills'
+class PublishPolicy(BasePolicy):
 
-_BATCH_1 = {'release', 'syndicate', 'schedule', 'preview'}
-_BATCH_2: set[str] = set()
+    def execute(self, flow: 'BaseFlow', state: 'DialogueState',
+                context: 'ContextCoordinator', tools) -> 'DisplayFrame':
+        match flow.name():
+            case 'release': return self.release_policy(flow, state, context, tools)
+            case 'syndicate': return self.syndicate_policy(flow, state, context, tools)
+            case 'schedule': return self.schedule_policy(flow, state, context, tools)
+            case 'preview': return self.preview_policy(flow, state, context, tools)
+            case 'promote': return self.promote_policy(flow, state, context, tools)
+            case 'cancel': return self.cancel_policy(flow, state, context, tools)
+            case 'survey': return self.survey_policy(flow, state, context, tools)
+            case _:
+                return self.build_frame('default', {'content': ''})
 
+    def release_policy(self, flow, state, context, tools):
+        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
+            identifier = self.extract_source(flow, state)
+            if identifier:
+                flow.fill_slots_by_label({'source': identifier})
+            if not flow.slots.get('source') or not flow.slots['source'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
+        if not flow.slots.get('channel', None) or not flow.slots['channel'].filled:
+            self.ambiguity.declare('specific', metadata={'missing_slot': 'channel'})
+            return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-class PublishPolicy:
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('toast', block_data, source='release')
 
-    def __init__(self, components: dict):
-        self.engineer = components['engineer']
-        self.memory = components['memory']
-        self.world = components['world']
-        self._get_tools_fn = components['get_tools']
+    def syndicate_policy(self, flow, state, context, tools):
+        if not flow.slots.get('channel', None) or not flow.slots['channel'].filled:
+            self.ambiguity.declare('specific', metadata={'missing_slot': 'channel'})
+            return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-    def execute(self, flow_name: str, flow_info: dict,
-                state: 'DialogueState', tool_dispatcher) -> 'DisplayFrame':
-        from backend.components.display_frame import DisplayFrame
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('toast', block_data, source='syndicate')
 
-        if flow_name in _BATCH_2:
-            frame = DisplayFrame(self.world.config)
-            frame.set_frame('default', {'content': "That feature is coming soon — stay tuned!"})
-            return frame
+    def schedule_policy(self, flow, state, context, tools):
+        for slot_name in ('source', 'channel'):
+            slot = flow.slots.get(slot_name)
+            if slot and slot.priority == 'required' and not slot.filled:
+                if slot_name == 'source':
+                    identifier = self.extract_source(flow, state)
+                    if identifier:
+                        flow.fill_slots_by_label({'source': identifier})
+                if not slot or not slot.filled:
+                    self.ambiguity.declare('specific', metadata={'missing_slot': slot_name})
+                    return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-        return self._llm_execute(flow_name, flow_info, state, tool_dispatcher)
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('toast', block_data, source='schedule')
 
-    def _llm_execute(self, flow_name, flow_info, state, tool_dispatcher):
-        from backend.components.display_frame import DisplayFrame
+    def preview_policy(self, flow, state, context, tools):
+        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
+            identifier = self.extract_source(flow, state)
+            if identifier:
+                flow.fill_slots_by_label({'source': identifier})
+            if not flow.slots.get('source') or not flow.slots['source'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-        skill_prompt = self._load_skill_template(flow_name)
-        system, messages = self.engineer.build_skill_prompt(
-            flow_name, flow_info, state.slots,
-            self.world.context.compile_history(turns=5),
-            self.memory.read_scratchpad(),
-            skill_prompt=skill_prompt,
-        )
-        tools = self._get_tools_fn(flow_name, flow_info)
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('card', block_data, source='preview')
 
-        text, tool_log = self.engineer.call_with_tools(
-            system, messages, tools, tool_dispatcher, call_site='skill',
-        )
+    def promote_policy(self, flow, state, context, tools):
+        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
+            identifier = self.extract_source(flow, state)
+            if identifier:
+                flow.fill_slots_by_label({'source': identifier})
+            if not flow.slots.get('source') or not flow.slots['source'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
 
-        frame = DisplayFrame(self.world.config)
-        block_type = flow_info.get('output', 'toast')
-        block_data = {'flow_name': flow_name, 'content': text}
-        for entry in tool_log:
-            result = entry.get('result', {})
-            if result.get('status') == 'success':
-                result_data = result.get('result', {})
-                if isinstance(result_data, dict):
-                    block_data.update(result_data)
-        frame.set_frame(block_type, block_data, source=flow_name)
-        return frame
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('toast', block_data, source='promote')
 
-    def _load_skill_template(self, flow_name: str) -> str | None:
-        path = _SKILL_DIR / f'{flow_name}.md'
-        if path.exists():
-            return path.read_text(encoding='utf-8')
-        return None
+    def cancel_policy(self, flow, state, context, tools):
+        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
+            identifier = self.extract_source(flow, state)
+            if identifier:
+                flow.fill_slots_by_label({'source': identifier})
+            if not flow.slots.get('source') or not flow.slots['source'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
+
+        slots = flow.slot_values_dict()
+        identifier = self.extract_source(flow, state)
+        post_id = self.resolve_post_id(identifier, tools) if identifier else None
+
+        cancel_params = {'post_id': post_id or identifier}
+        reason = slots.get('reason')
+        if reason:
+            cancel_params['reason'] = reason
+        result = tools('manage_schedule', {'action': 'cancel', **cancel_params})
+
+        content = 'Publication cancelled.' if result.get('status') == 'success' else 'Could not cancel.'
+        return self.build_frame('toast', {'content': content}, source='cancel')
+
+    def survey_policy(self, flow, state, context, tools):
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('list', block_data, source='survey')

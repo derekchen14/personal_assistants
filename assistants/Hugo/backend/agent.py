@@ -35,26 +35,30 @@ class Agent:
         self.pex = PEX(self.config, self.ambiguity, self.engineer, self.memory, self.world)
         self.res = RES(self.config, self.ambiguity, self.engineer, self.world)
 
-    def take_turn(self, user_text: str, user_actions: list | None = None,
-                  gold_dax: str | None = None) -> dict:
-        self.world.context.add_turn('User', user_text)
+    def take_turn(self, user_text:str, user_actions:list | None = None, gold_dax:str | None = None) -> dict:
+        if user_actions and len(user_actions) > 0:
+            for action in user_actions:
+                gold_dax = action['dax'] if 'dax' in action else ''
+                self.world.context.add_turn('User', user_text, turn_type='action')
+            log.info('USER (action): %s', user_text)
+        else:
+            self.world.context.add_turn('User', user_text, turn_type='utterance')
+            log.info('USER: %s', user_text)
 
-        # Resolve any pending ambiguity from the previous turn.
         if self.ambiguity.present():
             if user_actions:
-                # User actions are explicit — always resolve immediately.
                 self.ambiguity.resolve()
             else:
-                # TODO: pass user_text + ambiguity context to a model to
-                # check whether the user's utterance actually resolves the
-                # ambiguity.  For now, optimistically resolve.
                 self.ambiguity.resolve()
 
-        state = self.nlu.understand(user_text, gold_dax)
+        state = self.nlu.understand(user_text, self.world.context, gold_dax)
 
-        intent_val = state.intent.value if hasattr(state.intent, 'value') else state.intent
-        log.info(f"{state.intent}: {state.flow_name} {{{state.dax}}}; "
-                 f"Confidence: {state.confidence:.2f}; Slots: {state.slots or {}}")
+        flow = self.world.flow_stack.get_active_flow()
+        dax = flow.dax if flow else ''
+        slots = flow.slot_values_dict() if flow else {}
+        log.info('pred = %s {%s}  score=%.2f   slots=%s',
+                 flow.name(True) if flow else state.flow_name,
+                 dax, state.confidence, slots)
 
         if not self._self_check(state):
             return self._fallback_response(
@@ -66,21 +70,16 @@ class Agent:
         rounds = 0
 
         while keep_going and rounds < _MAX_KEEP_GOING:
-            frame, keep_going = self.pex.execute(state)
+            frame, keep_going = self.pex.execute(state, self.world.context)
             rounds += 1
             log.info('  pex round=%d  keep_going=%s', rounds, keep_going)
 
             if keep_going:
-                active = self.world.flow_stack.get_active_flow()
-                if active:
+                flow = self.world.flow_stack.get_active_flow()
+                if flow:
                     new_state = DialogueState(self.config)
-                    new_state.update(
-                        intent=active.intent,
-                        dax=active.dax,
-                        flow_name=active.flow_name,
-                        confidence=1.0,
-                        slots=active.slots,
-                    )
+                    new_state.update(pred_intent=flow.intent,
+                        flow_name=flow.name(), confidence=1.0)
                     new_state.keep_going = True
                     self.world.insert_state(new_state)
                     state = new_state
@@ -90,6 +89,9 @@ class Agent:
 
         utterance, frame = self.res.respond(frame)
 
+        if utterance:
+            log.info('AGENT: %s', utterance[:200])
+
         if self.memory.should_summarize(state.turn_count):
             self.world.context.save_checkpoint(
                 'auto_summarize',
@@ -97,8 +99,6 @@ class Agent:
             )
 
         return self._build_payload(utterance, frame)
-
-    # ── Self-check gate ───────────────────────────────────────────────
 
     def _self_check(self, state: DialogueState) -> bool:
         if state.confidence < 0.1:
@@ -139,7 +139,7 @@ class Agent:
 
         message = utterance
         if not message and not frame_data:
-            if state and state.intent not in ('Internal', 'Plan'):
+            if state and state.pred_intent not in ('Internal', 'Plan'):
                 message = (
                     "I've processed your request. Let me know if you need "
                     "anything else."

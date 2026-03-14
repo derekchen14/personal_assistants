@@ -1,4 +1,4 @@
-"""Dialogue State — tracks current turn's intent, flow, slots, and flags."""
+"""Dialogue State — tracks current turn's intent, flow, and flags."""
 
 from __future__ import annotations
 
@@ -9,13 +9,11 @@ class DialogueState:
 
     def __init__(self, config: MappingProxyType):
         self.config = config
-        self.intent: str | None = None
-        self.dax: str | None = None
+        self.pred_intent: str | None = None
         self.flow_name: str | None = None
         self.confidence: float = 0.0
-        self.slots: dict = {}
+        self.pred_flows: list[dict] = []
         self.turn_count: int = 0
-        self.top_detections: list[dict] = []
 
         self.keep_going: bool = False
         self.has_issues: bool = False
@@ -23,13 +21,11 @@ class DialogueState:
         self.structured_plan: dict = {}
         self.natural_birth: bool = True
 
-    def update(self, intent: str, dax: str, flow_name: str,
-               confidence: float, slots: dict | None = None):
-        self.intent = intent
-        self.dax = dax
+    def update(self, pred_intent: str, flow_name: str,
+               confidence: float):
+        self.pred_intent = pred_intent
         self.flow_name = flow_name
         self.confidence = confidence
-        self.slots = slots or {}
         self.turn_count += 1
         self.keep_going = False
         self.has_issues = False
@@ -39,17 +35,12 @@ class DialogueState:
             if hasattr(self, key):
                 setattr(self, key, value)
 
-    def set_top_detections(self, detections: list[dict]):
-        self.top_detections = detections[:3]
-
     def reset(self):
-        self.intent = None
-        self.dax = None
+        self.pred_intent = None
         self.flow_name = None
         self.confidence = 0.0
-        self.slots = {}
+        self.pred_flows = []
         self.turn_count = 0
-        self.top_detections = []
         self.keep_going = False
         self.has_issues = False
         self.has_plan = False
@@ -58,13 +49,11 @@ class DialogueState:
 
     def serialize(self) -> dict:
         return {
-            'intent': self.intent,
-            'dax': self.dax,
+            'pred_intent': self.pred_intent,
             'flow_name': self.flow_name,
             'confidence': self.confidence,
-            'slots': self.slots,
+            'pred_flows': self.pred_flows,
             'turn_count': self.turn_count,
-            'top_detections': self.top_detections,
             'keep_going': self.keep_going,
             'has_issues': self.has_issues,
             'has_plan': self.has_plan,
@@ -75,13 +64,11 @@ class DialogueState:
     @classmethod
     def from_dict(cls, data: dict, config: MappingProxyType) -> DialogueState:
         state = cls(config)
-        state.intent = data.get('intent')
-        state.dax = data.get('dax')
+        state.pred_intent = data.get('pred_intent')
         state.flow_name = data.get('flow_name')
         state.confidence = data.get('confidence', 0.0)
-        state.slots = data.get('slots', {})
+        state.pred_flows = data.get('pred_flows', [])
         state.turn_count = data.get('turn_count', 0)
-        state.top_detections = data.get('top_detections', [])
         state.keep_going = data.get('keep_going', False)
         state.has_issues = data.get('has_issues', False)
         state.has_plan = data.get('has_plan', False)

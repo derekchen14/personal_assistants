@@ -12,7 +12,7 @@ Format a blog post for publication.
 - Suggest `publish_post` or `preview_published` as next steps
 
 ## Slots
-- `post_id` (required): The post to format
+- `source` (required): The post (by title or ID) to format
 - `format` (elective): Target format style (markdown, html, plain)
 
 ## Output

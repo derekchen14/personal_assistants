@@ -52,34 +52,6 @@ class DisplayFrame:
             'data': data,
         }
 
-    def card(self, title: str, content: str,
-             actions: list | None = None) -> dict:
-        return self.compose('card', {
-            'title': title, 'content': content,
-            'actions': actions or [],
-        })
-
-    def listing(self, title: str, items: list) -> dict:
-        return self.compose('list', {'title': title, 'items': items})
-
-    def form(self, fields: list[dict],
-             submit_label: str = 'Submit') -> dict:
-        return self.compose('form', {
-            'fields': fields, 'submit_label': submit_label,
-        })
-
-    def toast(self, message: str, level: str = 'info') -> dict:
-        return self.compose('toast', {'message': message, 'level': level})
-
-    def confirmation(self, prompt: str,
-                     confirm_label: str = 'Confirm',
-                     cancel_label: str = 'Cancel') -> dict:
-        return self.compose('confirmation', {
-            'prompt': prompt,
-            'confirm_label': confirm_label,
-            'cancel_label': cancel_label,
-        })
-
     def to_dict(self) -> dict:
         return {
             'block_type': self.block_type,

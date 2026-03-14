@@ -12,7 +12,6 @@ class ContextCoordinator:
         self.config = config
         self._history: list[dict] = []
         self._checkpoints: list[dict] = []
-        self._fast_window_size: int = 7
 
     def add_turn(self, speaker: str, text: str,
                  form: str = 'text', turn_type: str | None = None) -> str:
@@ -28,26 +27,39 @@ class ContextCoordinator:
         self._history.append(turn)
         return turn_id
 
-    def compile_history(self, turns: int = 5,
-                        keep_system: bool = False) -> list[dict]:
+    def compile_history(self, look_back: int = 5,
+                        keep_system: bool = True) -> str:
         if keep_system:
             source = self._history
         else:
             source = [t for t in self._history if t['speaker'] != 'System']
-        return source[-turns:]
+        recent = source[-look_back:]
+        lines = []
+        for turn in recent:
+            role = turn.get('speaker', 'User')
+            text = turn.get('text', '')
+            lines.append(f'{role}: {text}')
+        return '\n'.join(lines)
+
+    def full_conversation(self, keep_system: bool = True) -> list[str]:
+        if keep_system:
+            source = self._history
+        else:
+            source = [t for t in self._history if t['speaker'] != 'System']
+        return [f"{t['speaker']}: {t['text']}" for t in source]
+
+    def recent_turns(self, n: int = 3) -> list[dict]:
+        utterances = [
+            t for t in self._history
+            if t['speaker'] in ('User', 'Agent')
+        ]
+        return utterances[-n:]
 
     def get_turn(self, turn_id: str) -> dict | None:
         for turn in self._history:
             if turn['turn_id'] == turn_id:
                 return turn
         return None
-
-    def get_recent(self) -> list[dict]:
-        utterances = [
-            t for t in self._history
-            if t['speaker'] in ('User', 'Agent')
-        ]
-        return utterances[-self._fast_window_size:]
 
     def save_checkpoint(self, label: str, data: dict | None = None):
         self._checkpoints.append({

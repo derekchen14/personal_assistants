@@ -20,6 +20,19 @@ class BaseFlow(object):
     self.stage = ''
     self.entity_slot = 'source'
 
+    self.flow_id: str = ''
+    self.status: str = ''
+    self.plan_id: str | None = None
+    self.turn_ids: list[str] = []
+    self.result: dict | None = None
+
+  @property
+  def intent(self):
+    return self.parent_type
+
+  def get(self, key, default=None):
+    return getattr(self, key, default)
+
   def name(self, full=False):
     if full:
       return f'{self.parent_type}({self.flow_type})'
@@ -49,9 +62,45 @@ class BaseFlow(object):
     """System 1: Fast entity extraction from NLU prediction labels."""
     raise NotImplementedError
 
-  def fill_slot_values(self, context, memory):
-    """System 2: Deeper contemplation to fill remaining slots."""
-    raise NotImplementedError
+  def fill_slot_values(self, values: dict):
+    """Transfer prediction values onto slot objects."""
+    if not values:
+      return
+    for slot_name, value in values.items():
+      slot = self.slots.get(slot_name)
+      if not slot or not value:
+        continue
+      # Dict values → unpack as kwargs (e.g. SourceSlot entity dicts)
+      if isinstance(value, dict) and hasattr(slot, 'add_one'):
+        slot.add_one(**value)
+      elif hasattr(slot, 'assign_one'):
+        slot.assign_one(value)
+      elif hasattr(slot, 'add_one'):
+        st = getattr(slot, 'slot_type', '')
+        if st == 'source':
+          slot.add_one(tab=str(value), col='')
+        elif st == 'dictionary':
+          slot.add_one(key=str(value), val='')
+        else:
+          slot.add_one(value)
+      else:
+        slot.value = str(value)
+
+  def slot_values_dict(self) -> dict:
+    """Read filled slot values as a flat dict (for prompt serialization)."""
+    return {
+      sn: slot.to_dict() for sn, slot in self.slots.items()
+      if slot.filled or (slot.criteria == 'multiple' and slot.to_dict())
+         or (slot.criteria == 'numeric' and slot.to_dict())
+    }
+
+  def to_dict(self) -> dict:
+    return {
+      'flow_id': self.flow_id, 'flow_name': self.flow_type,
+      'dax': self.dax, 'intent': self.parent_type,
+      'status': self.status, 'slots': self.slot_values_dict(),
+      'plan_id': self.plan_id, 'turn_ids': self.turn_ids,
+    }
 
   def validate_entity(self, entity, current_context):
     """Add entity to the primary grounding slot. Override in domain parents for validation."""
@@ -151,16 +200,6 @@ class AnalyzeParentFlow(BaseFlow):
 
     if 'operation' in self.slots:
       self.slots['operation'].extract(labels)
-    return self.is_filled()
-
-  def fill_slot_values(self, context, memory):
-    """Fill operation slots from contemplation results."""
-    for pred_op in context:
-      if pred_op in ('none', 'unsure'):
-        self.is_uncertain = True
-        return False
-      if 'operation' in self.slots:
-        self.slots['operation'].add_one(pred_op)
     return self.is_filled()
 
 

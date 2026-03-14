@@ -1,7 +1,7 @@
 INTENT_INSTRUCTIONS = (
     'Classify the user utterance into exactly one intent.\n\n'
     'Available intents:\n'
-    '- Research: browse topics, search posts, view drafts, check platforms, '
+    '- Research: browse topics, search posts, view drafts, check channels, '
     'explain concepts, find related content, compare posts\n'
     '- Draft: brainstorm, generate outlines, write or expand content, '
     'create new posts, add/refine sections\n'
@@ -45,7 +45,7 @@ _Output_
 User: "publish it to Medium"
 _Output_
 ```json
-{{"thought": "User wants to publish content to a platform.", "intent": "Publish"}}
+{{"thought": "User wants to publish content to a channel.", "intent": "Publish"}}
 ```
 ---
 User: "hi there"
@@ -90,10 +90,10 @@ _Output_
 {{"thought": "Scheduling a post for future publication.", "intent": "Publish"}}
 ```
 ---
-User: "what platforms do I have connected?"
+User: "what channels do I have connected?"
 _Output_
 ```json
-{{"thought": "Checking platform configuration.", "intent": "Research"}}
+{{"thought": "Checking channel configuration.", "intent": "Research"}}
 ```
 ---
 User: "I prefer shorter paragraphs"
@@ -221,10 +221,10 @@ _Output_
 ```
 ---
 Intent: Research
-User: "what platforms do I have?"
+User: "what channels do I have?"
 _Output_
 ```json
-{{"thought": "Viewing configured platforms.", "flow_name": "survey", "confidence": 0.90, "slots": {{}}}}
+{{"thought": "Viewing configured channels.", "flow_name": "survey", "confidence": 0.90, "slots": {{}}}}
 ```
 ---
 Intent: Research
@@ -329,7 +329,7 @@ Intent: Publish
 User: "post it on Twitter too"
 _Output_
 ```json
-{{"thought": "Cross-posting to a platform.", "flow_name": "syndicate", "confidence": 0.90, "slots": {{"platform": "Twitter"}}}}
+{{"thought": "Cross-posting to a channel.", "flow_name": "syndicate", "confidence": 0.90, "slots": {{"channel": "Twitter"}}}}
 ```
 ---
 Intent: Publish

@@ -1,13 +1,14 @@
 from enum import Enum
 
-class Intent(str, Enum):
+
+class Intent:
     PLAN = 'Plan'
     CONVERSE = 'Converse'
     INTERNAL = 'Internal'
-    EXPLORE = 'Explore'       # browse specs, look up components
-    PROVIDE = 'Provide'       # give project info, intents, entities
-    DESIGN = 'Design'         # iterate on dact grammar and flows
-    DELIVER = 'Deliver'       # review final config, export files
+    EXPLORE = 'Explore'           # see existing assistants, browse specs, check progress
+    GATHER = 'Gather'             # collect requirements, propose flows, finalize drafts
+    PERSONALIZE = 'Personalize'   # modify existing config, iterate grammar, refine slots
+    DELIVER = 'Deliver'            # generate, package, test, deploy, secure, version
 
 
 class FlowLifecycle(str, Enum):
@@ -25,70 +26,75 @@ class AmbiguityLevel(str, Enum):
 
 
 DACT_CATALOG = {
-    'chat':     {'hex': '0', 'pos': 'noun'},
-    'browse':   {'hex': '1', 'pos': 'verb'},
-    'describe': {'hex': '2', 'pos': 'verb'},
-    'iterate':  {'hex': '3', 'pos': 'verb'},
-    'export':   {'hex': '4', 'pos': 'verb'},
-    'insert':   {'hex': '5', 'pos': 'verb'},
-    'update':   {'hex': '6', 'pos': 'verb'},
-    'delete':   {'hex': '7', 'pos': 'verb'},
-    'user':     {'hex': '8', 'pos': 'adj'},
-    'agent':    {'hex': '9', 'pos': 'adj'},
-    'config':   {'hex': 'A', 'pos': 'noun'},
-    'lesson':   {'hex': 'B', 'pos': 'noun'},
-    'spec':     {'hex': 'C', 'pos': 'noun'},
-    'draft':    {'hex': 'D', 'pos': 'adj'},
-    'accept':   {'hex': 'E', 'pos': 'adj'},
-    'reject':   {'hex': 'F', 'pos': 'adj'},
+    'chat':        {'hex': '0', 'pos': 'noun'},
+    'browse':      {'hex': '1', 'pos': 'verb'},
+    'scope':       {'hex': '2', 'pos': 'verb'},
+    'iterate':     {'hex': '3', 'pos': 'verb'},
+    'generate':    {'hex': '4', 'pos': 'verb'},
+    'insert':      {'hex': '5', 'pos': 'verb'},
+    'update':      {'hex': '6', 'pos': 'verb'},
+    'delete':      {'hex': '7', 'pos': 'verb'},
+    'user':        {'hex': '8', 'pos': 'adj'},
+    'agent':       {'hex': '9', 'pos': 'adj'},
+    'assistant':   {'hex': 'A', 'pos': 'noun'},
+    'requirement': {'hex': 'B', 'pos': 'noun'},
+    'spec':        {'hex': 'C', 'pos': 'noun'},
+    'draft':       {'hex': 'D', 'pos': 'adj'},
+    'accept':      {'hex': 'E', 'pos': 'adj'},
+    'reject':      {'hex': 'F', 'pos': 'adj'},
 }
 
 FLOW_CATALOG = {
+
+    # ── Explore (8 flows) ──────────────────────────────────────────────
+    # See what assistants exist, answer capability questions, browse specs,
+    # check progress, compare against requirements.
+
     'status': {
         'dax': '{01A}',
         'intent': Intent.EXPLORE,
-        'description': 'View current state of the config being built',
+        'description': 'View current state of the assistant being built',
         'slots': {
-            'section': {'type': 'SectionSlot', 'priority': 'optional'},
+            'source': {'type': 'SourceSlot', 'priority': 'optional'},
         },
         'output': 'card',
         'edge_flows': ['summarize', 'inspect'],
-        'policy_path': 'policies.explore_policies.status',
+        'policy_path': 'policies.explore.status',
     },
     'lessons': {
         'dax': '{01B}',
         'intent': Intent.EXPLORE,
-        'description': 'Browse stored lessons and patterns',
+        'description': 'Browse stored requirements and patterns',
         'slots': {
             'topic': {'type': 'FreeTextSlot', 'priority': 'optional'},
             'count': {'type': 'LevelSlot', 'priority': 'optional'},
         },
         'output': 'list',
-        'edge_flows': ['recall', 'lookup'],
-        'policy_path': 'policies.explore_policies.lessons',
+        'edge_flows': ['browse', 'teach'],
+        'policy_path': 'policies.explore.lessons',
     },
-    'lookup': {
-        'dax': '{01C}',
+    'browse': {
+        'dax': '{001}',
         'intent': Intent.EXPLORE,
         'description': 'Look up a specific spec file or section',
         'slots': {
-            'spec_name': {'type': 'SpecSlot', 'priority': 'required'},
-            'section': {'type': 'FreeTextSlot', 'priority': 'optional'},
+            'source': {'type': 'SourceSlot', 'priority': 'required'},
+            'query': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'card',
-        'edge_flows': ['explain', 'study'],
-        'policy_path': 'policies.explore_policies.lookup',
+        'edge_flows': ['explain', 'inspect'],
+        'policy_path': 'policies.explore.browse',
     },
     'recommend': {
         'dax': '{18C}',
         'intent': Intent.EXPLORE,
         'description': 'Find specs relevant to the user\'s target domain',
         'slots': {
-            'domain': {'type': 'FreeTextSlot', 'priority': 'required'},
+            'context': {'type': 'FreeTextSlot', 'priority': 'required'},
         },
         'output': 'list',
-        'edge_flows': ['lookup', 'research'],
-        'policy_path': 'policies.explore_policies.recommend',
+        'edge_flows': ['browse', 'research'],
+        'policy_path': 'policies.explore.recommend',
     },
     'summarize': {
         'dax': '{19A}',
@@ -97,51 +103,53 @@ FLOW_CATALOG = {
         'slots': {},
         'output': 'card',
         'edge_flows': ['status', 'inspect'],
-        'policy_path': 'policies.explore_policies.summarize',
+        'policy_path': 'policies.explore.summarize',
     },
     'explain': {
         'dax': '{19C}',
         'intent': Intent.EXPLORE,
-        'description': 'Agent explains an architecture concept',
+        'description': 'Agent explains an architecture concept or capability',
         'slots': {
-            'concept': {'type': 'FreeTextSlot', 'priority': 'required'},
+            'topic': {'type': 'FreeTextSlot', 'priority': 'required'},
         },
         'output': 'card',
-        'edge_flows': ['lookup', 'chat'],
-        'policy_path': 'policies.explore_policies.explain',
+        'edge_flows': ['browse', 'chat'],
+        'policy_path': 'policies.explore.explain',
     },
     'inspect': {
         'dax': '{1AD}',
         'intent': Intent.EXPLORE,
-        'description': 'Inspect a draft config section in detail',
+        'description': 'Inspect a draft assistant section in detail',
         'slots': {
-            'section': {'type': 'SectionSlot', 'priority': 'required'},
-            'detail_level': {
-                'type': 'CategorySlot', 'priority': 'elective',
-            },
+            'source': {'type': 'SourceSlot', 'priority': 'required'},
+            'detail': {'type': 'CategorySlot', 'priority': 'optional'},
         },
         'output': 'card',
         'edge_flows': ['status', 'compare'],
-        'policy_path': 'policies.explore_policies.inspect',
+        'policy_path': 'policies.explore.inspect',
     },
     'compare': {
         'dax': '{1CD}',
         'intent': Intent.EXPLORE,
-        'description': 'Compare draft config section against spec requirements',
+        'description': 'Compare draft assistant section against spec rules',
         'slots': {
-            'section': {'type': 'SectionSlot', 'priority': 'required'},
+            'source': {'type': 'SourceSlot', 'priority': 'required'},
+            'reference': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'card',
         'edge_flows': ['validate', 'inspect'],
-        'policy_path': 'policies.explore_policies.compare',
+        'policy_path': 'policies.explore.compare',
     },
 
-    # ── Provide (8 flows) ─────────────────────────────────────────────
+    # ── Gather (6 flows) ───────────────────────────────────────────────
+    # Collect all user requirements: scope, persona, preferences, entities.
+    # Go through the checklist, collect info to build dact grammar, propose
+    # flows, finalize drafts. (log absorbed into teach)
 
     'scope': {
-        'dax': '{02A}',
-        'intent': Intent.PROVIDE,
-        'description': 'Define assistant scope — name, task, boundaries',
+        'dax': '{002}',
+        'intent': Intent.GATHER,
+        'description': 'Define assistant scope: name, task, boundaries',
         'slots': {
             'name': {'type': 'FreeTextSlot', 'priority': 'required'},
             'task': {'type': 'FreeTextSlot', 'priority': 'required'},
@@ -150,265 +158,237 @@ FLOW_CATALOG = {
         'output': 'form',
         'panel': 'top',
         'edge_flows': ['persona', 'entity'],
-        'policy_path': 'policies.provide_policies.scope',
+        'policy_path': 'policies.gather.scope',
     },
     'teach': {
         'dax': '{02B}',
-        'intent': Intent.PROVIDE,
-        'description': 'Share a learning or pattern for Kalli to remember',
+        'intent': Intent.GATHER,
+        'description': 'Share a learning, pattern, or requirement for Kalli to remember',
         'slots': {
             'pattern': {'type': 'FreeTextSlot', 'priority': 'required'},
+            'category': {'type': 'CategorySlot', 'priority': 'optional'},
             'context': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'toast',
-        'edge_flows': ['log', 'feedback'],
-        'policy_path': 'policies.provide_policies.teach',
+        'edge_flows': ['lessons', 'feedback'],
+        'policy_path': 'policies.gather.teach',
     },
     'intent': {
-        'dax': '{05A}',
-        'intent': Intent.PROVIDE,
-        'description': 'Provide a domain intent definition',
+        'dax': '{005}',
+        'intent': Intent.GATHER,
+        'description': 'Define a domain intent for the assistant',
         'slots': {
-            'intent_name': {'type': 'FreeTextSlot', 'priority': 'required'},
+            'name': {'type': 'FreeTextSlot', 'priority': 'required'},
             'description': {'type': 'FreeTextSlot', 'priority': 'required'},
-            'abstract_slot': {
-                'type': 'CategorySlot', 'priority': 'elective',
-            },
         },
         'output': 'form',
         'edge_flows': ['entity', 'revise'],
-        'policy_path': 'policies.provide_policies.intent',
-    },
-    'log': {
-        'dax': '{05B}',
-        'intent': Intent.PROVIDE,
-        'description': 'Log a new lesson or convention',
-        'slots': {
-            'content': {'type': 'FreeTextSlot', 'priority': 'required'},
-            'category': {
-                'type': 'CategorySlot', 'priority': 'elective',
-            },
-        },
-        'output': 'toast',
-        'edge_flows': ['teach', 'style'],
-        'policy_path': 'policies.provide_policies.log',
-    },
-    'revise': {
-        'dax': '{06A}',
-        'intent': Intent.PROVIDE,
-        'description': 'Update a previously defined config section',
-        'slots': {
-            'section': {'type': 'SectionSlot', 'priority': 'required'},
-            'field': {'type': 'FreeTextSlot', 'priority': 'required'},
-            'value': {'type': 'FreeTextSlot', 'priority': 'required'},
-        },
-        'output': 'toast',
-        'edge_flows': ['remove', 'refine'],
-        'policy_path': 'policies.provide_policies.revise',
-    },
-    'remove': {
-        'dax': '{07A}',
-        'intent': Intent.PROVIDE,
-        'description': 'Remove a config section or entry',
-        'slots': {
-            'section': {'type': 'SectionSlot', 'priority': 'required'},
-        },
-        'output': 'confirmation',
-        'panel': 'top',
-        'edge_flows': ['revise', 'decline'],
-        'policy_path': 'policies.provide_policies.remove',
+        'policy_path': 'policies.gather.intent',
     },
     'persona': {
         'dax': '{28A}',
-        'intent': Intent.PROVIDE,
-        'description': 'Define persona preferences — tone, name, style, colors',
+        'intent': Intent.GATHER,
+        'description': 'Define persona preferences: name, tone, style',
         'slots': {
-            'tone': {'type': 'CategorySlot', 'priority': 'elective'},
             'name': {'type': 'FreeTextSlot', 'priority': 'required'},
-            'response_style': {
-                'type': 'CategorySlot', 'priority': 'elective',
-            },
-            'colors': {'type': 'FreeTextSlot', 'priority': 'optional'},
+            'tone': {'type': 'CategorySlot', 'priority': 'elective'},
+            'style': {'type': 'CategorySlot', 'priority': 'elective'},
         },
         'output': 'form',
         'edge_flows': ['scope', 'entity'],
-        'policy_path': 'policies.provide_policies.persona',
+        'policy_path': 'policies.gather.persona',
     },
     'entity': {
         'dax': '{2AC}',
-        'intent': Intent.PROVIDE,
+        'intent': Intent.GATHER,
         'description': 'Define key entities grounded in domain concepts',
         'slots': {
             'entities': {'type': 'GroupSlot', 'priority': 'required'},
         },
         'output': 'form',
         'edge_flows': ['intent', 'scope'],
-        'policy_path': 'policies.provide_policies.entity',
+        'policy_path': 'policies.gather.entity',
     },
-
-    # ── Design (8 flows) ──────────────────────────────────────────────
-
     'propose': {
-        'dax': '{03A}',
-        'intent': Intent.DESIGN,
-        'description': 'Review proposed core dacts for the domain',
+        'dax': '{003}',
+        'intent': Intent.GATHER,
+        'description': 'Propose core dacts for the domain grammar',
         'slots': {},
         'output': 'list',
-        'edge_flows': ['compose', 'suggest'],
-        'policy_path': 'policies.design_policies.propose',
+        'edge_flows': ['suggest', 'validate'],
+        'policy_path': 'policies.gather.propose',
     },
-    'compose': {
-        'dax': '{03C}',
-        'intent': Intent.DESIGN,
-        'description': 'Review composed flows generated from dact grammar',
+
+    # ── Personalize (8 flows) ──────────────────────────────────────────
+    # Only acts on existing requirements. Modifies existing assistant and
+    # configs, iterations on grammar, refine slots, finalize assistant.
+
+    'revise': {
+        'dax': '{006}',
+        'intent': Intent.PERSONALIZE,
+        'description': 'Update a previously defined assistant section',
         'slots': {
-            'intent_filter': {
-                'type': 'IntentSlot', 'priority': 'optional',
-            },
+            'source': {'type': 'SourceSlot', 'priority': 'required'},
+            'value': {'type': 'FreeTextSlot', 'priority': 'required'},
         },
-        'output': 'list',
-        'edge_flows': ['propose', 'validate'],
-        'policy_path': 'policies.design_policies.compose',
+        'output': 'toast',
+        'edge_flows': ['remove', 'refine'],
+        'policy_path': 'policies.personalize.revise',
+    },
+    'remove': {
+        'dax': '{007}',
+        'intent': Intent.PERSONALIZE,
+        'description': 'Remove an assistant section or entry',
+        'slots': {
+            'source': {'type': 'SourceSlot', 'priority': 'required'},
+        },
+        'output': 'confirmation',
+        'panel': 'top',
+        'edge_flows': ['revise', 'decline'],
+        'policy_path': 'policies.personalize.remove',
     },
     'rework': {
         'dax': '{03D}',
-        'intent': Intent.DESIGN,
-        'description': 'Revise an in-progress flow design',
+        'intent': Intent.PERSONALIZE,
+        'description': 'Revise an existing flow design',
         'slots': {
-            'flow_name': {'type': 'FlowSlot', 'priority': 'required'},
-            'field': {'type': 'FreeTextSlot', 'priority': 'required'},
+            'flow': {'type': 'ExactSlot', 'priority': 'required'},
+            'change': {'type': 'FreeTextSlot', 'priority': 'required'},
         },
         'output': 'card',
-        'edge_flows': ['refine', 'compose'],
-        'policy_path': 'policies.design_policies.rework',
+        'edge_flows': ['refine', 'propose'],
+        'policy_path': 'policies.personalize.rework',
     },
     'approve': {
         'dax': '{0AE}',
-        'intent': Intent.DESIGN,
+        'intent': Intent.PERSONALIZE,
         'description': 'Approve a proposed flow or dact',
         'slots': {
-            'flow_name': {'type': 'FlowSlot', 'priority': 'required'},
+            'flow': {'type': 'ExactSlot', 'priority': 'required'},
         },
         'output': 'toast',
         'edge_flows': ['endorse', 'decline'],
-        'policy_path': 'policies.design_policies.approve',
+        'policy_path': 'policies.personalize.approve',
     },
     'decline': {
         'dax': '{0AF}',
-        'intent': Intent.DESIGN,
+        'intent': Intent.PERSONALIZE,
         'description': 'Reject a proposed flow or dact with reason',
         'slots': {
-            'flow_name': {'type': 'FlowSlot', 'priority': 'required'},
+            'flow': {'type': 'ExactSlot', 'priority': 'required'},
             'reason': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'toast',
         'edge_flows': ['dismiss', 'approve'],
-        'policy_path': 'policies.design_policies.decline',
+        'policy_path': 'policies.personalize.decline',
     },
     'suggest': {
         'dax': '{39A}',
-        'intent': Intent.DESIGN,
-        'description': 'Agent suggests new flows; user reviews',
+        'intent': Intent.PERSONALIZE,
+        'description': 'Agent suggests changes to existing flows',
         'slots': {
-            'intent_hint': {
-                'type': 'IntentSlot', 'priority': 'optional',
-            },
+            'filter': {'type': 'CategorySlot', 'priority': 'optional'},
+            'scope': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'card',
-        'edge_flows': ['propose', 'compose'],
-        'policy_path': 'policies.design_policies.suggest',
+        'edge_flows': ['propose', 'refine'],
+        'policy_path': 'policies.personalize.suggest',
     },
     'refine': {
         'dax': '{3AD}',
-        'intent': Intent.DESIGN,
+        'intent': Intent.PERSONALIZE,
         'description': 'Refine a flow\'s slot signature or output type',
         'slots': {
-            'flow_name': {'type': 'FlowSlot', 'priority': 'required'},
-            'slot_name': {'type': 'FreeTextSlot', 'priority': 'optional'},
+            'flow': {'type': 'ExactSlot', 'priority': 'required'},
             'change': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'card',
         'edge_flows': ['rework', 'validate'],
-        'policy_path': 'policies.design_policies.refine',
+        'policy_path': 'policies.personalize.refine',
     },
     'validate': {
         'dax': '{3AC}',
-        'intent': Intent.DESIGN,
+        'intent': Intent.PERSONALIZE,
         'description': 'Validate current flow catalog against spec rules',
         'slots': {},
         'output': 'list',
-        'edge_flows': ['compose', 'compare'],
-        'policy_path': 'policies.design_policies.validate',
+        'edge_flows': ['propose', 'compare'],
+        'policy_path': 'policies.personalize.validate',
     },
 
-    # ── Deliver (6 flows) ─────────────────────────────────────────────
+    # ── Deliver (6 flows) ──────────────────────────────────────────────
+    # Everything needed to get the assistant working for real users:
+    # generate configs, package, test, secure, version, deploy.
 
     'generate': {
-        'dax': '{04A}',
+        'dax': '{004}',
         'intent': Intent.DELIVER,
-        'description': 'Generate the final domain config files',
+        'description': 'Generate domain config files (ontology, yaml, or all)',
         'slots': {
-            'format': {'type': 'CategorySlot', 'priority': 'elective'},
+            'format': {'type': 'CategorySlot', 'priority': 'optional'},
         },
         'output': 'list',
-        'edge_flows': ['ontology', 'preview'],
-        'policy_path': 'policies.deliver_policies.generate',
-    },
-    'confirm': {
-        'dax': '{04E}',
-        'intent': Intent.DELIVER,
-        'description': 'Confirm and execute the file export',
-        'slots': {},
-        'output': 'confirmation',
-        'edge_flows': ['generate', 'package'],
-        'policy_path': 'policies.deliver_policies.confirm',
-    },
-    'preview': {
-        'dax': '{4AD}',
-        'intent': Intent.DELIVER,
-        'description': 'Preview generated output before committing',
-        'slots': {
-            'file_type': {
-                'type': 'CategorySlot', 'priority': 'elective',
-            },
-        },
-        'output': 'card',
-        'edge_flows': ['generate', 'inspect'],
-        'policy_path': 'policies.deliver_policies.preview',
-    },
-    'ontology': {
-        'dax': '{4AC}',
-        'intent': Intent.DELIVER,
-        'description': 'Generate ontology.py specifically',
-        'slots': {},
-        'output': 'card',
-        'edge_flows': ['generate', 'preview'],
-        'policy_path': 'policies.deliver_policies.ontology',
-    },
-    'report': {
-        'dax': '{4AB}',
-        'intent': Intent.DELIVER,
-        'description': 'Generate a build report with lessons learned',
-        'slots': {},
-        'output': 'card',
-        'edge_flows': ['lessons', 'summarize'],
-        'policy_path': 'policies.deliver_policies.report',
+        'edge_flows': ['package', 'test'],
+        'policy_path': 'policies.deliver.generate',
     },
     'package': {
         'dax': '{48A}',
         'intent': Intent.DELIVER,
-        'description': 'Package the full domain for the user\'s environment',
+        'description': 'Package the full domain for deployment — bundles config, prompts, and dependencies into a deployable artifact',
         'slots': {
-            'target_dir': {
-                'type': 'FreeTextSlot', 'priority': 'optional',
-            },
+            'target': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'list',
-        'edge_flows': ['generate', 'confirm'],
-        'policy_path': 'policies.deliver_policies.package',
+        'edge_flows': ['test', 'deploy'],
+        'policy_path': 'policies.deliver.package',
+    },
+    'test': {
+        'dax': '{4BC}',
+        'intent': Intent.DELIVER,
+        'description': 'Run validation tests against the built assistant — test conversations, flow coverage, slot filling accuracy, and policy behavior',
+        'slots': {
+            'scope': {'type': 'CategorySlot', 'priority': 'optional'},
+        },
+        'output': 'list',
+        'edge_flows': ['generate', 'deploy'],
+        'policy_path': 'policies.deliver.test',
+    },
+    'deploy': {
+        'dax': '{4AE}',
+        'intent': Intent.DELIVER,
+        'description': 'Deploy the assistant to a target environment — staging or production. Automatically generates a build report on deployment',
+        'slots': {
+            'environment': {'type': 'CategorySlot', 'priority': 'required'},
+        },
+        'output': 'toast',
+        'edge_flows': ['test', 'secure'],
+        'policy_path': 'policies.deliver.deploy',
+    },
+    'secure': {
+        'dax': '{89A}',
+        'intent': Intent.DELIVER,
+        'description': 'Configure authentication, API keys, rate limits, and access permissions for the deployed assistant',
+        'slots': {
+            'setting': {'type': 'DictionarySlot', 'priority': 'required'},
+        },
+        'output': 'toast',
+        'edge_flows': ['deploy', 'version'],
+        'policy_path': 'policies.deliver.secure',
+    },
+    'version': {
+        'dax': '{4AD}',
+        'intent': Intent.DELIVER,
+        'description': 'Tag a release version of the assistant — creates a versioned snapshot with changelog and diff from the previous release',
+        'slots': {
+            'tag': {'type': 'ExactSlot', 'priority': 'required'},
+            'notes': {'type': 'FreeTextSlot', 'priority': 'optional'},
+        },
+        'output': 'card',
+        'edge_flows': ['deploy', 'package'],
+        'policy_path': 'policies.deliver.version',
     },
 
-    # ── Converse (7 flows) ────────────────────────────────────────────
+    # ── Converse (7 flows) ─────────────────────────────────────────────
 
     'chat': {
         'dax': '{000}',
@@ -419,7 +399,7 @@ FLOW_CATALOG = {
         },
         'output': 'card',
         'edge_flows': ['explain', 'feedback'],
-        'policy_path': 'policies.converse_policies.chat',
+        'policy_path': 'policies.converse.chat',
     },
     'next': {
         'dax': '{019}',
@@ -428,7 +408,7 @@ FLOW_CATALOG = {
         'slots': {},
         'output': 'card',
         'edge_flows': ['summarize', 'suggest'],
-        'policy_path': 'policies.converse_policies.next',
+        'policy_path': 'policies.converse.next',
     },
     'feedback': {
         'dax': '{029}',
@@ -437,7 +417,7 @@ FLOW_CATALOG = {
         'slots': {},
         'output': 'toast',
         'edge_flows': ['chat', 'style'],
-        'policy_path': 'policies.converse_policies.feedback',
+        'policy_path': 'policies.converse.feedback',
     },
     'preference': {
         'dax': '{08A}',
@@ -449,20 +429,18 @@ FLOW_CATALOG = {
         },
         'output': 'toast',
         'edge_flows': ['style', 'persona'],
-        'policy_path': 'policies.converse_policies.preference',
+        'policy_path': 'policies.converse.preference',
     },
     'style': {
         'dax': '{08B}',
         'intent': Intent.CONVERSE,
         'description': 'Tell Kalli about preferred working style',
         'slots': {
-            'preference': {
-                'type': 'FreeTextSlot', 'priority': 'required',
-            },
+            'preference': {'type': 'FreeTextSlot', 'priority': 'required'},
         },
         'output': 'toast',
         'edge_flows': ['preference', 'feedback'],
-        'policy_path': 'policies.converse_policies.style',
+        'policy_path': 'policies.converse.style',
     },
     'endorse': {
         'dax': '{09E}',
@@ -473,7 +451,7 @@ FLOW_CATALOG = {
         },
         'output': 'toast',
         'edge_flows': ['approve', 'next'],
-        'policy_path': 'policies.converse_policies.endorse',
+        'policy_path': 'policies.converse.endorse',
     },
     'dismiss': {
         'dax': '{09F}',
@@ -482,10 +460,10 @@ FLOW_CATALOG = {
         'slots': {},
         'output': 'toast',
         'edge_flows': ['decline', 'feedback'],
-        'policy_path': 'policies.converse_policies.dismiss',
+        'policy_path': 'policies.converse.dismiss',
     },
 
-    # ── Plan (5 flows) ────────────────────────────────────────────────
+    # ── Plan (5 flows) ─────────────────────────────────────────────────
 
     'research': {
         'dax': '{13C}',
@@ -493,10 +471,11 @@ FLOW_CATALOG = {
         'description': 'Plan to research specs before design decisions',
         'slots': {
             'topic': {'type': 'FreeTextSlot', 'priority': 'required'},
+            'depth': {'type': 'LevelSlot', 'priority': 'optional'},
         },
         'output': 'list',
-        'edge_flows': ['lookup', 'explain'],
-        'policy_path': 'policies.plan_policies.research',
+        'edge_flows': ['browse', 'explain'],
+        'policy_path': 'policies.plan.research',
     },
     'finalize': {
         'dax': '{24A}',
@@ -505,7 +484,7 @@ FLOW_CATALOG = {
         'slots': {},
         'output': 'list',
         'edge_flows': ['generate', 'package'],
-        'policy_path': 'policies.plan_policies.finalize',
+        'policy_path': 'policies.plan.finalize',
     },
     'onboard': {
         'dax': '{25A}',
@@ -513,37 +492,38 @@ FLOW_CATALOG = {
         'description':
             'Full onboarding plan: scope, intents, entities, persona',
         'slots': {
-            'domain': {'type': 'FreeTextSlot', 'priority': 'optional'},
+            'context': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'list',
         'edge_flows': ['scope', 'intent'],
-        'policy_path': 'policies.plan_policies.onboard',
+        'policy_path': 'policies.plan.onboard',
     },
     'expand': {
         'dax': '{35A}',
         'intent': Intent.PLAN,
         'description': 'Plan to add a batch of new flows at once',
         'slots': {
-            'intent_filter': {
-                'type': 'IntentSlot', 'priority': 'optional',
-            },
+            'filter': {'type': 'CategorySlot', 'priority': 'optional'},
             'count': {'type': 'LevelSlot', 'priority': 'optional'},
         },
         'output': 'list',
-        'edge_flows': ['compose', 'suggest'],
-        'policy_path': 'policies.plan_policies.expand',
+        'edge_flows': ['propose', 'suggest'],
+        'policy_path': 'policies.plan.expand',
     },
     'redesign': {
         'dax': '{36A}',
         'intent': Intent.PLAN,
-        'description': 'Plan to redesign a section of the config',
+        'description': 'Plan to redesign a section of the assistant',
         'slots': {
-            'section': {'type': 'SectionSlot', 'priority': 'required'},
+            'source': {'type': 'SourceSlot', 'priority': 'required'},
+            'goal': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': 'list',
         'edge_flows': ['revise', 'refine'],
-        'policy_path': 'policies.plan_policies.redesign',
+        'policy_path': 'policies.plan.redesign',
     },
+
+    # ── Internal (8 flows) ─────────────────────────────────────────────
 
     'recap': {
         'dax': '{018}',
@@ -552,54 +532,80 @@ FLOW_CATALOG = {
             'Pull a snippet from current conversation (scratchpad L1)',
         'slots': {
             'key': {'type': 'FreeTextSlot', 'priority': 'optional'},
+            'turns': {'type': 'LevelSlot', 'priority': 'optional'},
         },
         'output': '(internal)',
-        'edge_flows': ['recall', 'remember'],
-        'policy_path': 'policies.internal_policies.recap',
+        'edge_flows': ['recall', 'retrieve'],
+        'policy_path': 'policies.internal.recap',
     },
-    'remember': {
+    'recall': {
+        'dax': '{289}',
+        'intent': Intent.INTERNAL,
+        'description': 'Retrieve stored user preferences (L2)',
+        'slots': {
+            'key': {'type': 'FreeTextSlot', 'priority': 'optional'},
+        },
+        'output': '(internal)',
+        'edge_flows': ['recap', 'retrieve'],
+        'policy_path': 'policies.internal.recall',
+    },
+    'retrieve': {
         'dax': '{19B}',
         'intent': Intent.INTERNAL,
-        'description': 'Retrieve relevant lessons from memory (L2/L3)',
+        'description':
+            'Retrieve general business context from memory (L3 unvetted)',
         'slots': {
             'key': {'type': 'FreeTextSlot', 'priority': 'optional'},
             'scope': {'type': 'CategorySlot', 'priority': 'optional'},
         },
         'output': '(internal)',
         'edge_flows': ['recall', 'recap'],
-        'policy_path': 'policies.internal_policies.remember',
+        'policy_path': 'policies.internal.retrieve',
     },
-    'recall': {
-        'dax': '{289}',
+    'search': {
+        'dax': '{1BC}',
         'intent': Intent.INTERNAL,
-        'description': 'Retrieve stored user preferences',
+        'description':
+            'Search vetted FAQs and curated reference content',
         'slots': {
-            'key': {'type': 'FreeTextSlot', 'priority': 'optional'},
+            'query': {'type': 'FreeTextSlot', 'priority': 'required'},
         },
         'output': '(internal)',
-        'edge_flows': ['recap', 'remember'],
-        'policy_path': 'policies.internal_policies.recall',
+        'edge_flows': ['browse', 'retrieve'],
+        'policy_path': 'policies.internal.search',
+    },
+    'peek': {
+        'dax': '{09A}',
+        'intent': Intent.INTERNAL,
+        'description':
+            'Quick internal computation (count flows, check coverage)',
+        'slots': {
+            'target': {'type': 'FreeTextSlot', 'priority': 'required'},
+        },
+        'output': '(internal)',
+        'edge_flows': ['recap', 'audit'],
+        'policy_path': 'policies.internal.peek',
     },
     'study': {
         'dax': '{29C}',
         'intent': Intent.INTERNAL,
         'description': 'Internally read a spec file to answer a question',
         'slots': {
-            'spec_name': {'type': 'SpecSlot', 'priority': 'required'},
-            'section': {'type': 'FreeTextSlot', 'priority': 'optional'},
+            'source': {'type': 'SourceSlot', 'priority': 'required'},
+            'query': {'type': 'FreeTextSlot', 'priority': 'optional'},
         },
         'output': '(internal)',
-        'edge_flows': ['lookup', 'explain'],
-        'policy_path': 'policies.internal_policies.study',
+        'edge_flows': ['browse', 'explain'],
+        'policy_path': 'policies.internal.study',
     },
     'audit': {
         'dax': '{39D}',
         'intent': Intent.INTERNAL,
-        'description': 'Internally validate config consistency',
+        'description': 'Internally validate assistant consistency',
         'slots': {},
         'output': '(internal)',
         'edge_flows': ['validate', 'compare'],
-        'policy_path': 'policies.internal_policies.audit',
+        'policy_path': 'policies.internal.audit',
     },
     'emit': {
         'dax': '{49A}',
@@ -607,16 +613,13 @@ FLOW_CATALOG = {
         'description':
             'Internally trigger file generation after approval',
         'slots': {
-            'file_type': {
-                'type': 'CategorySlot', 'priority': 'required',
-            },
+            'format': {'type': 'CategorySlot', 'priority': 'required'},
         },
         'output': '(internal)',
-        'edge_flows': ['generate', 'ontology'],
-        'policy_path': 'policies.internal_policies.emit',
+        'edge_flows': ['generate', 'deploy'],
+        'policy_path': 'policies.internal.emit',
     },
 }
 
 
-# Key entities for this domain
-KEY_ENTITIES = ['config', 'lesson', 'spec']
+KEY_ENTITIES = ['assistant', 'requirement', 'spec']

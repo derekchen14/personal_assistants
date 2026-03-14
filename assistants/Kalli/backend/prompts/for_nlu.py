@@ -50,12 +50,12 @@ _Output_
 {{"slots": {{"tone": "professional", "name": null, "response_style": null, "colors": null}}, "missing": ["name"]}}
 ```
 ---
-Flow: lookup
-Slots: spec_name (required), section (optional)
+Flow: browse
+Slots: source (required), query (optional)
 User: "show me the Memory Manager spec, specifically the promotion triggers"
 _Output_
 ```json
-{{"slots": {{"spec_name": "memory_manager", "section": "Promotion Triggers"}}, "missing": []}}
+{{"slots": {{"source": "memory_manager", "query": "Promotion Triggers"}}, "missing": []}}
 ```
 ---
 Flow: explain

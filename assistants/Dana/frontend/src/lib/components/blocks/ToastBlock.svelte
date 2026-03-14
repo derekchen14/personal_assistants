@@ -8,10 +8,10 @@
         level === 'error' ? 'border-red-500' :
         level === 'warning' ? 'border-yellow-500' :
         level === 'success' ? 'border-green-500' :
-        'border-[var(--color-accent)]'
+        'border-[var(--accent)]'
     );
 </script>
 
-<div class="px-4 py-2 rounded-lg border-l-4 {borderColor} bg-[var(--color-surface)] text-sm">
+<div class="px-4 py-2 rounded-lg border-l-4 {borderColor} bg-[var(--surface)] text-sm">
     {message}
 </div>

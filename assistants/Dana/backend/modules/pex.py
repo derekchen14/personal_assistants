@@ -16,9 +16,10 @@ from backend.modules.policies import (
     ConversePolicy, CleanPolicy, TransformPolicy, AnalyzePolicy,
     ReportPolicy, PlanPolicy, InternalPolicy,
 )
-from schemas.ontology import FLOW_CATALOG, Intent
+from schemas.ontology import Intent
 
 if TYPE_CHECKING:
+    from backend.components.context_coordinator import ContextCoordinator
     from backend.components.world import World
 
 
@@ -37,13 +38,14 @@ class PEX:
         self.engineer = engineer
         self.memory = memory
         self.world = world
+        self.flow_stack = world.flow_stack
 
         self._dataset_service = DatasetService()
         self._query_service = QueryService()
         self._chart_service = ChartService()
         self._transform_service = TransformService()
 
-        self._tool_registry: dict[str, tuple[object, str]] = {
+        self._tools: dict[str, tuple[object, str]] = {
             'dataset_load':    (self._dataset_service, 'load'),
             'sql_execute':     (self._query_service, 'execute_sql'),
             'python_execute':  (self._query_service, 'execute_python'),
@@ -59,57 +61,48 @@ class PEX:
         components = {
             'engineer': engineer,
             'memory': memory,
-            'world': world,
+            'config': config,
             'get_tools': self.get_tools_for_flow,
         }
+        plan_components = {**components, 'flow_stack': self.flow_stack}
         self._policies: dict[str, object] = {
-            Intent.CONVERSE.value: ConversePolicy(components),
-            Intent.CLEAN.value: CleanPolicy(components),
-            Intent.TRANSFORM.value: TransformPolicy(components),
-            Intent.ANALYZE.value: AnalyzePolicy(components),
-            Intent.REPORT.value: ReportPolicy(components),
-            Intent.PLAN.value: PlanPolicy(components),
-            Intent.INTERNAL.value: InternalPolicy(components),
+            Intent.CONVERSE: ConversePolicy(components),
+            Intent.CLEAN: CleanPolicy(components),
+            Intent.TRANSFORM: TransformPolicy(components),
+            Intent.ANALYZE: AnalyzePolicy(components),
+            Intent.REPORT: ReportPolicy(components),
+            Intent.PLAN: PlanPolicy(plan_components),
+            Intent.INTERNAL: InternalPolicy(components),
         }
 
-    def execute(self, state: DialogueState) -> tuple[DisplayFrame, bool]:
-        flow_name = state.flow_name
-        flow_info = FLOW_CATALOG.get(flow_name)
-        if not flow_info:
+    def execute(self, state: DialogueState,
+                context: 'ContextCoordinator') -> tuple[DisplayFrame, bool]:
+        active_flow = self.flow_stack.get_active_flow()
+        if not active_flow:
             frame = DisplayFrame(self.config)
             return frame, False
 
-        check_result = self._check(state, flow_info)
+        flow_name = active_flow.name()
+
+        check_result = self._check(active_flow, context)
         if check_result:
             return check_result, False
 
-        existing = self.world.flow_stack.find_by_name(flow_name)
-        if existing:
-            flow_entry = existing
-        else:
-            flow_entry = self.world.flow_stack.push(
-                flow_name, state.dax, state.intent,
-                slots=state.slots,
-            )
-
         if flow_name in _UNSUPPORTED:
-            self.world.flow_stack.mark_complete(result={'unsupported': True})
+            self.flow_stack.mark_complete(result={'unsupported': True})
             frame = self.world.latest_frame() or DisplayFrame(self.config)
             return frame, False
 
-        intent_val = state.intent
-        if hasattr(intent_val, 'value'):
-            intent_val = intent_val.value
-        policy = self._policies.get(intent_val)
+        policy = self._policies.get(active_flow.intent)
         if policy:
             frame = policy.execute(
-                flow_name, flow_info, state, self._dispatch_tool,
+                active_flow, state, context, self._dispatch_tool,
             )
         else:
             frame = DisplayFrame(self.config)
 
-        if intent_val != Intent.PLAN.value:
-            self.world.flow_stack.mark_complete(result={'flow_name': flow_name})
+        if active_flow.intent != Intent.PLAN:
+            self.flow_stack.mark_complete(result={'flow_name': flow_name})
         self.world.insert_frame(frame)
 
         if frame.has_content():
@@ -125,24 +118,23 @@ class PEX:
         keep_going = state.keep_going
         return frame, keep_going
 
-    # ── Pre-hook ─────────────────────────────────────────────────────
+    # -- Pre-hook ---------------------------------------------------------
 
-    def _check(self, state: DialogueState,
-               flow_info: dict) -> DisplayFrame | None:
-        if state.flow_name in _UNSUPPORTED:
+    def _check(self, flow,
+               context: 'ContextCoordinator') -> DisplayFrame | None:
+        if flow.name() in _UNSUPPORTED:
             return None
 
         required_missing = []
-        for slot_name, slot_info in flow_info.get('slots', {}).items():
-            if slot_info.get('priority') == 'required':
-                if slot_name not in state.slots or not state.slots[slot_name]:
-                    required_missing.append(slot_name)
+        for slot_name, slot in flow.slots.items():
+            if slot.priority == 'required' and not slot.filled:
+                required_missing.append(slot_name)
 
         if required_missing:
             for slot_name in list(required_missing):
-                filled = self._fill_from_context(slot_name, flow_info)
+                filled = self._fill_from_context(slot_name, context)
                 if filled:
-                    state.slots[slot_name] = filled
+                    flow.fill_slot_values({slot_name: filled})
                     required_missing.remove(slot_name)
 
         if required_missing:
@@ -155,7 +147,7 @@ class PEX:
             frame.set_frame('default', {'message': self.ambiguity.ask()})
             return frame
 
-        tools = self.get_tools_for_flow(state.flow_name, flow_info)
+        tools = self.get_tools_for_flow(flow)
         for tool in tools:
             caps = tool.get('capabilities', {})
             if (caps.get('accesses_private_data')
@@ -180,18 +172,23 @@ class PEX:
 
         return None
 
-    def _fill_from_context(self, slot_name: str, flow_info: dict) -> str | None:
+    def _fill_from_context(self, slot_name: str,
+                           context: 'ContextCoordinator') -> str | None:
+        if slot_name in ('dataset_id', 'source'):
+            state = self.world.current_state()
+            if state and state.active_dataset:
+                return state.active_dataset
+
         scratchpad_val = self.memory.read_scratchpad(slot_name)
         if scratchpad_val:
             return scratchpad_val
 
-        recent = self.world.context.compile_history(turns=3)
-        for turn in reversed(recent):
+        for turn in reversed(context.recent_turns(3)):
             if turn['speaker'] == 'User' and slot_name.lower() in turn['text'].lower():
                 return turn['text']
         return None
 
-    # ── Tool dispatch ────────────────────────────────────────────────
+    # -- Tool dispatch ----------------------------------------------------
 
     def _dispatch_tool(self, tool_name: str, tool_input: dict) -> dict:
         self.world.context.add_turn(
@@ -199,8 +196,8 @@ class PEX:
             turn_type='action',
         )
         try:
-            if tool_name in self._tool_registry:
-                service, method_name = self._tool_registry[tool_name]
+            if tool_name in self._tools:
+                service, method_name = self._tools[tool_name]
                 method = getattr(service, method_name)
                 return method(**tool_input)
             elif tool_name == 'context_coordinator':
@@ -231,7 +228,7 @@ class PEX:
         action = params.get('action', '')
         if action == 'get_history':
             turns = params.get('turns', 3)
-            history = self.world.context.compile_history(turns=turns)
+            history = self.world.context.compile_history(look_back=turns)
             return {'status': 'success', 'result': history}
         elif action == 'get_turn':
             turn_id = params.get('turn_id', '')
@@ -246,20 +243,20 @@ class PEX:
     def _dispatch_flow_stack_tool(self, params: dict) -> dict:
         action = params.get('action', '')
         if action == 'get_slots':
-            active = self.world.flow_stack.get_active_flow()
-            if active:
-                return {'status': 'success', 'result': active.slots}
+            flow = self.flow_stack.get_active_flow()
+            if flow:
+                return {'status': 'success', 'result': flow.slot_values_dict()}
             return {'status': 'success', 'result': {}}
         elif action == 'get_flow_meta':
-            active = self.world.flow_stack.get_active_flow()
-            if active:
-                return {'status': 'success', 'result': active.to_dict()}
+            flow = self.flow_stack.get_active_flow()
+            if flow:
+                return {'status': 'success', 'result': flow.to_dict()}
             return {'status': 'success', 'result': None}
         elif action == 'get_stack':
-            return {'status': 'success', 'result': self.world.flow_stack.to_list()}
+            return {'status': 'success', 'result': self.flow_stack.to_list()}
         return {'status': 'error', 'message': f'Unknown action: {action}'}
 
-    # ── Tool definitions ─────────────────────────────────────────────
+    # -- Tool definitions -------------------------------------------------
 
     @staticmethod
     def _thaw(obj):
@@ -281,44 +278,13 @@ class PEX:
             'capabilities': self._thaw(tool.get('capabilities', {})),
         }
 
-    def get_tools_for_flow(self, flow_name: str, flow_info: dict) -> list[dict]:
-        tools = []
-        intent = flow_info.get('intent', Intent.CONVERSE)
-        intent_val = intent.value if hasattr(intent, 'value') else str(intent)
-
-        tools.extend(self._component_tool_definitions())
-
-        if intent_val in ('Clean',):
-            tools.append(self._get_tool_def('dataset_load'))
-            tools.append(self._get_tool_def('column_analyze'))
-
-        if intent_val in ('Transform',):
-            tools.append(self._get_tool_def('dataset_load'))
-            tools.append(self._get_tool_def('formula_apply'))
-            tools.append(self._get_tool_def('merge_run'))
-            tools.append(self._get_tool_def('pivot_run'))
-
-        if intent_val in ('Analyze',):
-            tools.append(self._get_tool_def('dataset_load'))
-            tools.append(self._get_tool_def('sql_execute'))
-            tools.append(self._get_tool_def('python_execute'))
-            tools.append(self._get_tool_def('column_analyze'))
-
-        if intent_val in ('Report',):
-            tools.append(self._get_tool_def('dataset_load'))
-            tools.append(self._get_tool_def('sql_execute'))
-            tools.append(self._get_tool_def('chart_render'))
-
-        if intent_val in ('Converse',):
-            tools.append(self._get_tool_def('dataset_load'))
-
-        if intent_val in ('Plan',):
-            tools.append(self._get_tool_def('dataset_load'))
-            tools.append(self._get_tool_def('sql_execute'))
-            tools.append(self._get_tool_def('column_analyze'))
-            tools.append(self._get_tool_def('validate_check'))
-
-        return [t for t in tools if t is not None]
+    def get_tools_for_flow(self, flow) -> list[dict]:
+        tools = list(self._component_tool_definitions())
+        for tool_name in flow.tools:
+            tool_def = self._get_tool_def(tool_name)
+            if tool_def:
+                tools.append(tool_def)
+        return tools
 
     def _component_tool_definitions(self) -> list[dict]:
         return [
@@ -362,9 +328,9 @@ class PEX:
             },
         ]
 
-    # ── Post-hook ────────────────────────────────────────────────────
+    # -- Post-hook --------------------------------------------------------
 
     def _verify(self):
         state = self.world.current_state()
-        if state and state.keep_going and not self.world.flow_stack.get_pending_flows():
+        if state and state.keep_going and not self.flow_stack.get_pending_flows():
             state.keep_going = False

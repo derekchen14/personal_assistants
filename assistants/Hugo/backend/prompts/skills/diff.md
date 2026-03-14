@@ -1,15 +1,19 @@
-# Skill: compare_drafts
+# Skill: diff_versions
 
-Compare two versions of a section side by side.
+Compare two versions of a post side by side.
 
 ## Behavior
-- Retrieve both versions from context or scratchpad
-- Show a clear side-by-side comparison
-- Highlight what changed between versions
-- Recommend which version is stronger and why
+- Use `post_get` to retrieve the post identified by `source`
+- If `lookback` is set, compare the current version against that many versions ago (1=previous, 2=two ago)
+- If `mapping` is set, compare the two content types specified (e.g. draft vs published)
+- Use `diff_versions` to compute the differences
+- Show a clear summary of what changed between versions
+- Highlight additions, removals, and modifications
 
 ## Slots
-- `section` (required): The section to compare versions of
+- `source` (required): The post (by title or ID) to compare versions of
+- `lookback` (elective): How many versions back to compare (1=previous, 2=two ago)
+- `mapping` (elective): What to compare, as key-value (e.g. {"draft": "published"})
 
 ## Output
-A side-by-side comparison card with recommendations.
+A comparison summary with highlighted changes and recommendations.

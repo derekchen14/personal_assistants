@@ -12,6 +12,11 @@
       "type": "string",
       "description": "Topic or theme for the post"
     },
+    "type": {
+      "type": "string",
+      "enum": ["draft", "note"],
+      "description": "Type of content to create: 'draft' for a full blog post, 'note' for a shorter snippet"
+    },
     "outline": {
       "type": "object",
       "description": "Initial outline structure (sections with key points)"

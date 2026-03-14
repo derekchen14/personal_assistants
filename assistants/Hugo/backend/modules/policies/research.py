@@ -1,70 +1,182 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+from backend.modules.policies.base import BasePolicy
 
 if TYPE_CHECKING:
     from backend.components.dialogue_state import DialogueState
+    from backend.components.context_coordinator import ContextCoordinator
     from backend.components.display_frame import DisplayFrame
+    from backend.components.flow_stack.parents import BaseFlow
 
 
-_SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'skills'
+class ResearchPolicy(BasePolicy):
 
-_BATCH_1 = {'browse', 'search', 'view', 'survey', 'check', 'explain'}
-_BATCH_2: set[str] = set()
+    _TAB_TO_STATUS = {
+        'drafts': 'draft', 'draft': 'draft',
+        'posts': 'published', 'post': 'published', 'published': 'published',
+        'notes': 'note', 'note': 'note',
+    }
 
+    def execute(self, flow: 'BaseFlow', state: 'DialogueState',
+                context: 'ContextCoordinator', tools) -> 'DisplayFrame':
+        match flow.name():
+            case 'browse': return self.browse_policy(flow, state, context, tools)
+            case 'view': return self.view_policy(flow, state, context, tools)
+            case 'check': return self.check_policy(flow, state, context, tools)
+            case 'inspect': return self.inspect_policy(flow, state, context, tools)
+            case 'find': return self.find_policy(flow, state, context, tools)
+            case 'compare': return self.compare_policy(flow, state, context, tools)
+            case 'diff': return self.diff_policy(flow, state, context, tools)
+            case _:
+                return self.build_frame('default', {'content': ''})
 
-class ResearchPolicy:
+    def browse_policy(self, flow, state, context, tools):
+        cat_slot = flow.slots.get('category')
+        category = str(cat_slot.to_dict()) if cat_slot and cat_slot.filled else None
 
-    def __init__(self, components: dict):
-        self.engineer = components['engineer']
-        self.memory = components['memory']
-        self.world = components['world']
-        self._get_tools_fn = components['get_tools']
+        search_params = {'category': category} if category else {'status': 'note'}
+        result = tools('post_search', search_params)
+        items = result.get('result', []) if result.get('status') == 'success' else []
 
-    def execute(self, flow_name: str, flow_info: dict,
-                state: 'DialogueState', tool_dispatcher) -> 'DisplayFrame':
-        from backend.components.display_frame import DisplayFrame
+        summary = f"Found {len(items)} item(s)"
+        summary += f" in category '{category}'" if category else " (saved notes/ideas)"
+        summary += '.'
+        if items:
+            titles = [it.get('title', 'Untitled') for it in items[:10]]
+            summary += ' Titles: ' + ', '.join(titles)
 
-        if flow_name in _BATCH_2:
-            frame = DisplayFrame(self.world.config)
-            frame.set_frame('default', {'content': "That feature is coming soon — stay tuned!"})
-            return frame
+        convo_history = context.compile_history()
+        history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
 
-        return self._llm_execute(flow_name, flow_info, state, tool_dispatcher)
+        skill_prompt = self._load_skill_template(flow.name())
+        messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
+        text = self.engineer.call(messages)
+        return self.build_frame('list', {
+            'flow_name': flow.name(), 'content': text, 'items': items,
+        }, source='browse')
 
-    def _llm_execute(self, flow_name, flow_info, state, tool_dispatcher):
-        from backend.components.display_frame import DisplayFrame
+    def view_policy(self, flow, state, context, tools):
+        identifier = self.extract_source(flow, state)
+        post_id = self.resolve_post_id(identifier, tools) if identifier else None
 
-        skill_prompt = self._load_skill_template(flow_name)
-        system, messages = self.engineer.build_skill_prompt(
-            flow_name, flow_info, state.slots,
-            self.world.context.compile_history(turns=5),
-            self.memory.read_scratchpad(),
-            skill_prompt=skill_prompt,
-        )
-        tools = self._get_tools_fn(flow_name, flow_info)
+        if post_id:
+            result = tools('post_get', {'post_id': post_id})
+        else:
+            result = {'status': 'error'}
 
-        text, tool_log = self.engineer.call_with_tools(
-            system, messages, tools, tool_dispatcher, call_site='skill',
-        )
+        if result.get('status') == 'success':
+            post = result['result']
+            return self.build_frame('card', {
+                'post_id': post.get('post_id', ''),
+                'title': post.get('title', ''),
+                'status': post.get('status', ''),
+                'content': post.get('content', ''),
+            }, source='view', panel='bottom')
+        else:
+            return self.build_frame('default', {
+                'content': f'Could not find post "{identifier}".',
+            })
 
-        frame = DisplayFrame(self.world.config)
-        block_type = flow_info.get('output', 'list')
-        block_data = {'flow_name': flow_name, 'content': text}
-        for entry in tool_log:
-            result = entry.get('result', {})
-            if result.get('status') == 'success':
-                result_data = result.get('result', {})
-                if isinstance(result_data, dict):
-                    block_data.update(result_data)
-                elif isinstance(result_data, list):
-                    block_data['items'] = result_data
-        frame.set_frame(block_type, block_data, source=flow_name)
-        return frame
+    def check_policy(self, flow, state, context, tools):
+        source_slot = flow.slots.get('source')
+        status = None
+        if source_slot and source_slot.filled:
+            val = source_slot.to_dict()
+            tab = val[0].get('post', '') if isinstance(val, list) and val else str(val)
+            status = self._TAB_TO_STATUS.get(tab.lower())
 
-    def _load_skill_template(self, flow_name: str) -> str | None:
-        path = _SKILL_DIR / f'{flow_name}.md'
-        if path.exists():
-            return path.read_text(encoding='utf-8')
-        return None
+        search_params = {'status': status} if status else {}
+        result = tools('post_search', search_params)
+        items = result.get('result', []) if result.get('status') == 'success' else []
+
+        summary = f"Found {len(items)} item(s)"
+        if status:
+            summary += f" with status '{status}'"
+        summary += '.'
+        if items:
+            titles = [it.get('title', 'Untitled') for it in items[:10]]
+            summary += ' Titles: ' + ', '.join(titles)
+
+        convo_history = context.compile_history()
+        history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
+
+        skill_prompt = self._load_skill_template(flow.name())
+        messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
+        text = self.engineer.call(messages)
+        return self.build_frame('default', {
+            'flow_name': flow.name(), 'content': text,
+        }, source='check')
+
+    def inspect_policy(self, flow, state, context, tools):
+        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
+            identifier = self.extract_source(flow, state)
+            if identifier:
+                flow.fill_slots_by_label({'source': identifier})
+            if not flow.slots.get('source') or not flow.slots['source'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
+
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('list', block_data, source='inspect')
+
+    def find_policy(self, flow, state, context, tools):
+        query_slot = flow.slots.get('query')
+        query = str(query_slot.to_dict()) if query_slot and query_slot.filled else ''
+
+        count_slot = flow.slots.get('count')
+        limit = None
+        if count_slot and count_slot.filled:
+            try:
+                limit = int(count_slot.to_dict())
+            except (ValueError, TypeError):
+                pass
+
+        search_params = {'query': query} if query else {}
+        result = tools('post_search', search_params)
+        items = result.get('result', []) if result.get('status') == 'success' else []
+        if limit:
+            items = items[:limit]
+
+        summary = f"Found {len(items)} item(s)"
+        if query:
+            summary += f" matching '{query}'"
+        summary += '.'
+        if items:
+            titles = [it.get('title', 'Untitled') for it in items[:10]]
+            summary += ' Titles: ' + ', '.join(titles)
+
+        convo_history = context.compile_history()
+        history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
+
+        skill_prompt = self._load_skill_template(flow.name())
+        messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
+        text = self.engineer.call(messages)
+        return self.build_frame('list', {
+            'flow_name': flow.name(), 'content': text, 'items': items,
+        }, source='find')
+
+    def compare_policy(self, flow, state, context, tools):
+        source_slot = flow.slots.get('source')
+        if not source_slot or not source_slot.filled:
+            self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+            return self.build_frame('default', {'content': self.ambiguity.ask()})
+
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('list', block_data, source='compare')
+
+    def diff_policy(self, flow, state, context, tools):
+        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
+            identifier = self.extract_source(flow, state)
+            if identifier:
+                flow.fill_slots_by_label({'source': identifier})
+            if not flow.slots.get('source') or not flow.slots['source'].filled:
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
+                return self.build_frame('default', {'content': self.ambiguity.ask()})
+
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        block_data = self.build_block_data(flow, text, tool_log)
+        return self.build_frame('list', block_data, source='diff')

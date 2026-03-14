@@ -10,7 +10,7 @@ Check consistency of a post with the user's previous writing.
 - Report inconsistencies and suggest fixes
 
 ## Slots
-- `post_id` (required): The post to check
+- `source` (required): The post (by title or ID) to check
 - `reference_count` (optional): How many previous posts to compare against
 
 ## Output

@@ -4,6 +4,8 @@ import os
 from fastapi import FastAPI
 
 logging.basicConfig(level=logging.INFO, format='%(name)s  %(message)s')
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 

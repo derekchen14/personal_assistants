@@ -5,6 +5,11 @@ Utilities for converting between dact names, dax codes, and flow names.
 
 from schemas.ontology import DACT_CATALOG, FLOW_CATALOG, Intent
 
+_DAX_LOOKUP: dict[str, str] = {}
+for _fn, _flow in FLOW_CATALOG.items():
+    _dax_raw = _flow['dax'].strip('{}').upper()
+    _DAX_LOOKUP[_dax_raw] = _fn
+
 
 def dax2dact(dax: str) -> list[str]:
     """Convert a dax code like '{03A}' to its component dact names.
@@ -52,10 +57,14 @@ def dax2flow(dax: str) -> str | None:
     >>> dax2flow('{02A}')
     'scope'
     """
-    for name, flow in FLOW_CATALOG.items():
-        if flow['dax'] == dax:
-            return name
-    return None
+    code = dax.strip('{}').upper()
+    return _DAX_LOOKUP.get(code)
+
+
+def output_for_flow(flow_name: str) -> str:
+    """Return the output type for a flow (e.g. 'card', 'list')."""
+    flow = FLOW_CATALOG.get(flow_name, {})
+    return flow.get('output', 'default')
 
 
 def flows_by_intent(intent: Intent) -> dict:

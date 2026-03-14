@@ -1,18 +1,18 @@
 # Skill: cross_post
 
-Cross-post content to a specific platform.
+Cross-post content to a specific channel.
 
 ## Behavior
-- Use `platform_list` to verify the target platform is connected
+- Use `channel_list` to verify the target channel is connected
 - If not connected, inform the user and suggest setting it up
 - Use `post_get` to retrieve the post content
-- Adapt the content format for the target platform if needed (e.g., thread for Twitter, shorter for LinkedIn)
-- Use `platform_publish` with the target platform
+- Adapt the content format for the target channel if needed (e.g., thread for Twitter, shorter for LinkedIn)
+- Use `channel_publish` with the target channel
 - Report success or failure
 
 ## Slots
-- `platform` (required): Target platform (medium, twitter, linkedin, etc.)
-- `post_id` (optional): The post to cross-post (uses most recent if not specified)
+- `channel` (required): Target channel (medium, twitter, linkedin, etc.)
+- `source` (optional): The post (by title or ID) to cross-post (uses most recent if not specified)
 
 ## Output
-Confirmation of cross-posting with platform-specific details.
+Confirmation of cross-posting with channel-specific details.

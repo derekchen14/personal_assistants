@@ -11,7 +11,7 @@ Plan a revision sequence for an existing post.
 - Set keep_going so Hugo can begin the first revision step
 
 ## Slots
-- `post_id` (required): The post to plan revisions for
+- `source` (required): The post (by title or ID) to plan revisions for
 - `scope` (elective): Revision depth (light, moderate, heavy)
 
 ## Output

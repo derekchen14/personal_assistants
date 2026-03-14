@@ -15,7 +15,7 @@ export const FLOW_MENU: IntentGroup[] = [
         flows: [
             { name: 'status', dax: '01A', description: 'View current state of the config being built' },
             { name: 'lessons', dax: '01B', description: 'Browse stored lessons and patterns' },
-            { name: 'lookup', dax: '01C', description: 'Look up a specific spec file or section' },
+            { name: 'browse', dax: '001', description: 'Look up a specific spec file or section' },
             { name: 'recommend', dax: '18C', description: "Find specs relevant to the user's target domain" },
             { name: 'summarize', dax: '19A', description: 'Agent summarizes overall build progress' },
             { name: 'explain', dax: '19C', description: 'Agent explains an architecture concept' },
@@ -29,7 +29,6 @@ export const FLOW_MENU: IntentGroup[] = [
             { name: 'scope', dax: '02A', description: 'Define assistant scope \u2014 name, task, boundaries' },
             { name: 'teach', dax: '02B', description: 'Share a learning or pattern for Kalli to remember' },
             { name: 'intent', dax: '05A', description: 'Provide a domain intent definition' },
-            { name: 'log', dax: '05B', description: 'Log a new lesson or convention' },
             { name: 'revise', dax: '06A', description: 'Update a previously defined config section' },
             { name: 'remove', dax: '07A', description: 'Remove a config section or entry' },
             { name: 'persona', dax: '28A', description: 'Define persona preferences \u2014 tone, name, style, colors' },
@@ -40,7 +39,6 @@ export const FLOW_MENU: IntentGroup[] = [
         label: 'Design',
         flows: [
             { name: 'propose', dax: '03A', description: 'Review proposed core dacts for the domain' },
-            { name: 'compose', dax: '03C', description: 'Review composed flows generated from dact grammar' },
             { name: 'rework', dax: '03D', description: 'Revise an in-progress flow design' },
             { name: 'approve', dax: '0AE', description: 'Approve a proposed flow or dact' },
             { name: 'decline', dax: '0AF', description: 'Reject a proposed flow or dact with reason' },
@@ -52,12 +50,12 @@ export const FLOW_MENU: IntentGroup[] = [
     {
         label: 'Deliver',
         flows: [
-            { name: 'generate', dax: '04A', description: 'Generate the final domain config files' },
-            { name: 'confirm', dax: '04E', description: 'Confirm and execute the file export' },
-            { name: 'preview', dax: '4AD', description: 'Preview generated output before committing' },
-            { name: 'ontology', dax: '4AC', description: 'Generate ontology.py specifically' },
-            { name: 'report', dax: '4AB', description: 'Generate a build report with lessons learned' },
-            { name: 'package', dax: '48A', description: "Package the full domain for the user's environment" },
+            { name: 'generate', dax: '004', description: 'Generate domain config files' },
+            { name: 'package', dax: '48A', description: 'Package the full domain for deployment' },
+            { name: 'test', dax: '4BC', description: 'Run validation tests against the assistant' },
+            { name: 'deploy', dax: '4AE', description: 'Deploy to staging or production' },
+            { name: 'secure', dax: '89A', description: 'Configure auth, API keys, and permissions' },
+            { name: 'version', dax: '4AD', description: 'Tag a release version with changelog' },
         ],
     },
 ];

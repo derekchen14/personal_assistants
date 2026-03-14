@@ -37,20 +37,25 @@ class Agent:
 
     def take_turn(self, user_text: str, user_actions: list | None = None,
                   gold_dax: str | None = None) -> dict:
-        self.world.context.add_turn('User', user_text)
+        if user_actions and len(user_actions) > 0:
+            for action in user_actions:
+                gold_dax = action['dax'] if 'dax' in action else ''
+                self.world.context.add_turn('User', user_text, turn_type='action')
+        else:
+            self.world.context.add_turn('User', user_text, turn_type='utterance')
 
-        # Resolve any pending ambiguity from the previous turn.
         if self.ambiguity.present():
             if user_actions:
                 self.ambiguity.resolve()
             else:
                 self.ambiguity.resolve()
 
-        state = self.nlu.understand(user_text, gold_dax)
+        state = self.nlu.understand(user_text, self.world.context, gold_dax)
 
-        intent_val = state.intent.value if hasattr(state.intent, 'value') else state.intent
-        log.info(f"{state.intent}: {state.flow_name} {{{state.dax}}}; "
-                 f"Confidence: {state.confidence:.2f}; Slots: {state.slots or {}}")
+        flow = self.world.flow_stack.get_active_flow()
+        dax = flow.dax if flow else ''
+        log.info(f"{state.pred_intent}: {state.flow_name} {{{dax}}}; "
+                 f"Confidence: {state.confidence:.2f}")
 
         if not self._self_check(state):
             return self._fallback_response(
@@ -62,21 +67,16 @@ class Agent:
         rounds = 0
 
         while keep_going and rounds < _MAX_KEEP_GOING:
-            frame, keep_going = self.pex.execute(state)
+            frame, keep_going = self.pex.execute(state, self.world.context)
             rounds += 1
             log.info('  pex round=%d  keep_going=%s', rounds, keep_going)
 
             if keep_going:
-                active = self.world.flow_stack.get_active_flow()
-                if active:
+                flow = self.world.flow_stack.get_active_flow()
+                if flow:
                     new_state = DialogueState(self.config)
-                    new_state.update(
-                        intent=active.intent,
-                        dax=active.dax,
-                        flow_name=active.flow_name,
-                        confidence=1.0,
-                        slots=active.slots,
-                    )
+                    new_state.update(pred_intent=flow.intent,
+                        flow_name=flow.name(), confidence=1.0)
                     new_state.keep_going = True
                     self.world.insert_state(new_state)
                     state = new_state
@@ -135,7 +135,7 @@ class Agent:
 
         message = utterance
         if not message and not frame_data:
-            if state and state.intent not in ('Internal', 'Plan'):
+            if state and state.pred_intent not in ('Internal', 'Plan'):
                 message = (
                     "I've processed your request. Let me know if you need "
                     "anything else."

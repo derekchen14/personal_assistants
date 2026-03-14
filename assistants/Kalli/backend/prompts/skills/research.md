@@ -7,7 +7,7 @@ Plan to research specs before making design decisions.
 - Identify which specs are relevant to the topic
 - Use `spec_read` to read relevant sections
 - Compile findings into a research summary
-- Push edge flows (lookup, explain) for follow-up
+- Push edge flows (browse, explain) for follow-up
 
 ## Slots
 

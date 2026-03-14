@@ -12,18 +12,18 @@
     }
 </script>
 
-<div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 space-y-3">
+<div class="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 space-y-3">
     <p class="text-sm">{message}</p>
     <div class="flex gap-2">
         <button
             onclick={() => respond(confirmLabel)}
-            class="px-4 py-1.5 rounded bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white text-sm transition-colors"
+            class="px-4 py-1.5 rounded bg-[var(--accent)] hover:bg-[var(--accent-dark)] text-white text-sm transition-colors"
         >
             {confirmLabel}
         </button>
         <button
             onclick={() => respond(cancelLabel)}
-            class="px-4 py-1.5 rounded bg-[var(--color-surface-hover)] hover:bg-[var(--color-border)] text-sm transition-colors"
+            class="px-4 py-1.5 rounded bg-[var(--hover)] hover:bg-[var(--border)] text-sm transition-colors"
         >
             {cancelLabel}
         </button>

@@ -13,6 +13,20 @@ export interface Message {
     timestamp: number;
 }
 
+function getCookie(name: string): string {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : '';
+}
+
+function setCookie(name: string, value: string, days = 30) {
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires};path=/`;
+}
+
+function deleteCookie(name: string) {
+    document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+}
+
 function createConversationStore() {
     const { subscribe, update } = writable({
         messages: [] as Message[],
@@ -70,7 +84,12 @@ function createConversationStore() {
             ws = new WebSocketManager('/api/v1/ws', onMessage, onStatus);
             ws.connect();
             ws.send({ username });
+            setCookie('hugo_username', username);
             update((s) => ({ ...s, username, connected: true }));
+        },
+
+        savedUsername(): string {
+            return getCookie('hugo_username');
         },
 
         send(text: string) {
@@ -92,6 +111,33 @@ function createConversationStore() {
             ws.send({ text: text.trim() });
         },
 
+        selectPost(postId: string) {
+            if (!ws?.connected) return;
+            ws.send({ select_post: postId });
+        },
+
+        viewPost(postId: string) {
+            if (!ws?.connected) return;
+            update((s) => ({ ...s, typing: true }));
+            ws.send({ view_post: postId });
+        },
+
+        createPost(type: 'draft' | 'note') {
+            if (!ws?.connected) return;
+            update((s) => ({ ...s, typing: true }));
+            ws.send({ create_post: type });
+        },
+
+        deletePost(postId: string) {
+            if (!ws?.connected) return;
+            ws.send({ delete_post: postId });
+        },
+
+        updatePost(postId: string, updates: Record<string, unknown>) {
+            if (!ws?.connected) return;
+            ws.send({ update_post: postId, updates });
+        },
+
         reset() {
             if (!ws?.connected) return;
             ws.send({ reset: true });
@@ -100,7 +146,15 @@ function createConversationStore() {
 
         disconnect() {
             ws?.disconnect();
-            update((s) => ({ ...s, connected: false }));
+            ws = null;
+            msgId = 0;
+            deleteCookie('hugo_username');
+            update(() => ({
+                messages: [],
+                username: '',
+                connected: false,
+                typing: false,
+            }));
         },
     };
 }

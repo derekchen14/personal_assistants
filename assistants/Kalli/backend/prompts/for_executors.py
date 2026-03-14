@@ -21,16 +21,16 @@ ONTOLOGY_GENERATE_GUIDANCE = (
     'When generating ontology.py:\n'
     '- Requires at minimum: intents (4 domain-specific), dacts (8+), '
     'flows (16+)\n'
-    '- Use dry_run=true first to preview the output\n'
-    '- Confirm with user before writing (dry_run=false)'
+    '- Use dry_run=true first to validate the output\n'
+    '- Run tests before deploying'
 )
 
 YAML_GENERATE_GUIDANCE = (
     'When generating domain YAML:\n'
     '- Requires at minimum: persona (name, tone, style), '
     'key_entities, tools\n'
-    '- Use dry_run=true first to preview\n'
-    '- Confirm with user before writing'
+    '- Use dry_run=true first to validate\n'
+    '- Run tests before deploying'
 )
 
 PYTHON_EXECUTE_GUIDANCE = (

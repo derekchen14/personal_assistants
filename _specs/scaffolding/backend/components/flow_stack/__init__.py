@@ -1,11 +1,11 @@
-from backend.components.flow_stack.stack import FlowStack, FlowEntry
+from backend.components.flow_stack.stack import FlowStack
 
 # Domain-specific flow registries import all flow classes from flows.py
-# and map DAX codes to flow classes here. Example:
+# and map flow names to flow classes here. Example:
 #
 # from backend.components.flow_stack.flows import *
 #
-# flow_selection = {
-#   '001': QueryFlow,
-#   '000': ChatFlow,
+# flow_classes: dict[str, type] = {
+#   'query': QueryFlow,
+#   'chat': ChatFlow,
 # }

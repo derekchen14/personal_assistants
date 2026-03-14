@@ -22,7 +22,7 @@
 {:else if frame.type === 'confirmation'}
     <ConfirmationBlock data={frame.data} />
 {:else}
-    <div class="text-sm text-[var(--color-text-muted)]">
+    <div class="text-sm text-[var(--muted)]">
         Unknown block type: {frame.type}
     </div>
 {/if}

@@ -4,6 +4,7 @@ import json
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from backend.components.context_coordinator import ContextCoordinator
 from backend.components.dialogue_state import DialogueState
 from backend.components.display_frame import DisplayFrame
 from backend.components.ambiguity_handler import AmbiguityHandler
@@ -13,7 +14,7 @@ from backend.utilities.services import (
     SpecService, ConfigService, GeneratorService, CodeService, LessonService,
 )
 from backend.modules.policies import (
-    ExplorePolicy, ProvidePolicy, DesignPolicy, DeliverPolicy,
+    ExplorePolicy, GatherPolicy, PersonalizePolicy, DeliverPolicy,
     ConversePolicy, PlanPolicy, InternalPolicy,
 )
 from schemas.ontology import FLOW_CATALOG, Intent
@@ -24,9 +25,9 @@ if TYPE_CHECKING:
 
 _UNSUPPORTED = {
     'style', 'dismiss', 'recommend', 'compare',
-    'log', 'remove', 'validate', 'report', 'package',
+    'remove', 'validate', 'package', 'test', 'deploy', 'secure', 'version',
     'finalize', 'redesign',
-    'recap', 'remember', 'recall', 'audit', 'emit',
+    'recap', 'recall', 'retrieve', 'search', 'peek', 'audit', 'emit',
 }
 
 
@@ -52,56 +53,59 @@ class PEX:
         components = {
             'engineer': engineer,
             'memory': memory,
-            'world': world,
+            'config': config,
             'get_tools': self.get_tools_for_flow,
+            'flow_stack': self.world.flow_stack,
         }
         self._policies: dict[str, object] = {
-            Intent.EXPLORE.value: ExplorePolicy(components),
-            Intent.PROVIDE.value: ProvidePolicy(components),
-            Intent.DESIGN.value: DesignPolicy(components),
-            Intent.DELIVER.value: DeliverPolicy(components),
-            Intent.CONVERSE.value: ConversePolicy(components),
-            Intent.PLAN.value: PlanPolicy(components),
-            Intent.INTERNAL.value: InternalPolicy(components),
+            Intent.EXPLORE: ExplorePolicy(components),
+            Intent.GATHER: GatherPolicy(components),
+            Intent.PERSONALIZE: PersonalizePolicy(components),
+            Intent.DELIVER: DeliverPolicy(components),
+            Intent.CONVERSE: ConversePolicy(components),
+            Intent.PLAN: PlanPolicy(components),
+            Intent.INTERNAL: InternalPolicy(components),
         }
 
-    def execute(self, state: DialogueState) -> tuple[DisplayFrame, bool]:
+    def execute(self, state: DialogueState,
+                context: ContextCoordinator) -> tuple[DisplayFrame, bool]:
         flow_name = state.flow_name
         flow_info = FLOW_CATALOG.get(flow_name)
         if not flow_info:
             frame = DisplayFrame(self.config)
             return frame, False
 
-        check_result = self._check(state, flow_info)
+        flow_entry = self.world.flow_stack.get_active_flow()
+
+        check_result = self._check(flow_entry, context)
         if check_result:
             return check_result, False
-
-        existing = self.world.flow_stack.find_by_name(flow_name)
-        if existing:
-            flow_entry = existing
-        else:
-            flow_entry = self.world.flow_stack.push(
-                flow_name, state.dax, state.intent,
-                slots=state.slots,
-            )
 
         if flow_name in _UNSUPPORTED:
             self.world.flow_stack.mark_complete(result={'unsupported': True})
             frame = self.world.latest_frame() or DisplayFrame(self.config)
             return frame, False
 
-        intent_val = state.intent
-        if hasattr(intent_val, 'value'):
-            intent_val = intent_val.value
-        policy = self._policies.get(intent_val)
+        # Policy keys are Intent enums; state.pred_intent is a string
+        policy = None
+        for key, val in self._policies.items():
+            if key.value == state.pred_intent:
+                policy = val
+                break
+
         if policy:
+            def tool_dispatcher(tool_name, tool_input):
+                return self._dispatch_tool(tool_name, tool_input)
+
+            filled_slots = flow_entry.slot_values_dict() if flow_entry else {}
             frame = policy.execute(
-                flow_name, flow_info, state, self._dispatch_tool,
+                flow_name, flow_info, state, context, filled_slots,
+                tool_dispatcher,
             )
         else:
             frame = DisplayFrame(self.config)
 
-        if intent_val != Intent.PLAN.value:
+        if state.pred_intent != Intent.PLAN.value:
             self.world.flow_stack.mark_complete(result={'flow_name': flow_name})
         self.world.insert_frame(frame)
 
@@ -120,22 +124,29 @@ class PEX:
 
     # ── Pre-hook ─────────────────────────────────────────────────────
 
-    def _check(self, state: DialogueState,
-               flow_info: dict) -> DisplayFrame | None:
-        if state.flow_name in _UNSUPPORTED:
+    def _check(self, flow_entry, context: ContextCoordinator) -> DisplayFrame | None:
+        if not flow_entry:
+            return None
+
+        flow_name = flow_entry.flow_name if hasattr(flow_entry, 'flow_name') else ''
+        if flow_name in _UNSUPPORTED:
             return None
 
         required_missing = []
-        for slot_name, slot_info in flow_info.get('slots', {}).items():
-            if slot_info.get('priority') == 'required':
-                if slot_name not in state.slots or not state.slots[slot_name]:
-                    required_missing.append(slot_name)
+        for slot_name, slot in (flow_entry.slots or {}).items():
+            if hasattr(slot, 'priority') and slot.priority == 'required' and not slot.filled:
+                required_missing.append(slot_name)
 
         if required_missing:
             for slot_name in list(required_missing):
-                filled = self._fill_from_context(slot_name, flow_info)
+                filled = self._fill_from_context(slot_name, context)
                 if filled:
-                    state.slots[slot_name] = filled
+                    slot = flow_entry.slots[slot_name]
+                    if hasattr(slot, 'add_one'):
+                        slot.add_one(filled)
+                    else:
+                        slot.value = filled
+                        slot.check_if_filled()
                     required_missing.remove(slot_name)
 
         if required_missing:
@@ -149,15 +160,16 @@ class PEX:
             return frame
         return None
 
-    def _fill_from_context(self, slot_name: str, flow_info: dict) -> str | None:
+    def _fill_from_context(self, slot_name: str,
+                           context: ContextCoordinator) -> str | None:
         scratchpad_val = self.memory.read_scratchpad(slot_name)
         if scratchpad_val:
             return scratchpad_val
 
-        recent = self.world.context.compile_history(turns=3)
+        recent = context.recent_turns(3)
         for turn in reversed(recent):
-            if turn['speaker'] == 'User' and slot_name.lower() in turn['text'].lower():
-                return turn['text']
+            if turn.get('speaker') == 'User' and slot_name.lower() in turn.get('text', '').lower():
+                return turn.get('text', '')
         return None
 
     # ── Tool dispatch ────────────────────────────────────────────────
@@ -229,8 +241,8 @@ class PEX:
     def _dispatch_context_tool(self, params: dict) -> dict:
         action = params.get('action', '')
         if action == 'get_history':
-            turns = params.get('turns', 3)
-            history = self.world.context.compile_history(turns=turns)
+            look_back = params.get('turns', 3)
+            history = self.world.context.compile_history(look_back=look_back)
             return {'status': 'success', 'result': history}
         elif action == 'get_turn':
             turn_id = params.get('turn_id', '')
@@ -247,7 +259,7 @@ class PEX:
         if action == 'get_slots':
             active = self.world.flow_stack.get_active_flow()
             if active:
-                return {'status': 'success', 'result': active.slots}
+                return {'status': 'success', 'result': active.slot_values_dict()}
             return {'status': 'success', 'result': {}}
         elif action == 'get_flow_meta':
             active = self.world.flow_stack.get_active_flow()
@@ -263,22 +275,22 @@ class PEX:
     def get_tools_for_flow(self, flow_name: str, flow_info: dict) -> list[dict]:
         tools = []
         intent = flow_info.get('intent', Intent.CONVERSE)
-        intent_val = intent.value if hasattr(intent, 'value') else str(intent)
+        intent_val = intent.value
 
         tools.extend(self._component_tool_definitions())
 
-        if intent_val in ('Explore', 'Provide', 'Design', 'Deliver'):
+        if intent_val in ('Explore', 'Gather', 'Personalize', 'Deliver'):
             tools.append(self._tool_definitions.get('spec_read'))
             tools.append(self._tool_definitions.get('config_read'))
 
-        if intent_val in ('Provide', 'Design'):
+        if intent_val in ('Gather', 'Personalize'):
             tools.append(self._tool_definitions.get('config_write'))
 
         if intent_val == 'Deliver':
             tools.append(self._tool_definitions.get('ontology_generate'))
             tools.append(self._tool_definitions.get('yaml_generate'))
 
-        if intent_val in ('Explore', 'Provide'):
+        if intent_val in ('Explore', 'Gather'):
             tools.append(self._tool_definitions.get('lesson_store'))
             tools.append(self._tool_definitions.get('lesson_search'))
 
@@ -435,5 +447,5 @@ class PEX:
 
     def _verify(self):
         state = self.world.current_state()
-        if state and state.keep_going and not self.world.flow_stack.get_pending_flows():
+        if state and state.pred_intent and state.keep_going and not self.world.flow_stack.get_pending_flows():
             state.keep_going = False

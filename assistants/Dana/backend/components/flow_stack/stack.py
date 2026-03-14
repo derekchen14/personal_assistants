@@ -3,68 +3,49 @@ from __future__ import annotations
 from types import MappingProxyType
 from uuid import uuid4
 
+from backend.components.flow_stack.parents import BaseFlow
 from schemas.ontology import FlowLifecycle
-
-
-class FlowEntry:
-
-    def __init__(self, flow_name: str, dax: str, intent: str,
-                 slots: dict | None = None, plan_id: str | None = None):
-        self.flow_id: str = str(uuid4())[:8]
-        self.flow_name = flow_name
-        self.dax = dax
-        self.intent = intent
-        self.status: str = FlowLifecycle.ACTIVE.value
-        self.slots: dict = slots or {}
-        self.plan_id: str | None = plan_id
-        self.turn_ids: list[str] = []
-        self.result: dict | None = None
-
-    def to_dict(self) -> dict:
-        return {
-            'flow_id': self.flow_id,
-            'flow_name': self.flow_name,
-            'dax': self.dax,
-            'intent': self.intent,
-            'status': self.status,
-            'slots': self.slots,
-            'plan_id': self.plan_id,
-            'turn_ids': self.turn_ids,
-        }
 
 
 class FlowStack:
 
-    def __init__(self, config: MappingProxyType):
+    def __init__(self, config: MappingProxyType, flow_classes: dict | None = None):
         self.config = config
-        self._stack: list[FlowEntry] = []
+        self._stack: list[BaseFlow] = []
         self._max_depth: int = config.get('session', {}).get('max_flow_depth', 8)
+        self._flow_classes = flow_classes or {}
 
-    def push(self, flow_name: str, dax: str, intent: str,
-             slots: dict | None = None, plan_id: str | None = None) -> FlowEntry:
+    def push(self, flow_name: str, plan_id: str | None = None) -> BaseFlow:
+        """Instantiate and push a flow. Slots are NOT filled here."""
         if len(self._stack) >= self._max_depth:
             raise RuntimeError(
                 f'Flow stack depth limit ({self._max_depth}) exceeded'
             )
-        entry = FlowEntry(flow_name, dax, intent, slots, plan_id)
+        cls = self._flow_classes.get(flow_name)
+        if not cls:
+            raise ValueError(f'Unknown flow: {flow_name}')
+        flow = cls()
+        flow.flow_id = str(uuid4())[:8]
+        flow.status = FlowLifecycle.ACTIVE.value
+        flow.plan_id = plan_id
         if self._stack:
-            entry.status = FlowLifecycle.PENDING.value
-        self._stack.append(entry)
-        return entry
+            flow.status = FlowLifecycle.PENDING.value
+        self._stack.append(flow)
+        return flow
 
-    def pop(self) -> FlowEntry | None:
+    def pop(self) -> BaseFlow | None:
         return self._stack.pop() if self._stack else None
 
-    def peek(self) -> FlowEntry | None:
+    def peek(self) -> BaseFlow | None:
         return self._stack[-1] if self._stack else None
 
-    def get_active_flow(self) -> FlowEntry | None:
+    def get_active_flow(self) -> BaseFlow | None:
         for entry in reversed(self._stack):
             if entry.status == FlowLifecycle.ACTIVE.value:
                 return entry
         return None
 
-    def mark_complete(self, result: dict | None = None) -> FlowEntry | None:
+    def mark_complete(self, result: dict | None = None) -> BaseFlow | None:
         if self._stack:
             top = self._stack[-1]
             top.status = FlowLifecycle.COMPLETED.value
@@ -72,14 +53,14 @@ class FlowStack:
             return top
         return None
 
-    def mark_invalid(self) -> FlowEntry | None:
+    def mark_invalid(self) -> BaseFlow | None:
         if self._stack:
             top = self._stack[-1]
             top.status = FlowLifecycle.INVALID.value
             return top
         return None
 
-    def pop_completed_and_invalid(self) -> list[FlowEntry]:
+    def pop_completed_and_invalid(self) -> list[BaseFlow]:
         popped = []
         remaining = []
         for entry in self._stack:
@@ -93,12 +74,12 @@ class FlowStack:
             self._stack[-1].status = FlowLifecycle.ACTIVE.value
         return popped
 
-    def get_pending_flows(self) -> list[FlowEntry]:
+    def get_pending_flows(self) -> list[BaseFlow]:
         return [e for e in self._stack if e.status == FlowLifecycle.PENDING.value]
 
-    def find_by_name(self, flow_name: str) -> FlowEntry | None:
+    def find_by_name(self, flow_name: str) -> BaseFlow | None:
         for entry in reversed(self._stack):
-            if entry.flow_name == flow_name and entry.status in (
+            if entry.flow_type == flow_name and entry.status in (
                 FlowLifecycle.PENDING.value, FlowLifecycle.ACTIVE.value,
             ):
                 return entry

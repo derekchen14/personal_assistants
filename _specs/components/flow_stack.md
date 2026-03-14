@@ -26,19 +26,93 @@ BaseFlow
   └── ...
 ```
 
+### BaseFlow as the Stack Entry
+
+There is no separate `FlowEntry` wrapper. **BaseFlow IS the entry** — each flow instance carries both its domain definition (slots, tools, intent) and its runtime state (flow_id, status, plan_id, turn_ids, result). When a flow is pushed onto the stack, the FlowStack instantiates the flow class directly and sets the runtime fields.
+
+Runtime state fields on every BaseFlow instance:
+- `flow_id` — unique 8-char identifier, set by FlowStack on push
+- `status` — lifecycle state (active, pending, completed, invalid)
+- `plan_id` — which plan this flow belongs to (if any)
+- `turn_ids` — conversation turns associated with this flow
+- `result` — execution result dict, set on completion
+
 ### Flow Methods
 
 Every flow inherits these methods from `BaseFlow`:
 
 | Method | Purpose |
 |---|---|
-| `fill_slots_by_label(labels)` | **System 1**: Fast entity extraction from NLU prediction labels — deterministic slot-filling from model output |
-| `fill_slot_values(context, memory)` | **System 2**: Deeper contemplation for remaining slots — uses LLM reasoning to fill from context and memory |
+| `fill_slot_values(values)` | Bulk slot fill from a predictions dict — see Slot Filling below |
+| `fill_slots_by_label(labels)` | Targeted single-slot fill with entity validation — see Slot Filling below |
+| `slot_values_dict()` | Read all filled slot values as a flat `{name: value}` dict |
 | `is_filled()` | Check if all required slots and at least one elective (if any) are filled |
 | `needs_to_think()` | Determine if further contemplation is needed before execution |
+| `to_dict()` | Full flow serialization including runtime state (flow_id, status, slots, plan_id, turn_ids, result) |
+| `get(key, default)` | Attribute access helper — reads from flow attributes with a default fallback |
+| `name(full=False)` | Flow name helper — returns `flow_type` by default, or fully qualified name with intent prefix when `full=True` |
 | `serialize()` | Serialize the flow for persistence |
 
 These methods are distinct from the lifecycle states below — they describe *how* a flow prepares for execution, while lifecycle states describe *where* a flow is in the stack.
+
+### Slot Filling
+
+Two methods fill slots, distinguished by **prompt scope** and **when they run**:
+
+**`fill_slot_values(values: dict)`** — Bulk fill from a full-flow prediction.
+
+The upstream prompt sees the entire flow (all slots, descriptions, types) and produces a dict of `{slot_name: value}` pairs for every slot it can extract. The method then dispatches each value to the correct slot object based on type:
+
+- Lists → `slot.add_one()` per item (for GroupSlot variants)
+- Dicts → `slot.add_one(**value)` (for entity dicts, key-value pairs)
+- Scalars → `slot.assign_one(value)` or `slot.value = str(value)`
+
+Also resolves **aliases** (e.g., the LLM says `'post'` but the slot is named `'source'`). Does not return a value. Used primarily by **NLU** — after `think()`, `contemplate()`, and `react()` predict a flow, the extracted slots dict is passed here for bulk transfer.
+
+**`fill_slots_by_label(labels: dict)`** — Targeted fill for a specific slot.
+
+The upstream prompt is shorter and more focused: it knows exactly which slot it needs to fill (e.g., "Extract the topic the user wants to outline") and produces a single `{slot_name: value}` pair. The method routes entity-slot values through `validate_entity()` — a hook that domain parent flows can override for early validation (e.g., checking that a post exists before filling the source slot). Non-entity slots delegate to `fill_slot_values` for the actual storage. Returns `is_filled()` status.
+
+Used primarily by **policies in PEX** — when a policy knows a specific slot is missing, it runs a targeted extraction prompt and fills just that slot:
+
+```python
+# In a policy: targeted extraction of a single slot
+text = self.engineer.call(history, system="Extract the topic the user wants to outline.")
+flow.fill_slots_by_label({'topic': parsed_value})
+if not flow.slots['topic'].filled:
+    self.ambiguity.declare('specific', metadata={'missing_slot': 'topic'})
+```
+
+**Summary of the distinction:**
+
+| | `fill_slot_values` | `fill_slots_by_label` |
+|---|---|---|
+| **Prompt scope** | Full flow — all slots at once | Single slot — focused extraction |
+| **Primary caller** | NLU (after flow detection) | Policies in PEX (during execution) |
+| **Entity handling** | Direct to slot | Via `validate_entity()` hook |
+| **Alias resolution** | Yes | No |
+| **Returns** | Nothing | `is_filled()` boolean |
+
+### Flow Registration: `flow_classes` Dict
+
+Flows are registered via a `flow_classes` dict that maps **flow names** (not DAX codes) to **flow classes** (not instances). The FlowStack receives this dict at construction and uses it to instantiate flows on push.
+
+```python
+# In flow_stack/__init__.py
+from backend.components.flow_stack.flows import *
+
+flow_classes: dict[str, type] = {
+    'query': QueryFlow,
+    'chat': ChatFlow,
+    'browse': BrowseFlow,
+}
+
+# In world.py
+from backend.components.flow_stack import FlowStack, flow_classes
+self.flow_stack = FlowStack(config, flow_classes=flow_classes)
+```
+
+The FlowStack's `push(flow_name)` method looks up the class by name, instantiates it, and sets runtime state fields. Slots are NOT filled during push — NLU fills them separately.
 
 ## Slots, Tools, and the Flow-Execution Relationship
 

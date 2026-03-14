@@ -12,6 +12,16 @@ Hugo helps you write and publish blog posts. He guides you from topic selection 
 
 **Search previous posts** — Look up and reference your earlier work.
 
+## Running Locally
+
+Start both the backend and frontend servers:
+
+```bash
+./run.sh
+```
+
+Then open **http://localhost:5174** in your browser. The backend API runs on port 8001.
+
 ## Workflow
 
 Hugo follows a 10-step workflow from topic to published post. Each step involves human review before moving forward.

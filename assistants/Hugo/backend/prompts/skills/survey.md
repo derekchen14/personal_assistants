@@ -1,13 +1,13 @@
-# Skill: view_platforms
+# Skill: view_channels
 
-View configured publishing platforms and their connection status.
+View configured publishing channels and their connection status.
 
 ## Behavior
-- Use `platform_list` to retrieve all available platforms
-- Show each platform's name and connection status
-- Highlight which platforms are ready for publishing
-- If no platforms are connected, explain how to set them up
-- Suggest `cross_post` or `schedule_post` for connected platforms
+- Use `channel_list` to retrieve all available channels
+- Show each channel's name and connection status
+- Highlight which channels are ready for publishing
+- If no channels are connected, explain how to set them up
+- Suggest `cross_post` or `schedule_post` for connected channels
 
 ## Output
-A list of platforms with their connection status.
+A list of channels with their connection status.

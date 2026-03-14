@@ -2,7 +2,7 @@
 Slot types for Hugo (Blog Writing).
 
 12 universal slots + 4 domain-specific.
-Grounding entity_parts: post, section, note, platform.
+Grounding entity_parts: post, section, note, channel.
 
 Hierarchy:
   BaseSlot
@@ -21,7 +21,7 @@ Hierarchy:
   ├── ExactSlot            (specific term or phrase)
   ├── DictionarySlot       (key-value pairs)
   ├── RangeSlot            (time or value range)
-  ├── PlatformSlot         (publishing destination)       [domain-specific]
+  ├── ChannelSlot          (publishing destination)       [domain-specific]
   └── ImageSlot            (hero image, diagram, picture) [domain-specific]
 """
 
@@ -44,6 +44,13 @@ class BaseSlot(object):
   def check_if_filled(self):
     self.filled = len(self.value) > 0
     return self.filled
+
+  def to_dict(self):
+    if self.criteria == 'multiple':
+      return self.values
+    elif self.criteria == 'numeric':
+      return self.level
+    return self.value
 
   def reset(self):
     self.value = ''
@@ -68,8 +75,8 @@ class GroupSlot(BaseSlot):
   def reset(self):
     self.values = []
     self.filled = False
-    if hasattr(self, 'tab_cols'):
-      self.tab_cols = []
+    if hasattr(self, '_keys'):
+      self._keys = []
     if hasattr(self, 'steps'):
       self.steps = []
     if hasattr(self, 'options'):
@@ -79,41 +86,43 @@ class GroupSlot(BaseSlot):
 # ── Grounding Entity ───────────────────────────────────────────────────────
 
 class SourceSlot(GroupSlot):
-  """References existing entities. Each entity is {tab, col, row, ver, rel}."""
+  """References existing entities. Each entity is {post, sec, note, chl, ver}."""
   def __init__(self, min_size=1, entity_part='', priority='required'):
     super().__init__(min_size, priority)
     self.slot_type = 'source'
     self.entity_part = entity_part
-    self.tab_cols = []
-    self.active_tab = ''
+    self._keys = []
+    self.active_post = ''
     if entity_part:
       self.purpose = f"at least {min_size} {entity_part}" if min_size == 1 else f"at least {min_size} {entity_part}s"
     else:
       self.purpose = f"at least {min_size} grounding reference" if min_size == 1 else f"at least {min_size} grounding references"
 
-  def add_one(self, tab, col, row=-1, ver=False, rel=''):
-    tab_col = f"{tab}-{col}"
-    alt_col = f"{self.active_tab}-{col}"
-    if tab_col in self.tab_cols:
-      tc_index = self.tab_cols.index(tab_col)
-      self.values[tc_index]['row'] = row
-      self.values[tc_index]['ver'] = ver
-    elif alt_col in self.tab_cols:
-      pass  # earlier table is the active one
+  def add_one(self, post, sec='', note='', chl='', ver=False):
+    key = f"{post}-{sec}"
+    alt_key = f"{self.active_post}-{sec}"
+    if key in self._keys:
+      idx = self._keys.index(key)
+      self.values[idx]['ver'] = ver
+    elif alt_key in self._keys:
+      pass  # earlier post is the active one
     else:
-      entity = {'tab': tab, 'col': col, 'row': row, 'ver': ver, 'rel': rel}
+      entity = {'post': post, 'sec': sec, 'note': note, 'chl': chl, 'ver': ver}
       self.values.append(entity)
-      self.tab_cols.append(tab_col)
+      self._keys.append(key)
     self.check_if_filled()
 
-  def replace_entity(self, old_tab, old_col, new_tab='', new_col=''):
+  def _rebuild_keys(self):
+    self._keys = [f"{e['post']}-{e['sec']}" for e in self.values]
+
+  def replace_entity(self, old_post, old_sec, new_post='', new_sec=''):
     for i, entity in enumerate(self.values):
-      if entity['tab'] == old_tab and entity['col'] == old_col:
-        if new_tab:
-          self.values[i]['tab'] = new_tab
-        if new_col:
-          self.values[i]['col'] = new_col
-    self.tab_cols = [f"{e['tab']}-{e['col']}" for e in self.values]
+      if entity['post'] == old_post and entity['sec'] == old_sec:
+        if new_post:
+          self.values[i]['post'] = new_post
+        if new_sec:
+          self.values[i]['sec'] = new_sec
+    self._rebuild_keys()
 
   def drop_unverified(self, conditional=False):
     verified = [e for e in self.values if e['ver']]
@@ -122,19 +131,19 @@ class SourceSlot(GroupSlot):
         self.values = verified
     else:
       self.values = verified
-    self.tab_cols = [f"{e['tab']}-{e['col']}" for e in self.values]
+    self._rebuild_keys()
     self.check_if_filled()
 
   def drop_ambiguous(self):
-    self.values = [e for e in self.values if e['rel'] != 'ambiguous']
-    self.tab_cols = [f"{e['tab']}-{e['col']}" for e in self.values]
+    self.values = [e for e in self.values if e['chl'] != 'ambiguous']
+    self._rebuild_keys()
     self.check_if_filled()
 
   def is_verified(self):
     return len([e for e in self.values if e['ver']]) >= self.size
 
-  def table_name(self):
-    return self.values[0]['tab'] if self.values else 'N/A'
+  def post_name(self):
+    return self.values[0]['post'] if self.values else 'N/A'
 
 
 class TargetSlot(SourceSlot):
@@ -228,6 +237,7 @@ class LevelSlot(BaseSlot):
   """Numeric threshold slot."""
   def __init__(self, priority='required', threshold=1, epsilon=0):
     super().__init__(priority)
+    self.slot_type = 'level'
     self.criteria = 'numeric'
     self.threshold = threshold if epsilon == 0 else threshold - epsilon
     self.level = 0.0
@@ -259,6 +269,10 @@ class PositionSlot(LevelSlot):
     return self.filled
 
   def assign_one(self, position):
+    try:
+      position = int(position)
+    except (ValueError, TypeError):
+      return
     if position >= 0:
       self.level = position
     self.check_if_filled()
@@ -398,18 +412,18 @@ class RangeSlot(BaseSlot):
 
 # ── Domain-Specific Slots (Hugo) ─────────────────────────────────────────
 
-class PlatformSlot(BaseSlot):
-  """Identifies a publishing platform destination."""
+class ChannelSlot(BaseSlot):
+  """Identifies a publishing channel destination."""
   def __init__(self, priority='required'):
     super().__init__(priority)
-    self.slot_type = 'platform'
-    self.purpose = 'a publishing platform'
-    self.platform_name = ''
+    self.slot_type = 'channel'
+    self.purpose = 'a publishing channel'
+    self.channel_name = ''
     self.config = {}
 
-  def assign_one(self, platform, config=None):
-    self.value = platform
-    self.platform_name = platform
+  def assign_one(self, channel, config=None):
+    self.value = channel
+    self.channel_name = channel
     if config:
       self.config = config
     self.check_if_filled()

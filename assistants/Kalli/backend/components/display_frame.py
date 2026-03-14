@@ -45,42 +45,12 @@ class DisplayFrame:
     def has_content(self) -> bool:
         return self.block_type != 'default' and bool(self.data)
 
-    # ── Block composition helpers ────────────────────────────────────
-
     def compose(self, block_type: str, data: dict) -> dict:
         return {
             'type': block_type,
             'show': block_type != 'default',
             'data': data,
         }
-
-    def card(self, title: str, content: str,
-             actions: list | None = None) -> dict:
-        return self.compose('card', {
-            'title': title, 'content': content,
-            'actions': actions or [],
-        })
-
-    def listing(self, title: str, items: list) -> dict:
-        return self.compose('list', {'title': title, 'items': items})
-
-    def form(self, fields: list[dict],
-             submit_label: str = 'Submit') -> dict:
-        return self.compose('form', {
-            'fields': fields, 'submit_label': submit_label,
-        })
-
-    def toast(self, message: str, level: str = 'info') -> dict:
-        return self.compose('toast', {'message': message, 'level': level})
-
-    def confirmation(self, prompt: str,
-                     confirm_label: str = 'Confirm',
-                     cancel_label: str = 'Cancel') -> dict:
-        return self.compose('confirmation', {
-            'prompt': prompt,
-            'confirm_label': confirm_label,
-            'cancel_label': cancel_label,
-        })
 
     def to_dict(self) -> dict:
         return {

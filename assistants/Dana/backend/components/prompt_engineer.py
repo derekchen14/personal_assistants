@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 from types import MappingProxyType
@@ -20,6 +21,7 @@ from backend.prompts.for_pex import build_skill_system, build_skill_messages
 from backend.prompts.for_res import build_naturalize_prompt, build_clarification
 from backend.prompts.for_contemplate import build_contemplate_prompt
 
+from backend.components.flow_stack import flow_classes
 from schemas.ontology import FLOW_CATALOG, Intent
 
 _TEMPLATE_BASE = Path(__file__).resolve().parents[2] / 'schemas' / 'templates'
@@ -63,31 +65,31 @@ class PromptEngineer:
 
     # ── Model selection ──────────────────────────────────────────────
 
-    def get_model_id(self, call_site: str = 'default') -> str:
+    def _get_model_param(self, call_site: str, key: str, default):
         overrides = self._models.get('overrides', {})
         if call_site in overrides:
-            mid = overrides[call_site].get('model_id')
-            if mid:
-                return mid
-        return self._models.get('default', {}).get(
-            'model_id', 'claude-sonnet-4-5-20250929'
-        )
+            val = overrides[call_site].get(key)
+            if val is not None:
+                return val
+        return self._models.get('default', {}).get(key, default)
+
+    def get_model_id(self, call_site: str = 'default') -> str:
+        return self._get_model_param(call_site, 'model_id', 'claude-sonnet-4-5-20250929')
 
     def _get_temperature(self, call_site: str = 'default') -> float:
-        overrides = self._models.get('overrides', {})
-        if call_site in overrides:
-            t = overrides[call_site].get('temperature')
-            if t is not None:
-                return t
-        return self._models.get('default', {}).get('temperature', 0.0)
+        return self._get_model_param(call_site, 'temperature', 0.0)
 
     def _get_provider(self, call_site: str = 'default') -> str:
-        overrides = self._models.get('overrides', {})
-        if call_site in overrides:
-            p = overrides[call_site].get('provider')
-            if p:
-                return p
-        return self._models.get('default', {}).get('provider', 'anthropic')
+        return self._get_model_param(call_site, 'provider', 'anthropic')
+
+    # ── Resilience config ────────────────────────────────────────────
+
+    def _get_retry_config(self) -> tuple[int, float, float]:
+        llm_cfg = self._resilience.get('llm_retries', {})
+        max_attempts = llm_cfg.get('max_attempts', 2)
+        backoff_base = llm_cfg.get('backoff_base_ms', 500) / 1000
+        backoff_max = llm_cfg.get('backoff_max_ms', 10000) / 1000
+        return max_attempts, backoff_base, backoff_max
 
     # ── Core LLM call ────────────────────────────────────────────────
 
@@ -99,10 +101,7 @@ class PromptEngineer:
         tools: list[dict] | None = None,
         max_tokens: int = 4096,
     ) -> anthropic.types.Message:
-        llm_cfg = self._resilience.get('llm_retries', {})
-        max_attempts = llm_cfg.get('max_attempts', 2)
-        backoff_base = llm_cfg.get('backoff_base_ms', 500) / 1000
-        backoff_max = llm_cfg.get('backoff_max_ms', 10000) / 1000
+        max_attempts, backoff_base, backoff_max = self._get_retry_config()
 
         kwargs: dict[str, Any] = {
             'model': self.get_model_id(call_site),
@@ -162,10 +161,7 @@ class PromptEngineer:
         from google import genai
         from google.genai import types
 
-        llm_cfg = self._resilience.get('llm_retries', {})
-        max_attempts = llm_cfg.get('max_attempts', 2)
-        backoff_base = llm_cfg.get('backoff_base_ms', 500) / 1000
-        backoff_max = llm_cfg.get('backoff_max_ms', 10000) / 1000
+        max_attempts, backoff_base, backoff_max = self._get_retry_config()
 
         model_id = self.get_model_id(call_site)
         temp = self._get_temperature(call_site)
@@ -249,16 +245,35 @@ class PromptEngineer:
 
         return '\n'.join(text_parts) if text_parts else '', tool_log
 
+    # ── Guardrails ────────────────────────────────────────────────────
+
+    @staticmethod
+    def apply_guardrails(text: str) -> dict | None:
+        """Strip LLM artifacts and parse JSON."""
+        text = text.strip()
+        if text.startswith('```'):
+            lines = text.split('\n')
+            lines = [l for l in lines if not l.strip().startswith('```')]
+            text = '\n'.join(lines)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group())
+                except json.JSONDecodeError:
+                    pass
+        return None
+
     # ── Prompt assembly ──────────────────────────────────────────────
 
     def build_system_prompt(self) -> str:
         return build_system(self._persona)
 
     def build_nlu_prompt(
-        self, user_text: str, history: list[dict],
+        self, user_text: str, history_text: str,
     ) -> tuple[str, list[dict]]:
-        history_text = self._format_history(history, 5)
-
         system = (
             f'{self.build_system_prompt()}\n\n'
             'You are a precise NLU classifier. '
@@ -270,26 +285,27 @@ class PromptEngineer:
         return system, messages
 
     def build_flow_prompt(
-        self, user_text: str, intent: str | None, history: list[dict],
+        self, user_text: str, intent: str | None, history_text: str,
     ) -> tuple[str, list[dict]]:
-        history_text = self._format_history(history, 5)
-
         if intent is None:
             groups: dict[str, list[str]] = {}
-            for name, flow in FLOW_CATALOG.items():
-                fi = flow['intent']
+            for name, cat in FLOW_CATALOG.items():
+                fi = cat['intent']
                 if fi == Intent.INTERNAL:
                     continue
-                fi_val = fi.value if hasattr(fi, 'value') else str(fi)
-                slots_desc = ', '.join(
-                    f'{s} ({info.get("priority", "optional")})'
-                    for s, info in flow.get('slots', {}).items()
-                )
+                cls = flow_classes.get(name)
+                slots_desc = ''
+                if cls:
+                    inst = cls()
+                    slots_desc = ', '.join(
+                        f'{s} ({slot.priority})'
+                        for s, slot in inst.slots.items()
+                    )
                 line = (
-                    f'- {name} (dax={flow["dax"]}): {flow["description"]}'
+                    f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
                     + (f' [slots: {slots_desc}]' if slots_desc else '')
                 )
-                groups.setdefault(fi_val, []).append(line)
+                groups.setdefault(fi, []).append(line)
             parts = []
             for gi in sorted(groups):
                 parts.append(f'### {gi}')
@@ -298,15 +314,20 @@ class PromptEngineer:
             candidates = '\n'.join(parts)
         else:
             candidate_lines = []
-            for name, flow in FLOW_CATALOG.items():
-                flow_intent = flow['intent'].value if hasattr(flow['intent'], 'value') else str(flow['intent'])
-                if flow_intent == intent or name in _get_edge_flows_for_intent(intent):
-                    slots_desc = ', '.join(
-                        f'{s} ({info.get("priority", "optional")})'
-                        for s, info in flow.get('slots', {}).items()
-                    )
+            edge_flows = _get_edge_flows_for_intent(intent)
+            for name, cat in FLOW_CATALOG.items():
+                fi = cat['intent']
+                if fi == intent or name in edge_flows:
+                    cls = flow_classes.get(name)
+                    slots_desc = ''
+                    if cls:
+                        inst = cls()
+                        slots_desc = ', '.join(
+                            f'{s} ({slot.priority})'
+                            for s, slot in inst.slots.items()
+                        )
                     candidate_lines.append(
-                        f'- {name} (dax={flow["dax"]}): {flow["description"]}'
+                        f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
                         + (f' [slots: {slots_desc}]' if slots_desc else '')
                     )
             candidates = '\n'.join(candidate_lines)
@@ -322,11 +343,11 @@ class PromptEngineer:
         return system, messages
 
     def build_slot_filling_prompt(
-        self, user_text: str, flow_name: str, history: list[dict],
+        self, user_text: str, flow_name: str, history_text: str,
     ) -> tuple[str, list[dict]]:
-        flow_info = FLOW_CATALOG.get(flow_name, {})
-        slot_schema = _describe_slot_schema(flow_info.get('slots', {}))
-        history_text = self._format_history(history, 5)
+        cls = flow_classes.get(flow_name)
+        slots = cls().slots if cls else {}
+        slot_schema = _describe_slot_schema(slots)
 
         system = (
             f'{self.build_system_prompt()}\n\n'
@@ -345,12 +366,11 @@ class PromptEngineer:
         flow_name: str,
         flow_info: dict,
         filled_slots: dict,
-        history: list[dict],
+        history_text: str,
         scratchpad: dict,
         skill_prompt: str | None = None,
     ) -> tuple[str, list[dict]]:
         base_system = self.build_system_prompt()
-        history_text = self._format_history(history, 5)
 
         system = build_skill_system(
             base_system, flow_name, flow_info,
@@ -362,11 +382,9 @@ class PromptEngineer:
     def build_naturalize_prompt(
         self,
         raw_response: str,
-        history: list[dict],
+        history_text: str,
         block_type: str | None = None,
     ) -> tuple[str, list[dict]]:
-        history_text = self._format_history(history, 3)
-
         system = (
             f'{self.build_system_prompt()}\n\n'
             'Rewrite the given response to sound natural. '
@@ -383,20 +401,18 @@ class PromptEngineer:
         level: str,
         metadata: dict,
         observation: str | None,
-        history: list[dict],
+        history_text: str,
     ) -> str:
         return build_clarification(level, metadata, observation)
 
     def build_contemplate_prompt(
         self, user_text: str, failed_flow: str, failure_reason: str,
-        candidates: list[str], history: list[dict],
+        candidates: list[str], history_text: str,
     ) -> tuple[str, list[dict]]:
-        history_text = self._format_history(history, 5)
-
         candidate_lines = []
         for name in candidates:
-            flow = FLOW_CATALOG.get(name, {})
-            candidate_lines.append(f'- {name}: {flow.get("description", "")}')
+            cat = FLOW_CATALOG.get(name, {})
+            candidate_lines.append(f'- {name}: {cat.get("description", "")}')
         candidates_text = '\n'.join(candidate_lines)
 
         system = (
@@ -440,36 +456,23 @@ class PromptEngineer:
         }
 
     def _load_template(self, flow_name: str, intent: str) -> str:
-        domain_path = _TEMPLATE_BASE / 'blogger' / f'{flow_name}.txt'
+        domain_path = _TEMPLATE_BASE / 'analyst' / f'{flow_name}.txt'
         if domain_path.exists():
             return domain_path.read_text(encoding='utf-8')
 
-        intent_lower = intent.lower() if isinstance(intent, str) else intent.value.lower()
+        intent_lower = intent.lower()
         base_path = _TEMPLATE_BASE / 'base' / f'{intent_lower}.txt'
         if base_path.exists():
             return base_path.read_text(encoding='utf-8')
 
         return '{message}'
 
-    # ── Helpers ───────────────────────────────────────────────────────
-
-    def _format_history(self, history: list[dict], turns: int) -> str:
-        if not history:
-            return ''
-        lines = []
-        for turn in history[-turns:]:
-            role = turn.get('speaker', 'User')
-            text = turn.get('text', '')
-            lines.append(f'{role}: {text}')
-        return '\n'.join(lines)
-
 
 def _get_edge_flows_for_intent(intent: str) -> set[str]:
     edge_flows = set()
-    for name, flow in FLOW_CATALOG.items():
-        flow_intent = flow['intent'].value if hasattr(flow['intent'], 'value') else str(flow['intent'])
-        if flow_intent == intent:
-            for ef in flow.get('edge_flows', []):
+    for name, cat in FLOW_CATALOG.items():
+        if cat['intent'] == intent:
+            for ef in cat.get('edge_flows', []):
                 edge_flows.add(ef)
     return edge_flows
 
@@ -478,8 +481,6 @@ def _describe_slot_schema(slots: dict) -> str:
     if not slots:
         return 'No slots defined.'
     lines = []
-    for name, info in slots.items():
-        priority = info.get('priority', 'optional')
-        slot_type = info.get('type', 'BaseSlot')
-        lines.append(f'- {name} ({priority}): type={slot_type}')
+    for name, slot in slots.items():
+        lines.append(f'- {name} ({slot.priority}): type={type(slot).__name__}')
     return '\n'.join(lines)

@@ -8,7 +8,6 @@ from backend.components.dialogue_state import DialogueState
 from backend.components.display_frame import DisplayFrame
 
 log = logging.getLogger(__name__)
-from backend.components.flow_stack import FlowStack, FlowEntry
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
 from schemas.ontology import Intent
@@ -39,7 +38,7 @@ class RES:
             return text, frame
 
         state = self.world.current_state()
-        intent = state.intent if state else 'Converse'
+        intent = state.pred_intent if state else 'Converse'
 
         log.info('  res intent=%s  keep_going=%s  has_frame=%s',
                  intent, state.keep_going if state else False,
@@ -71,7 +70,7 @@ class RES:
 
     # ── Pre-hook ──────────────────────────────────────────────────────
 
-    def _start(self) -> list[FlowEntry]:
+    def _start(self) -> list:
         popped = self.world.flow_stack.pop_completed_and_invalid()
 
         completed = [f for f in popped if f.result is not None]
@@ -97,9 +96,11 @@ class RES:
         metadata = self.ambiguity.metadata or {}
         observation = self.ambiguity.observation
 
+        history_text = self.world.context.compile_history(look_back=3)
+
         clarification_text = self.engineer.build_clarification_prompt(
             level, metadata, observation,
-            self.world.context.compile_history(turns=3),
+            history_text,
         )
 
         self.world.context.add_turn(
@@ -110,12 +111,12 @@ class RES:
     # ── Generate ──────────────────────────────────────────────────────
 
     def _generate(self, frame: DisplayFrame, state: DialogueState | None,
-                  completed_flows: list[FlowEntry]) -> str:
+                  completed_flows: list) -> str:
         content = frame.data.get('content', '') if frame.has_content() else ''
         if not content:
             return ''
 
-        intent = state.intent if state else 'Converse'
+        intent = state.pred_intent if state else 'Converse'
         flow_name = state.flow_name if state else ''
 
         raw = self._template_fill(content, state, intent, flow_name)
@@ -131,9 +132,10 @@ class RES:
         tmpl_info = self.engineer.get_template(flow_name, intent)
         template = tmpl_info.get('template', '{message}')
 
+        active = self.world.flow_stack.get_active_flow()
         slot_summary = ''
-        if state and state.slots:
-            parts = [f'{k}: {v}' for k, v in state.slots.items()]
+        if active and active.slots:
+            parts = [f'{k}: {v}' for k, v in active.slots.items()]
             slot_summary = ', '.join(parts)
 
         try:
@@ -155,21 +157,17 @@ class RES:
         if len(raw_text) < 80:
             return raw_text
 
+        history_text = self.world.context.compile_history(look_back=3)
+
         system, messages = self.engineer.build_naturalize_prompt(
-            raw_text, self.world.context.compile_history(turns=3), block_type,
+            raw_text, history_text, block_type,
         )
 
         try:
-            response = self.engineer.call(
-                system=system,
-                messages=messages,
-                call_site='naturalize',
-                max_tokens=2048,
+            text = self.engineer.call_text(
+                system=system, messages=messages,
+                call_site='naturalize', max_tokens=2048,
             )
-            text = ''
-            for block in response.content:
-                if block.type == 'text':
-                    text += block.text
             return text.strip() if text.strip() else raw_text
         except Exception as e:
             print(f'RES naturalization error: {e}')
@@ -179,7 +177,7 @@ class RES:
 
     def _finish(self, text: str, frame: DisplayFrame):
         state = self.world.current_state()
-        intent = state.intent if state else 'Converse'
+        intent = state.pred_intent if state else 'Converse'
 
         if intent not in (Intent.INTERNAL.value, Intent.PLAN.value):
             if not text and not frame.has_content():

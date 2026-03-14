@@ -30,7 +30,7 @@ Seven components support the modules:
 **Intents**: Explore, Provide, Design, Deliver, Converse, Plan, Internal
 
 **48 flows** organized into 3 batches:
-- Batch 1 (16 flows, working): chat, next_step, feedback, status, lookup, explain, scope, persona, intent, entity, propose, compose, approve, decline, generate, onboard
+- Batch 1 (15 flows, working): chat, next_step, feedback, status, browse, explain, scope, persona, intent, entity, propose, approve, decline, generate, onboard
 - Batch 2 (16 flows, templated but stubbed): preference, endorse, review_lessons, summarize, inspect, teach, revise, revise_flow, suggest_flow, refine, confirm_export, preview, ontology, research, expand, read_spec
 - Batch 3 (16 flows, unsupported): style, dismiss, recommend, compare, log, remove, validate, report, package, finalize, redesign, recap, remember, recall, auto_validate, auto_generate
 
