@@ -294,13 +294,7 @@ class PromptEngineer:
                 if fi == Intent.INTERNAL:
                     continue
                 cls = flow_classes.get(name)
-                slots_desc = ''
-                if cls:
-                    inst = cls()
-                    slots_desc = ', '.join(
-                        f'{s} ({slot.priority})'
-                        for s, slot in inst.slots.items()
-                    )
+                slots_desc = _slots_desc(cls)
                 line = (
                     f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
                     + (f' [slots: {slots_desc}]' if slots_desc else '')
@@ -319,13 +313,7 @@ class PromptEngineer:
                 fi = cat['intent']
                 if fi == intent or name in edge_flows:
                     cls = flow_classes.get(name)
-                    slots_desc = ''
-                    if cls:
-                        inst = cls()
-                        slots_desc = ', '.join(
-                            f'{s} ({slot.priority})'
-                            for s, slot in inst.slots.items()
-                        )
+                    slots_desc = _slots_desc(cls)
                     candidate_lines.append(
                         f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
                         + (f' [slots: {slots_desc}]' if slots_desc else '')
@@ -466,6 +454,13 @@ class PromptEngineer:
             return base_path.read_text(encoding='utf-8')
 
         return '{message}'
+
+
+def _slots_desc(cls) -> str:
+    if not cls:
+        return ''
+    inst = cls()
+    return ', '.join(f'{s} ({slot.priority})' for s, slot in inst.slots.items())
 
 
 def _get_edge_flows_for_intent(intent: str) -> set[str]:

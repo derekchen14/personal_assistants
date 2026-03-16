@@ -376,9 +376,9 @@ _Output_
 '''
 
 
-def build_intent_prompt(user_text: str, history_text: str) -> str:
+def build_intent_prompt(user_text: str, convo_history: str) -> str:
     parts = [
-        f'## Conversation History\n\n{history_text}\n' if history_text else '',
+        f'## Conversation History\n\n{convo_history}\n' if convo_history else '',
         f'## Instructions\n\n{INTENT_INSTRUCTIONS}\n',
         f'## Output Format\n\n{INTENT_OUTPUT_SHAPE}\n',
         f'## Examples\n{INTENT_EXEMPLARS}\n',
@@ -388,10 +388,10 @@ def build_intent_prompt(user_text: str, history_text: str) -> str:
     return '\n'.join(p for p in parts if p)
 
 
-def build_flow_prompt(user_text: str, intent: str | None, history_text: str,
+def build_flow_prompt(user_text: str, intent: str | None, convo_history: str,
                       candidate_flows: str) -> str:
     parts = [
-        f'## Conversation History\n\n{history_text}\n' if history_text else '',
+        f'## Conversation History\n\n{convo_history}\n' if convo_history else '',
     ]
     if intent:
         parts.append(f'## Predicted Intent: {intent}\n')

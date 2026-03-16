@@ -1,16 +1,30 @@
 <script lang="ts">
     import { conversation, type Message } from '$lib/stores/conversation';
-    import { setFrame, clearFrames, showPage, topFrame, bottomFrame, displayLayout, activePage, type ActivePage } from '$lib/stores/display';
+    import { setFrame, clearFrames, showPage, topFrame, bottomFrame, displayLayout, activePage, searchQuery, activeHighlight, activePost, creatingPost, initTheme, type ActivePage } from '$lib/stores/display';
     import FlowMenu from '$lib/components/FlowMenu.svelte';
     import BlockRenderer from '$lib/components/blocks/BlockRenderer.svelte';
+    import IconMagnifyingGlass from '$lib/assets/IconMagnifyingGlass.svelte';
+    import { get } from 'svelte/store';
     import { tick, onMount } from 'svelte';
 
     let usernameInput = $state('');
     let messageInput = $state('');
     let chatContainer: HTMLElement | undefined = $state();
     let sidebarOpen = $state(false);
+    let newDraftTitle = $state('');
+
+    function focusEl(el: HTMLElement) {
+        tick().then(() => el.focus());
+    }
+
+    function handleDraftSubmit() {
+        conversation.createPost('draft', newDraftTitle.trim());
+        creatingPost.set(false);
+        newDraftTitle = '';
+    }
 
     onMount(() => {
+        initTheme();
         const saved = conversation.savedUsername();
         if (saved && !$conversation.connected) {
             conversation.connect(saved);
@@ -24,9 +38,18 @@
     }
 
     function handleSend() {
-        const text = messageInput.trim();
-        if (!text) return;
-        conversation.send(text);
+        const raw = messageInput.trim();
+        if (!raw) return;
+        const match = raw.match(/^\/([0-9A-Fa-f]{3})\s*(.*)/s);
+        const dax = match ? `{${match[1].toUpperCase()}}` : null;
+        const text = match ? match[2].trim() : raw;
+        const highlight = get(activeHighlight);
+        const post = get(activePost);
+        const payload: Record<string, string> = {};
+        if (post) payload.post = post;
+        if (highlight) payload.highlight = highlight;
+        conversation.send(text, dax, payload);
+        activeHighlight.set('');
         messageInput = '';
     }
 
@@ -119,8 +142,17 @@
                 </span>
             </div>
 
-            <!-- Right: Entities + Logout -->
+            <!-- Right: Search + Entities + Logout -->
             <div class="flex items-center gap-4">
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg)]">
+                    <IconMagnifyingGlass size={14} class="text-[var(--muted)]" />
+                    <input
+                        type="text"
+                        bind:value={$searchQuery}
+                        placeholder="Search"
+                        class="w-36 text-xs bg-transparent text-[var(--text)] outline-none placeholder:text-[var(--muted)]"
+                    />
+                </div>
                 <nav class="flex items-center gap-3 text-sm">
                     {#each [['posts', 'Posts'], ['drafts', 'Drafts'], ['notes', 'Notes']] as [page, label]}
                         <button
@@ -205,9 +237,21 @@
                 {/if}
 
                 <!-- Bottom container (CardBlock) -->
-                {#if $displayLayout === 'bottom' || $displayLayout === 'split'}
+                {#if $displayLayout === 'bottom' || $displayLayout === 'split' || $creatingPost}
                     <div class="flex flex-col grow-[2] h-0 min-h-0 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                        {#if $bottomFrame}
+                        {#if $creatingPost}
+                            <div class="flex flex-col h-full p-6 gap-3">
+                                <input
+                                    class="text-lg font-semibold bg-transparent border-none outline-none text-[var(--text)] placeholder:text-[var(--muted)] border-b border-[var(--border)] pb-2"
+                                    placeholder="Untitled"
+                                    bind:value={newDraftTitle}
+                                    onblur={handleDraftSubmit}
+                                    onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleDraftSubmit(); } else if (e.key === 'Escape') { creatingPost.set(false); newDraftTitle = ''; } }}
+                                    use:focusEl
+                                />
+                                <p class="text-sm text-[var(--muted)] italic">Press 'Enter' to save your draft, or 'Esc' to cancel.</p>
+                            </div>
+                        {:else if $bottomFrame}
                             <BlockRenderer frame={$bottomFrame} />
                         {:else}
                             <div class="flex items-center justify-center h-full text-[var(--muted)] text-sm">

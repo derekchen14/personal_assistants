@@ -5,6 +5,8 @@
     import FormBlock from './FormBlock.svelte';
     import ToastBlock from './ToastBlock.svelte';
     import ConfirmationBlock from './ConfirmationBlock.svelte';
+    import CompareBlock from './CompareBlock.svelte';
+    import GridBlock from './GridBlock.svelte';
 
     let { frame }: { frame: { type: string; data: Record<string, unknown>; show: boolean } } = $props();
 </script>
@@ -21,6 +23,10 @@
     <ToastBlock data={frame.data} />
 {:else if frame.type === 'confirmation'}
     <ConfirmationBlock data={frame.data} />
+{:else if frame.type === 'compare'}
+    <CompareBlock data={frame.data} />
+{:else if frame.type === 'grid'}
+    <GridBlock data={frame.data} />
 {:else}
     <div class="text-sm text-[var(--muted)]">
         Unknown block type: {frame.type}

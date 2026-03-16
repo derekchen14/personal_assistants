@@ -107,7 +107,7 @@ class DraftPolicy(BasePolicy):
 
         create_params = {
             'title': title,
-            'status': 'note' if post_type == 'note' else 'draft',
+            'type': post_type,
         }
         if topic:
             create_params['topic'] = topic
@@ -122,20 +122,32 @@ class DraftPolicy(BasePolicy):
                 'status': post.get('status', post_type),
                 'content': post.get('content', ''),
             }, source='create')
+        elif result.get('error_category') == 'duplicate':
+            self.ambiguity.declare('confirmation', metadata={
+                'existing_post_id': result.get('metadata', {}).get('existing_post_id'),
+                'reason': 'duplicate_file',
+            })
+            return self.build_frame('confirmation', {
+                'prompt': result.get('message', ''),
+                'confirm_label': 'Override',
+                'cancel_label': 'Keep Existing',
+            })
         else:
             return self.build_frame('default', {
-                'content': f'Created new {post_type} "{title}".',
+                'content': result.get('message', f'Could not create {post_type} "{title}".'),
             })
 
     def brainstorm_policy(self, flow, state, context, tools):
-        if not flow.slots.get('topic', None) or not flow.slots['topic'].filled:
+        if flow.slots['source'].filled or flow.slots['topic'].filled:
+            text, _ = self.llm_execute(flow, state, context, tools)
+        else:
             convo_history = context.compile_history(look_back=3)
             text = self.engineer.call(convo_history, system="Extract the topic the user wants to brainstorm about.")
             flow.fill_slots_by_label({'topic': self._parse_value(text)})
             if not flow.slots['topic'].filled:
                 self.ambiguity.declare('specific', metadata={'missing_slot': 'topic'})
                 return self.build_frame('default', {'content': self.ambiguity.ask()})
+            else:
+                text, _ = self.llm_execute(flow, state, context, tools)
 
-        text, tool_log = self.llm_execute(flow, state, context, tools)
-        block_data = self.build_block_data(flow, text, tool_log)
-        return self.build_frame('card', block_data, source='brainstorm')
+        return self.build_frame('default', {'content': text})

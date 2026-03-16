@@ -5,6 +5,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.manager import get_or_create_agent, cleanup_agent, reset_agent
 from backend.utilities.services import PostService
+from backend.components.dialogue_state import DialogueState
+
 
 chat_router = APIRouter()
 
@@ -12,14 +14,40 @@ websocket_connections: dict = {}
 queues: dict = {}
 
 
-def _validate_action_text(user_text: str) -> bool:
-    """Check that every segment in an action payload has key=value format."""
-    if not user_text:
-        return False
-    for segment in user_text.split(','):
-        if '=' not in segment:
-            return False
-    return True
+def _build_update_frames(result: dict, post_svc) -> tuple[dict, dict | None]:
+    post = result['result']
+    card_frame = {
+        'type': 'card',
+        'show': True,
+        'data': {
+            'post_id': post.get('post_id', ''),
+            'title': post.get('title', ''),
+            'status': post.get('status', ''),
+            'content': post.get('content', ''),
+        },
+        'source': 'update',
+        'panel': 'bottom',
+    }
+    all_items = post_svc.list_preview().get('result', [])
+    if post.get('status') == 'note':
+        note_items = [it for it in all_items if it.get('status') == 'note']
+        refresh_frame = {
+            'type': 'grid',
+            'show': True,
+            'data': {'items': note_items, 'source': 'welcome'},
+            'source': 'welcome',
+            'panel': 'top',
+        } if note_items else None
+    else:
+        refresh_frame = {
+            'type': 'list',
+            'show': True,
+            'data': {'title': 'Your Posts', 'items': all_items, 'source': 'welcome'},
+            'source': 'welcome',
+            'panel': 'top',
+        } if all_items else None
+    return card_frame, refresh_frame
+
 
 
 def _get_queue(username: str) -> asyncio.Queue:
@@ -50,6 +78,7 @@ async def chat(websocket: WebSocket):
         queue = _get_queue(username)
 
         post_svc = PostService()
+        sync = post_svc.sync_check()
         posts_result = post_svc.list_preview()
         post_items = posts_result.get('result', [])
 
@@ -61,8 +90,27 @@ async def chat(websocket: WebSocket):
             'panel': 'top',
         } if post_items else None
 
+        if sync['missing']:
+            titles = ', '.join(f'"{m["title"]}"' for m in sync['missing'])
+            s = 's' if len(sync['missing']) > 1 else ''
+            welcome_message = (
+                f"Hey {first_name}! Heads up — {titles} "
+                f"{'are' if s else 'is'} listed in your index but the file{s} "
+                f"can't be found on disk. You may want to restore or remove the entr{'ies' if s else 'y'}."
+            )
+        elif sync['added']:
+            titles = ', '.join(f'"{a["title"]}"' for a in sync['added'])
+            it = 'them' if len(sync['added']) > 1 else 'it'
+            welcome_message = (
+                f"Hey {first_name}! I noticed {titles} "
+                f"{'were' if len(sync['added']) > 1 else 'was'} manually added since your last session "
+                f"— I've registered {it} in your index."
+            )
+        else:
+            welcome_message = f"Hey {first_name}! What are we writing today?"
+
         welcome_response = {
-            'message': f"Hey {first_name}! What are we writing today?",
+            'message': welcome_message,
             'raw_utterance': '',
             'actions': [],
             'interaction': {'type': 'default', 'show': False, 'data': {}},
@@ -115,50 +163,9 @@ async def chat(websocket: WebSocket):
                 if select_post_id:
                     state = agent.world.current_state()
                     if not state:
-                        from backend.components.dialogue_state import DialogueState
                         state = DialogueState(agent.config)
                         agent.world.insert_state(state)
                     state.active_post = select_post_id
-                    continue
-
-                create_post_type = body.get('create_post')
-                if create_post_type:
-                    action_text = f'type={create_post_type}'
-                    if not _validate_action_text(action_text):
-                        await queue.put({'message': error_message})
-                        continue
-                    try:
-                        result = await asyncio.to_thread(
-                            agent.take_turn, action_text,
-                            [{'dax': '{05A}'}],
-                        )
-                        await queue.put(result)
-                    except Exception as turn_error:
-                        print(f'Turn error: {turn_error}\n{traceback.format_exc()}')
-                        await queue.put({'message': error_message})
-                    continue
-
-                view_post_id = body.get('view_post')
-                if view_post_id:
-                    state = agent.world.current_state()
-                    if not state:
-                        from backend.components.dialogue_state import DialogueState
-                        state = DialogueState(agent.config)
-                        agent.world.insert_state(state)
-                    state.active_post = view_post_id
-                    action_text = f'source={view_post_id}'
-                    if not _validate_action_text(action_text):
-                        await queue.put({'message': error_message})
-                        continue
-                    try:
-                        result = await asyncio.to_thread(
-                            agent.take_turn, action_text,
-                            [{'dax': '{1AD}'}],
-                        )
-                        await queue.put(result)
-                    except Exception as turn_error:
-                        print(f'Turn error: {turn_error}\n{traceback.format_exc()}')
-                        await queue.put({'message': error_message})
                     continue
 
                 delete_post_id = body.get('delete_post')
@@ -169,15 +176,16 @@ async def chat(websocket: WebSocket):
                         if result.get('status') == 'success':
                             posts_after = post_svc_d.list_preview()
                             items_after = posts_after.get('result', [])
+                            deleted_status = result['result'].get('status', '')
+                            frame_type = 'grid' if deleted_status == 'note' else 'list'
                             refresh_frame = {
-                                'type': 'list',
-                                'show': True,
-                                'data': {'title': 'Your Posts', 'items': items_after, 'source': 'welcome'},
+                                'type': frame_type, 'show': True, 'panel': 'top',
                                 'source': 'welcome',
-                                'panel': 'top',
+                                'data': {'title': 'Your Posts', 'items': items_after, 'source': 'welcome'},
                             } if items_after else None
+                            msg = '' if deleted_status == 'note' else f"Deleted \"{result['result']['title']}\"."
                             await queue.put({
-                                'message': f"Deleted \"{result['result']['title']}\".",
+                                'message': msg,
                                 'raw_utterance': '',
                                 'actions': [],
                                 'interaction': {'type': 'default', 'show': False, 'data': {}},
@@ -191,6 +199,65 @@ async def chat(websocket: WebSocket):
                         await queue.put({'message': error_message})
                     continue
 
+                create_post_type = body.get('create_post')
+                if create_post_type:
+                    title = body.get('title', '')
+                    note_body = body.get('body', '')
+                    try:
+                        post_svc_c = PostService()
+                        if create_post_type == 'note':
+                            if len(note_body.strip()) < 2:
+                                await queue.put({'message': 'Note body must be at least 2 characters.'})
+                                continue
+                            result = post_svc_c.create('', type='note', topic=note_body)
+                            success_msg = ''
+                        else:
+                            result = post_svc_c.create(title, type=create_post_type)
+                            success_msg = f'Created "{result["result"]["title"]}".' if result.get('status') == 'success' else ''
+                        if result.get('status') == 'success':
+                            all_items = post_svc_c.list_preview().get('result', [])
+                            frame_type = 'grid' if create_post_type == 'note' else 'list'
+                            refresh_frame = {
+                                'type': frame_type, 'show': True, 'panel': 'top',
+                                'source': 'welcome',
+                                'data': {'title': 'Your Posts', 'items': all_items, 'source': 'welcome'},
+                            }
+                            await queue.put({
+                                'message': '',
+                                'raw_utterance': '',
+                                'actions': [],
+                                'interaction': {'type': 'default', 'show': False, 'data': {}},
+                                'code_snippet': None,
+                                'frame': refresh_frame,
+                            })
+                            if create_post_type == 'draft':
+                                post = result['result']
+                                card_frame = {
+                                    'type': 'card', 'show': True, 'panel': 'bottom',
+                                    'source': 'create',
+                                    'data': {
+                                        'post_id': post['post_id'],
+                                        'title': post['title'],
+                                        'status': post['status'],
+                                        'content': post.get('content', ''),
+                                        'source': 'create',
+                                    },
+                                }
+                                await queue.put({
+                                    'message': success_msg,
+                                    'raw_utterance': '',
+                                    'actions': [],
+                                    'interaction': {'type': 'default', 'show': False, 'data': {}},
+                                    'code_snippet': None,
+                                    'frame': card_frame,
+                                })
+                        else:
+                            await queue.put({'message': result.get('message', error_message)})
+                    except Exception as create_error:
+                        print(f'Create error: {create_error}\n{traceback.format_exc()}')
+                        await queue.put({'message': error_message})
+                    continue
+
                 update_post_id = body.get('update_post')
                 if update_post_id:
                     updates = body.get('updates', {})
@@ -198,29 +265,8 @@ async def chat(websocket: WebSocket):
                         post_svc_u = PostService()
                         result = post_svc_u.update(update_post_id, updates)
                         if result.get('status') == 'success':
-                            post = result['result']
-                            card_frame = {
-                                'type': 'card',
-                                'show': True,
-                                'data': {
-                                    'post_id': post.get('post_id', ''),
-                                    'title': post.get('title', ''),
-                                    'status': post.get('status', ''),
-                                    'content': post.get('content', ''),
-                                },
-                                'source': 'update',
-                                'panel': 'bottom',
-                            }
-                            # Also refresh the list panel
-                            posts_after = post_svc_u.list_preview()
-                            items_after = posts_after.get('result', [])
-                            list_frame = {
-                                'type': 'list',
-                                'show': True,
-                                'data': {'title': 'Your Posts', 'items': items_after, 'source': 'welcome'},
-                                'source': 'welcome',
-                                'panel': 'top',
-                            } if items_after else None
+                            card_frame, list_frame = _build_update_frames(result, post_svc_u)
+                            is_note = result['result'].get('status') == 'note'
                             if list_frame:
                                 await queue.put({
                                     'message': '',
@@ -230,14 +276,16 @@ async def chat(websocket: WebSocket):
                                     'code_snippet': None,
                                     'frame': list_frame,
                                 })
-                            await queue.put({
-                                'message': f"Updated \"{post.get('title', '')}\".",
-                                'raw_utterance': '',
-                                'actions': [],
-                                'interaction': {'type': 'default', 'show': False, 'data': {}},
-                                'code_snippet': None,
-                                'frame': card_frame,
-                            })
+                            if not is_note:
+                                post_title = result['result'].get('title', '')
+                                await queue.put({
+                                    'message': f'Updated "{post_title}".',
+                                    'raw_utterance': '',
+                                    'actions': [],
+                                    'interaction': {'type': 'default', 'show': False, 'data': {}},
+                                    'code_snippet': None,
+                                    'frame': card_frame,
+                                })
                         else:
                             await queue.put({'message': result.get('message', error_message)})
                     except Exception as upd_error:
@@ -246,13 +294,27 @@ async def chat(websocket: WebSocket):
                     continue
 
                 user_text = body.get('text', '') or body.get('currentMessage', '')
-                user_actions = body.get('lastAction', [])
-                gold_dax = body.get('dialogueAct', None)
-
+                dax = body.get('dax')
+                payload = body.get('payload') or {}
                 try:
-                    result = await asyncio.to_thread(
-                        agent.take_turn, user_text, user_actions, gold_dax,
-                    )
+                    result = await asyncio.to_thread(agent.take_turn, user_text, dax, payload)
+                    frame = result.get('frame') or {}
+                    if frame.get('source') == 'create' and (frame.get('data') or {}).get('status') == 'note':
+                        all_items = PostService().list_preview().get('result', [])
+                        note_items = [it for it in all_items if it.get('status') == 'note']
+                        if note_items:
+                            await queue.put({
+                                'message': '',
+                                'raw_utterance': '',
+                                'actions': [],
+                                'interaction': {'type': 'default', 'show': False, 'data': {}},
+                                'code_snippet': None,
+                                'frame': {
+                                    'type': 'grid', 'show': True, 'panel': 'top',
+                                    'source': 'welcome',
+                                    'data': {'items': note_items, 'source': 'welcome'},
+                                },
+                            })
                     await queue.put(result)
                 except Exception as turn_error:
                     print(f'Turn error: {turn_error}\n{traceback.format_exc()}')

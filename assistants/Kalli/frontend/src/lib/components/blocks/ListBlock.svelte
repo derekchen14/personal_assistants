@@ -1,5 +1,6 @@
 <script lang="ts">
     import { md } from '$lib/utils/markdown';
+    import { searchQuery } from '$lib/stores/display';
 
     let { data }: { data: Record<string, unknown> } = $props();
 
@@ -19,15 +20,25 @@
         }
         return String(item);
     }
+
+    function matchesSearch(item: unknown, query: string): boolean {
+        if (!query) return true;
+        const q = query.toLowerCase();
+        return itemLabel(item).toLowerCase().includes(q);
+    }
+
+    let filteredItems = $derived(
+        items.filter((it) => matchesSearch(it, $searchQuery))
+    );
 </script>
 
 {#if title}
     <h3 class="text-sm font-medium mb-3 text-[var(--color-secondary)]">{title}</h3>
 {/if}
 
-{#if items.length > 0}
+{#if filteredItems.length > 0}
     <div class="space-y-1 text-sm">
-        {#each items as item, i}
+        {#each filteredItems as item, i}
             <div class="flex gap-2 py-1">
                 <span class="text-[var(--color-text-muted)] w-5 shrink-0 text-right">
                     {ordered ? `${i + 1}.` : '\u2022'}

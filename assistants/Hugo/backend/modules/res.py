@@ -104,7 +104,6 @@ class RES:
 
         clarification_text = self.engineer.build_clarification_prompt(
             level, metadata, observation,
-            self.world.context.compile_history(look_back=3),
         )
 
         self.world.context.add_turn(

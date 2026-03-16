@@ -170,7 +170,8 @@ class BrainstormFlow(DraftParentFlow):
     self.dax = '{29A}'
     self.goal = 'brainstorm ideas for a topic'
     self.slots = {
-      'topic': ExactSlot(),
+      'source': SourceSlot(1, entity_part='', priority='elective'),
+      'topic': ExactSlot(priority='elective'),
       'ideas': ProposalSlot(priority='optional'),
     }
     self.tools = ['brainstorm_ideas', 'search_inspiration']

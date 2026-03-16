@@ -37,21 +37,22 @@ _TASK_LABELS = {
     'skill': 'skill',
 }
 
-# (family, model) → concrete model ID
+# model tier → concrete model ID
 _MODEL_IDS = {
-    ('claude', 'haiku'):  'claude-haiku-4-5-20251001',
-    ('claude', 'sonnet'): 'claude-sonnet-4-5-20250929',
-    ('claude', 'opus'):   'claude-opus-4-5-20250918',
-    ('gemini', 'gemma'):  'gemma-3-27b-it',
-    ('gemini', 'flash'):  'gemini-2.0-flash',
-    ('gemini', 'pro'):    'gemini-2.5-pro-preview-06-05',
-    ('qwen', '7b'):       'Qwen/Qwen2.5-7B-Instruct-Turbo',
-    ('qwen', '80b'):      'Qwen/Qwen3-Next-80B-A3B-Instruct',
-    ('qwen', '235b'):     'Qwen/Qwen3-235B-A22B-Thinking-2507',
-    ('gpt', 'nano'):      'gpt-5-nano',
-    ('gpt', 'mini'):      'gpt-5-mini',
-    ('gpt', 'full'):      'gpt-5.2',
+    'haiku':  'claude-haiku-4-5-20251001',
+    'sonnet': 'claude-sonnet-4-6',
+    'opus':   'claude-opus-4-6',
+    'flash':  'gemini-3-flash-preview',
+    'pro':    'gemini-3.1-pro-preview',
+    'qwen':   'Qwen/Qwen3.5-397B-A17B',
+    'mini':   'gpt-5-mini',
+    'gpt':    'gpt-5.4',
 }
+
+_CLAUDE_MODELS = {'haiku', 'sonnet', 'opus'}
+_GEMINI_MODELS = {'flash', 'pro'}
+_QWEN_MODELS   = {'qwen'}
+_GPT_MODELS    = {'mini', 'gpt'}
 
 
 class PromptEngineer:
@@ -122,11 +123,18 @@ class PromptEngineer:
     # ── Model resolution ─────────────────────────────────────────────
 
     @staticmethod
-    def _resolve_model(family: str, model: str) -> str:
-        key = (family, model)
-        if key not in _MODEL_IDS:
-            raise ValueError(f'Unknown model: family={family!r}, model={model!r}')
-        return _MODEL_IDS[key]
+    def _resolve_model(model: str) -> str:
+        if model not in _MODEL_IDS:
+            raise ValueError(f'Unknown model: {model!r}')
+        return _MODEL_IDS[model]
+
+    @staticmethod
+    def _model_family(model: str) -> str:
+        if model in _CLAUDE_MODELS: return 'claude'
+        if model in _GEMINI_MODELS: return 'gemini'
+        if model in _QWEN_MODELS:   return 'qwen'
+        if model in _GPT_MODELS:    return 'gpt'
+        raise ValueError(f'Unknown model family for: {model!r}')
 
     def _get_temperature(self, task: str = 'skill') -> float:
         overrides = self._models.get('overrides', {})
@@ -153,7 +161,6 @@ class PromptEngineer:
         *,
         system: str | None = None,
         task: str = 'skill',
-        family: str = 'claude',
         model: str = 'sonnet',
         max_tokens: int = 1024,
     ) -> str:
@@ -165,9 +172,9 @@ class PromptEngineer:
             messages = messages[1:]
         if system is None:
             system = self.build_system_prompt()
-        model_id = self._resolve_model(family, model)
+        model_id = self._resolve_model(model)
         log.info('  task=%s  model=%s', _TASK_LABELS.get(task, task), model_id)
-        match family:
+        match self._model_family(model):
             case 'claude':
                 response = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
                 return ''.join(b.text for b in response.content if b.type == 'text')
@@ -177,8 +184,6 @@ class PromptEngineer:
                 return self._call_qwen(system, messages, model_id, max_tokens)
             case 'gpt':
                 return self._call_gpt(system, messages, model_id, max_tokens)
-            case _:
-                raise ValueError(f'Unknown family: {family!r}')
 
     def tool_call(
         self,
@@ -187,8 +192,6 @@ class PromptEngineer:
         tool_dispatcher,
         *,
         system: str | None = None,
-        task: str = 'skill',
-        max_rounds: int = 10,
         max_tokens: int = 4096,
     ) -> tuple[str, list[dict]]:
         """Agentic tool-use loop. Claude only (depends on Anthropic tool_use blocks)."""
@@ -197,11 +200,11 @@ class PromptEngineer:
             messages = messages[1:]
         if system is None:
             system = self.build_system_prompt()
-        model_id = self._resolve_model('claude', 'sonnet')
+        model_id = self._resolve_model('sonnet')
         msgs = list(messages)
         tool_log: list[dict] = []
 
-        for _ in range(max_rounds):
+        for _ in range(10):
             response = self._call_claude(system, msgs, model_id, tools=tools, max_tokens=max_tokens)
 
             text_parts = []
@@ -241,16 +244,15 @@ class PromptEngineer:
         *,
         system: str | None = None,
         task: str = 'skill',
-        family: str = 'claude',
         model: str = 'sonnet',
         max_tokens: int = 4096,
     ):
         """Token streaming. Same routing as call(), yields text chunks."""
         if system is None:
             system = self.build_system_prompt()
-        model_id = self._resolve_model(family, model)
+        model_id = self._resolve_model(model)
         log.info('  task=%s  model=%s  stream=true', _TASK_LABELS.get(task, task), model_id)
-        match family:
+        match self._model_family(model):
             case 'claude':
                 with self.client.messages.stream(
                     model=model_id, max_tokens=max_tokens,
@@ -262,7 +264,7 @@ class PromptEngineer:
                 # Fallback: non-streaming call, yield full text as single chunk
                 text = self.call(
                     messages, system=system, task=task,
-                    family=family, model=model, max_tokens=max_tokens,
+                    model=model, max_tokens=max_tokens,
                 )
                 yield text
 
@@ -488,7 +490,7 @@ class PromptEngineer:
         return build_system(self._persona)
 
     def build_nlu_prompt(
-        self, user_text: str, history_text: str,
+        self, user_text: str, convo_history: str,
     ) -> tuple[str, list[dict]]:
         system = (
             f'{self.build_system_prompt()}\n\n'
@@ -496,12 +498,12 @@ class PromptEngineer:
             'Respond with only valid JSON. No markdown fences, no explanation.'
         )
 
-        intent_prompt = build_intent_prompt(user_text, history_text)
+        intent_prompt = build_intent_prompt(user_text, convo_history)
         messages = [{'role': 'user', 'content': intent_prompt}]
         return system, messages
 
     def build_flow_prompt(
-        self, user_text: str, intent: str | None, history_text: str,
+        self, user_text: str, intent: str | None, convo_history: str,
     ) -> tuple[str, list[dict]]:
         if intent is None:
             groups: dict[str, list[str]] = {}
@@ -510,13 +512,7 @@ class PromptEngineer:
                 if fi == Intent.INTERNAL:
                     continue
                 cls = flow_classes.get(name)
-                slots_desc = ''
-                if cls:
-                    inst = cls()
-                    slots_desc = ', '.join(
-                        f'{s} ({slot.priority})'
-                        for s, slot in inst.slots.items()
-                    )
+                slots_desc = _slots_desc(cls)
                 line = (
                     f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
                     + (f' [slots: {slots_desc}]' if slots_desc else '')
@@ -535,13 +531,7 @@ class PromptEngineer:
                 fi = cat['intent']
                 if fi == intent or name in edge_flows:
                     cls = flow_classes.get(name)
-                    slots_desc = ''
-                    if cls:
-                        inst = cls()
-                        slots_desc = ', '.join(
-                            f'{s} ({slot.priority})'
-                            for s, slot in inst.slots.items()
-                        )
+                    slots_desc = _slots_desc(cls)
                     candidate_lines.append(
                         f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
                         + (f' [slots: {slots_desc}]' if slots_desc else '')
@@ -554,26 +544,17 @@ class PromptEngineer:
             'Respond with only valid JSON. No markdown fences.'
         )
 
-        flow_prompt = build_flow_prompt(user_text, intent, history_text, candidates)
+        flow_prompt = build_flow_prompt(user_text, intent, convo_history, candidates)
         messages = [{'role': 'user', 'content': flow_prompt}]
         return system, messages
 
-    def build_slot_filling_prompt(
-        self, user_text: str, flow_name: str, history_text: str,
-    ) -> tuple[str, list[dict]]:
-        cls = flow_classes.get(flow_name)
-        slots = cls().slots if cls else {}
-        slot_schema = _describe_slot_schema(slots)
-
-        system = (
-            f'{self.build_system_prompt()}\n\n'
-            'You are a slot extraction engine. '
-            'Respond with only valid JSON.'
+    def build_slot_fill_prompt(self, flow, convo_history:str) -> tuple[str, list[dict]]:
+        slot_schema = _describe_slot_schema(flow.slots)
+        system = (f'{self.build_system_prompt()}\n\n'
+            'You are a slot extraction engine. Respond with only valid JSON.'
         )
 
-        prompt = build_slot_filling_prompt(
-            user_text, flow_name, slot_schema, history_text,
-        )
+        prompt = build_slot_filling_prompt(flow.name(), slot_schema, convo_history)
         messages = [{'role': 'user', 'content': prompt}]
         return system, messages
 
@@ -593,7 +574,7 @@ class PromptEngineer:
     def build_naturalize_prompt(
         self,
         raw_response: str,
-        history_text: str,
+        convo_history: str,
         block_type: str | None = None,
     ) -> tuple[str, list[dict]]:
         system = (
@@ -603,22 +584,18 @@ class PromptEngineer:
             'Respond with ONLY the rewritten text.'
         )
 
-        prompt = build_naturalize_prompt(raw_response, history_text, block_type)
+        prompt = build_naturalize_prompt(raw_response, convo_history, block_type)
         messages = [{'role': 'user', 'content': prompt}]
         return system, messages
 
     def build_clarification_prompt(
-        self,
-        level: str,
-        metadata: dict,
-        observation: str | None,
-        history_text: str,
+        self, level: str, metadata: dict, observation: str | None,
     ) -> str:
         return build_clarification(level, metadata, observation)
 
     def build_contemplate_prompt(
         self, user_text: str, failed_flow: str, failure_reason: str,
-        candidates: list[str], history_text: str,
+        candidates: list[str], convo_history: str,
     ) -> tuple[str, list[dict]]:
         candidate_lines = []
         for name in candidates:
@@ -634,7 +611,7 @@ class PromptEngineer:
 
         prompt = build_contemplate_prompt(
             user_text, failed_flow, failure_reason,
-            candidates_text, history_text,
+            candidates_text, convo_history,
         )
         messages = [{'role': 'user', 'content': prompt}]
         return system, messages
@@ -677,6 +654,13 @@ class PromptEngineer:
             return base_path.read_text(encoding='utf-8')
 
         return '{message}'
+
+
+def _slots_desc(cls) -> str:
+    if not cls:
+        return ''
+    inst = cls()
+    return ', '.join(f'{s} ({slot.priority})' for s, slot in inst.slots.items())
 
 
 def _get_edge_flows_for_intent(intent: str) -> set[str]:

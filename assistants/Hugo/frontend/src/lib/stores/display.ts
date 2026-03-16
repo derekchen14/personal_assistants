@@ -1,4 +1,21 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
+
+export const theme = writable<'light' | 'dark'>('light');
+
+export function initTheme() {
+    const saved = localStorage.getItem('hugo-theme') as 'light' | 'dark' | null;
+    const value = saved || 'light';
+    theme.set(value);
+    document.documentElement.dataset.theme = value;
+}
+
+export function toggleTheme() {
+    const current = get(theme);
+    const next = current === 'light' ? 'dark' : 'light';
+    theme.set(next);
+    localStorage.setItem('hugo-theme', next);
+    document.documentElement.dataset.theme = next;
+}
 
 export interface FrameData {
     type: string;
@@ -10,12 +27,19 @@ export interface FrameData {
 }
 
 export type DisplayLayout = 'top' | 'split' | 'bottom';
-export type ActivePage = 'posts' | 'drafts' | 'notes';
+export type ActivePage = 'posts' | 'drafts' | 'notes' | 'tags';
 
 export const activeFrame = writable<FrameData | null>(null);
 export const topFrame = writable<FrameData | null>(null);
 export const bottomFrame = writable<FrameData | null>(null);
 export const activePage = writable<ActivePage>('posts');
+export const activeTag = writable<string>('');
+export const searchQuery = writable('');
+export const activeHighlight = writable<string>('');
+export const creatingPost = writable(false);
+export const activePost = writable<string>('');
+
+const _prevPage = writable<ActivePage>('posts');
 
 const _expanded = writable(false);
 const _listExpanded = writable(false);
@@ -40,8 +64,12 @@ export function clearFrames() {
 }
 
 export function setFrame(frame: FrameData) {
-    console.log('[display] setFrame type=%s panel=%s show=%s', frame.type, frame.panel, frame.show);
+    if (frame.type === 'card' && (frame.data as Record<string, unknown>)?.status === 'note') return;
     activeFrame.set(frame);
+    const data = frame.data as Record<string, unknown>;
+    if (frame.source === 'find' && data?.page) {
+        showPage(data.page as ActivePage);
+    }
     const panel = frame.panel || 'bottom';
     if (panel === 'top') {
         topFrame.set(frame);
@@ -53,10 +81,23 @@ export function setFrame(frame: FrameData) {
 export function showPage(page: ActivePage) {
     activePage.set(page);
     _expanded.set(false);
+    const frameType = page === 'notes' ? 'grid' : 'list';
     topFrame.update((current) => {
-        if (current) return current;
-        return { type: 'list', show: true, data: { title: 'Your Posts', items: [], source: 'welcome' }, source: 'welcome', panel: 'top' };
+        if (current) return { ...current, type: frameType };
+        return { type: frameType, show: true, data: { items: [], source: 'welcome' }, source: 'welcome', panel: 'top' };
     });
+}
+
+export function showTagPage(tag: string) {
+    _prevPage.set(get(activePage));
+    activeTag.set(tag);
+    activePage.set('tags');
+    _expanded.set(false);
+}
+
+export function goBack() {
+    activePage.set(get(_prevPage));
+    activeTag.set('');
 }
 
 export function expandPost() {

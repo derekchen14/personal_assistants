@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { WebSocketManager } from '$lib/utils/websocket';
+import { activePost } from '$lib/stores/display';
 
 export interface Message {
     id: string;
@@ -92,7 +93,7 @@ function createConversationStore() {
             return getCookie('hugo_username');
         },
 
-        send(text: string) {
+        send(text: string, dax: string | null = null, payload: Record<string, string> = {}) {
             if (!ws?.connected || !text.trim()) return;
 
             const msg: Message = {
@@ -108,24 +109,35 @@ function createConversationStore() {
                 typing: true,
             }));
 
-            ws.send({ text: text.trim() });
+            const body: Record<string, unknown> = { text: text.trim() };
+            if (dax) body.dax = dax;
+            if (Object.keys(payload).length) body.payload = payload;
+            ws.send(body);
+        },
+
+        action(description: string, dax: string, payload: Record<string, string> = {}) {
+            const body: Record<string, unknown> = { text: `<action>${description}</action>`, dax };
+            if (Object.keys(payload).length) body.payload = payload;
+            ws!.send(body);
         },
 
         selectPost(postId: string) {
             if (!ws?.connected) return;
+            activePost.set(postId);
             ws.send({ select_post: postId });
         },
 
         viewPost(postId: string) {
-            if (!ws?.connected) return;
-            update((s) => ({ ...s, typing: true }));
-            ws.send({ view_post: postId });
+            activePost.set(postId);
+            this.action(`view post ${postId}`, '{1AD}', { source: postId });
         },
 
-        createPost(type: 'draft' | 'note') {
+        createPost(type: 'draft' | 'note', title = '', body = '') {
             if (!ws?.connected) return;
-            update((s) => ({ ...s, typing: true }));
-            ws.send({ create_post: type });
+            const msg: Record<string, unknown> = { create_post: type };
+            if (title) msg.title = title;
+            if (body) msg.body = body;
+            ws.send(msg);
         },
 
         deletePost(postId: string) {

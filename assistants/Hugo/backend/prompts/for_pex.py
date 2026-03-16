@@ -37,10 +37,10 @@ def build_skill_system(base_system: str, flow,
     return ''.join(parts)
 
 
-def build_skill_messages(flow_name: str, history_text: str) -> list[dict]:
+def build_skill_messages(flow_name: str, convo_history: str) -> list[dict]:
     content = ''
-    if history_text:
-        content += f'Recent conversation:\n{history_text}\n\n'
+    if convo_history:
+        content += f'Recent conversation:\n{convo_history}\n\n'
     content += (
         f'Execute the "{flow_name}" flow using the available tools. '
         f'When done, provide a clear summary of what you accomplished.'

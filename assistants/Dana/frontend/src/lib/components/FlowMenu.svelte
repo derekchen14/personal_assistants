@@ -1,7 +1,10 @@
 <script lang="ts">
     import { FLOW_MENU } from '$lib/config/flows';
+    import { theme, toggleTheme } from '$lib/stores/display';
     import IconChevronDown from '$lib/assets/IconChevronDown.svelte';
     import IconTrash from '$lib/assets/IconTrash.svelte';
+    import IconSun from '$lib/assets/IconSun.svelte';
+    import IconMoon from '$lib/assets/IconMoon.svelte';
 
     let { onselect, onreset, open = $bindable(false) }: {
         onselect: (dax: string) => void;
@@ -68,6 +71,19 @@
             {/each}
 
             <hr class="my-1 border-[var(--border)]" />
+
+            <button
+                onclick={toggleTheme}
+                class="w-full flex items-center gap-2 px-4 py-2 text-sm text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--hover)] transition-colors"
+            >
+                {#if $theme === 'light'}
+                    <IconMoon size={14} />
+                    <span>Dark Mode</span>
+                {:else}
+                    <IconSun size={14} />
+                    <span>Light Mode</span>
+                {/if}
+            </button>
 
             <button
                 onclick={resetChat}

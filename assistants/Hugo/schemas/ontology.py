@@ -92,7 +92,7 @@ FLOW_CATALOG = {
         'dax': '{18A}',
         'intent': Intent.RESEARCH,
         'description': 'Compare style or structure across two or more posts — sentence length, paragraph density, heading patterns, vocabulary, and tonal consistency',
-        'output': 'card',
+        'output': 'compare',
         'edge_flows': ['find', 'audit'],
         'policy_path': 'policies.research.compare',
     },

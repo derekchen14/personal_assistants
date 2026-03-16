@@ -3,9 +3,11 @@
 Historically, this role was called dialogue state tracking. In this architecture, the tracking is split: NLU owns detection and routing, while the [Dialogue State](../components/dialogue_state.md) component owns storage and belief tracking. NLU routes user requests toward up to 64 flows per domain.
 
 **Module principle**: NLU processes information and produces a new DialogueState per new flow detected (Note: when the detected flow is the same as the previous flow, the existing state can simply be carried over). A new state is created and inserted into World for each new flow; carryover reuses the existing state on continuation.
-  - React function: a fast instinctual response without hestitation; largely in cases where there are user actions, and the confidence score is strictly greater than 0.95
+  - React function: a fast instinctual response without hesitation; used for action turns where the DAX is already known (confidence is strictly greater than 0.95). Skips Steps 1–2 but still runs slot-filling.
   - Think function: a standard response that can handle ambiguity
-  - Contemplate function: a slower more deliberate response for thinking deeper; ususally gets called when PEX encounters ambiguity, rather than in direct response to a user
+  - Contemplate function: a slower more deliberate response for thinking deeper; usually gets called when PEX encounters ambiguity, rather than in direct response to a user
+
+**Turn type invariant**: Every turn has an utterance. Utterance turns carry the user's typed message. Action turns (button clicks, menu selections) carry auto-generated text in the form `<action>description of the action</action>`. This preserves a complete, parseable conversation history. Turn type is detected from the `<action>` prefix — there is no separate action parameter. A turn also optionally carries a `dax` (bypasses Steps 1–2) and a `payload` dict (pre-fills slots before any LLM call).
 
 ## Think Function
 
@@ -26,7 +28,7 @@ Specific checks:
 2. **Min length**: 2 characters after whitespace trimming (allows "ok", "no"; rejects single characters)
 3. **Max length**: 1024 tokens
 4. **Exact repeat**: Reject if identical to the previous user utterance
-5. **Known command shortcuts (Tier 0)**: Regex-based rules that bypass NLU entirely — map directly to the target flow with score 1.0. Also supports **dev mode** shortcuts for debugging (e.g., forcing a specific dax). Fast, accurate, but limited in scope.
+5. **Known command shortcuts (Tier 0)**: Regex-based rules that bypass NLU entirely — map directly to the target flow with score 1.0. Fast, accurate, but limited in scope. Dev mode (forcing a specific dax) is handled by the frontend, which strips the `/DAX` prefix and sets the `dax` field explicitly — the backend never sees raw slash commands.
 6. **System-reserved keywords / special tokens**: Reject to prevent prompt injection
 7. **Unsupported language**: Reject via basic heuristic rules
 
@@ -74,9 +76,12 @@ If the detected flow is not on the stack (or only exists in Completed/Invalid st
 
 Runs only for **domain-specific intents** (Read, Prepare, Transform, Schedule). Converse and Plan skip this step.
 
-- Single model call (Sonnet), full conversation context from Context Coordinator
-- Extracts slot values for the detected flow's slot schema
-- Ambiguity can be declared at any point if a required slot cannot be resolved
+Slot-filling is two-phase:
+
+1. **Payload phase**: Pre-filled grounding context from the turn's `payload` dict is mapped directly into the flow's slots before any LLM call. Entity fields (`highlight→note`, `post→post`, `section→sec`, `channel→chl`) are merged into a single SourceSlot entity. The payload is consumed here and never stored on DialogueState.
+2. **LLM phase**: If required or elective slots are still unfilled after the payload phase, a single Sonnet call extracts remaining slot values from the conversation history. Skipped entirely if the payload phase already satisfies all required slots.
+
+Ambiguity can be declared at any point if a required slot cannot be resolved.
 
 Plan flows are composed of other selectable flows and enable interactive multi-turn planning (similar to Claude Code's plan mode). Plan flows can technically nest other Plan flows for extra complexity, but this should be avoided.
 
@@ -107,4 +112,4 @@ Re-routes when the initial detection fails. Called by the Agent after a flow enc
 
 Unlike user utterances, **user actions** have no uncertainty, so we can act on them with full confidence. We still want to document the intents and flows, so we go through a lightweight version called the 'react' function.
 
-React does not require any prompts, and simply process the user action into the dialogue state. 
+React skips Steps 1–2 (intent prediction and flow detection) since the DAX is already known. It still runs slot-filling (Step 3): the payload typically provides the grounding context, and an LLM slot-fill call runs only if required slots remain unfilled after the payload phase.

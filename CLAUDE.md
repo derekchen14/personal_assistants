@@ -24,14 +24,29 @@ Follow these rules to avoid permission denials:
 
 ## Code style
 
-1. **Pass in fewer parameters whenever possible:**
-   - Functions already have defaults — when not deviating from the default, don't pass the param.
-   - Certain objects (e.g., `flow`, `state`, `frame`) have lots of helpful attributes, so passing the single object means you don't have to pass so many parameters.
-   - Any given function should usually have 4 or fewer parameters and only 5 max (not including `self`).
-   - Having fewer parameters often means you can keep a function call on a single line, rather than breaking it across multiple lines.
-
-2. **Consistent naming:**
+1. **Consistent naming:**
    - The output of `context.compile_history()` is `convo_history`. Not `history`, `history_text`, or `utterances`.
    - Unless distinguishing between `curr_state` and `prev_state`, use `state` for the dialogue state. Not `dialog_state`, `dialogue_state`, or `convo_state`.
    - Variable names should aim to be the same across all three modules (NLU, PEX, and RES) whenever possible.
 
+2. **Short function signatures:**
+   - Pass in fewer parameters whenever possible:
+      - Functions already have defaults — when not deviating from the default, don't pass the param.
+      - Certain objects (e.g., `flow`, `state`, `frame`) have lots of helpful attributes, so passing the single object means you don't have to pass so many parameters.
+      - Having fewer parameters often means you can keep a function call on a single line, rather than breaking it across multiple lines.
+   - Preferred style is to trim the spaces within each parameter:
+      - Good: `take_turn(self, text:str, dax:str|None=None, payload:dict|None=None)`
+      - Bad: `take_turn(self, text: str, dax: str | None = None, payload: dict | None = None)`
+   - Parameter limits:
+      - Any given function should usually have 4 or fewer parameters and only 5 max (not including `self`).
+      - If a function needs more than 5 parameters, it's a sign that the function is doing too much and should be refactored.
+   
+3. **Maximum nesting depth of 6 tabs (24 spaces).** 
+   Nesting up to 6 tabs is allowed, but should be rare. When code exceeds this, fix it by:
+   - Removing extraneous safety checks that guard against scenarios that can't occur in this codebase.
+   - Extracting the deeply nested logic into a module-level helper function.
+   - Simplifying another part of the code that contributes unnecessary nesting.
+
+## Front-end Design
+
+1. Use native Tailwind CSS classes instead of creating custom CSS classes whenever possible.

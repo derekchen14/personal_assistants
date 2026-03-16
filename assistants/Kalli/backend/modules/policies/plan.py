@@ -33,10 +33,11 @@ class PlanPolicy:
         self.flow_stack = components['flow_stack']
         self._get_tools_fn = components['get_tools']
 
-    def execute(self, flow_name: str, flow_info: dict,
-                state: 'DialogueState', context: 'ContextCoordinator',
+    def execute(self, flow_info: dict, state: 'DialogueState',
+                context: 'ContextCoordinator',
                 filled_slots: dict, tool_dispatcher) -> 'DisplayFrame':
         from backend.components.display_frame import DisplayFrame
+        flow_name = flow_info['name']
 
         if flow_name in _BATCH_2:
             frame = DisplayFrame(self.config)
@@ -50,10 +51,10 @@ class PlanPolicy:
         structured_plan = state.structured_plan
 
         if not structured_plan:
-            return self._generate_plan(flow_name, flow_info, state, context, filled_slots, tool_dispatcher)
+            return self._generate_plan(flow_info, state, context, filled_slots, tool_dispatcher)
         if not state.has_plan:
-            return self._handle_approval(flow_name, flow_info, state, context, filled_slots, tool_dispatcher)
-        return self._verify_and_continue(flow_name, flow_info, state, context, filled_slots, tool_dispatcher)
+            return self._handle_approval(flow_info, state, context, filled_slots, tool_dispatcher)
+        return self._verify_and_continue(flow_info, state, context, filled_slots, tool_dispatcher)
 
     # ── Onboard (auto-approve) ───────────────────────────────────────
 
@@ -62,7 +63,7 @@ class PlanPolicy:
 
         structured_plan = state.structured_plan
         if structured_plan and state.has_plan:
-            return self._verify_and_continue('onboard', flow_info, state, context, filled_slots, tool_dispatcher)
+            return self._verify_and_continue(flow_info, state, context, filled_slots, tool_dispatcher)
 
         skill_prompt = self._load_skill_template('onboard')
         system, messages = self.engineer.build_skill_prompt(
@@ -107,8 +108,9 @@ class PlanPolicy:
 
     # ── Mode A: Generate plan ────────────────────────────────────────
 
-    def _generate_plan(self, flow_name, flow_info, state, context, filled_slots, tool_dispatcher):
+    def _generate_plan(self, flow_info, state, context, filled_slots, tool_dispatcher):
         from backend.components.display_frame import DisplayFrame
+        flow_name = flow_info['name']
 
         skill_prompt = self._load_skill_template(flow_name)
         system, messages = self.engineer.build_skill_prompt(
@@ -117,7 +119,7 @@ class PlanPolicy:
             self.memory.read_scratchpad(),
             skill_prompt=skill_prompt,
         )
-        tools = self._get_tools(flow_name, flow_info)
+        tools = self._get_tools(flow_info)
 
         text, tool_log = self.engineer.call_with_tools(
             system, messages, tools, tool_dispatcher, call_site='skill',
@@ -139,12 +141,12 @@ class PlanPolicy:
 
     # ── Mode B: Handle approval ──────────────────────────────────────
 
-    def _handle_approval(self, flow_name, flow_info, state, context, filled_slots, tool_dispatcher):
+    def _handle_approval(self, flow_info, state, context, filled_slots, tool_dispatcher):
         user_text = context.last_user_text or ''
 
         if not _APPROVE_PATTERN.match(user_text.strip()):
             state.structured_plan = {}
-            return self._generate_plan(flow_name, flow_info, state, context, filled_slots, tool_dispatcher)
+            return self._generate_plan(flow_info, state, context, filled_slots, tool_dispatcher)
 
         plan_flow = self.flow_stack.get_active_flow()
         plan_id = plan_flow.flow_id if plan_flow else None
@@ -153,6 +155,7 @@ class PlanPolicy:
 
         state.update_flags(has_plan=True, keep_going=True)
 
+        flow_name = flow_info['name']
         from backend.components.display_frame import DisplayFrame
         frame = DisplayFrame(self.config)
         frame.set_frame('default', {
@@ -163,8 +166,9 @@ class PlanPolicy:
 
     # ── Mode C: Verify and continue ──────────────────────────────────
 
-    def _verify_and_continue(self, flow_name, flow_info, state, context, filled_slots, tool_dispatcher):
+    def _verify_and_continue(self, flow_info, state, context, filled_slots, tool_dispatcher):
         from backend.components.display_frame import DisplayFrame
+        flow_name = flow_info['name']
 
         structured_plan = state.structured_plan
         sub_flows = structured_plan.get('sub_flows', [])
@@ -273,5 +277,5 @@ class PlanPolicy:
             return path.read_text(encoding='utf-8')
         return None
 
-    def _get_tools(self, flow_name: str, flow_info: dict) -> list[dict]:
-        return self._get_tools_fn(flow_name, flow_info)
+    def _get_tools(self, flow_info: dict) -> list[dict]:
+        return self._get_tools_fn(flow_info)

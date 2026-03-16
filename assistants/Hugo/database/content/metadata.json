@@ -2,35 +2,25 @@
   "entries": [
     {
       "post_id": "ca769e6f",
-      "title": "Tips to Maximizing Daily Energy",
+      "title": "",
       "status": "note",
       "category": "health",
-      "tags": [
-        "health",
-        "productivity"
-      ],
-      "color": "",
       "created_at": "2026-03-12T05:47:32.627483+00:00",
-      "updated_at": "2026-03-12T05:47:32.627483+00:00",
-      "preview": "A running list of things that actually work for maintaining energy throughout the day, based on years of experimentation.",
-      "word_count": 284,
-      "filename": "notes/energy.md"
+      "updated_at": "2026-03-16T06:38:57.475027+00:00",
+      "preview": "Can directly edit it so the things will just persists A running list of things that actually work for maintaining energy throughout the day, based on years of experimentation.",
+      "word_count": 294,
+      "filename": "notes/tips-to-maximizing-energy.md"
     },
     {
       "post_id": "e393b1dc",
-      "title": "My Favorite Cookies",
+      "title": "",
       "status": "note",
       "category": "food",
-      "tags": [
-        "food",
-        "baking"
-      ],
-      "color": "",
       "created_at": "2026-03-12T05:47:32.627380+00:00",
-      "updated_at": "2026-03-12T05:47:32.627380+00:00",
-      "preview": "Here are my favorite cookies, ranked by how likely I am to eat the entire batch in one sitting.",
-      "word_count": 174,
-      "filename": "notes/cookies.md"
+      "updated_at": "2026-03-16T06:46:43.682499+00:00",
+      "preview": "Here are all of them\nadnd then I check afgain\n \n *  Levain-Style Chocolate Chip\n * Tahini Chocolate Chunk\n * Peanut Butter Blossoms\n * Snickerdoodles \n * Shortbread",
+      "word_count": 30,
+      "filename": "notes/my-favorite-cookies.md"
     },
     {
       "post_id": "dec2dc43",
@@ -137,22 +127,6 @@
       "filename": "drafts/components-of-dial-sys.md"
     },
     {
-      "post_id": "5eb5f7bc",
-      "title": "Tech Stuff example",
-      "status": "draft",
-      "category": "Test",
-      "tags": [
-        "Test",
-        "Markdown"
-      ],
-      "color": "",
-      "created_at": "2026-03-12T05:47:32.624633+00:00",
-      "updated_at": "2026-03-12T05:47:32.624633+00:00",
-      "preview": "Because if you put some code in your blog, you would at least make it:",
-      "word_count": 686,
-      "filename": "drafts/code-example.md"
-    },
-    {
       "post_id": "2091aafc",
       "title": "Ambiguity is the Bottleneck",
       "status": "published",
@@ -160,11 +134,12 @@
       "tags": [
         "ai",
         "dialogue",
-        "startups"
+        "startups",
+        "ambiguity"
       ],
       "color": "green",
       "created_at": "2025-08-07T00:00:00+00:00",
-      "updated_at": "2025-08-07T00:00:00+00:00",
+      "updated_at": "2026-03-16T07:30:58.451245+00:00",
       "preview": "The prevailing trend on social media is that AGI is right around the corner, but cracks begin to appear as soon as we consider the type of progress we have made and just how far we have to go to create something useful for [most people](https://derekchen14.substack.com/p/agi-for-the-rest-of-us)....",
       "word_count": 2661,
       "filename": "posts/ambiguity-is-the-bottleneck.md"
@@ -379,10 +354,12 @@
       "title": "Measuring Uncertainty",
       "status": "published",
       "category": null,
-      "tags": [],
+      "tags": [
+        "ambiguity"
+      ],
       "color": "",
       "created_at": "2020-07-29T20:06:00+00:00",
-      "updated_at": "2020-07-29T20:06:00+00:00",
+      "updated_at": "2026-03-16T07:31:27.878850+00:00",
       "preview": "Compared to typical goal-oriented dialogue systems, interactive dialogue agents not only aim to solve the task at hand, but also engage with the user by asking questions. &nbsp;Questions can be used to push the conversation forward or to spark some new ideas, but for now we will focus on the use of...",
       "word_count": 1810,
       "filename": "posts/measuring-uncertainty.md"
@@ -449,13 +426,12 @@
       "status": "draft",
       "category": "Test",
       "tags": [
-        "Test",
         "Color",
         "Markdown"
       ],
       "color": "brown",
       "created_at": "2019-05-18T00:00:00+00:00",
-      "updated_at": "2019-05-18T00:00:00+00:00",
+      "updated_at": "2026-03-16T07:36:28.565183+00:00",
       "preview": "This is an idea that came from [xukimseven/HardCandy-Jekyll](https://github.com/xukimseven/HardCandy-Jekyll) \nlooking at this cheerful and colorful them, I wanted to enable something similar for mine.",
       "word_count": 130,
       "filename": "drafts/color-post.md"
@@ -532,7 +508,7 @@
     },
     {
       "post_id": "adf3e867",
-      "title": "7) Automated Evaluation: Handling uncertainty and ambiguity in dialogue",
+      "title": "Automated Evaluation: Handling uncertainty",
       "status": "published",
       "category": null,
       "tags": [],
@@ -541,7 +517,7 @@
       "updated_at": "2018-10-08T15:29:45+00:00",
       "preview": "Problem: Training function is imprecise (i.e. BLEU score)",
       "word_count": 238,
-      "filename": "posts/7-automated-evaluation-handling-uncertainty-and-ambiguity-in-dialogue.md"
+      "filename": "posts/automated-evaluation-handling-uncertainty.md"
     },
     {
       "post_id": "cb367626",
@@ -970,166 +946,100 @@
       "filename": "drafts/markdown-and-html.md"
     },
     {
-      "post_id": "4f0d913e",
-      "title": "What's your title",
-      "status": "draft",
-      "category": "Test",
-      "tags": [
-        "Test",
-        "Lorem"
-      ],
-      "color": "",
-      "created_at": "2014-11-27T00:00:00+00:00",
-      "updated_at": "2014-11-27T00:00:00+00:00",
-      "preview": "This is an example of a post which includes a feature image that has a\ntext, where you don't want to redisplay the title.\nMind your image size in order for the text to be displayed where you want it to.\nThe only limit is your imagination.",
-      "word_count": 137,
-      "filename": "drafts/whats-your-title.md"
-    },
-    {
-      "post_id": "70f6ec21",
-      "title": "The Real Lorem Ipsum",
-      "status": "draft",
-      "category": "Lorem",
-      "tags": [
-        "Lorem",
-        "Color"
-      ],
-      "color": "turquoise",
-      "created_at": "2014-11-26T00:00:00+00:00",
-      "updated_at": "2014-11-26T00:00:00+00:00",
-      "preview": "from _\"de Finibus Bonorum et Malorum\"_ written by Cicero in 45 BC.\n \nFind out more on [lipsum.com](https://www.lipsum.com/). And if you like colors, check out the [http color trends](https://www.w3schools.com/colors/colors_trends.asp) from w3schools.",
-      "word_count": 720,
-      "filename": "drafts/default-template.md"
-    },
-    {
       "post_id": "11be3b39",
-      "title": "Keywords for SEO",
+      "title": "",
       "status": "note",
       "category": null,
-      "tags": [],
-      "color": "",
       "created_at": "2026-03-12T23:24:14.299646+00:00",
-      "updated_at": "2026-03-12T23:24:14.299646+00:00",
-      "preview": "",
-      "word_count": 0,
+      "updated_at": "2026-03-16T06:35:59.555365+00:00",
+      "preview": "* operate robustly in the real world \n* calibrated confidence",
+      "word_count": 14,
       "filename": "notes/keywords-for-seo.md"
     },
     {
-      "post_id": "86a02402",
-      "title": "Fine-Tuning LLMs for Production",
+      "post_id": "17be00f6",
+      "title": "Collapse On Ambiguity",
       "status": "draft",
       "category": null,
       "tags": [],
       "color": "",
-      "created_at": "2026-03-13T06:34:40.608689+00:00",
-      "updated_at": "2026-03-13T06:34:40.608689+00:00",
-      "preview": "",
-      "word_count": 0,
-      "filename": "drafts/fine-tuning-llms-for-production.md"
+      "created_at": "2026-03-14T17:31:04.652323+00:00",
+      "updated_at": "2026-03-16T05:24:47.681297+00:00",
+      "preview": "Imagine a user says: *\"Can you check on that last post?\"*",
+      "word_count": 1609,
+      "filename": "drafts/collapse-on-ambiguity.md"
     },
     {
-      "post_id": "b85c7052",
-      "title": "Fine-Tuning LLMs for Production",
-      "status": "draft",
-      "category": null,
-      "tags": [],
-      "color": "",
-      "created_at": "2026-03-13T06:37:39.595631+00:00",
-      "updated_at": "2026-03-13T06:37:39.595631+00:00",
-      "preview": "",
-      "word_count": 0,
-      "filename": "drafts/fine-tuning-llms-for-production.md"
-    },
-    {
-      "post_id": "7dbe1494",
-      "title": "Fine-Tuning LLMs for Production",
-      "status": "draft",
-      "category": null,
-      "tags": [],
-      "color": "",
-      "created_at": "2026-03-13T06:43:39.127702+00:00",
-      "updated_at": "2026-03-13T06:43:39.127702+00:00",
-      "preview": "",
-      "word_count": 0,
-      "filename": "drafts/fine-tuning-llms-for-production.md"
-    },
-    {
-      "post_id": "9db556f8",
-      "title": "Fine-Tuning LLMs for Production",
-      "status": "draft",
-      "category": null,
-      "tags": [],
-      "color": "",
-      "created_at": "2026-03-13T06:48:17.523227+00:00",
-      "updated_at": "2026-03-13T06:48:17.523227+00:00",
-      "preview": "",
-      "word_count": 0,
-      "filename": "drafts/fine-tuning-llms-for-production.md"
-    },
-    {
-      "post_id": "e6c272e3",
-      "title": "Topics to Write about",
+      "post_id": "d7d9fc20",
+      "title": "",
       "status": "note",
       "category": null,
+      "created_at": "2026-03-16T05:16:52.678325+00:00",
+      "updated_at": "2026-03-16T06:36:22.744455+00:00",
+      "preview": "Mission Peak\nEl Capitan",
+      "word_count": 8,
+      "filename": "notes/places-to-hike.md"
+    },
+    {
+      "post_id": "1f1c4fe2",
+      "title": "",
+      "status": "note",
+      "category": null,
+      "created_at": "2026-03-16T06:46:59.871649+00:00",
+      "updated_at": "2026-03-16T06:46:59.871649+00:00",
+      "preview": "",
+      "word_count": 8,
+      "filename": "notes/this-is-pretty-cool.md"
+    },
+    {
+      "post_id": "c9ce68bc",
+      "title": "",
+      "status": "note",
+      "category": null,
+      "created_at": "2026-03-16T06:54:50.486774+00:00",
+      "updated_at": "2026-03-16T06:54:50.486774+00:00",
+      "preview": "We will try this one more time with gusto",
+      "word_count": 9,
+      "filename": "notes/we-will-try-this.md"
+    },
+    {
+      "post_id": "4211a721",
+      "title": "Really Compelling",
+      "status": "draft",
+      "category": null,
       "tags": [],
       "color": "",
-      "created_at": "2026-03-13T06:53:11.028287+00:00",
-      "updated_at": "2026-03-13T16:10:22.743596+00:00",
-      "preview": "Definitions, use cases, comparisons, FAQs, technical explanations",
+      "created_at": "2026-03-16T07:16:52.993548+00:00",
+      "updated_at": "2026-03-16T07:17:01.842586+00:00",
+      "preview": "AI in healthcare Ok, let's do it!",
       "word_count": 7,
-      "filename": "notes/ideas-for-the-dialogue-agents-series.md"
+      "filename": "drafts/really-compelling.md"
     },
     {
-      "post_id": "6112e1b5",
-      "title": "Fine-Tuning LLMs for Production",
+      "post_id": "80734854",
+      "title": "Start Going Yes",
       "status": "draft",
       "category": null,
       "tags": [],
       "color": "",
-      "created_at": "2026-03-13T06:55:25.171609+00:00",
-      "updated_at": "2026-03-13T06:55:25.171609+00:00",
-      "preview": "",
-      "word_count": 0,
-      "filename": "drafts/fine-tuning-llms-for-production.md"
+      "created_at": "2026-03-16T07:24:17.355782+00:00",
+      "updated_at": "2026-03-16T07:24:25.203605+00:00",
+      "preview": "This is so cool!",
+      "word_count": 4,
+      "filename": "drafts/start-going-yes.md"
     },
     {
-      "post_id": "39daefbf",
-      "title": "ideas for the dialogue agents series",
-      "status": "note",
-      "category": null,
-      "tags": [],
-      "color": "",
-      "created_at": "2026-03-13T07:01:00.190486+00:00",
-      "updated_at": "2026-03-13T07:01:00.190486+00:00",
-      "preview": "",
-      "word_count": 0,
-      "filename": "notes/ideas-for-the-dialogue-agents-series.md"
-    },
-    {
-      "post_id": "8a5ca570",
-      "title": "Fine-Tuning LLMs for Production",
+      "post_id": "7a9beaf8",
+      "title": "Another one",
       "status": "draft",
       "category": null,
       "tags": [],
       "color": "",
-      "created_at": "2026-03-13T07:09:45.542543+00:00",
-      "updated_at": "2026-03-13T07:09:45.542543+00:00",
+      "created_at": "2026-03-16T07:25:15.507337+00:00",
+      "updated_at": "2026-03-16T07:25:15.507337+00:00",
       "preview": "",
       "word_count": 0,
-      "filename": "drafts/fine-tuning-llms-for-production.md"
-    },
-    {
-      "post_id": "3331969e",
-      "title": "ideas for the dialogue agents series",
-      "status": "note",
-      "category": null,
-      "tags": [],
-      "color": "",
-      "created_at": "2026-03-13T07:15:08.204466+00:00",
-      "updated_at": "2026-03-13T07:15:08.204466+00:00",
-      "preview": "",
-      "word_count": 0,
-      "filename": "notes/ideas-for-the-dialogue-agents-series.md"
+      "filename": "drafts/another-one.md"
     }
   ]
 }

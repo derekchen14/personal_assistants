@@ -126,11 +126,11 @@ _Output_
 
 def build_contemplate_prompt(user_text: str, failed_flow: str,
                              failure_reason: str, candidates: str,
-                             history_text: str) -> str:
+                             convo_history: str) -> str:
     parts = [
         f'## Failed Flow: {failed_flow}\n'
         f'Reason: {failure_reason}\n',
-        f'## Conversation History\n\n{history_text}\n' if history_text else '',
+        f'## Conversation History\n\n{convo_history}\n' if convo_history else '',
         f'## Candidate Flows\n\n{candidates}\n',
         f'## Instructions\n\n{CONTEMPLATE_INSTRUCTIONS}\n',
         f'## Output Format\n\n{CONTEMPLATE_OUTPUT_SHAPE}\n',

@@ -97,10 +97,7 @@ async def chat(websocket: WebSocket):
                     reset_frame = {
                         'type': 'list',
                         'show': True,
-                        'data': {
-                            'title': 'Existing Assistants',
-                            'items': reset_items,
-                        },
+                        'data': {'title': 'Existing Assistants', 'items': reset_items},
                         'source': 'welcome',
                         'panel': 'top',
                     } if reset_items else None

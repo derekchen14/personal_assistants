@@ -371,16 +371,15 @@ _Output_
 '''
 
 
-def build_slot_filling_prompt(user_text: str, flow_name: str,
-                              slot_schema: str, history_text: str) -> str:
+def build_slot_filling_prompt(flow_name: str, slot_schema: str, convo_history: str) -> str:
     parts = [
         f'## Flow: {flow_name}\n',
         f'## Slot Schema\n\n{slot_schema}\n',
-        f'## Conversation History\n\n{history_text}\n' if history_text else '',
         f'## Instructions\n\n{SLOT_FILLING_INSTRUCTIONS}\n',
         f'## Output Format\n\n{SLOT_FILLING_OUTPUT_SHAPE}\n',
         f'## Examples\n{SLOT_FILLING_EXEMPLARS}\n',
-        f'## Current Utterance\n\nUser: "{user_text}"\n\n',
+
+        f'_Conversation History_\n{convo_history}\n' if convo_history else '',
         '_Output_',
     ]
     return '\n'.join(p for p in parts if p)

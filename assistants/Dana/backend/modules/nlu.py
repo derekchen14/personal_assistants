@@ -262,10 +262,8 @@ class NLU:
             inst = cls()
             for slot in inst.slots.values():
                 if isinstance(slot, CategorySlot):
-                    values.setdefault('CategorySlot', [])
-                    for opt in slot.options:
-                        if opt not in values['CategorySlot']:
-                            values['CategorySlot'].append(opt)
+                    existing = values.setdefault('CategorySlot', [])
+                    existing.extend(o for o in slot.options if o not in existing)
         return values
 
     # ── Prediction ────────────────────────────────────────────────────

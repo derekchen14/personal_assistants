@@ -1,6 +1,7 @@
 <script lang="ts">
     import { FLOW_MENU } from '$lib/config/flows';
-    import { EllipsisVertical, ChevronRight, Trash } from '$lib/components/icons';
+    import { EllipsisVertical, ChevronRight, Trash, Sun, Moon } from '$lib/components/icons';
+    import { theme, toggleTheme } from '$lib/stores/display';
 
     let { onselect, onreset }: { onselect: (dax: string) => void; onreset: () => void } = $props();
 
@@ -67,6 +68,19 @@
             {/each}
 
             <hr class="my-1 border-[var(--color-border)]" />
+
+            <button
+                onclick={toggleTheme}
+                class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors"
+            >
+                {#if $theme === 'light'}
+                    <Moon size={14} />
+                    <span>Dark Mode</span>
+                {:else}
+                    <Sun size={14} />
+                    <span>Light Mode</span>
+                {/if}
+            </button>
 
             <button onclick={resetChat} class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-rose-500 hover:text-rose-600 hover:bg-[var(--color-surface-hover)] transition-colors">
                 <Trash size={14} />

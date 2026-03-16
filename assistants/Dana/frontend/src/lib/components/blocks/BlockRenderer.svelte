@@ -6,6 +6,7 @@
     import ToastBlock from './ToastBlock.svelte';
     import ConfirmationBlock from './ConfirmationBlock.svelte';
     import ChartBlock from './ChartBlock.svelte';
+    import CompareBlock from './CompareBlock.svelte';
 
     let { frame }: { frame: { type: string; data: Record<string, unknown>; show: boolean } } = $props();
 </script>
@@ -24,6 +25,8 @@
     <ConfirmationBlock data={frame.data} />
 {:else if frame.type === 'chart'}
     <ChartBlock data={frame.data} />
+{:else if frame.type === 'compare'}
+    <CompareBlock data={frame.data} />
 {:else}
     <div class="text-sm text-[var(--muted)]">
         Unknown block type: {frame.type}

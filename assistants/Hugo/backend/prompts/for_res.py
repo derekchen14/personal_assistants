@@ -29,7 +29,7 @@ CLARIFICATION_TEMPLATES = {
 }
 
 
-def build_naturalize_prompt(raw_text: str, history_text: str,
+def build_naturalize_prompt(raw_text: str, convo_history: str,
                             block_type: str | None) -> str:
     parts = [NATURALIZE_INSTRUCTIONS, '\n\n']
     if block_type and block_type != 'default':
@@ -37,8 +37,8 @@ def build_naturalize_prompt(raw_text: str, history_text: str,
             f'A visual block ({block_type}) will accompany this response. '
             f'Reference it rather than repeating its content.\n\n'
         )
-    if history_text:
-        parts.append(f'Recent conversation:\n{history_text}\n\n')
+    if convo_history:
+        parts.append(f'Recent conversation:\n{convo_history}\n\n')
     parts.append(f'Raw response:\n{raw_text}')
     return ''.join(parts)
 

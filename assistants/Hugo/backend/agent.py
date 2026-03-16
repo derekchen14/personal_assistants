@@ -35,23 +35,15 @@ class Agent:
         self.pex = PEX(self.config, self.ambiguity, self.engineer, self.memory, self.world)
         self.res = RES(self.config, self.ambiguity, self.engineer, self.world)
 
-    def take_turn(self, user_text:str, user_actions:list | None = None, gold_dax:str | None = None) -> dict:
-        if user_actions and len(user_actions) > 0:
-            for action in user_actions:
-                gold_dax = action['dax'] if 'dax' in action else ''
-                self.world.context.add_turn('User', user_text, turn_type='action')
-            log.info('USER (action): %s', user_text)
-        else:
-            self.world.context.add_turn('User', user_text, turn_type='utterance')
-            log.info('USER: %s', user_text)
+    def take_turn(self, text:str, dax:str|None=None, payload:dict|None=None) -> dict:
+        turn_type = 'action' if text.startswith('<action>') else 'utterance'
+        self.world.context.add_turn('User', text, turn_type=turn_type)
+        log.info('USER (%s): %s', turn_type, text)
 
         if self.ambiguity.present():
-            if user_actions:
-                self.ambiguity.resolve()
-            else:
-                self.ambiguity.resolve()
+            self.ambiguity.resolve()
 
-        state = self.nlu.understand(user_text, self.world.context, gold_dax)
+        state = self.nlu.understand(text, self.world.context, dax, payload)
 
         flow = self.world.flow_stack.get_active_flow()
         dax = flow.dax if flow else ''
@@ -61,9 +53,8 @@ class Agent:
                  dax, state.confidence, slots)
 
         if not self._self_check(state):
-            return self._fallback_response(
-                "I'm having trouble understanding. Could you try rephrasing?"
-            )
+            fallback_message = "I'm having trouble understanding. Could you try rephrasing?"
+            return self._fallback_response(fallback_message)
 
         frame = None
         keep_going = True

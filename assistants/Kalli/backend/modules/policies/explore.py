@@ -23,10 +23,11 @@ class ExplorePolicy:
         self.config = components['config']
         self._get_tools_fn = components['get_tools']
 
-    def execute(self, flow_name: str, flow_info: dict,
-                state: 'DialogueState', context: 'ContextCoordinator',
+    def execute(self, flow_info: dict, state: 'DialogueState',
+                context: 'ContextCoordinator',
                 filled_slots: dict, tool_dispatcher) -> 'DisplayFrame':
         from backend.components.display_frame import DisplayFrame
+        flow_name = flow_info['name']
 
         if flow_name in _BATCH_2:
             frame = DisplayFrame(self.config)
@@ -37,19 +38,20 @@ class ExplorePolicy:
         if handler:
             return handler(flow_info, state, context, filled_slots, tool_dispatcher)
 
-        return self._llm_execute(flow_name, flow_info, state, context, filled_slots, tool_dispatcher)
+        return self._llm_execute(flow_info, state, context, filled_slots, tool_dispatcher)
 
     def _do_status(self, flow_info, state, context, filled_slots, tool_dispatcher):
-        return self._llm_execute('status', flow_info, state, context, filled_slots, tool_dispatcher)
+        return self._llm_execute(flow_info, state, context, filled_slots, tool_dispatcher)
 
     def _do_browse(self, flow_info, state, context, filled_slots, tool_dispatcher):
-        return self._llm_execute('browse', flow_info, state, context, filled_slots, tool_dispatcher)
+        return self._llm_execute(flow_info, state, context, filled_slots, tool_dispatcher)
 
     def _do_explain(self, flow_info, state, context, filled_slots, tool_dispatcher):
-        return self._llm_execute('explain', flow_info, state, context, filled_slots, tool_dispatcher)
+        return self._llm_execute(flow_info, state, context, filled_slots, tool_dispatcher)
 
-    def _llm_execute(self, flow_name, flow_info, state, context, filled_slots, tool_dispatcher):
+    def _llm_execute(self, flow_info, state, context, filled_slots, tool_dispatcher):
         from backend.components.display_frame import DisplayFrame
+        flow_name = flow_info['name']
 
         skill_prompt = self._load_skill_template(flow_name)
         system, messages = self.engineer.build_skill_prompt(
@@ -58,7 +60,7 @@ class ExplorePolicy:
             self.memory.read_scratchpad(),
             skill_prompt=skill_prompt,
         )
-        tools = self._get_tools(flow_name, flow_info)
+        tools = self._get_tools(flow_info)
 
         text, tool_log = self.engineer.call_with_tools(
             system, messages, tools, tool_dispatcher, call_site='skill',
@@ -84,5 +86,5 @@ class ExplorePolicy:
             return path.read_text(encoding='utf-8')
         return None
 
-    def _get_tools(self, flow_name: str, flow_info: dict) -> list[dict]:
-        return self._get_tools_fn(flow_name, flow_info)
+    def _get_tools(self, flow_info: dict) -> list[dict]:
+        return self._get_tools_fn(flow_info)

@@ -1,4 +1,4 @@
----
-title: "Keywords for SEO"
----
+# Keywords for SEO
 
+* operate robustly in the real world 
+* calibrated confidence

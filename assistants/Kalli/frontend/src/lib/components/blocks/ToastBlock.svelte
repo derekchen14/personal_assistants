@@ -1,8 +1,10 @@
 <script lang="ts">
     let { data }: { data: Record<string, unknown> } = $props();
 
-    let message = $derived((data.message as string) || '');
+    let message = $derived((data.message as string) || (data.content as string) || '');
     let level = $derived((data.level as string) || 'info');
+    let steps = $derived((data.steps as { name: string; filled: boolean }[]) || []);
+    let currentStep = $derived((data.current_step as number) ?? -1);
 
     let borderColor = $derived(
         level === 'error' ? 'border-red-500' :
@@ -12,6 +14,18 @@
     );
 </script>
 
-<div class="px-4 py-2 rounded-lg border-l-4 {borderColor} bg-[var(--color-surface)] text-sm">
-    {message}
+<div class="px-4 py-3 rounded-lg border-l-4 {borderColor} bg-[var(--color-surface)] text-sm">
+    <p>{message}</p>
+    {#if steps.length > 0}
+        <div class="flex items-center gap-3 mt-2 pt-2 border-t border-[var(--color-border)]">
+            {#each steps as step, i}
+                <div class="flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full shrink-0 {step.filled ? 'bg-green-500' : i === currentStep ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-border)]'}"></span>
+                    <span class="text-xs {step.filled ? 'text-[var(--color-text)]' : i === currentStep ? 'text-[var(--color-accent)] font-medium' : 'text-[var(--color-text-muted)]'}">
+                        {step.name}
+                    </span>
+                </div>
+            {/each}
+        </div>
+    {/if}
 </div>

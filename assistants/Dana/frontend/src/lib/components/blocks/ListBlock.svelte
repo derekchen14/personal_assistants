@@ -1,6 +1,6 @@
 <script lang="ts">
     import { md } from '$lib/utils/markdown';
-    import { activePage } from '$lib/stores/display';
+    import { activePage, searchQuery } from '$lib/stores/display';
 
     let { data }: { data: Record<string, unknown> } = $props();
 
@@ -29,9 +29,17 @@
         queries: 'No saved queries yet',
     };
 
+    function matchesSearch(item: unknown, query: string): boolean {
+        if (!query) return true;
+        const q = query.toLowerCase();
+        return itemLabel(item).toLowerCase().includes(q);
+    }
+
     let pageItems = $derived(
         isSectioned
-            ? items.filter((it) => getField(it, 'entity') === ENTITY_MAP[$activePage])
+            ? items
+                .filter((it) => getField(it, 'entity') === ENTITY_MAP[$activePage])
+                .filter((it) => matchesSearch(it, $searchQuery))
             : []
     );
 

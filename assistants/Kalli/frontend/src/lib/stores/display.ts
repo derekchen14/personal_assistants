@@ -1,4 +1,22 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
+
+export const theme = writable<'light' | 'dark'>('light');
+export const searchQuery = writable('');
+
+export function initTheme() {
+    const saved = localStorage.getItem('kalli-theme') as 'light' | 'dark' | null;
+    const value = saved || 'light';
+    theme.set(value);
+    document.documentElement.dataset.theme = value;
+}
+
+export function toggleTheme() {
+    const current = get(theme);
+    const next = current === 'light' ? 'dark' : 'light';
+    theme.set(next);
+    localStorage.setItem('kalli-theme', next);
+    document.documentElement.dataset.theme = next;
+}
 
 export interface FrameData {
     type: string;

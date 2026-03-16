@@ -1,9 +1,4 @@
----
-title: Tips to Maximizing Daily Energy
-tags: [health, productivity]
----
-
-A running list of things that actually work for maintaining energy throughout the day, based on years of experimentation.
+Can directly edit it so the things will just persists A running list of things that actually work for maintaining energy throughout the day, based on years of experimentation.
 
 **Morning sunlight within 30 minutes of waking.** This is the single highest-leverage habit. Ten minutes of direct sunlight resets your circadian clock and suppresses melatonin. Overcast days still count — outdoor light intensity dwarfs indoor lighting by 10-100x.
 

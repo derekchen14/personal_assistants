@@ -1,6 +1,6 @@
 ---
 layout: post
-title: '7) Automated Evaluation: Handling uncertainty and ambiguity in dialogue'
+title: 'Automated Evaluation: Handling uncertainty'
 date: '2018-10-08 15:29:45'
 ---
 

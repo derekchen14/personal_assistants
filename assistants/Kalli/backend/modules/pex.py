@@ -97,11 +97,9 @@ class PEX:
             def tool_dispatcher(tool_name, tool_input):
                 return self._dispatch_tool(tool_name, tool_input)
 
+            flow_info = {**flow_info, 'name': flow_name}
             filled_slots = flow_entry.slot_values_dict() if flow_entry else {}
-            frame = policy.execute(
-                flow_name, flow_info, state, context, filled_slots,
-                tool_dispatcher,
-            )
+            frame = policy.execute(flow_info, state, context, filled_slots, tool_dispatcher)
         else:
             frame = DisplayFrame(self.config)
 
@@ -272,7 +270,7 @@ class PEX:
 
     # ── Tool definitions ─────────────────────────────────────────────
 
-    def get_tools_for_flow(self, flow_name: str, flow_info: dict) -> list[dict]:
+    def get_tools_for_flow(self, flow_info: dict) -> list[dict]:
         tools = []
         intent = flow_info.get('intent', Intent.CONVERSE)
         intent_val = intent.value

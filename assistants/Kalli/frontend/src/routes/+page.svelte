@@ -1,9 +1,14 @@
 <script lang="ts">
     import { conversation, type Message } from '$lib/stores/conversation';
-    import { setFrame, clearFrames, topFrame, bottomFrame, displayLayout } from '$lib/stores/display';
+    import { setFrame, clearFrames, topFrame, bottomFrame, displayLayout, searchQuery, initTheme } from '$lib/stores/display';
     import FlowMenu from '$lib/components/FlowMenu.svelte';
     import BlockRenderer from '$lib/components/blocks/BlockRenderer.svelte';
-    import { tick } from 'svelte';
+    import { MagnifyingGlass } from '$lib/components/icons';
+    import { tick, onMount } from 'svelte';
+
+    onMount(() => {
+        initTheme();
+    });
 
     let usernameInput = $state('');
     let messageInput = $state('');
@@ -95,7 +100,18 @@
             <!-- Header -->
             <div class="h-12 flex items-center justify-between px-4 border-b border-[var(--color-border)] border-t-2 border-t-[var(--color-secondary)]">
                 <span class="text-lg font-medium text-[var(--color-secondary)]" style="font-family: var(--font-display)">Kalli</span>
-                <FlowMenu onselect={onFlowSelect} onreset={onReset} />
+                <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)]">
+                        <MagnifyingGlass size={14} class="text-[var(--color-text-muted)]" />
+                        <input
+                            type="text"
+                            bind:value={$searchQuery}
+                            placeholder="Search"
+                            class="w-28 text-xs bg-transparent text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-muted)]"
+                        />
+                    </div>
+                    <FlowMenu onselect={onFlowSelect} onreset={onReset} />
+                </div>
             </div>
 
             <!-- Messages -->

@@ -1,8 +1,9 @@
 <script lang="ts">
     import { conversation, type Message } from '$lib/stores/conversation';
-    import { setFrame, clearFrames, topFrame, bottomFrame, displayLayout, activePage, type ActivePage } from '$lib/stores/display';
+    import { setFrame, clearFrames, topFrame, bottomFrame, displayLayout, activePage, searchQuery, initTheme, type ActivePage } from '$lib/stores/display';
     import FlowMenu from '$lib/components/FlowMenu.svelte';
     import BlockRenderer from '$lib/components/blocks/BlockRenderer.svelte';
+    import IconMagnifyingGlass from '$lib/assets/IconMagnifyingGlass.svelte';
     import { tick, onMount } from 'svelte';
 
     let usernameInput = $state('');
@@ -11,6 +12,7 @@
     let sidebarOpen = $state(false);
 
     onMount(() => {
+        initTheme();
         const saved = conversation.savedUsername();
         if (saved && !$conversation.connected) {
             conversation.connect(saved);
@@ -119,8 +121,17 @@
                 </span>
             </div>
 
-            <!-- Right: Entities + Logout -->
+            <!-- Right: Search + Entities + Logout -->
             <div class="flex items-center gap-4">
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg)]">
+                    <IconMagnifyingGlass size={14} class="text-[var(--muted)]" />
+                    <input
+                        type="text"
+                        bind:value={$searchQuery}
+                        placeholder="Search"
+                        class="w-36 text-xs bg-transparent text-[var(--text)] outline-none placeholder:text-[var(--muted)]"
+                    />
+                </div>
                 <nav class="flex items-center gap-3 text-sm">
                     {#each [['sheets', 'Sheets'], ['queries', 'Queries']] as [page, label]}
                         <button

@@ -27,19 +27,11 @@ _SHORTCUTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r'\bstatus\b', re.I), 'check'),
 ]
 
-_DEV_PATTERN = re.compile(r'^/([0-9A-Fa-f]{3})\b\s*(.*)', re.DOTALL)
-
 _ENSEMBLE_VOTERS = [
-    {'family': 'claude', 'model': 'haiku', 'label': 'haiku', 'weight': 0.20},
-    {'family': 'claude', 'model': 'sonnet', 'label': 'sonnet', 'weight': 0.45},
-    {'family': 'gemini', 'model': 'flash', 'label': 'gemini_flash', 'weight': 0.35},
+    {'model': 'haiku', 'label': 'haiku', 'weight': 0.20},
+    {'model': 'sonnet', 'label': 'sonnet', 'weight': 0.45},
+    {'model': 'flash', 'label': 'gemini_flash', 'weight': 0.35},
 ]
-
-_ACTION_PATTERN = re.compile(
-    r'^(yes|yeah|yep|yup|ok|okay|sure|confirm|approve|accept|go ahead|'
-    r'no|nope|nah|cancel|dismiss|decline|reject|skip|nevermind|done|back)\s*[.!?]*$',
-    re.I,
-)
 
 
 class NLU:
@@ -54,45 +46,34 @@ class NLU:
 
     # ── Entry point ───────────────────────────────────────────────────
 
-    def understand(self, user_text:str, context, gold_dax:str|None=None) -> DialogueState:
-        gold_dax = gold_dax or self.prepare(user_text)
-
+    def understand(self, user_text:str, context, dax:str|None=None, payload:dict|None=None) -> DialogueState:
+        gold_dax = dax or self.prepare(user_text)
         if gold_dax:
-            state = self.react(user_text, gold_dax, context)
+            state = self.react(gold_dax, payload or {})
         elif self.requires_contemplation():
             state = self.contemplate(user_text)
         else:
-            state = self.think(user_text)
-
+            state = self.think(user_text, payload or {})
         return self.validate(state)
 
     # ── Public operational modes ──────────────────────────────────────
 
     def prepare(self, user_text:str) -> str | None:
         text = user_text.strip()
-
         if len(text) < 2:
             raise ValueError('User text is too short')
-
-        match = _DEV_PATTERN.match(text)
-        if match:
-            return '{' + match.group(1).upper() + '}'
         for pattern, flow_name in _SHORTCUTS:
             if pattern.search(text):
                 return '{000}'
         return None
 
-    def think(self, user_text: str) -> DialogueState:
+    def think(self, user_text: str, payload: dict = {}) -> DialogueState:
         result = self.predict(user_text)
         flow_name = result['flow_name']
 
         flow = self._push_or_get(flow_name)
-        if flow and result.get('slots'):
-            flow.fill_slot_values(result['slots'])
-
-        state = self._build_state(
-            flow_name=flow_name, confidence=result['confidence'],
-        )
+        self._fill_slots(flow, payload)
+        state = self._build_state(flow_name=flow_name, confidence=result['confidence'])
         state.pred_flows = result.get('pred_flows', [])
 
         if self.ambiguity.needs_clarification(state.confidence):
@@ -110,50 +91,20 @@ class NLU:
 
         detection = self._check_routing(user_text, failed_flow, failure_reason)
         flow_name = detection['flow_name']
-        flow_intent = FLOW_CATALOG.get(flow_name, {}).get('intent', Intent.CONVERSE)
+        new_flow = self._push_or_get(flow_name)
+        self._fill_slots(new_flow, payload={})
 
-        if flow_intent not in (Intent.CONVERSE, Intent.PLAN):
-            cls = flow_classes.get(flow_name)
-            if cls and cls().slots:
-                slots = self._fill_slots(user_text, flow_name)
-            else:
-                slots = detection.get('slots', {})
-        else:
-            slots = detection.get('slots', {})
+        return self._build_state(flow_name=flow_name, confidence=detection['confidence'])
 
-        flow = self._push_or_get(flow_name)
-        if flow and slots:
-            flow.fill_slot_values(slots)
-
-        return self._build_state(
-            flow_name=flow_name, confidence=detection['confidence'],
-        )
-
-    def react(self, user_text:str, gold_dax:str, context) -> DialogueState:
-        """
-        Automatically create the flow since we know it is the correct one.
-        We can skip over flow detection and slot filling if the turn type is 'action'
-        since we already have the slot values.
-        """
+    def react(self, gold_dax:str, payload:dict={}) -> DialogueState:
+        """Automatically create the flow since we know the correct DAX."""
         flow_name = dax2flow(gold_dax)
+        if not flow_name:
+            log.warning('react() received unknown DAX %s — falling back to think()', gold_dax)
+            return self.think('', payload)
         flow = self._push_or_get(flow_name)
-
-        user_turn = context.last_user_turn
-        if user_turn and user_turn.turn_type == 'action':
-            # then we know that the slot values are also filled
-            gold_slot_values = user_text.split(",")
-            final_slots = {}
-            for gsv in gold_slot_values:
-                slot_name, slot_value = gsv.split("=")
-                final_slots[slot_name] = slot_value
-            confidence = 1.0
-        else:
-            # we need to fill the slots
-            final_slots = self._fill_slots(user_text, flow_name)
-            confidence = 0.99
-
-        flow.fill_slot_values(final_slots)
-        return self._build_state(flow_name, confidence)
+        self._fill_slots(flow, payload)
+        return self._build_state(flow_name, confidence=0.99)
 
     def validate(self, state: DialogueState) -> DialogueState:
         cat = FLOW_CATALOG.get(state.flow_name)
@@ -220,12 +171,14 @@ class NLU:
                             metadata={'slot': slot_name, 'candidate': llm_result},
                         )
                     else:
-                        self.ambiguity.declare(
-                            'partial',
-                            metadata={'slot': slot_name, 'invalid_value': value},
-                        )
-                        slot.reset()
+                        self._declare_slot_failure(slot, slot_name, value)
         return state
+
+    def _declare_slot_failure(self, slot, slot_name: str, value: str) -> None:
+        self.ambiguity.declare(
+            'partial', metadata={'slot': slot_name, 'invalid_value': value},
+        )
+        slot.reset()
 
     def _llm_repair_slot(self, value: str, candidates: list[str],
                          slot_name: str, max_attempts: int = 3) -> str | None:
@@ -267,23 +220,9 @@ class NLU:
     def predict(self, user_text: str) -> dict:
         intent = self._classify_intent(user_text)
         detection = self._detect_flow(user_text, intent)
-        flow_name = detection['flow_name']
-
-        flow_intent = FLOW_CATALOG.get(flow_name, {}).get('intent', Intent.CONVERSE)
-        skip_slots = flow_intent in (Intent.CONVERSE, Intent.PLAN)
-
-        cls = flow_classes.get(flow_name)
-        has_slots = bool(cls and cls().slots) if cls else False
-
-        if skip_slots or not has_slots:
-            slots = detection.get('slots', {})
-        else:
-            slots = self._fill_slots(user_text, flow_name)
-
         return {
-            'flow_name': flow_name,
+            'flow_name': detection['flow_name'],
             'confidence': detection['confidence'],
-            'slots': slots,
             'pred_flows': detection.get('pred_flows', []),
         }
 
@@ -304,7 +243,7 @@ class NLU:
             try:
                 text = self.engineer.call(
                     messages, system=system, task='detect_flow',
-                    family=voter['family'], model=voter['model'], max_tokens=512,
+                    model=voter['model'], max_tokens=512,
                 )
                 parsed = self.engineer.apply_guardrails(text)
                 if parsed:
@@ -333,14 +272,33 @@ class NLU:
 
         return self._tally_votes(votes)
 
-    def _fill_slots(self, user_text: str, flow_name: str) -> dict:
-        convo_history = self.world.context.compile_history()
-        system, messages = self.engineer.build_slot_filling_prompt(user_text, flow_name, convo_history)
-        text = self.engineer.call(messages, system=system, task='fill_slots', max_tokens=512)
-        parsed = self.engineer.apply_guardrails(text)
-        if parsed and isinstance(parsed.get('slots'), dict):
-            return parsed['slots']
-        return {}
+    def _fill_slots(self, flow, payload:dict={}):
+        if flow.is_filled(): return
+
+        # Phase 1: map payload keys to slot values
+        source_fields = {'highlight': 'note', 'post': 'post', 'section': 'sec', 'channel': 'chl'}
+        for _, slot in flow.slots.items():
+            if slot.slot_type in ('source', 'target', 'removal'):
+                source_values = {'post': ''}
+                for key, value in payload.items():
+                    if key in source_fields:
+                        source_values[source_fields[key]] = value
+                if source_values:
+                    slot.add_one(**source_values)
+
+        # Phase 1b: map payload keys that directly match non-entity slot names
+        direct = {k: v for k, v in payload.items() if k not in source_fields and k in flow.slots}
+        if direct:
+            flow.fill_slot_values(direct)
+
+        # Phase 2: LLM fill for required/elective slots still unfilled after payload
+        if not flow.is_filled():
+            convo_history = self.world.context.compile_history()
+            system, messages = self.engineer.build_slot_fill_prompt(flow, convo_history)
+            output = self.engineer.call(messages, system=system, task='fill_slots', max_tokens=512)
+            pred_slots = self.engineer.apply_guardrails(output)
+            if pred_slots and isinstance(pred_slots.get('slots'), dict):
+                flow.fill_slot_values(pred_slots['slots'])
 
     def _check_routing(self, user_text: str, failed_flow: str | None,
                        failure_reason: str) -> dict:
@@ -381,9 +339,6 @@ class NLU:
         if not prev:
             return False
         return prev.has_issues or prev.keep_going
-
-    def _is_user_action(self, user_text: str) -> bool:
-        return bool(_ACTION_PATTERN.match(user_text.strip()))
 
     # ── Support (private) ─────────────────────────────────────────────
 

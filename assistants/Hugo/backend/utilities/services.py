@@ -75,11 +75,45 @@ def _compute_preview(body: str, max_len: int = 300) -> str:
     return ''
 
 
+def _parse_frontmatter(text: str) -> tuple[str | None, list[str], str | None]:
+    """Extract title, tags, and category from YAML frontmatter. Returns (title, tags, category)."""
+    title, tags, category = None, [], None
+    if not text.startswith('---'):
+        return title, tags, category
+    end = text.find('---', 3)
+    for line in text[3:end].splitlines():
+        if line.startswith('title:'):
+            title = line[6:].strip().strip('"\'')
+        elif line.startswith('tags:'):
+            raw = line[5:].strip().strip('[]')
+            tags = [t.strip().strip('"\'') for t in raw.split(',') if t.strip()]
+        elif line.startswith('category:'):
+            category = line[9:].strip().strip('"\'') or None
+    return title, tags, category
+
+
 def _slugify(text: str) -> str:
     slug = text.lower().strip()
     slug = re.sub(r'[^\w\s-]', '', slug)
     slug = re.sub(r'[\s_]+', '-', slug)
     return re.sub(r'-+', '-', slug).strip('-')[:80]
+
+
+def _derive_note_slug(body: str) -> str:
+    first_line = body.strip().split('\n')[0].lstrip('#').strip()
+    tokens = (first_line.split() or body.strip().split())[:4]
+    return _slugify(' '.join(tokens)) if tokens else 'note'
+
+
+def _unique_note_filename(base_slug: str, entries: list, exclude_id: str | None = None) -> str:
+    existing = {e['filename'] for e in entries if e.get('post_id') != exclude_id}
+    candidate = f'notes/{base_slug}.md'
+    if candidate not in existing:
+        return candidate
+    n = 1
+    while f'notes/{base_slug}-{n}.md' in existing:
+        n += 1
+    return f'notes/{base_slug}-{n}.md'
 
 
 class ToolService:
@@ -109,7 +143,7 @@ class PostService(ToolService):
         entries = _load_metadata()
         previews = []
         for e in entries[:limit]:
-            previews.append({
+            preview_item = {
                 'post_id': e['post_id'],
                 'title': e['title'],
                 'status': e.get('status'),
@@ -118,7 +152,10 @@ class PostService(ToolService):
                 'created_at': e.get('created_at'),
                 'updated_at': e.get('updated_at'),
                 'preview': e.get('preview', ''),
-            })
+            }
+            if e.get('status') == 'note':
+                preview_item['content'] = _read_content(e['filename'])
+            previews.append(preview_item)
         return self._success(previews, count=len(previews))
 
     def search(self, query: str = '', status: str | None = None,
@@ -127,6 +164,7 @@ class PostService(ToolService):
         results = []
         q = (query or '').lower()
         for e in entries:
+            snippet = None
             if q:
                 searchable = ' '.join([
                     e.get('title', ''),
@@ -134,18 +172,26 @@ class PostService(ToolService):
                     ' '.join(e.get('tags', [])),
                 ]).lower()
                 if q not in searchable:
-                    continue
+                    content = _read_content(e.get('filename', ''))
+                    idx = content.lower().find(q)
+                    if idx == -1:
+                        continue
+                    start, end = max(0, idx - 60), min(len(content), idx + len(q) + 60)
+                    snippet = '…' + content[start:end].strip() + '…'
             if status and e.get('status') != status:
                 continue
             if category and category.lower() not in (e.get('category', '') or '').lower():
                 continue
-            results.append({
+            item = {
                 'post_id': e['post_id'],
                 'title': e['title'],
                 'status': e.get('status'),
                 'category': e.get('category'),
                 'updated_at': e.get('updated_at'),
-            })
+            }
+            if snippet:
+                item['snippet'] = snippet
+            results.append(item)
             if len(results) >= limit:
                 break
         return self._success(results, count=len(results))
@@ -180,26 +226,78 @@ class PostService(ToolService):
                type: str | None = None) -> dict:
         entries = _load_metadata()
         post_id = str(uuid.uuid4())[:8]
-        slug = _slugify(title) + '.md'
         status = type if type in ('draft', 'note') else 'draft'
-        directory = 'notes' if status == 'note' else 'drafts'
-        filename = f'{directory}/{slug}'
         now = _now()
 
-        (_CONTENT_DIR / directory).mkdir(parents=True, exist_ok=True)
-        _write_content(filename, {'title': title}, '')
+        if status == 'note':
+            body = topic or ''
+            if len(body) > 2048:
+                return self._error('validation', 'Note exceeds 2048 character limit.')
+            slug = _derive_note_slug(body) if body else post_id
+            filename = _unique_note_filename(slug, entries)
+            (_CONTENT_DIR / 'notes').mkdir(parents=True, exist_ok=True)
+            (_CONTENT_DIR / filename).write_text(body, encoding='utf-8')
+            entry = {
+                'post_id': post_id,
+                'title': '',
+                'status': 'note',
+                'category': category,
+                'created_at': now,
+                'updated_at': now,
+                'preview': _compute_preview(body),
+                'word_count': len(re.sub(r'<[^>]+>', '', body).split()),
+                'filename': filename,
+            }
+            entries.append(entry)
+            _save_metadata(entries)
+            return self._success({
+                'post_id': post_id,
+                'title': '',
+                'topic': topic,
+                'category': category,
+                'status': 'note',
+                'content': body,
+                'sections': [],
+                'metadata': {},
+                'created_at': now,
+                'updated_at': now,
+            })
+
+        if not title:
+            nums = []
+            for e in entries:
+                t = e.get('title', '')
+                if t.startswith('Untitled-'):
+                    try: nums.append(int(t[9:]))
+                    except ValueError: pass
+            title = f'Untitled-{max(nums, default=0) + 1:03d}'
+
+        slug = _slugify(title) + '.md'
+        filename = f'drafts/{slug}'
+        (_CONTENT_DIR / 'drafts').mkdir(parents=True, exist_ok=True)
+        filepath = _CONTENT_DIR / filename
+        if filepath.exists():
+            existing = next(
+                (e for e in entries if e.get('filename') == filename), None,
+            )
+            return self._error('duplicate', (
+                f'A file already exists at "{filename}". '
+                f'Ask the user if they would like to keep the existing file or override it.'
+            ), existing_post_id=existing['post_id'] if existing else None)
+        body = topic or ''
+        _write_content(filename, {'title': title}, body)
 
         entry = {
             'post_id': post_id,
             'title': title,
-            'status': status,
+            'status': 'draft',
             'category': category,
             'tags': [],
             'color': '',
             'created_at': now,
             'updated_at': now,
-            'preview': '',
-            'word_count': 0,
+            'preview': _compute_preview(body),
+            'word_count': len(re.sub(r'<[^>]+>', '', body).split()),
             'filename': filename,
         }
         entries.append(entry)
@@ -210,8 +308,8 @@ class PostService(ToolService):
             'title': title,
             'topic': topic,
             'category': category,
-            'status': status,
-            'content': '',
+            'status': 'draft',
+            'content': body,
             'sections': [],
             'metadata': {},
             'created_at': now,
@@ -233,15 +331,23 @@ class PostService(ToolService):
                     if 'color' in meta:
                         e['color'] = meta['color']
 
+                # Validate note content length
+                if 'content' in updates and e.get('status') == 'note':
+                    if len(updates['content']) > 2048:
+                        return self._error('validation', 'Note exceeds 2048 character limit.')
+
                 # Handle content update
                 if 'content' in updates:
                     body = updates['content']
-                    fm = {'title': e['title']}
-                    if e.get('tags'):
-                        fm['tags'] = e['tags']
-                    if e.get('color'):
-                        fm['color'] = e['color']
-                    _write_content(e['filename'], fm, body)
+                    if e.get('status') == 'note':
+                        (_CONTENT_DIR / e['filename']).write_text(body, encoding='utf-8')
+                    else:
+                        fm = {'title': e['title']}
+                        if e.get('tags'):
+                            fm['tags'] = e['tags']
+                        if e.get('color'):
+                            fm['color'] = e['color']
+                        _write_content(e['filename'], fm, body)
                     e['preview'] = _compute_preview(body)
                     e['word_count'] = len(re.sub(r'<[^>]+>', '', body).split())
 
@@ -285,6 +391,52 @@ class PostService(ToolService):
                 return self._success(result)
         return self._error('not_found', f'Post not found: {post_id}')
 
+    def sync_check(self) -> dict:
+        """Compare metadata to disk. Auto-register new files; report missing ones."""
+        entries = _load_metadata()
+
+        disk_files: set[str] = set()
+        for subdir in ('posts', 'drafts', 'notes'):
+            dir_path = _CONTENT_DIR / subdir
+            for f in dir_path.glob('*.md'):
+                disk_files.add(f'{subdir}/{f.name}')
+
+        meta_files = {e['filename'] for e in entries}
+        missing = [e for e in entries if e['filename'] not in disk_files]
+        new_filenames = disk_files - meta_files
+
+        added = []
+        if new_filenames:
+            now = _now()
+            for filename in sorted(new_filenames):
+                text = (_CONTENT_DIR / filename).read_text(encoding='utf-8')
+                fm_title, tags, category = _parse_frontmatter(text)
+                title = fm_title or Path(filename).stem.replace('-', ' ').title()
+                subdir = filename.split('/')[0]
+                status = 'note' if subdir == 'notes' else ('published' if subdir == 'posts' else 'draft')
+                body = _read_content(filename)
+                entry = {
+                    'post_id': str(uuid.uuid4())[:8],
+                    'title': title,
+                    'status': status,
+                    'category': category,
+                    'tags': tags,
+                    'color': '',
+                    'created_at': now,
+                    'updated_at': now,
+                    'preview': _compute_preview(body),
+                    'word_count': len(re.sub(r'<[^>]+>', '', body).split()),
+                    'filename': filename,
+                }
+                entries.append(entry)
+                added.append(entry)
+            _save_metadata(entries)
+
+        return {
+            'missing': [{'title': e.get('title', e['filename']), 'filename': e['filename']} for e in missing],
+            'added': [{'title': e['title'], 'filename': e['filename']} for e in added],
+        }
+
     def delete(self, post_id: str) -> dict:
         entries = _load_metadata()
         for i, e in enumerate(entries):
@@ -296,7 +448,7 @@ class PostService(ToolService):
                 if filepath.exists():
                     filepath.unlink()
                 return self._success(
-                    {'post_id': post_id, 'title': removed.get('title', '')},
+                    {'post_id': post_id, 'title': removed.get('title', ''), 'status': removed.get('status', '')},
                     action='deleted',
                 )
         return self._error('not_found', f'Post not found: {post_id}')

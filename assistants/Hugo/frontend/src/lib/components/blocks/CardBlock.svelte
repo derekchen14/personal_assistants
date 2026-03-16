@@ -1,11 +1,16 @@
 <script lang="ts">
     import { md } from '$lib/utils/markdown';
     import { conversation } from '$lib/stores/conversation';
-    import { displayLayout, expandPost, collapsePost } from '$lib/stores/display';
+    import { displayLayout, expandPost, collapsePost, activeHighlight } from '$lib/stores/display';
     import { onDestroy } from 'svelte';
     import IconArrowsPointingOut from '$lib/assets/IconArrowsPointingOut.svelte';
     import IconArrowsPointingIn from '$lib/assets/IconArrowsPointingIn.svelte';
-    import IconSave from '$lib/assets/IconSave.svelte';
+    import IconDocumentCheck from '$lib/assets/IconDocumentCheck.svelte';
+    import IconPencilSquare from '$lib/assets/IconPencilSquare.svelte';
+    import IconLink from '$lib/assets/IconLink.svelte';
+    import IconChevronRight from '$lib/assets/IconChevronRight.svelte';
+    import IconBarsArrowUp from '$lib/assets/IconBarsArrowUp.svelte';
+    import IconBarsArrowDown from '$lib/assets/IconBarsArrowDown.svelte';
 
     let { data }: { data: Record<string, unknown> } = $props();
 
@@ -13,9 +18,120 @@
     let title = $derived((data.title as string) || '');
     let status = $derived((data.status as string) || '');
     let content = $derived((data.content as string) || '');
+    let source = $derived((data.source as string) || '');
     let fields = $derived((data.fields as Record<string, unknown>) || {});
+    let linkedPost = $derived((data.linked_post as Record<string, unknown>) || null);
 
-    let editable = $derived(!!postId && status !== 'published');
+    // Edit mode: notes and newly created drafts start editable
+    let editingEnabled = $state(false);
+    let lastPostId = $state('');
+    $effect(() => {
+        if (postId !== lastPostId) {
+            lastPostId = postId;
+            editingEnabled = status === 'note' || source === 'create';
+            clearMark();
+            activeHighlight.set('');
+        }
+    });
+
+    let editable = $derived(editingEnabled && !!postId && status !== 'published');
+
+    function enterEditMode() {
+        if (postId && status !== 'published') editingEnabled = true;
+    }
+
+    // Persistent text highlight for view mode
+    let proseEl: HTMLElement | null = null;
+    let markEl: HTMLElement | null = null;
+
+    function clearMark() {
+        if (markEl) {
+            const parent = markEl.parentNode;
+            if (parent) {
+                while (markEl.firstChild) parent.insertBefore(markEl.firstChild, markEl);
+                parent.removeChild(markEl);
+            }
+            markEl = null;
+        }
+    }
+
+    function focusOnMount(el: HTMLElement, enabled: boolean) {
+        if (enabled) setTimeout(() => { el.focus(); }, 0);
+    }
+
+    function captureSelection() {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed) return;
+        const text = sel.toString().trim();
+        if (!text) return;
+        clearMark();
+        try {
+            const range = sel.getRangeAt(0);
+            const mark = document.createElement('mark');
+            mark.className = 'prose-highlight';
+            mark.appendChild(range.extractContents());
+            range.insertNode(mark);
+            markEl = mark;
+            sel.removeAllRanges();
+        } catch { /* cross-element selection — no visual mark */ }
+        activeHighlight.set(text);
+    }
+
+    $effect(() => { if (!$activeHighlight) clearMark(); });
+
+    // Section accordion state
+    interface Section { title: string; content: string }
+
+    function parseSections(text: string): Section[] {
+        const parts = text.split(/^## /m);
+        if (parts.length <= 1) return [];
+        const sections: Section[] = [];
+        for (const part of parts.slice(1)) {
+            const newline = part.indexOf('\n');
+            if (newline === -1) {
+                sections.push({ title: part.trim(), content: '' });
+            } else {
+                sections.push({
+                    title: part.slice(0, newline).trim(),
+                    content: part.slice(newline + 1).trim(),
+                });
+            }
+        }
+        return sections;
+    }
+
+    let sections = $derived((data.sections as Section[]) || parseSections(content));
+    let hasSections = $derived(sections.length > 0);
+
+    let outlineMode = $state(false);
+    let openSections = $state<Set<number>>(new Set());
+    let editSections = $state<Section[]>([]);
+    let lastContent = $state('');
+
+    // Re-seed sections when content actually changes
+    $effect(() => {
+        if (content !== lastContent) {
+            editSections = sections.map(s => ({ ...s }));
+            openSections = new Set();
+            lastContent = content;
+        }
+    });
+
+    function toggleSection(i: number) {
+        const next = new Set(openSections);
+        if (next.has(i)) next.delete(i);
+        else next.add(i);
+        openSections = next;
+    }
+
+    function onSectionInput(i: number) {
+        dirty = true;
+        resetTimer();
+    }
+
+    function reconstructContent(): string {
+        return editSections.map(s => `## ${s.title}\n\n${s.content}`).join('\n\n');
+    }
 
     // Local edit state — seeded from data, diverges on user input
     let editTitle = $state('');
@@ -55,30 +171,56 @@
         if (!postId || !dirty) return;
         const updates: Record<string, unknown> = {};
         if (editTitle !== title) updates.title = editTitle;
-        if (editContent !== content) updates.content = editContent;
+        const finalContent = (hasSections && outlineMode) ? reconstructContent() : editContent;
+        if (finalContent !== content) updates.content = finalContent;
         if (Object.keys(updates).length > 0) {
             conversation.updatePost(postId, updates);
         }
         dirty = false;
     }
 
+    function saveAndExit() {
+        save();
+        if (status !== 'note') editingEnabled = false;
+    }
+
     onDestroy(() => {
-        // Flush pending changes when component unmounts
         if (dirty && postId) save();
         clearTimer();
     });
 </script>
 
-<div class="card-root">
+<div class="flex flex-col flex-1 p-6 relative min-h-0">
     <!-- Top-right icon row -->
     <div class="absolute top-4 right-4 flex items-center gap-2 z-10">
-        {#if editable && dirty}
+        {#if editable}
             <button
-                onclick={save}
+                onclick={saveAndExit}
                 class="text-[var(--muted)] hover:text-[var(--accent)] cursor-pointer transition-colors"
                 title="Save"
             >
-                <IconSave size={18} />
+                <IconDocumentCheck size={18} />
+            </button>
+        {:else if status === 'draft'}
+            <button
+                onclick={enterEditMode}
+                class="text-[var(--muted)] hover:text-[var(--accent)] cursor-pointer transition-colors"
+                title="Edit"
+            >
+                <IconPencilSquare size={18} />
+            </button>
+        {/if}
+        {#if editable && hasSections}
+            <button
+                onclick={() => outlineMode = !outlineMode}
+                class="text-[var(--muted)] hover:text-[var(--accent)] cursor-pointer transition-colors"
+                title={outlineMode ? 'Expand to full post' : 'Collapse to outline'}
+            >
+                {#if outlineMode}
+                    <IconBarsArrowDown size={18} />
+                {:else}
+                    <IconBarsArrowUp size={18} />
+                {/if}
             </button>
         {/if}
         <button
@@ -94,8 +236,19 @@
         </button>
     </div>
 
+    <!-- Linked post badge -->
+    {#if linkedPost}
+        <button
+            onclick={() => conversation.viewPost(String(linkedPost.post_id))}
+            class="flex items-center gap-1 text-xs text-[var(--accent)] hover:underline cursor-pointer mb-2 shrink-0"
+        >
+            <IconLink size={14} />
+            Linked to: {linkedPost.title || linkedPost.post_id}
+        </button>
+    {/if}
+
     {#if editable}
-        <!-- Inline-editable draft/note -->
+        <!-- Edit mode -->
         <input
             type="text"
             bind:value={editTitle}
@@ -103,16 +256,50 @@
             class="text-lg font-semibold bg-transparent text-[var(--secondary)] outline-none border-b border-transparent focus:border-[var(--accent)] transition-colors pr-16 shrink-0"
             placeholder="Title"
         />
-        <textarea
-            bind:value={editContent}
-            oninput={onInput}
-            class="edit-textarea"
-            placeholder="Start writing..."
-        ></textarea>
+
+        {#if hasSections && outlineMode}
+            <!-- Outline view: section accordion -->
+            <div class="flex-1 overflow-y-auto mt-2">
+                {#each editSections as section, i}
+                    <div class="border-b border-[var(--border)]">
+                        <button
+                            onclick={() => toggleSection(i)}
+                            class="flex items-center gap-2 w-full py-2 text-sm font-medium text-[var(--text)] hover:text-[var(--accent)] cursor-pointer transition-colors text-left"
+                        >
+                            <span class="transition-transform {openSections.has(i) ? 'rotate-90' : ''}">
+                                <IconChevronRight size={14} />
+                            </span>
+                            {section.title}
+                        </button>
+                        {#if openSections.has(i)}
+                            <textarea
+                                bind:value={editSections[i].content}
+                                oninput={() => onSectionInput(i)}
+                                class="block w-full min-h-[40vh] py-2 border-0 bg-transparent text-[var(--text)] text-sm leading-[1.7] resize-y outline-none mb-2"
+                                placeholder="Section content..."
+                            ></textarea>
+                        {/if}
+                    </div>
+                {/each}
+            </div>
+        {:else}
+            <!-- Standard view: full textarea -->
+            <textarea
+                bind:value={editContent}
+                oninput={onInput}
+                onmouseup={(e) => { const el = e.currentTarget; const sel = el.value.substring(el.selectionStart, el.selectionEnd).trim(); if (sel) activeHighlight.set(sel); }}
+                class="flex-1 min-h-0 py-2 border-0 bg-transparent text-[var(--text)] text-sm leading-[1.7] resize-none outline-none w-full"
+                placeholder="Start writing..."
+                use:focusOnMount={source === 'create'}
+            ></textarea>
+        {/if}
     {:else}
-        <!-- Read-only published post -->
+        <!-- Non-edit mode: rendered HTML for all post types -->
         {#if title}
-            <h3 class="text-lg font-semibold mb-4 text-[var(--secondary)] pr-16 shrink-0">{title}</h3>
+            <h3
+                ondblclick={enterEditMode}
+                class="text-lg font-semibold mb-2 text-[var(--secondary)] pr-16 shrink-0 {status !== 'published' ? 'cursor-text' : ''}"
+            >{title}</h3>
         {/if}
         {#if Object.keys(fields).length > 0}
             <div class="space-y-2">
@@ -124,36 +311,29 @@
                 {/each}
             </div>
         {:else if content}
-            <div class="prose-content text-sm leading-relaxed flex-1 overflow-y-auto">{@html md(content)}</div>
+            <div
+                bind:this={proseEl}
+                ondblclick={enterEditMode}
+                onmouseup={captureSelection}
+                class="prose-content text-sm leading-relaxed flex-1 overflow-y-auto {status !== 'published' ? 'cursor-text' : ''}"
+            >{@html md(content)}</div>
         {/if}
     {/if}
 </div>
 
 <style>
-    .card-root {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        padding: 1.5rem;
-        position: relative;
-        min-height: 0;
-    }
-    .edit-textarea {
-        flex: 1;
-        min-height: 0;
-        padding: 0.5rem 0;
-        border: none;
-        background: transparent;
-        color: var(--text);
-        font-size: 0.875rem;
-        line-height: 1.7;
-        resize: none;
-        outline: none;
+    .prose-content :global(.prose-highlight) {
+        background: var(--accent-light);
+        border-radius: 3px;
+        padding: 0.1em 0.25em;
+        margin: 0 -0.05em;
     }
     .prose-content :global(h1) { font-size: 1.5rem; font-weight: 700; margin: 1.25rem 0 0.75rem; }
     .prose-content :global(h2) { font-size: 1.25rem; font-weight: 600; margin: 1rem 0 0.5rem; }
     .prose-content :global(h3) { font-size: 1.1rem; font-weight: 600; margin: 0.75rem 0 0.5rem; }
     .prose-content :global(p) { margin: 0.5rem 0; }
+    .prose-content :global(strong) { font-weight: 600; }
+    .prose-content :global(em) { font-style: italic; }
     .prose-content :global(ul), .prose-content :global(ol) { margin: 0.5rem 0; padding-left: 1.5rem; }
     .prose-content :global(ul) { list-style-type: disc; }
     .prose-content :global(ol) { list-style-type: decimal; }

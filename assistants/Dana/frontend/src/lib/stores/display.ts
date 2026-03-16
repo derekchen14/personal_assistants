@@ -1,4 +1,21 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
+
+export const theme = writable<'light' | 'dark'>('light');
+
+export function initTheme() {
+    const saved = localStorage.getItem('dana-theme') as 'light' | 'dark' | null;
+    const value = saved || 'light';
+    theme.set(value);
+    document.documentElement.dataset.theme = value;
+}
+
+export function toggleTheme() {
+    const current = get(theme);
+    const next = current === 'light' ? 'dark' : 'light';
+    theme.set(next);
+    localStorage.setItem('dana-theme', next);
+    document.documentElement.dataset.theme = next;
+}
 
 export interface FrameData {
     type: string;
@@ -16,6 +33,7 @@ export const activeFrame = writable<FrameData | null>(null);
 export const topFrame = writable<FrameData | null>(null);
 export const bottomFrame = writable<FrameData | null>(null);
 export const activePage = writable<ActivePage>('sheets');
+export const searchQuery = writable('');
 
 const _expanded = writable(false);
 
