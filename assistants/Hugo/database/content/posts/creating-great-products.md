@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Creating Great Products
-date: '2016-10-17 20:24:56'
+title: "Creating Great Products"
 ---
+
+## _hidden_section_title
 
 Building a product can be quite simple, but the best ones include insights from human behavior, algorithmic efficiency, and usability.  To start, an engineer might build a sophisticated app that uses some cutting edge technology. It is a non-trivial feat which required:
 
@@ -23,4 +23,3 @@ Now, the product is not only feasible, but it is also economically viable.  You 
  - Manifesting itself as well-designed user interface and user interactions
 
 Finally, we have a product that is feasible, viable and desirable.  We have a great product.  All it took was the combined expertise of several industry leaders, and an idealized world where egos, politics and time pressures don't exist.
-

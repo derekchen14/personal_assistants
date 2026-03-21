@@ -12,13 +12,12 @@
     import IconBarsArrowUp from '$lib/assets/IconBarsArrowUp.svelte';
     import IconBarsArrowDown from '$lib/assets/IconBarsArrowDown.svelte';
 
-    let { data }: { data: Record<string, unknown> } = $props();
+    let { data, origin = '' }: { data: Record<string, unknown>; origin?: string } = $props();
 
     let postId = $derived((data.post_id as string) || '');
     let title = $derived((data.title as string) || '');
     let status = $derived((data.status as string) || '');
     let content = $derived((data.content as string) || '');
-    let source = $derived((data.source as string) || '');
     let fields = $derived((data.fields as Record<string, unknown>) || {});
     let linkedPost = $derived((data.linked_post as Record<string, unknown>) || null);
 
@@ -28,7 +27,7 @@
     $effect(() => {
         if (postId !== lastPostId) {
             lastPostId = postId;
-            editingEnabled = status === 'note' || source === 'create';
+            editingEnabled = status === 'note' || origin === 'create';
             clearMark();
             activeHighlight.set('');
         }
@@ -290,7 +289,7 @@
                 onmouseup={(e) => { const el = e.currentTarget; const sel = el.value.substring(el.selectionStart, el.selectionEnd).trim(); if (sel) activeHighlight.set(sel); }}
                 class="flex-1 min-h-0 py-2 border-0 bg-transparent text-[var(--text)] text-sm leading-[1.7] resize-none outline-none w-full"
                 placeholder="Start writing..."
-                use:focusOnMount={source === 'create'}
+                use:focusOnMount={origin === 'create'}
             ></textarea>
         {/if}
     {:else}

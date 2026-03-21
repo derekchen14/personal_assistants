@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Phases of Dialogue Adoption
-date: '2019-06-04 14:55:16'
+title: "Phases of Dialogue Adoption"
 ---
+
+## _hidden_section_title
 
 Dialogue systems and chatbots are going through the same cycle of adoption seen in previous technology growth curves. &nbsp;As a quick primer, we note that mobile experienced the same four phases as it has expanded from technical oddity to ubiquitous usage. &nbsp;In particular, in the first phase, you had a limited number of forerunners who used large brick phones. &nbsp;This certainly didn't live up the promise of mobile, but it was also certainly distinct from its predecessor of the corded phone. In the second phase, there was a shift to enterprise with Palm Pre, Blackberry and other PDAs. &nbsp;In the third phase, we had the original iPhone which lacked an App Store and other key functionality, but at this point you knew mobile was going to take over the world. &nbsp;Finally, in the fourth phase, there was also Android, long-lasting phones with giant screens, and all the bells and whistles we expect today.
 
@@ -91,4 +91,3 @@ _Phase 4:_
 <!--kg-card-end: markdown-->
 
 Open to thoughts and comments below!
-

@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Calculating Uncertainty over Beliefs
-date: '2020-01-05 23:17:47'
+title: "Calculating Uncertainty over Beliefs"
 ---
+
+## _hidden_section_title
 
 A key sub-issue in designing conversational agents is being able to reliably calculate uncertainty over the model's beliefs. &nbsp;In doing so, the model would be able to recognize when it does not understand something, and appropriately ask for clarification. &nbsp;Thus, we can imagine the output of an uncertainty model feeding into a dialogue policy manager which then decides to either retrieve an answer from the knowledge base when it feels fairly certain it knows what the customer wants, or to ask a follow-up question when it is unsure. &nbsp;From a information-theory point of view, this can be seen as a model which asks questions to minimize entropy until it reaches a certain threshold, at which point it will return an answer. Beyond improving model behavior, measuring uncertainty also gives a view into how the model is thinking for improved debugging and enhanced interpretability.
 
@@ -17,4 +17,3 @@ Even with this method though, we still face at least a number of considerable co
 With that said, note that what we really want is a tool for measuring the uncertainty over user intents in the semantic space. &nbsp;More specifically, we don't just need a system where its predictions are calibrated to match the likelihood; what we really want is a system where its predictions have a semantic meaning. &nbsp;In other words, we have been viewing uncertainty as a single number assigned to each class, but perhaps we should be viewing certainty as a point within an embedding space. &nbsp;So for example, in the restaurant domain, when the model assigns high probability to Japanese food, it also raises the probability of Chinese and Korean food because these items are more closely grouped together in the "Asian food" cluster. &nbsp;At the same time if the entity that triggered the prediction was "fish", then maybe Japanese (sashimi) and Mexican (fish tacos) should concurrently increase, while the prediction shifts away from the Korean node in the embedding space. &nbsp;Consequently, notice this immediately invalidates any [Bayesian Neural Network](https://arxiv.org/abs/1505.05424) or [Bayes by Backprop](https://arxiv.org/abs/1608.05081) approaches that capture uncertainty over the weights of the network rather than uncertainty over the understanding. &nbsp;
 
 In this sense, rather than attaching an uncertainty score to each intent in the ontology, what we needed is an embedding space of intents that still offers a measure of uncertainty. &nbsp;Then, we also need a way to calculate it.
-

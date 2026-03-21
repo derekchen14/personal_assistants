@@ -1,10 +1,8 @@
 ---
-layout: post
-title: Difference between LSTM and GRU for RNNs
-date: '2016-02-19 15:25:00'
-tags:
-- modeling
+title: "Difference between LSTM and GRU for RNNs"
 ---
+
+## _hidden_section_title
 
 So if you've started studying RNNs, and you heard that LSTMs and GRUs at the type of RNNs you should use because vanilla RNNs suffer from the vanishing gradient problem.  That makes sense because the hidden state is passed along for each iteration, so when back-propagating, the same Jacobian matrix is multiplied by itself over and over again.  If that matrix has a principal eigenvalue less than one, then we have a vanishing gradient.  Incidentally, if the matrix has a principal eigenvalue greater than one: exploding gradient.
 

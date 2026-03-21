@@ -1,10 +1,10 @@
 ---
-layout: post
-title: Data Collection Best Practices
+title: "Data Collection Best Practices"
 tags: [ai, data-strategy, explainer, lists]
 color: blue
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 The first step to truly becoming an [AI-first](https://morethanoneturn.com/2021/05/23/embracing-ai-first.html) company is to adopt a [data-centric](http://datacentricai.org/) view, which naturally implies taking data collection seriously as a core competency of the business.  Even before involving any sophistcated algorithms to improve data quality, there are already many best practices to consider when performing manual data collection.  At a high level, this can be broken down into improvements 
 <!--more-->
@@ -96,5 +96,3 @@ Effective data collection is a skill and an art.  Depending on the nature of the
 [^8]: Lowell et al. (2019), [Practical Obstacles to Deploying Active Learning](https://aclanthology.org/D19-1003/)
 [^9]: Ein-Dor et al. (2021), [Active Learning for BERT](https://aclanthology.org/2020.emnlp-main.638/)
 [^10]: Karamcheti et al. (2021),  [Investigating the Negative Impact of Outliers for VQA](https://aclanthology.org/2021.acl-long.564/)
-
-

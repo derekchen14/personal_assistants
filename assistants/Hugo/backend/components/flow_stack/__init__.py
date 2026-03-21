@@ -3,16 +3,17 @@ from backend.components.flow_stack.flows import *
 
 flow_classes: dict[str, type] = {
     # Research
-    'browse': BrowseFlow, 'view': ViewFlow, 'check': CheckFlow,
+    'browse': BrowseFlow, 'summarize': SummarizeFlow, 'check': CheckFlow,
     'inspect': InspectFlow, 'find': FindFlow, 'compare': CompareFlow,
+    'diff': DiffFlow,
     # Draft
-    'outline': OutlineFlow, 'refine': RefineFlow, 'expand': ExpandFlow,
+    'outline': OutlineFlow, 'refine': RefineFlow, 'cite': CiteFlow,
     'compose': ComposeFlow, 'add': AddFlow, 'create': CreateFlow,
     'brainstorm': BrainstormFlow,
     # Revise
     'rework': ReworkFlow, 'polish': PolishFlow, 'tone': ToneFlow,
-    'audit': AuditFlow, 'format': FormatFlow,
-    'remove': RemoveFlow, 'diff': DiffFlow, 'tidy': TidyFlow,
+    'audit': AuditFlow, 'simplify': SimplifyFlow,
+    'remove': RemoveFlow, 'tidy': TidyFlow,
     # Publish
     'release': ReleaseFlow, 'syndicate': SyndicateFlow,
     'schedule': ScheduleFlow, 'preview': PreviewFlow,

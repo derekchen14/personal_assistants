@@ -1,4 +1,4 @@
-# Skill: search_posts
+# Skill: find_posts
 
 Search existing blog posts by keyword or topic.
 

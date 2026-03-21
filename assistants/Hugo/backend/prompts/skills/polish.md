@@ -1,18 +1,24 @@
-# Skill: polish_section
+# Skill: polish
 
-Polish and refine a specific section for clarity and style.
+Improve a section's prose for clarity, word choice, rhythm, and conciseness.
 
 ## Behavior
-- Focus on sentence-level improvements: word choice, rhythm, conciseness
-- If `style_notes` are provided, apply them specifically
-- Use `content_format` to clean up formatting
-- Use `post_update` to save the polished version
-- Don't change the meaning or structure — only improve the prose
-- Show a brief before/after comparison for key changes
+1. Use `read_metadata` to load the post context
+2. Use `read_section` to load the target section's current content
+3. Improve word choice, tighten sentences, fix transitions, and remove filler
+4. Use `write_text` if you need to rewrite a passage
+5. Use `find_and_replace` for targeted word/phrase swaps
+6. Use `revise_content` to save the polished version
+
+## Important
+- The policy saves the result automatically — just output the revised section text.
+- Do not change the meaning or structure — only improve the prose.
+- Preserve paragraph breaks and heading structure.
+- While `read_metadata` can be used to get post IDs, the post title has been resolved for you within "Resolved entities". The mapping of section titles to section IDs can also be found there. You are encouraged to use these provided IDs rather than executing extra tool calls to get this information.
 
 ## Slots
-- `section` (required): The section to polish
+- `source` (required): The post and section to polish
 - `style_notes` (optional): Specific style guidance
 
 ## Output
-The polished section with notes on what was refined.
+The polished section text with notes on key changes.

@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Why Generative Models?
-date: '2016-09-08 17:52:00'
+title: "Why Generative Models?"
 ---
+
+## _hidden_section_title
 
 Recently, there has been a lot of talk around generative models as the next big thing in deep learning.  There are articles about general adversarial networks, variational autoencoders, PixelRNNs, and perhaps some reinforcement learning augmentation.  But why all this sudden interest?  Why not pursue memory networks or other ideas?  I am by no means an expert, but my suspicion is that generative models offer superior context and speed.
 

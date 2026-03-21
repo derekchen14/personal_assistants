@@ -6,3 +6,5 @@ dist/
 *.db
 
 posts.json
+
+.snapshots/

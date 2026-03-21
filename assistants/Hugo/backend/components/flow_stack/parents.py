@@ -1,17 +1,11 @@
-"""
-Parent flow classes for Hugo (Blog Writing).
-
-BaseFlow and InternalParentFlow are defined here (self-contained, no phantom imports).
-Domain parents inherit from BaseFlow and override fill_slots_by_label for intent-specific
-entity extraction patterns.
-"""
-
 
 class BaseFlow(object):
+  """
+  Parent flow classes for Hugo (Blog Writing).
+  """
   def __init__(self):
     self.slots = {}
     self.tools = []
-    self.completed = False
     self.interjected = False
     self.is_newborn = True
     self.is_uncertain = False
@@ -21,10 +15,10 @@ class BaseFlow(object):
     self.entity_slot = 'source'
 
     self.flow_id: str = ''
-    self.status: str = ''
     self.plan_id: str | None = None
     self.turn_ids: list[str] = []
-    self.result: dict | None = None
+    # Plan flows might create a Flow and keep it pending
+    self.status = 'Pending'  # Pending, Active, Completed, Invalid
 
   @property
   def intent(self):
@@ -48,6 +42,9 @@ class BaseFlow(object):
       elif slot.filled:
         parts.append(f"{slot_name}: {slot.value}")
     return ' '.join(parts)
+
+  def is_complete(self):
+    return self.status == 'completed'
 
   def is_filled(self):
     for slot in self.slots.values():

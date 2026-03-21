@@ -12,21 +12,22 @@ class DisplayFrame:
 
         self.block_type: str = 'default'
         self.data: dict = {}
-        self.source: str | None = None
+        self.origin: str | None = None
         self.display_name: str | None = None
         self.code: str | None = None
         self.panel: str = 'bottom'
+        self.thoughts: str = ''
 
     _TOP_TYPES = frozenset(('form', 'confirmation', 'toast'))
 
     def set_frame(self, block_type: str, data: dict,
-                  source: str | None = None,
+                  origin: str | None = None,
                   display_name: str | None = None,
                   code: str | None = None,
                   panel: str | None = None):
         self.block_type = block_type
         self.data = data
-        self.source = source
+        self.origin = origin
         self.display_name = display_name
         self.code = code
         if panel is not None:
@@ -37,7 +38,7 @@ class DisplayFrame:
     def clear(self):
         self.block_type = 'default'
         self.data = {}
-        self.source = None
+        self.origin = None
         self.display_name = None
         self.code = None
         self.panel = 'bottom'
@@ -56,7 +57,8 @@ class DisplayFrame:
         return {
             'block_type': self.block_type,
             'data': self.data,
-            'source': self.source,
+            'origin': self.origin,
             'display_name': self.display_name,
             'code': self.code,
+            'panel': self.panel,
         }

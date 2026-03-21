@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from config import load_config
+from schemas.config import load_config
 from backend.modules.nlu import NLU
 from backend.modules.pex import PEX
 from backend.modules.res import RES
@@ -76,7 +76,7 @@ class Agent:
                     state = new_state
 
         if frame and frame.has_content():
-            log.info('  frame=%s  source=%s', frame.block_type, frame.source)
+            log.info('  frame=%s  origin=%s', frame.block_type, frame.origin)
 
         utterance, frame = self.res.respond(frame)
 
@@ -104,32 +104,15 @@ class Agent:
             'message': message,
             'raw_utterance': message,
             'actions': [],
-            'interaction': {'type': 'default', 'show': False, 'data': {}},
-            'code_snippet': None,
             'frame': None,
         }
 
     def _build_payload(self, utterance: str, frame: DisplayFrame) -> dict:
-        frame_data = None
-        if frame and frame.has_content():
-            frame_data = {
-                'type': frame.block_type,
-                'show': True,
-                'data': frame.data,
-                'source': frame.source,
-                'display_name': frame.display_name,
-                'panel': frame.panel,
-            }
-
-        state = self.world.current_state()
-        interaction = {
-            'type': frame.block_type if frame and frame.has_content() else 'default',
-            'show': frame.block_type != 'default' if frame else False,
-            'data': frame.data if frame and frame.has_content() else {},
-        }
+        frame_data = frame.to_dict() if frame and frame.has_content() else None
 
         message = utterance
         if not message and not frame_data:
+            state = self.world.current_state()
             if state and state.pred_intent not in ('Internal', 'Plan'):
                 message = (
                     "I've processed your request. Let me know if you need "
@@ -140,8 +123,6 @@ class Agent:
             'message': message,
             'raw_utterance': utterance,
             'actions': [],
-            'interaction': interaction,
-            'code_snippet': None,
             'frame': frame_data,
         }
 

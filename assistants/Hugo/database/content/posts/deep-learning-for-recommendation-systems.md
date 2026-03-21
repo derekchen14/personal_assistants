@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Deep Learning for Recommendation Systems
-date: '2016-11-19 00:00:03'
+title: "Deep Learning for Recommendation Systems"
 ---
+
+## _hidden_section_title
 
 [**Wide & Deep Learning for Recommender Systems**](https://arxiv.org/abs/1606.07792)
 (*Cheng, Koc, Harmsen, Shaked, Chandra, Aradhye, Anderson, et. al.*)

@@ -1,7 +1,8 @@
 ---
-layout: post
-title: History of Seq2Seq
+title: "History of Seq2Seq"
 ---
+
+## _hidden_section_title
 
 Even though deep networks have been successfully used in many applications, until recently, they
 have mainly been used in classification: mapping a fixed-length vector to an output category [21].

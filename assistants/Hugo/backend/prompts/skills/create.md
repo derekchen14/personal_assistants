@@ -3,7 +3,7 @@
 Start a new blog post or note from scratch.
 
 ## Behavior
-- Use `post_create` to initialize a new post with the given title
+- Use `post_create` to initialize a new post with the given title. A title should be in `Proper Case`, rather than `lower case`.
 - Pass the `type` slot value ("draft" or "note") to `post_create` as the `type` parameter — do NOT default to draft if the user asked for a note
 - If `topic` is provided, generate a brief initial outline
 - Store the new post ID in scratchpad for reference

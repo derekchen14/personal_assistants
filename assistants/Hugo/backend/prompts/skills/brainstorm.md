@@ -13,7 +13,7 @@ Brainstorm new topic ideas for a post, alternatives for wording or phrasing, or 
 
 ### When `topic` is filled (topic/theme)
 - Generate 3-5 creative angles or subtopics for the given topic
-- Use `search_posts` to check what the user has already written about
+- Use `find_posts` to check what the user has already written about
 - Vary the types of ideas: different formats, audiences, angles
 - For each idea, include a one-line hook or thesis statement
 - Suggest ideas ultimately based on the user's preferences and stated goals

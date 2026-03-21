@@ -9,8 +9,8 @@ SKILL_SYSTEM_SUFFIX = (
 )
 
 
-def build_skill_system(base_system: str, flow,
-                       skill_prompt: str | None, scratchpad: dict) -> str:
+def build_skill_system(base_system:str, flow, skill_prompt:str|None,
+                       scratchpad:dict, resolved:dict|None=None) -> str:
     flow_name = flow.name()
     filled_slots = flow.slot_values_dict()
 
@@ -29,6 +29,10 @@ def build_skill_system(base_system: str, flow,
     if filled_slots:
         slot_lines = [f'  - {k}: {v}' for k, v in filled_slots.items()]
         parts.append(f'\nFilled slots:\n' + '\n'.join(slot_lines) + '\n')
+
+    if resolved:
+        res_lines = [f'  {k}: {v}' for k, v in resolved.items()]
+        parts.append(f'\nResolved entities:\n' + '\n'.join(res_lines) + '\n')
 
     if scratchpad and isinstance(scratchpad, dict):
         sp_lines = [f'  - {k}: {v}' for k, v in scratchpad.items()]

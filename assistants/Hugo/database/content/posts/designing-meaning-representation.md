@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Designing Meaning Representations for Dialogue Systems
+title: "Designing Meaning Representations for Dialogue Systems"
 tags: [data-strategy, explainer, dialogue]
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 In order for a virtual assistant to be useful, the agent should do more than just information retrieval and basic chit-chat.  Rather than pattern recognition on the response level, the agent should be able to perform pattern recognition on the discourse level so it can mimic human-reasoning (even as true understanding remains an elusive goal).  If a model were to reason about an utterance, it must have been trained to do so.  Furthermore, we argue that such training must be explicitly performed through (weakly) supervised learning, rather than implicitly extracted from a large pre-trained LM (eg. through careful prompting).
 <!--more-->

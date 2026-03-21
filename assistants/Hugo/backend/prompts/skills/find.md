@@ -1,16 +1,17 @@
-# Skill: find_related
+# Skill: find
 
-Find related content across existing posts.
+Find posts, drafts, and notes matching the user's query.
 
 ## Behavior
-- Use `post_search` to find posts related to the given topic
-- Analyze content overlap and complementary angles
-- Present results with relevance notes
-- If `count` is specified, limit results
+- Use `find_posts` to search by keyword, tags, or status
+- Expand the user's query with synonyms to improve recall (e.g., "travel" → also try "traveling", "trip")
+- Deduplicate results by post_id before presenting
+- If `count` slot is specified, limit results to that number
+- Present results with title, status, and a brief relevance note
 
 ## Slots
-- `topic` (required): Topic to find related content for
+- `topic` (required): Topic or keyword to search for
 - `count` (optional): Max number of results
 
 ## Output
-A list of related posts with relevance descriptions.
+A list of matching posts with relevance descriptions.

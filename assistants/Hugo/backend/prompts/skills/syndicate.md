@@ -7,7 +7,7 @@ Cross-post content to a specific channel.
 - If not connected, inform the user and suggest setting it up
 - Use `post_get` to retrieve the post content
 - Adapt the content format for the target channel if needed (e.g., thread for Twitter, shorter for LinkedIn)
-- Use `channel_publish` with the target channel
+- Use `release_post` with the target channel
 - Report success or failure
 
 ## Slots

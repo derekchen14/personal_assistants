@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Meta Reinforcement Learning
+title: "Meta Reinforcement Learning"
 tags: [rl, explainer]
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 This post will explore meta reinforcement learning with only minimal math.  We attempt to dive into the core concepts without making it too complicated.
 

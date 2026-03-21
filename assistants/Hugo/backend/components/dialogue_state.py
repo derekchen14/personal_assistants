@@ -20,8 +20,7 @@ class DialogueState:
         self.natural_birth: bool = True
         self.active_post: str | None = None
 
-    def update(self, pred_intent: str, flow_name: str,
-               confidence: float):
+    def update(self, pred_intent:str, flow_name:str, confidence:float):
         self.pred_intent = pred_intent
         self.flow_name = flow_name
         self.confidence = confidence

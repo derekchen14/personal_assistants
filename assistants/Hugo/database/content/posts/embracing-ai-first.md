@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Embracing the AI-First Paradigm
+title: "Embracing the AI-First Paradigm"
 tags: [ai, startups, trends]
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 When the web first appeared, many folks adopted the new technology by porting over existing physical assets (ie. magazines and newspapers) to appear on a website with almost no changes.  When smartphones began to take hold, those same people ported over their existing websites onto a smaller screen, again with no discernable changes.  Rather than embracing the new medium, people simply applied the content of the old onto the new.  In hindsight, it seems obvious that the builders and makers should have been developing for the new medium, but perhaps paradigm shifts aren't so obvious when they are happening.  What lessons does that teach us about the shift into building AI-first companies?
 

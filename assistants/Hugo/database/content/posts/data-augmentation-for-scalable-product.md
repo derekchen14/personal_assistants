@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Data Augmentation for Scalable Product Development
+title: "Data Augmentation for Scalable Product Development"
 tags: [data-strategy, product-strategy, startups]
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 Data augmentation methods are a staple when training computer vision models, with methods like flipping, resizing, cropping and blurring used so ubiquitously that they are a foregone conclusion in most systems.[^1] These methods help improve model robustness such that anyway you change the image of a cat, the model still recognizes the item in the picture as a cat.  This is relatively straight forward since all aforementioned techniques keep the main object the same such that a cat remains a cat, and does not somehow magically morph into a dog.  But does this work for NLP as well?
 

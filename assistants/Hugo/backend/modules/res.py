@@ -13,28 +13,24 @@ from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
 from schemas.ontology import Intent
 from utils.helper import output_for_flow
+from backend.modules.templates import *
 
 if TYPE_CHECKING:
     from backend.components.world import World
 
-_UNSUPPORTED_MESSAGE = (
-    "That feature isn't supported yet, but it's on the roadmap. "
-    "Is there something else I can help with?"
-)
 
+class RES(object):
 
-class RES:
-
-    def __init__(self, config: MappingProxyType, ambiguity: AmbiguityHandler,
-                 engineer: PromptEngineer, world: 'World'):
+    def __init__(self, config:MappingProxyType, ambiguity:AmbiguityHandler,
+                 engineer:PromptEngineer, world:'World'):
         self.config = config
         self.ambiguity = ambiguity
         self.engineer = engineer
         self.world = world
         self.flow_stack = world.flow_stack
 
-    def respond(self, frame: DisplayFrame) -> tuple[str, DisplayFrame]:
-        completed_flows = self._start()
+    def respond(self, frame:DisplayFrame) -> tuple[str, DisplayFrame]:
+        completed_flows = self.start()
 
         if self.ambiguity.present():
             text = self._clarify()
@@ -47,27 +43,15 @@ class RES:
                  intent, state.keep_going if state else False,
                  frame.has_content())
 
-        flow = self.flow_stack.get_active_flow()
-        if flow and flow.result and flow.result.get('unsupported'):
-            text = _UNSUPPORTED_MESSAGE
-            self.world.context.add_turn('Agent', text, turn_type='agent_response')
-            return text, frame
-
         if intent == Intent.INTERNAL:
-            self._finish('', frame)
             return '', frame
-
         if intent == Intent.PLAN and state and state.keep_going:
-            self._finish('', frame)
+            self.finish('', frame)
             return '', frame
 
-        text = self._generate(frame, state, completed_flows)
-
-        block = self.display(frame, state, text)
-        if block:
-            frame.data['_rendered_block'] = block
-
-        self._finish(text, frame)
+        text = self.generate(frame, state, completed_flows)
+        self.display(frame, state, text)
+        self.finish(text, frame)
 
         if text:
             self.world.context.add_turn('Agent', text, turn_type='agent_response')
@@ -76,10 +60,10 @@ class RES:
 
     # ── Pre-hook ──────────────────────────────────────────────────────
 
-    def _start(self) -> list[BaseFlow]:
+    def start(self) -> list[BaseFlow]:
         popped = self.flow_stack.pop_completed_and_invalid()
 
-        completed = [f for f in popped if f.result is not None]
+        completed = [flow for flow in popped if flow.status == 'Completed']
         for flow in completed:
             if flow.intent == Intent.PLAN:
                 state = self.world.current_state()
@@ -113,50 +97,33 @@ class RES:
 
     # ── Generate ──────────────────────────────────────────────────────
 
-    def _generate(self, frame: DisplayFrame, state: DialogueState | None,
-                  completed_flows: list[BaseFlow]) -> str:
-        if state and state.flow_name == 'view' and frame.has_content():
-            title = frame.data.get('title', 'the post')
-            return f'Here\'s "{title}".'
+    def generate(self, frame:DisplayFrame, state:DialogueState, completed_flows:list[BaseFlow]) -> str:
+        if len(completed_flows) > 0:
+            # assume just a single flow for now
+            flow = completed_flows[0]
+        else:
+            # we can't assume that there is an active flow since it may be completed, so we check there first
+            flow = self.flow_stack.get_active_flow()
 
-        content = frame.data.get('content', '') if frame and frame.data else ''
-        if not content:
-            return ''
+        template_info = self.engineer.get_template(flow.name(), flow.intent)
+        template = template_info.get('template', '{message}')
 
-        intent = state.pred_intent if state else 'Converse'
-        flow_name = state.flow_name if state else ''
+        match flow.intent:
+            case 'Research': filled = fill_research_template(template, flow, frame)
+            case 'Draft': filled = fill_draft_template(template, flow, frame)
+            case 'Revise': filled = fill_revise_template(template, flow, frame)
+            case 'Publish': filled = fill_publish_template(template, flow, frame)
+            case 'Converse': filled = fill_converse_template(template, flow, frame)
+            case 'Plan': filled = fill_plan_template(template, flow, frame)
 
-        raw = self._template_fill(content, state, intent, flow_name)
+        if template_info.get('skip_naturalize'):
+            response = filled
+        else:
+            block_type = frame.block_type if frame.has_content() else None
+            response = self._naturalize(filled, block_type)
+        return response
 
-        tmpl_info = self.engineer.get_template(flow_name, intent)
-        if tmpl_info.get('skip_naturalize'):
-            return raw
-
-        return self._naturalize(raw, frame.block_type if frame.has_content() else None)
-
-    def _template_fill(self, message: str, state: DialogueState | None,
-                       intent: str, flow_name: str) -> str:
-        tmpl_info = self.engineer.get_template(flow_name, intent)
-        template = tmpl_info.get('template', '{message}')
-
-        slot_summary = ''
-        flow = self.flow_stack.find_by_name(flow_name) if flow_name else None
-        if flow:
-            sv = flow.slot_values_dict()
-            if sv:
-                parts = [f'{k}: {v}' for k, v in sv.items()]
-                slot_summary = ', '.join(parts)
-
-        try:
-            return template.format(
-                message=message,
-                flow_name=flow_name or 'your request',
-                slot_summary=slot_summary or 'the information',
-            )
-        except KeyError:
-            return message
-
-    def _naturalize(self, raw_text: str, block_type: str | None) -> str:
+    def _naturalize(self, raw_text:str, block_type:str|None) -> str:
         if self.config.get('debug', False):
             return raw_text
 
@@ -175,14 +142,14 @@ class RES:
                 task='naturalize', max_tokens=2048,
             )
             return text.strip() if text.strip() else raw_text
-        except Exception as e:
-            print(f'RES naturalization error: {e}')
+        except Exception as ecp:
+            print(f'RES naturalization error: {ecp}')
             return raw_text
 
     # ── Display ───────────────────────────────────────────────────────
 
-    def display(self, frame: DisplayFrame, state: DialogueState | None,
-                text: str) -> dict | None:
+    def display(self, frame:DisplayFrame, state:DialogueState|None,
+                text:str) -> dict | None:
         if not frame or not frame.has_content():
             return None
         if not frame.data or frame.block_type == 'default':
@@ -196,7 +163,6 @@ class RES:
         block['panel'] = frame.panel
         block['location'] = ['top', 'bottom']
         block['display_name'] = frame.display_name
-        block['source'] = frame.source
         if frame.code:
             block['code'] = frame.code
 
@@ -215,7 +181,7 @@ class RES:
 
     # ── Post-hook ─────────────────────────────────────────────────────
 
-    def _finish(self, text: str, frame: DisplayFrame):
+    def finish(self, text:str, frame:DisplayFrame):
         state = self.world.current_state()
         intent = state.pred_intent if state else 'Converse'
 

@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Optimizing RecSys Training
-date: '2016-06-23 16:25:14'
+title: "Optimizing RecSys Training"
 ---
+
+## _hidden_section_title
 
 Given the goal of creating an optimal recommendation system, one could consider using a neural turing machine (NTM) with a "programmable" head performing read/write operations on the various inputs in order to generate a prediction.  The inputs would be encoding of the situation (shopping for clothes), encodings of the options (sweater, jacket, T-shirt, dress shirt) along with their features of those options (blue/green, soft, polyester, wool), tons of other previously collected data points, and obviously a vector embedding of the individual for whom we are making the recommendation.  The predictions would just the result of softmax classifier with thousands of possibilities, each one representing a cluster of clothing items.  (There is no need to recommend just one item because eve a mobile UI can display 7-10 items fairly easily to let the customer make the final decision.)
 
@@ -13,10 +13,3 @@ As such, diffs on the user preference vectors (UPV) will signal when a change ha
 Since a population of shoppers on a whole are similar, the number of actions they take (or moods they exhibit) can be efficiently clustered into a reasonable amount of inputs that a deep neural network can accommodate.  Each population of shoppers will need new training (since different stores offer different products, and the buying behavior of buying shoes is different than buying homes), but this allows for much more effective direct scaling.  By direct scaling, what I mean is that the CL does not have to be trained at once for all things the user might buy (because the training takes into account UPV but does not depend directly on them.)  Rather the CL is trained on a certain population of buyers, and can then scale to other buyers are new companies are added into the mix.  Although this particular pub-sub method might not end up being correct, the ability to arbitrarily scale up and down is essential because business partnerships will come (and go) for reasons completely unrelated to data or technology.
 
 Overall, the idea here is to use lightweight components (inspired by Smalltalk) to communicate changes, and train off of those changes rather than monolithic feature vectors.
-
-
-
-
-
-
-

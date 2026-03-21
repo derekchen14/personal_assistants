@@ -1,3 +1,0 @@
-Here are your current drafts: {message}
-block_hint: list
-skip_naturalize: false

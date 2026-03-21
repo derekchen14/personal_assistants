@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Dialog State Tracking Models
+title: "Dialog State Tracking Models"
 tags: [dialogue]
-date: '2018-06-16 21:41:16'
 ---
+
+## _hidden_section_title
 
 Thoughts on some of the latest and greatest as of mid-2018.  
 

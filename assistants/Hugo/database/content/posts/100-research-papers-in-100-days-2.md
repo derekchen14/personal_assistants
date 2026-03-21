@@ -1,12 +1,8 @@
 ---
-layout: post
-title: 100 Research Papers in 100 Days (NLP Edition)
-date: '2016-10-11 03:30:18'
-tags:
-- nlp
-- lists
-- research
+title: "100 Research Papers in 100 Days (NLP Edition)"
 ---
+
+## _hidden_section_title
 
 The pace of machine learning research is advancing at such a breakneck pace, the only way to keep up is to read every single day.  So awhile back, 100 days ago to be exact, I decided to read one paper every single day - the first thing to tackle every morning.  The organization is split up into two posts (NLP and Images) to make a gigantic blog post into two really large ones. Please note, this is written by a student and may contain errors. Without further ado:
 
@@ -521,4 +517,4 @@ to compose them for high-level programs. It uses execution traces to provide the
 Neural Transducer?
 Newest NTM?
 Character level recognition from K. Cho?
-Each candidate answer works like a memory in a MemN2N or DMN. EpiReader seems to take the idea further though because rather than having a memory represent an encoded input, instead each memory represents a candidate answer. More specifically, each input is further processed in order to check its validity as a candidate answer before being stored as a memory.  (This is genius for multiple reasons, not the least of which is it saves with storage costs.)  Concretely, the input is processed by ... 
+Each candidate answer works like a memory in a MemN2N or DMN. EpiReader seems to take the idea further though because rather than having a memory represent an encoded input, instead each memory represents a candidate answer. More specifically, each input is further processed in order to check its validity as a candidate answer before being stored as a memory.  (This is genius for multiple reasons, not the least of which is it saves with storage costs.)  Concretely, the input is processed by ...

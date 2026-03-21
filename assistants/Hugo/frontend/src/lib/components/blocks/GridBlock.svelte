@@ -3,6 +3,7 @@
     import { conversation } from '$lib/stores/conversation';
     import { expandList, bottomFrame } from '$lib/stores/display';
     import IconTrash from '$lib/assets/IconTrash.svelte';
+    import IconDocumentCheck from '$lib/assets/IconDocumentCheck.svelte';
     import IconDocumentPlus from '$lib/assets/IconDocumentPlus.svelte';
 
     let { data }: { data: Record<string, unknown> } = $props();
@@ -60,7 +61,7 @@
     function saveNote(id: string) {
         const edits = noteEdits[id];
         if (!edits) return;
-        conversation.updatePost(id, { content: edits.body });
+        conversation.updateNote(id, edits.body);
     }
 
     function charCountClass(count: number): string {
@@ -84,7 +85,7 @@
     async function handleNewNoteBlur() {
         const body = newNoteBody.trim();
         if (body.length < 2) { creatingNote = false; newNoteBody = ''; return; }
-        conversation.createPost('note', '', body);
+        conversation.createNote(body);
         creatingNote = false;
         newNoteBody = '';
     }
@@ -102,11 +103,20 @@
                 {@const count = id && noteEdits[id] ? noteEdits[id].body.length : getCharCount(item)}
                 <div class="group w-full">
                     <div class="note-card">
-                        <button
-                            class="absolute bottom-4 left-4 opacity-0 group-hover:opacity-100 text-[var(--muted)] hover:text-red-500 transition-colors cursor-pointer note-delete-btn"
-                            title="Delete"
-                            onclick={() => { confirmDeleteItem = item; }}
-                        ><IconTrash size={13} /></button>
+                        <div class="absolute bottom-4 left-4 flex items-center gap-2">
+                            <button
+                                class="opacity-0 group-hover:opacity-100 text-[var(--muted)] hover:text-red-500 transition-colors cursor-pointer note-delete-btn"
+                                title="Delete"
+                                onclick={() => { confirmDeleteItem = item; }}
+                            ><IconTrash size={13} /></button>
+                            {#if editingId === id}
+                                <button
+                                    class="text-[var(--muted)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+                                    title="Save"
+                                    onmousedown={(e) => { e.preventDefault(); saveNote(id!); editingId = null; }}
+                                ><IconDocumentCheck size={14} /></button>
+                            {/if}
+                        </div>
                         {#if editingId === id}
                             <textarea
                                 class="min-h-16 overflow-y-hidden w-full bg-transparent border-none outline-none resize-none text-sm leading-relaxed text-[var(--text)] placeholder-[var(--muted)]"
@@ -118,7 +128,7 @@
                         {:else}
                             <div
                                 onclick={() => { if (id) { initNoteEdit(item); editingId = id; } }}
-                                class="cursor-text note-markdown text-sm min-h-16 max-h-[14em] overflow-y-auto w-full text-[var(--text)]"
+                                class="cursor-text note-markdown text-sm min-h-16 max-h-[14em] group-hover:max-h-none overflow-y-auto group-hover:overflow-y-visible w-full text-[var(--text)] transition-[max-height] duration-200"
                                 role="textbox"
                                 tabindex="0"
                                 onkeydown={(e) => { if (e.key === 'Enter' && id) { initNoteEdit(item); editingId = id; } }}
@@ -161,11 +171,20 @@
                 {@const count = id && noteEdits[id] ? noteEdits[id].body.length : getCharCount(item)}
                 <div class="group w-full">
                     <div class="note-card">
-                        <button
-                            class="absolute bottom-4 left-4 opacity-0 group-hover:opacity-100 text-[var(--muted)] hover:text-red-500 transition-colors cursor-pointer note-delete-btn"
-                            title="Delete"
-                            onclick={() => { confirmDeleteItem = item; }}
-                        ><IconTrash size={13} /></button>
+                        <div class="absolute bottom-4 left-4 flex items-center gap-2">
+                            <button
+                                class="opacity-0 group-hover:opacity-100 text-[var(--muted)] hover:text-red-500 transition-colors cursor-pointer note-delete-btn"
+                                title="Delete"
+                                onclick={() => { confirmDeleteItem = item; }}
+                            ><IconTrash size={13} /></button>
+                            {#if editingId === id}
+                                <button
+                                    class="text-[var(--muted)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+                                    title="Save"
+                                    onmousedown={(e) => { e.preventDefault(); saveNote(id!); editingId = null; }}
+                                ><IconDocumentCheck size={14} /></button>
+                            {/if}
+                        </div>
                         {#if editingId === id}
                             <textarea
                                 class="min-h-16 overflow-y-hidden w-full bg-transparent border-none outline-none resize-none text-sm leading-relaxed text-[var(--text)] placeholder-[var(--muted)]"
@@ -177,7 +196,7 @@
                         {:else}
                             <div
                                 onclick={() => { if (id) { initNoteEdit(item); editingId = id; } }}
-                                class="cursor-text note-markdown text-sm min-h-16 max-h-[14em] overflow-y-auto w-full text-[var(--text)]"
+                                class="cursor-text note-markdown text-sm min-h-16 max-h-[14em] group-hover:max-h-none overflow-y-auto group-hover:overflow-y-visible w-full text-[var(--text)] transition-[max-height] duration-200"
                                 role="textbox"
                                 tabindex="0"
                                 onkeydown={(e) => { if (e.key === 'Enter' && id) { initNoteEdit(item); editingId = id; } }}
@@ -220,11 +239,20 @@
                 {@const count = id && noteEdits[id] ? noteEdits[id].body.length : getCharCount(item)}
                 <div class="group w-full">
                     <div class="note-card">
-                        <button
-                            class="absolute bottom-4 left-4 opacity-0 group-hover:opacity-100 text-[var(--muted)] hover:text-red-500 transition-colors cursor-pointer note-delete-btn"
-                            title="Delete"
-                            onclick={() => { confirmDeleteItem = item; }}
-                        ><IconTrash size={13} /></button>
+                        <div class="absolute bottom-4 left-4 flex items-center gap-2">
+                            <button
+                                class="opacity-0 group-hover:opacity-100 text-[var(--muted)] hover:text-red-500 transition-colors cursor-pointer note-delete-btn"
+                                title="Delete"
+                                onclick={() => { confirmDeleteItem = item; }}
+                            ><IconTrash size={13} /></button>
+                            {#if editingId === id}
+                                <button
+                                    class="text-[var(--muted)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+                                    title="Save"
+                                    onmousedown={(e) => { e.preventDefault(); saveNote(id!); editingId = null; }}
+                                ><IconDocumentCheck size={14} /></button>
+                            {/if}
+                        </div>
                         {#if editingId === id}
                             <textarea
                                 class="min-h-16 overflow-y-hidden w-full bg-transparent border-none outline-none resize-none text-sm leading-relaxed text-[var(--text)] placeholder-[var(--muted)]"
@@ -236,7 +264,7 @@
                         {:else}
                             <div
                                 onclick={() => { if (id) { initNoteEdit(item); editingId = id; } }}
-                                class="cursor-text note-markdown text-sm min-h-16 max-h-[14em] overflow-y-auto w-full text-[var(--text)]"
+                                class="cursor-text note-markdown text-sm min-h-16 max-h-[14em] group-hover:max-h-none overflow-y-auto group-hover:overflow-y-visible w-full text-[var(--text)] transition-[max-height] duration-200"
                                 role="textbox"
                                 tabindex="0"
                                 onkeydown={(e) => { if (e.key === 'Enter' && id) { initNoteEdit(item); editingId = id; } }}
@@ -291,7 +319,7 @@
                     class="px-3 py-1.5 text-xs rounded bg-red-500 hover:bg-red-600 text-white font-medium cursor-pointer transition-colors"
                     onclick={() => {
                         if (id) {
-                            conversation.deletePost(id);
+                            conversation.deleteNote(id);
                             bottomFrame.set(null);
                         }
                         confirmDeleteItem = null;

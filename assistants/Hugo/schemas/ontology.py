@@ -5,9 +5,9 @@ class Intent:
     PLAN = 'Plan'
     CONVERSE = 'Converse'
     INTERNAL = 'Internal'
-    RESEARCH = 'Research'     # browse, view, check, inspect, find, compare
-    DRAFT = 'Draft'           # outline, refine, expand, write, add, create, brainstorm
-    REVISE = 'Revise'         # rework, polish, tone, audit, format, amend, diff, tidy
+    RESEARCH = 'Research'     # browse, summarize, check, inspect, find, compare, diff
+    DRAFT = 'Draft'           # outline, refine, cite, compose, add, create, brainstorm
+    REVISE = 'Revise'         # rework, polish, tone, audit, simplify, remove, tidy
     PUBLISH = 'Publish'       # release, syndicate, schedule, preview, confirm, cancel, survey
 
 
@@ -44,9 +44,11 @@ DACT_CATALOG = {
     'reject':   {'hex': 'F', 'pos': 'adj'},
 }
 
+
+
 FLOW_CATALOG = {
 
-    # ── Research (6 flows: +inspect) ─────────────────────────────────
+    # ── Research (7 flows) ─────────────────────────────────
 
     'browse': {
         'dax': '{012}',
@@ -56,26 +58,26 @@ FLOW_CATALOG = {
         'edge_flows': ['find', 'brainstorm', 'search', 'audit'],
         'policy_path': 'policies.research.browse',
     },
-    'view': {
-        'dax': '{1AD}',
+    'summarize': {
+        'dax': '{19A}',
         'intent': Intent.RESEARCH,
-        'description': 'View a specific post or draft in full — title, body, section breakdown, tags, featured image, and current workflow status',
+        'description': 'Synthesize a post into a short paragraph capturing the core argument, target audience, and main takeaways — useful for excerpts, SEO descriptions, or pre-reads before writing a follow-up',
         'output': 'card',
         'edge_flows': ['find', 'check', 'preview'],
-        'policy_path': 'policies.research.view',
+        'policy_path': 'policies.research.summarize',
     },
     'check': {
         'dax': '{0AD}',
         'intent': Intent.RESEARCH,
         'description': 'Check the technical metadata surrounding a post — category tags, has_featured_image, publication date, last edited date, scheduled date, channels, status: draft, scheduled, published, or unpublished',
         'output': 'list',
-        'edge_flows': ['view', 'inspect', 'preview', 'compare'],
+        'edge_flows': ['summarize', 'inspect', 'preview', 'compare'],
         'policy_path': 'policies.research.check',
     },
     'inspect': {
         'dax': '{1BD}',
         'intent': Intent.RESEARCH,
-        'description': 'Analyze content metrics and statistics — word count, reading time, section count, number of images, number of links; The output is almost always a number',
+        'description': 'Report numeric content metrics — word count, section count, reading time, image count, post size (MB); optionally filtered to a single metric (word_count, section_count, time_to_read, image_count, post_size). Use check for post metadata',
         'output': 'card',
         'edge_flows': ['check', 'tidy', 'audit'],
         'policy_path': 'policies.research.inspect',
@@ -85,7 +87,7 @@ FLOW_CATALOG = {
         'intent': Intent.RESEARCH,
         'description': 'Search previous posts by keyword or topic — returns matching titles, excerpts, and publication dates sorted by relevance',
         'output': 'list',
-        'edge_flows': ['browse', 'audit', 'view'],
+        'edge_flows': ['browse', 'audit', 'summarize'],
         'policy_path': 'policies.research.find',
     },
     'compare': {
@@ -96,13 +98,21 @@ FLOW_CATALOG = {
         'edge_flows': ['find', 'audit'],
         'policy_path': 'policies.research.compare',
     },
+    'diff': {
+        'dax': '{0BD}',
+        'intent': Intent.RESEARCH,
+        'description': 'Compare two versions of a section side by side — shows additions, deletions, and modifications highlighted so the user can evaluate what changed',
+        'output': 'card',
+        'edge_flows': ['polish', 'amend'],
+        'policy_path': 'policies.research.diff',
+    },
 
     # ── Draft (7 flows) ─────────────────────────────────────────────
 
     'outline': {
         'dax': '{002}',
         'intent': Intent.DRAFT,
-        'description': 'Generate outline options for a topic — section headings, key points per section, estimated word counts, and suggested reading order',
+        'description': 'Generate an outline including section headings, key bullet points, estimated word counts, and suggested reading order',
         'output': 'list',
         'edge_flows': ['refine', 'brainstorm', 'write'],
         'policy_path': 'policies.draft.outline',
@@ -110,26 +120,26 @@ FLOW_CATALOG = {
     'refine': {
         'dax': '{02B}',
         'intent': Intent.DRAFT,
-        'description': 'Refine a specific section of the outline — adjust headings, reorder points, add or remove subsections, and incorporate feedback',
+        'description': 'Refine the bullet points in the outline; which can include adjust headings, reorder points, add or remove subsections, and incorporate feedback',
         'output': 'card',
-        'edge_flows': ['outline', 'expand', 'polish'],
+        'edge_flows': ['outline', 'compose', 'polish'],
         'policy_path': 'policies.draft.refine',
     },
-    'expand': {
-        'dax': '{03A}',
+    'cite': {
+        'dax': '{15B}',
         'intent': Intent.DRAFT,
-        'description': 'Expand existing content into full prose — takes bullet points, notes, or sparse sections and develops them into complete paragraphs. Requires existing content; use write for blank sections',
+        'description': 'Add a citation to a note — if a URL is provided, attach it directly; if only a note is provided, search the web for a supporting source and propose it for user confirmation',
         'output': 'card',
-        'edge_flows': ['write', 'rework'],
-        'policy_path': 'policies.draft.expand',
+        'edge_flows': ['brainstorm', 'rework'],
+        'policy_path': 'policies.draft.cite',
     },
     'compose': {
         'dax': '{003}',
         'intent': Intent.DRAFT,
-        'description': 'Write a section from scratch based on instructions — generates new prose from a topic description or brief. No existing content required; use expand when content already exists',
+        'description': 'Write a section from scratch based on instructions or an outline. If only given a topic, generate an outline first; For editing existing content, use rework',
         'output': 'card',
-        'edge_flows': ['expand', 'polish'],
-        'policy_path': 'policies.draft.write',
+        'edge_flows': ['rework', 'polish'],
+        'policy_path': 'policies.draft.compose',
     },
     'add': {
         'dax': '{005}',
@@ -151,26 +161,26 @@ FLOW_CATALOG = {
     'brainstorm': {
         'dax': '{29A}',
         'intent': Intent.DRAFT,
-        'description': 'Hugo brainstorms ideas for a topic — generates a list of angles, hooks, opening lines, or perspectives the user can choose from',
+        'description': 'Come up with new ideas or angles for a given topic, word, or phrase. This may include hooks, opening lines, synonyms, or new perspectives the user can choose from',
         'output': 'list',
         'edge_flows': ['browse', 'outline'],
         'policy_path': 'policies.draft.brainstorm',
     },
 
-    # ── Revise (8 flows) ─────────────────────────────
+    # ── Revise (7 flows) ─────────────────────────────
 
     'rework': {
         'dax': '{006}',
         'intent': Intent.REVISE,
-        'description': 'Major revision of draft content — restructures arguments, replaces weak sections, addresses reviewer comments. Heavier than polish, which only does light editing',
+        'description': 'Major revision of draft content — restructures arguments, replaces weak sections, addresses reviewer comments. Scope can go across the whole post, or an entire section. For smaller changes, use polish',
         'output': 'card',
-        'edge_flows': ['expand', 'polish', 'write', 'refine'],
+        'edge_flows': ['compose', 'polish', 'simplify', 'refine'],
         'policy_path': 'policies.revise.rework',
     },
     'polish': {
         'dax': '{3BD}',
         'intent': Intent.REVISE,
-        'description': 'Light editing of a specific section or sentence — improves word choice, tightens sentences, fixes transitions, and smooths flow without changing meaning or structure',
+        'description': 'Editing of a specific paragraph, sentence or phrase — improves word choice, tightens sentences, fixes transitions, and smooths flow without changing meaning or structure. The scope is within a single paragraph or image, not across the whole post',
         'output': 'card',
         'edge_flows': ['rework', 'write', 'refine'],
         'policy_path': 'policies.revise.polish',
@@ -178,7 +188,7 @@ FLOW_CATALOG = {
     'tone': {
         'dax': '{38A}',
         'intent': Intent.REVISE,
-        'description': 'Adjust tone or voice across the entire post — shifts register (formal, casual, technical, conversational), adjusts sentence length and vocabulary complexity',
+        'description': 'Adjust tone or voice across the entire post — shifts register (formal, casual, technical, academic, witty, natural), adjusts sentence length and vocabulary complexity',
         'output': 'card',
         'edge_flows': ['rework', 'audit'],
         'policy_path': 'policies.revise.tone',
@@ -186,18 +196,18 @@ FLOW_CATALOG = {
     'audit': {
         'dax': '{13A}',
         'intent': Intent.REVISE,
-        'description': "Check consistency with the user's published history — compares voice, terminology, formatting conventions, and stylistic patterns against previous posts",
+        'description': "Check that the post is written in the user's voice rather than sounding like AI, compares voice, terminology, formatting conventions, and stylistic patterns against previous posts",
         'output': 'card',
         'edge_flows': ['tone', 'compare'],
         'policy_path': 'policies.revise.audit',
     },
-    'format': {
-        'dax': '{3AD}',
+    'simplify': {
+        'dax': '{7BD}',
         'intent': Intent.REVISE,
-        'description': 'Apply channel-specific formatting for publication — heading levels, image placement, code blocks, pull quotes, and metadata fields (tags, excerpt, featured image)',
+        'description': 'Reduce complexity of a section or note — shorten paragraphs, simplify sentence structure, remove redundancy; image simplification means replacing with a simpler alternative or removing entirely',
         'output': 'card',
-        'edge_flows': ['rework', 'release', 'tone'],
-        'policy_path': 'policies.revise.format',
+        'edge_flows': ['polish', 'remove', 'tidy'],
+        'policy_path': 'policies.revise.simplify',
     },
     'remove': {
         'dax': '{007}',
@@ -207,20 +217,12 @@ FLOW_CATALOG = {
         'edge_flows': ['audit', 'rework'],
         'policy_path': 'policies.revise.amend',
     },
-    'diff': {
-        'dax': '{0BD}',
-        'intent': Intent.RESEARCH,
-        'description': 'Compare two versions of a section side by side — shows additions, deletions, and modifications highlighted so the user can evaluate what changed',
-        'output': 'card',
-        'edge_flows': ['polish', 'amend'],
-        'policy_path': 'policies.revise.diff',
-    },
     'tidy': {
         'dax': '{3AB}',
         'intent': Intent.REVISE,
         'description': 'Normalize structural formatting across the post — consistent heading hierarchy, list indentation, paragraph spacing, and whitespace cleanup. Does not change wording',
         'output': 'card',
-        'edge_flows': ['format', 'rework'],
+        'edge_flows': ['simplify', 'rework'],
         'policy_path': 'policies.revise.tidy',
     },
 
@@ -229,7 +231,7 @@ FLOW_CATALOG = {
     'release': {
         'dax': '{04A}',
         'intent': Intent.PUBLISH,
-        'description': 'Publish the post to the primary blog — makes the post live immediately on the main channel. Use syndicate to cross-post, promote to amplify reach after publishing',
+        'description': 'Publish the post to the primary blog; makes the post live immediately on the main channel. Use syndicate to cross-post, promote to amplify reach after publishing',
         'output': 'toast',
         'edge_flows': ['syndicate', 'promote'],
         'policy_path': 'policies.publish.release',
@@ -255,7 +257,7 @@ FLOW_CATALOG = {
         'intent': Intent.PUBLISH,
         'description': 'Preview how the post will look when published — renders the post in the target channel\'s format so the user can review layout, images, and formatting before going live',
         'output': 'card',
-        'edge_flows': ['format', 'release', 'view', 'compare'],
+        'edge_flows': ['tidy', 'release', 'summarize', 'compare'],
         'policy_path': 'policies.publish.preview',
     },
     'promote': {
@@ -357,7 +359,7 @@ FLOW_CATALOG = {
         'intent': Intent.PLAN,
         'description': 'Plan a revision sequence — examines a draft and prioritizes which sections need rework, polish, or restructuring; produces an ordered checklist of revision tasks',
         'output': 'list',
-        'edge_flows': ['rework', 'format'],
+        'edge_flows': ['rework', 'tidy'],
         'policy_path': 'policies.plan.triage',
     },
     'calendar': {
@@ -453,4 +455,4 @@ FLOW_CATALOG = {
     },
 }
 
-KEY_ENTITIES = ['post', 'section', 'note', 'channel']
+KEY_ENTITIES = ['post', 'section', 'snippet', 'channel']

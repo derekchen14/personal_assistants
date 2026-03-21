@@ -1,14 +1,6 @@
 from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
 from backend.modules.policies.base import BasePolicy
-
-if TYPE_CHECKING:
-    from backend.components.dialogue_state import DialogueState
-    from backend.components.context_coordinator import ContextCoordinator
-    from backend.components.display_frame import DisplayFrame
-    from backend.components.flow_stack.parents import BaseFlow
+from backend.components.display_frame import DisplayFrame
 
 
 class ResearchPolicy(BasePolicy):
@@ -19,26 +11,35 @@ class ResearchPolicy(BasePolicy):
         'notes': 'note', 'note': 'note',
     }
 
-    def execute(self, flow: 'BaseFlow', state: 'DialogueState',
-                context: 'ContextCoordinator', tools) -> 'DisplayFrame':
+    def __init__(self, components:dict):
+        super().__init__(components)
+        self.flow_stack = components['flow_stack']
+
+    def execute(self, state, context, tools) -> 'DisplayFrame':
+        flow = self.flow_stack.get_active_flow()
+
         match flow.name():
             case 'browse': return self.browse_policy(flow, state, context, tools)
-            case 'view': return self.view_policy(flow, state, context, tools)
+            case 'summarize': return self.summarize_policy(flow, state, context, tools)
             case 'check': return self.check_policy(flow, state, context, tools)
             case 'inspect': return self.inspect_policy(flow, state, context, tools)
             case 'find': return self.find_policy(flow, state, context, tools)
             case 'compare': return self.compare_policy(flow, state, context, tools)
             case 'diff': return self.diff_policy(flow, state, context, tools)
             case _:
-                return self.build_frame('default', {'content': ''})
+                frame = self.build_frame('default')
+                frame.data = {'content': ''}
+                return frame
 
     def browse_policy(self, flow, state, context, tools):
         cat_slot = flow.slots.get('category')
         category = str(cat_slot.to_dict()) if cat_slot and cat_slot.filled else None
 
-        search_params = {'category': category} if category else {'status': 'note'}
-        result = tools('post_search', search_params)
-        items = result.get('result', []) if result.get('status') == 'success' else []
+        if category:
+            result = tools('find_posts', {'query': category})
+        else:
+            result = tools('find_posts', {'status': 'note'})
+        items = result.get('items', []) if result.get('_success') else []
 
         summary = f"Found {len(items)} item(s)"
         summary += f" in category '{category}'" if category else " (saved notes/ideas)"
@@ -53,43 +54,59 @@ class ResearchPolicy(BasePolicy):
         skill_prompt = self._load_skill_template(flow.name())
         messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
         text = self.engineer.call(messages)
-        return self.build_frame('list', {
-            'flow_name': flow.name(), 'content': text, 'items': items,
-        }, source='browse')
+        flow.status = 'Completed'
+        frame = self.build_frame('list', origin='browse')
+        frame.data = {'content': text, 'items': items}
+        return frame
 
-    def view_policy(self, flow, state, context, tools):
-        identifier = self.extract_source(flow, state)
-        post_id = self.resolve_post_id(identifier, tools) if identifier else None
+    def summarize_policy(self, flow, state, context, tools):
+        post_id, _ = self._resolve_source_ids(flow, state, tools)
 
-        if post_id:
-            result = tools('post_get', {'post_id': post_id})
-        else:
-            result = {'status': 'error'}
+        if not post_id:
+            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
+            frame = self.build_frame('default')
+            frame.data = {'content': self.ambiguity.ask()}
+            return frame
 
-        if result.get('status') == 'success':
-            post = result['result']
-            return self.build_frame('card', {
-                'post_id': post.get('post_id', ''),
-                'title': post.get('title', ''),
-                'status': post.get('status', ''),
-                'content': post.get('content', ''),
-            }, source='view', panel='bottom')
-        else:
-            return self.build_frame('default', {
-                'content': f'Could not find post "{identifier}".',
-            })
+        meta = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
+        if not meta.get('_success'):
+            frame = self.build_frame('default')
+            frame.data = {'content': 'Could not find the specified post.'}
+            return frame
+
+        length_slot = flow.slots.get('length')
+        length_hint = f" Aim for {length_slot.to_dict()} words." if length_slot and length_slot.filled else ''
+
+        convo_history = context.compile_history()
+        history_with_data = (
+            f"{convo_history}\n\n[Post content]\nTitle: {meta.get('title', '')}\n"
+            f"Content: {meta.get('outline', '')}"
+        )
+        skill_prompt = self._load_skill_template(flow.name())
+        messages = self.engineer.build_skill_prompt(
+            flow, history_with_data, self.memory.read_scratchpad(),
+            skill_prompt + length_hint,
+        )
+        text = self.engineer.call(messages)
+        flow.status = 'Completed'
+        frame = self.build_frame('card', origin='summarize', panel='bottom')
+        frame.data = {
+            'post_id': post_id,
+            'title': meta.get('title', ''),
+            'content': text,
+        }
+        return frame
 
     def check_policy(self, flow, state, context, tools):
-        source_slot = flow.slots.get('source')
+        grounding = flow.slots.get(flow.entity_slot)
         status = None
-        if source_slot and source_slot.filled:
-            val = source_slot.to_dict()
-            tab = val[0].get('post', '') if isinstance(val, list) and val else str(val)
+        if grounding and grounding.filled:
+            tab = grounding.values[0].get('post', '')
             status = self._TAB_TO_STATUS.get(tab.lower())
 
-        search_params = {'status': status} if status else {}
-        result = tools('post_search', search_params)
-        items = result.get('result', []) if result.get('status') == 'success' else []
+        params = {'status': status} if status else {}
+        result = tools('find_posts', params)
+        items = result.get('items', []) if result.get('_success') else []
 
         summary = f"Found {len(items)} item(s)"
         if status:
@@ -105,22 +122,49 @@ class ResearchPolicy(BasePolicy):
         skill_prompt = self._load_skill_template(flow.name())
         messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
         text = self.engineer.call(messages)
-        return self.build_frame('default', {
-            'flow_name': flow.name(), 'content': text,
-        }, source='check')
+        flow.status = 'Completed'
+        frame = self.build_frame('default', origin='check')
+        frame.data = {'content': text}
+        return frame
 
     def inspect_policy(self, flow, state, context, tools):
-        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
-            identifier = self.extract_source(flow, state)
-            if identifier:
-                flow.fill_slots_by_label({'source': identifier})
-            if not flow.slots.get('source') or not flow.slots['source'].filled:
-                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
-                return self.build_frame('default', {'content': self.ambiguity.ask()})
+        grounding = flow.slots[flow.entity_slot]
+        if not grounding.filled:
+            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
+            frame = self.build_frame('default')
+            frame.data = {'content': self.ambiguity.ask()}
+            return frame
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
-        block_data = self.build_block_data(flow, text, tool_log)
-        return self.build_frame('list', block_data, source='inspect')
+        result = self.extract_tool_result(tool_log, 'inspect_post')
+
+        # Build a clean metrics summary from tool results
+        metrics = self._format_inspect_metrics(result)
+        flow.status = 'Completed'
+        frame = self.build_frame('list', origin='inspect', thoughts=text)
+        frame.data = {'content': metrics or text}
+        return frame
+
+    @staticmethod
+    def _format_inspect_metrics(result:dict) -> str|None:
+        """Format inspect tool results into a readable metrics summary."""
+        fields = {
+            'word_count': 'Word count',
+            'section_count': 'Sections',
+            'estimated_read_time': 'Read time (min)',
+            'image_count': 'Images',
+            'link_count': 'Links',
+            'avg_paragraph_length': 'Avg paragraph length',
+            'heading_depth': 'Heading depth',
+        }
+        lines = []
+        for key, label in fields.items():
+            if key in result:
+                lines.append(f'{label}: {result[key]}')
+        empty = result.get('empty_sections', [])
+        if empty:
+            lines.append(f'Empty sections: {", ".join(empty)}')
+        return '\n'.join(lines) if lines else None
 
     def find_policy(self, flow, state, context, tools):
         query_slot = flow.slots.get('query')
@@ -138,14 +182,14 @@ class ResearchPolicy(BasePolicy):
         items: list = []
         if query:
             for term in self._expand_query(query):
-                result = tools('post_search', {'query': term})
-                for item in result.get('result', []) if result.get('status') == 'success' else []:
+                result = tools('find_posts', {'query': term})
+                for item in result.get('items', []) if result.get('_success') else []:
                     if item['post_id'] not in seen_ids:
                         seen_ids.add(item['post_id'])
                         items.append(item)
         else:
-            result = tools('post_search', {})
-            items = result.get('result', []) if result.get('status') == 'success' else []
+            result = tools('find_posts', {})
+            items = result.get('items', []) if result.get('_success') else []
         if limit:
             items = items[:limit]
 
@@ -153,8 +197,8 @@ class ResearchPolicy(BasePolicy):
         summary = f"Found {n} item(s) matching '{query}'." if query else f"Found {n} item(s)."
         for it in items[:10]:
             line = f"  - {it.get('title', 'Untitled')}"
-            if it.get('snippet'):
-                line += f": {it['snippet']}"
+            if it.get('preview_snippet'):
+                line += f": {it['preview_snippet']}"
             summary += '\n' + line
 
         convo_history = context.compile_history()
@@ -162,29 +206,34 @@ class ResearchPolicy(BasePolicy):
         skill_prompt = self._load_skill_template(flow.name())
         messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
         text = self.engineer.call(messages)
+        flow.status = 'Completed'
 
         if n == 0:
-            return self.build_frame('default', {'content': text}, source='find')
+            frame = self.build_frame('default', origin='find')
+            frame.data = {'content': text}
+            return frame
 
         if n == 1:
             post_id = items[0]['post_id']
-            result = tools('post_get', {'post_id': post_id})
-            if result.get('status') == 'success':
-                post = result['result']
-                return self.build_frame('card', {
-                    'post_id': post.get('post_id', ''),
-                    'title': post.get('title', ''),
-                    'status': post.get('status', ''),
-                    'content': post.get('content', ''),
-                }, source='find', panel='bottom')
+            result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
+            if result.get('_success'):
+                frame = self.build_frame('card', origin='find', panel='bottom')
+                frame.data = {
+                    'post_id': post_id,
+                    'title': result.get('title', ''),
+                    'status': result.get('status', ''),
+                    'content': result.get('outline', ''),
+                }
+                return frame
 
         post_count = sum(1 for it in items if it.get('status') == 'published')
         draft_count = sum(1 for it in items if it.get('status') == 'draft')
         page = 'posts' if post_count >= draft_count else 'drafts'
-        block_data = {'content': text, 'items': items, 'source': 'find', 'page': page}
+        frame = self.build_frame('list', origin='find', panel='top')
+        frame.data = {'content': text, 'items': items, 'page': page}
         if n <= 8:
-            block_data['expanded_ids'] = [it['post_id'] for it in items]
-        return self.build_frame('list', block_data, source='find', panel='top')
+            frame.data['expanded_ids'] = [it['post_id'] for it in items]
+        return frame
 
     def _expand_query(self, query: str) -> list[str]:
         """Use LLM to generate semantically similar search terms."""
@@ -204,40 +253,41 @@ class ResearchPolicy(BasePolicy):
         return [query]
 
     def compare_policy(self, flow, state, context, tools):
-        source_slot = flow.slots.get('source')
-        if not source_slot or not source_slot.filled:
-            self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
-            return self.build_frame('default', {'content': self.ambiguity.ask()})
-
-        sources = source_slot.to_dict()
-        entries = sources if isinstance(sources, list) else [sources]
+        grounding = flow.slots.get(flow.entity_slot)
+        if not grounding or not grounding.filled:
+            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
+            frame = self.build_frame('default')
+            frame.data = {'content': self.ambiguity.ask()}
+            return frame
 
         posts = []
-        for entry in entries[:2]:
-            identifier = entry.get('post', '') if isinstance(entry, dict) else str(entry)
+        for entry in grounding.values[:2]:
+            identifier = entry.get('post', '')
             post_id = self.resolve_post_id(identifier, tools) if identifier else None
             if post_id:
-                result = tools('post_get', {'post_id': post_id})
-                if result.get('status') == 'success':
-                    posts.append(result['result'])
+                result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
+                if result.get('_success'):
+                    posts.append(result)
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
+        flow.status = 'Completed'
 
         left = posts[0] if len(posts) > 0 else {}
         right = posts[1] if len(posts) > 1 else {}
-        return self.build_frame('compare', {
-            'left': left, 'right': right, 'content': text,
-        }, source='compare')
+        frame = self.build_frame('compare', origin='compare', thoughts=text)
+        frame.data = {'left': left, 'right': right, 'content': text}
+        return frame
 
     def diff_policy(self, flow, state, context, tools):
-        if not flow.slots.get('source', None) or not flow.slots['source'].filled:
-            identifier = self.extract_source(flow, state)
-            if identifier:
-                flow.fill_slots_by_label({'source': identifier})
-            if not flow.slots.get('source') or not flow.slots['source'].filled:
-                self.ambiguity.declare('specific', metadata={'missing_slot': 'source'})
-                return self.build_frame('default', {'content': self.ambiguity.ask()})
+        grounding = flow.slots[flow.entity_slot]
+        if not grounding.filled:
+            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
+            frame = self.build_frame('default')
+            frame.data = {'content': self.ambiguity.ask()}
+            return frame
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
-        block_data = self.build_block_data(flow, text, tool_log)
-        return self.build_frame('list', block_data, source='diff')
+        flow.status = 'Completed'
+        frame = self.build_frame('list', origin='diff', thoughts=text)
+        frame.data = {'content': text}
+        return frame

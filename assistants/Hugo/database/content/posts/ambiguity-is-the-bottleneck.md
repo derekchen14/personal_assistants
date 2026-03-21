@@ -1,9 +1,10 @@
 ---
-layout: post
-title: Ambiguity is the Bottleneck
-tags: [ai, dialogue, startups]
+title: "Ambiguity is the Bottleneck"
+tags: [ai, dialogue, startups, ambiguity]
 color: green
 ---
+
+## _hidden_section_title
 
 The prevailing trend on social media is that AGI is right around the corner, but cracks begin to appear as soon as we consider the type of progress we have made and just how far we have to go to create something useful for [most people](https://derekchen14.substack.com/p/agi-for-the-rest-of-us). Let's examine the evidence. Many researchers base their super-intelligence [timelines](https://ai-2027.com/) on the compounding growth in benchmark progress. But benchmarks aren’t real life. OK, then what about AI systems from [big](https://deepmind.google/discover/blog/advanced-version-of-gemini-with-deep-think-officially-achieves-gold-medal-standard-at-the-international-mathematical-olympiad/) (and [small](https://arxiv.org/abs/2507.15855!) labs winning IMO gold medals.  Or what about coding agents deployed in production building entire applications in one shot? Surely, these are pretty real right?
 

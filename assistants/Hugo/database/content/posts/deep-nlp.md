@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Deep NLP from Deep Learning Summer School
-date: '2016-09-16 22:18:21'
+title: "Deep NLP from Deep Learning Summer School"
 ---
+
+## _hidden_section_title
 
 *Notes from Kyunghyun Cho's lecture during Montreal's Deep Learning Summer School*
 

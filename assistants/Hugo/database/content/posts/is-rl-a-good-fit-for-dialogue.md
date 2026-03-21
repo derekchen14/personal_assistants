@@ -1,10 +1,10 @@
 ---
-layout: post
-title: Is Reinforcement Learning a Good Fit for Dialogue?
+title: "Is Reinforcement Learning a Good Fit for Dialogue?"
 tags: [modeling, rl, dialogue, product-strategy]
 color: green
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 On the surface, reinforcement learning (RL) seems like a great method for solving dialogue tasks.  We can easily model the problem as a POMDP where the partially observed state represents the user's intent.  During each turn, the dialogue agent must make a decision about how to respond. This action space is represented as either a series of tokens or simplified even further into a single dialogue act.  Lastly, task-oriented dialogue offers a natural reward — whether or not the dialogue succeeded.  And yet, we don't see (m)any deployed dialogue systems trained with RL.  Why is that?
  <!--more-->

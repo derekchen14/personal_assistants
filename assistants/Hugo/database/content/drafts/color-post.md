@@ -1,11 +1,10 @@
 ---
-layout: post
-title: Color Post
-tags: [Test, Color, Markdown]
+title: "Color Post"
+tags: [Color, Markdown]
 color: brown
-author: sylhare
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 # What a colorful post!
 

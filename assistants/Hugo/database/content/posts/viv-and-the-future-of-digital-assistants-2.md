@@ -1,8 +1,8 @@
 ---
-layout: post
-title: VIV and the Future of Digital Assistants
-date: '2016-05-15 19:04:58'
+title: "VIV and the Future of Digital Assistants"
 ---
+
+## _hidden_section_title
 
 Recently VIV debuted its flagship product at TechCrunch Disrupt to great fanfare, but unfortunately the results didn't quite match up to the hype.  Let's first talk about what they did right.  The founders at VIV have spent a lot of time thinking about what the ideal experience for a digital personal assistant might look like and have come up with four main criteria:
 

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { conversation, type Message } from '$lib/stores/conversation';
-    import { setFrame, clearFrames, showPage, topFrame, bottomFrame, displayLayout, activePage, searchQuery, activeHighlight, activePost, creatingPost, initTheme, type ActivePage } from '$lib/stores/display';
+    import { setFrame, clearFrames, showPage, topFrame, bottomFrame, displayLayout, activePage, searchQuery, activeHighlight, activePost, creatingPost, initTheme, setRefreshCallback, type ActivePage } from '$lib/stores/display';
     import FlowMenu from '$lib/components/FlowMenu.svelte';
     import BlockRenderer from '$lib/components/blocks/BlockRenderer.svelte';
     import IconMagnifyingGlass from '$lib/assets/IconMagnifyingGlass.svelte';
@@ -25,6 +25,7 @@
 
     onMount(() => {
         initTheme();
+        setRefreshCallback((frameType: string) => conversation.refreshPosts(frameType));
         const saved = conversation.savedUsername();
         if (saved && !$conversation.connected) {
             conversation.connect(saved);

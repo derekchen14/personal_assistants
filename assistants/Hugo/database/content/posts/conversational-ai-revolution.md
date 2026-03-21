@@ -1,10 +1,10 @@
 ---
-layout: post
-title: Prerequisites for a Conversational AI Revolution
+title: "Prerequisites for a Conversational AI Revolution"
 tags: [ai, startups, trends, lists]
 color: red
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 Conversational AI was all the rage a few years back, when people were shouting from the rooftops that chatbots were going to take over the world.  But for all the fanfare and hullabaloo, the trumpeting of a new era has given away lately to a low, dull roar.  Depending on who you ask, we either have AGI right around the corner, or all this noise is simply over-hyped technology soon to float away like vaporware of the past.  I believe the more likely outcome is that the true answer lies somewhere in the middle -- there will be a revolution, but it won't happen overnight.  Instead, changes will start out incremental as the technology is rolled out and users will slowly adopt new social norms around dealing with virtual assistants.  I don't claim to know when this will happen or exactly what it will look like, but certainly there are some clues.
 

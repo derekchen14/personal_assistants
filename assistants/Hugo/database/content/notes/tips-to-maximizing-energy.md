@@ -1,17 +1,16 @@
-Can directly edit it so the things will just persists A running list of things that actually work for maintaining energy throughout the day, based on years of experimentation.
+# Agent Features
 
-**Morning sunlight within 30 minutes of waking.** This is the single highest-leverage habit. Ten minutes of direct sunlight resets your circadian clock and suppresses melatonin. Overcast days still count — outdoor light intensity dwarfs indoor lighting by 10-100x.
+## Interaction model
 
-**Delay caffeine 90 minutes after waking.** Adenosine needs time to clear naturally. Drinking coffee immediately creates an afternoon crash because you're blocking adenosine while levels are still building. Wait, and the caffeine works with your cortisol instead of against it.
+Traditional software receives a request and returns a response. Agents stream reasoning, tool calls, and results in real time. They can pause mid-execution, wait for approval, and resume later.
 
-**Eat protein first.** A high-protein breakfast (30g+) stabilizes blood sugar for hours. Eggs, Greek yogurt, or a protein shake before any carbs. The research on this is overwhelming and the effect is immediate.
+## Governance model
 
-**Cold exposure in the morning.** Even 30 seconds of cold water at the end of a shower triggers a dopamine increase that lasts 3-4 hours. Not comfortable, but the sustained alertness is worth it.
+Traditional systems execute predefined decision logic written in advance. Agents choose actions dynamically. Some actions are low risk. Some require user approval. Some require administrative authority.
 
-**Move before noon.** Doesn't need to be intense — a 20-minute walk is enough. Exercise increases BDNF and cerebral blood flow. Afternoon workouts are fine for fitness, but morning movement specifically targets cognitive energy.
+## Trust model
 
-**Strategic naps: 20 minutes or 90 minutes, nothing in between.** A 20-minute nap catches you before deep sleep. A 90-minute nap completes a full sleep cycle. Anything in between leaves you groggy. Set an alarm.
-
-**Stop eating 3 hours before bed.** Late meals fragment sleep architecture even if you fall asleep fine. Your body can't repair and digest simultaneously. This alone improved my sleep scores more than any supplement.
-
-The common thread: energy isn't about stimulants or willpower. It's about aligning your behavior with your biology.
+Traditional systems are designed to be predictable. Every execution path is defined in advance. Agents introduce probabilistic reasoning into the execution path.
+  * Guardrails run as part of execution
+  * Evaluations integrate into the agent loop
+  * Traces and audit logs are first-class

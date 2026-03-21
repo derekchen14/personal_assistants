@@ -1,23 +1,17 @@
 from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
 from backend.components.display_frame import DisplayFrame
-
-if TYPE_CHECKING:
-    from backend.components.dialogue_state import DialogueState
-    from backend.components.context_coordinator import ContextCoordinator
-    from backend.components.flow_stack.parents import BaseFlow
 
 
 class InternalPolicy:
 
-    def __init__(self, components: dict):
+    def __init__(self, components:dict):
         self.memory = components['memory']
         self.config = components['config']
+        self.flow_stack = components['flow_stack']
 
-    def execute(self, flow: 'BaseFlow', state: 'DialogueState',
-                context: 'ContextCoordinator', tools) -> 'DisplayFrame':
+    def execute(self, state, context, tools) -> 'DisplayFrame':
+        flow = self.flow_stack.get_active_flow()
+
         match flow.name():
             case 'recap': return self.recap_policy(flow, tools)
             case 'remember': return self.remember_policy(flow, tools)
@@ -41,11 +35,13 @@ class InternalPolicy:
         else:
             content = str(self.memory.read_scratchpad())
 
+        flow.status = 'Completed'
         frame = DisplayFrame(self.config)
         frame.set_frame('default', {'content': content})
         return frame
 
     def remember_policy(self, flow, tools):
+        flow.status = 'Completed'
         frame = DisplayFrame(self.config)
         frame.set_frame('default', {'content': ''})
         return frame
@@ -59,6 +55,7 @@ class InternalPolicy:
         else:
             content = ''
 
+        flow.status = 'Completed'
         frame = DisplayFrame(self.config)
         frame.set_frame('default', {'content': content})
         return frame
@@ -71,16 +68,18 @@ class InternalPolicy:
         if key and value:
             self.memory.write_scratchpad(key, value)
 
+        flow.status = 'Completed'
         frame = DisplayFrame(self.config)
         frame.set_frame('default', {'content': ''})
         return frame
 
     def retrieve_policy(self, flow, tools):
-        result = tools('memory_manager', {'action': 'read_scratchpad'})
+        result = tools('manage_memory', {'action': 'read_scratchpad'})
         content = ''
-        if result.get('status') == 'success':
-            content = str(result.get('result', ''))
+        if result.get('_success'):
+            content = str(result.get('scratchpad', result.get('result', '')))
 
+        flow.status = 'Completed'
         frame = DisplayFrame(self.config)
         frame.set_frame('default', {'content': content})
         return frame
@@ -91,32 +90,33 @@ class InternalPolicy:
 
         content = ''
         if query:
-            result = tools('search_reference', {'query': query})
-            if result.get('status') == 'success':
-                content = str(result.get('result', ''))
+            result = tools('find_posts', {'query': query})
+            if result.get('_success'):
+                items = result.get('items', [])
+                content = str(items)
 
+        flow.status = 'Completed'
         frame = DisplayFrame(self.config)
         frame.set_frame('default', {'content': content})
         return frame
 
     def reference_policy(self, flow, tools):
+        flow.status = 'Completed'
         frame = DisplayFrame(self.config)
         frame.set_frame('default', {'content': ''})
         return frame
 
     def study_policy(self, flow, tools):
-        source_slot = flow.slots.get('source')
-        post_id = source_slot.to_dict() if source_slot and source_slot.filled else ''
-        if isinstance(post_id, list) and post_id:
-            post_id = post_id[0].get('post', '')
-        result = tools('post_get', {'post_id': post_id})
-        if result.get('status') == 'success':
-            post = result.get('result', {})
+        grounding = flow.slots.get(flow.entity_slot)
+        post_id = grounding.values[0]['post'] if grounding and grounding.filled else ''
+        result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
+        if result.get('_success'):
             self.memory.write_scratchpad(
                 f'post:{post_id}',
-                f'{post.get("title", "")}: {post.get("content", "")[:500]}',
+                f'{result.get("title", "")}: {result.get("outline", "")[:500]}',
             )
 
+        flow.status = 'Completed'
         frame = DisplayFrame(self.config)
         frame.set_frame('default', {'content': ''})
         return frame

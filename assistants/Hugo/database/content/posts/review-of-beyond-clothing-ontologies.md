@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Clothing Ontologies for Fashion Recommendations
-date: '2016-08-21 03:50:58'
+title: "Clothing Ontologies for Fashion Recommendations"
 ---
+
+## _hidden_section_title
 
 Within the Beyond Clothing Ontologies: Modeling Fashion with Subjective Influence Networks, the authors Kurt Bollacker, Natalia Díaz-Rodríguez, Xian Li (from Stitch Fix) have presented a supplementary fashion ontology for modeling out the relationships of clothing that go beyond other existing ontologies by taking into account deeper subjective measures, namely influence networks, rather than just objective measures of clothing, such as length of sleeve or material.  While related schemas on have been proposed in the past, they fall short from being useful because they fail to incorporate many subjective aspects of fashion, such as where a style originated from or how a particular design was influenced by past trends.
 

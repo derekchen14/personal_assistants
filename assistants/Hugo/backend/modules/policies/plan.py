@@ -2,16 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING
 
 from backend.modules.policies.base import BasePolicy
+from backend.components.display_frame import DisplayFrame
 from schemas.ontology import Intent
-
-if TYPE_CHECKING:
-    from backend.components.dialogue_state import DialogueState
-    from backend.components.context_coordinator import ContextCoordinator
-    from backend.components.display_frame import DisplayFrame
-    from backend.components.flow_stack.parents import BaseFlow
 
 
 _APPROVE_PATTERN = re.compile(
@@ -22,12 +16,13 @@ _APPROVE_PATTERN = re.compile(
 
 class PlanPolicy(BasePolicy):
 
-    def __init__(self, components: dict):
+    def __init__(self, components:dict):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
 
-    def execute(self, flow: 'BaseFlow', state: 'DialogueState',
-                context: 'ContextCoordinator', tools) -> 'DisplayFrame':
+    def execute(self, state, context, tools) -> 'DisplayFrame':
+        flow = self.flow_stack.get_active_flow()
+
         match flow.name():
             case 'remember': return self.remember_policy(flow, state, context, tools)
             case _: return self._plan_lifecycle(flow, state, context, tools)
@@ -57,9 +52,10 @@ class PlanPolicy(BasePolicy):
         else:
             content = str(self.memory.read_scratchpad())
 
-        return self.build_frame('default', {
-            'flow_name': flow.name(), 'content': content,
-        }, source='remember')
+        flow.status = 'Completed'
+        frame = self.build_frame('default', origin='remember')
+        frame.data = {'content': content}
+        return frame
 
     # -- Mode A: Generate plan ----------------------------------------------
 
@@ -72,9 +68,9 @@ class PlanPolicy(BasePolicy):
 
         state.structured_plan = structured_plan
 
-        return self.build_frame('default', {
-            'flow_name': flow.name(), 'content': freeform,
-        }, source=flow.name())
+        frame = self.build_frame('default', origin=flow.name(), thoughts=freeform)
+        frame.data = {'content': freeform}
+        return frame
 
     # -- Mode B: Handle approval --------------------------------------------
 
@@ -92,10 +88,9 @@ class PlanPolicy(BasePolicy):
 
         state.update_flags(has_plan=True, keep_going=True)
 
-        return self.build_frame('default', {
-            'flow_name': flow.name(),
-            'content': 'Plan approved — executing now.',
-        }, source=flow.name())
+        frame = self.build_frame('default', origin=flow.name())
+        frame.data = {'content': 'Plan approved — executing now.'}
+        return frame
 
     # -- Mode C: Verify and continue ----------------------------------------
 
@@ -126,12 +121,13 @@ class PlanPolicy(BasePolicy):
         all_done = all(sf['status'] == 'completed' for sf in sub_flows)
 
         if all_done:
-            self.flow_stack.mark_complete(result={'flow_name': flow.name()})
+            self.flow_stack.mark_complete()
             state.update_flags(keep_going=False)
-            return self.build_frame('default', {
-                'flow_name': flow.name(),
+            frame = self.build_frame('default', origin=flow.name())
+            frame.data = {
                 'content': f'Plan completed: {structured_plan.get("description", flow.name())}',
-            }, source=flow.name())
+            }
+            return frame
 
         plan_flow = self.flow_stack.get_active_flow()
         plan_id = plan_flow.flow_id if plan_flow else None
@@ -139,10 +135,11 @@ class PlanPolicy(BasePolicy):
         state.update_flags(keep_going=True)
 
         completed_names = [sf['flow_name'] for sf in sub_flows if sf['status'] == 'completed']
-        return self.build_frame('default', {
-            'flow_name': flow.name(),
+        frame = self.build_frame('default', origin=flow.name())
+        frame.data = {
             'content': f'Completed: {", ".join(completed_names)}. Continuing to next step.',
-        }, source=flow.name())
+        }
+        return frame
 
     # -- Helpers ------------------------------------------------------------
 
@@ -169,10 +166,15 @@ class PlanPolicy(BasePolicy):
     def _parse_dual_output(self, text, tool_log):
         for entry in tool_log:
             result = entry.get('result', {})
-            if result.get('status') == 'success':
-                result_data = result.get('result', {})
-                if isinstance(result_data, dict) and 'sub_flows' in result_data:
-                    return text, result_data
+            if result.get('_success'):
+                # Check all non-underscore keys for sub_flows
+                for k, v in result.items():
+                    if k.startswith('_'):
+                        continue
+                    if isinstance(v, dict) and 'sub_flows' in v:
+                        return text, v
+                if 'sub_flows' in result:
+                    return text, result
 
         try:
             parsed = json.loads(text)

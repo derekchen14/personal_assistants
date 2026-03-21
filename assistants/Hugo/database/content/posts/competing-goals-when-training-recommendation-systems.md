@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Competing Goals when Training Recommendation Systems
-date: '2016-08-29 03:08:03'
+title: "Competing Goals when Training Recommendation Systems"
 ---
+
+## _hidden_section_title
 
 Although not intractable, the problem of training recommendation systems includes many difficult components that must be resolved in order to have practical use in the real world.  Based on my current understanding, there are three separate problem domains:
 

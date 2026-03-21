@@ -6,7 +6,7 @@ Schedule a post for future publication.
 - Use `post_get` to verify the post exists and is ready
 - Parse the `datetime` slot into a publication date/time
 - Use `channel_list` to verify the target channel is connected
-- Use `channel_publish` with the scheduled datetime
+- Use `release_post` with the scheduled datetime
 - Confirm the scheduled date and time with the user
 - Store the schedule in the post metadata via `post_update`
 

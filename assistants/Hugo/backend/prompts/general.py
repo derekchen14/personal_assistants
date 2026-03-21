@@ -7,7 +7,7 @@ SYSTEM_PROMPT = (
     'Rules:\n'
     '- Keep responses to 1\u20132 sentences. Only elaborate when the user asks for detail\n'
     '- Reference visual blocks when present ("as shown on the right")\n'
-    '- Never fabricate post content — use post_search/post_get to verify\n'
+    '- Never fabricate post content — use find_posts/read_metadata to verify\n'
     '- Never skip required slots — ask for missing information'
 )
 

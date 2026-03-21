@@ -1,216 +1,220 @@
 from backend.components.flow_stack.slots import *
 from backend.components.flow_stack.parents import *
 
-
-# ── Research (6 flows) ──────────────────────────────────────────────────────
+# ── Research (7 flows) ──────────────────────────────────────────────────────
 
 class BrowseFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'browse'
     self.dax = '{012}'
-    self.goal = 'browse available topic ideas'
+    self.goal = 'browse available topics, notes, trending subjects, saved ideas, and content gaps filtered by category; excludes drafts and posts which use the "find" flow instead'
     self.slots = {
       'category': CategorySlot(['technology', 'business', 'lifestyle', 'tutorial', 'opinion', 'review', 'news'], priority='optional'),
     }
-    self.tools = ['browse_topics', 'search_posts', 'suggest_keywords', 'search_by_time', 'search_inspiration']
+    self.tools = ['find_posts', 'brainstorm_ideas', 'search_notes']
 
-
-class ViewFlow(ResearchParentFlow):
+class SummarizeFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
-    self.flow_type = 'view'
-    self.dax = '{1AD}'
-    self.goal = 'view a specific post or draft in full'
+    self.flow_type = 'summarize'
+    self.dax = '{19A}'
+    self.goal = 'synthesize a post into a short paragraph capturing the core argument, target audience, and main takeaways; useful for excerpts, SEO descriptions, or pre-reads before writing a follow-up'
     self.slots = {
       'source': SourceSlot(1),
+      'length': LevelSlot(priority='optional', threshold=1),
     }
-    self.tools = ['read_post']
-
+    self.tools = ['read_metadata', 'read_section', 'summarize_text']
 
 class CheckFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'check'
     self.dax = '{0AD}'
-    self.goal = 'check workflow status of posts'
+    self.goal = 'check the technical metadata surrounding a post; category tags, has_featured_image, publication date, last edited date, scheduled date, channels, status: draft, scheduled, published, or unpublished'
     self.slots = {
       'source': SourceSlot(1, priority='optional'),
     }
-    self.tools = ['search_posts', 'check_channel', 'search_by_time']
-
+    self.tools = ['find_posts', 'channel_status']
 
 class InspectFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'inspect'
     self.dax = '{1BD}'
-    self.goal = 'analyze content metrics and completeness'
+    self.goal = 'report numeric content metrics; word count, section count, reading time, image count, post size (MB); optionally filtered to a single metric. Use check for post metadata'
     self.slots = {
       'source': SourceSlot(1),
-      'aspect': CategorySlot(['readability', 'seo', 'structure', 'completeness', 'links', 'media'], priority='optional'),
+      'aspect': CategorySlot(['word_count', 'num_sections', 'time_to_read', 'image_count', 'num_links', 'post_size'], priority='optional'),
       'threshold': ScoreSlot(priority='optional'),
     }
-    self.tools = ['get_post', 'analyze_content', 'check_readability', 'analyze_seo', 'check_links', 'heads_or_tails']
-
+    self.tools = ['read_metadata', 'read_section', 'inspect_post', 'check_readability', 'check_links']
 
 class FindFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'find'
     self.dax = '{001}'
-    self.goal = 'search previous posts by keyword or topic'
+    self.goal = 'search previous posts by keyword or topic; returns matching titles, excerpts, and publication dates sorted by relevance'
     self.slots = {
       'query': ExactSlot(),
       'count': LevelSlot(priority='optional', threshold=1),
     }
-    self.tools = ['search_posts', 'search_by_time']
-
+    self.tools = ['find_posts']
 
 class CompareFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'compare'
     self.dax = '{18A}'
-    self.goal = 'compare style or structure across two or more posts'
+    self.goal = 'compare style or structure across two or more posts; sentence length, paragraph density, heading patterns, vocabulary, and tonal consistency'
     self.slots = {
       'source': SourceSlot(2),
     }
-    self.tools = ['compare_posts', 'read_post']
+    self.tools = ['read_metadata', 'read_section', 'compare_style']
 
+class DiffFlow(ResearchParentFlow):
+  def __init__(self):
+    super().__init__()
+    self.flow_type = 'diff'
+    self.dax = '{0BD}'
+    self.goal = 'compare two versions of a section side by side; shows additions, deletions, and modifications highlighted so the user can evaluate what changed'
+    self.slots = {
+      'source': SourceSlot(1),
+      'lookback': PositionSlot(priority='elective'),
+      'mapping': DictionarySlot(priority='elective'),
+    }
+    self.tools = ['find_posts', 'read_metadata', 'read_section', 'diff_section']
 
 # ── Draft (7 flows) ─────────────────────────────────────────────────────────
-
-class OutlineFlow(DraftParentFlow):
-  def __init__(self):
-    super().__init__()
-    self.flow_type = 'outline'
-    self.dax = '{002}'
-    self.goal = 'generate outline options for a topic'
-    self.slots = {
-      'topic': ExactSlot(),
-      'depth': LevelSlot(priority='optional', threshold=1),
-    }
-    self.tools = ['generate_outline', 'suggest_keywords', 'search_inspiration']
-
-
-class RefineFlow(DraftParentFlow):
-  def __init__(self):
-    super().__init__()
-    self.flow_type = 'refine'
-    self.dax = '{02B}'
-    self.goal = 'refine a specific section of the outline'
-    self.slots = {
-      'source': SourceSlot(1),
-      'feedback': FreeTextSlot(priority='elective'),
-      'steps': ChecklistSlot(priority='elective'),
-    }
-    self.tools = ['search_posts', 'get_post', 'read_post', 'read_outline', 'revise_content', 'update_section']
-
-
-class ExpandFlow(DraftParentFlow):
-  def __init__(self):
-    super().__init__()
-    self.flow_type = 'expand'
-    self.dax = '{03A}'
-    self.goal = 'expand existing content into full prose'
-    self.slots = {
-      'source': SourceSlot(1),
-      'image': ImageSlot(priority='optional'),
-    }
-    self.tools = ['read_post', 'expand_content', 'update_section', 'insert_media']
-
-
-class ComposeFlow(DraftParentFlow):
-  def __init__(self):
-    super().__init__()
-    self.flow_type = 'compose'
-    self.dax = '{003}'
-    self.goal = 'write a section from scratch based on instructions'
-    self.slots = {
-      'source': SourceSlot(1),
-      'steps': ChecklistSlot(priority='elective'),
-      'instructions': FreeTextSlot(priority='elective')
-    }
-    self.tools = ['search_posts', 'get_post', 'generate_prose', 'draft_content', 'write_section', 'update_section', 'insert_media', 'search_sources', 'search_evidence']
-
-
-class AddFlow(DraftParentFlow):
-  def __init__(self):
-    super().__init__()
-    self.flow_type = 'add'
-    self.dax = '{005}'
-    self.goal = 'add a new section to the post'
-    self.slots = {
-      'source': SourceSlot(1),
-      'target': TargetSlot(1, 'section'),
-      'position': PositionSlot(priority='optional'),
-    }
-    self.tools = ['search_posts', 'get_post', 'insert_section']
-
-
-class CreateFlow(DraftParentFlow):
-  def __init__(self):
-    super().__init__()
-    self.flow_type = 'create'
-    self.dax = '{05A}'
-    self.goal = 'start a new post or note from scratch. finalizes title and topic if the user is not clear enough'
-    self.slots = {
-      'title': ExactSlot(priority='required'),
-      'type': CategorySlot(['draft', 'note'], priority='required'),
-      'topic': ExactSlot(priority='optional'),
-    }
-    self.tools = ['post_create', 'suggest_keywords']
-
 
 class BrainstormFlow(DraftParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'brainstorm'
     self.dax = '{29A}'
-    self.goal = 'brainstorm ideas for a topic'
+    self.goal = 'come up with new ideas or angles for a given topic, word, or phrase; may include hooks, opening lines, synonyms, or new perspectives the user can choose from'
     self.slots = {
       'source': SourceSlot(1, entity_part='', priority='elective'),
       'topic': ExactSlot(priority='elective'),
       'ideas': ProposalSlot(priority='optional'),
     }
-    self.tools = ['brainstorm_ideas', 'search_inspiration']
+    self.tools = ['brainstorm_ideas', 'find_posts', 'search_notes']
 
+class CreateFlow(DraftParentFlow):
+  def __init__(self):
+    super().__init__()
+    self.flow_type = 'create'
+    self.dax = '{05A}'
+    self.goal = 'start a new post from scratch; initializes a post record with title, topic, and empty sections. Does not generate content; use outline or compose to fill sections'
+    self.slots = {
+      'title': ExactSlot(priority='required'),
+      'type': CategorySlot(['draft', 'note'], priority='required'),
+      'topic': ExactSlot(priority='optional'),
+    }
+    self.tools = ['create_post']
 
-# ── Revise (8 flows) ────────────────────────────────────────────────────────
+class OutlineFlow(DraftParentFlow):
+  def __init__(self):
+    super().__init__()
+    self.flow_type = 'outline'
+    self.dax = '{002}'
+    self.goal = 'generate an outline including section headings, key bullet points, estimated word counts, and suggested reading order'
+    self.slots = {
+      'source': SourceSlot(1, priority='required'),
+      'topic': ExactSlot(priority='elective'),
+      'depth': LevelSlot(priority='optional', threshold=1),
+      'sections': ChecklistSlot(priority='elective'),
+    }
+    self.tools = ['find_posts', 'brainstorm_ideas', 'generate_outline']
+
+class RefineFlow(DraftParentFlow):
+  def __init__(self):
+    super().__init__()
+    self.flow_type = 'refine'
+    self.dax = '{02B}'
+    self.goal = 'refine the bullet points in the outline; adjust headings, reorder points, add or remove subsections, and incorporate feedback'
+    self.slots = {
+      'source': SourceSlot(1),
+      'feedback': FreeTextSlot(priority='elective'),
+      'steps': ChecklistSlot(priority='elective'),
+    }
+    self.tools = ['find_posts', 'read_metadata', 'read_section', 'generate_outline', 'write_text']
+
+class CiteFlow(DraftParentFlow):
+  def __init__(self):
+    super().__init__()
+    self.flow_type = 'cite'
+    self.dax = '{15B}'
+    self.goal = 'add a citation to a note; if a URL is provided, attach it directly; if only a note is provided, search the web for a supporting source and propose it for user confirmation'
+    self.slots = {
+      'source': SourceSlot(1, entity_part='snip', priority='elective'),
+      'url': ExactSlot(priority='elective'),
+    }
+    self.tools = ['read_metadata', 'read_section', 'insert_content', 'web_search']
+
+class ComposeFlow(DraftParentFlow):
+  def __init__(self):
+    super().__init__()
+    self.flow_type = 'compose'
+    self.dax = '{003}'
+    self.goal = 'write a section from scratch based on instructions or an outline. If only given a topic, generate an outline first; for editing existing content, use rework'
+    self.slots = {
+      'source': SourceSlot(1),
+      'steps': ChecklistSlot(priority='elective'),
+      'instructions': FreeTextSlot(priority='elective')
+    }
+    self.tools = ['read_metadata', 'read_section', 'convert_to_prose', 'write_text', 'revise_content']
+
+class AddFlow(DraftParentFlow):
+  def __init__(self):
+    super().__init__()
+    self.flow_type = 'add'
+    self.dax = '{005}'
+    self.goal = 'add a new section to the post; creates an empty section placeholder with a heading, inserted at a specific position in the post structure'
+    self.slots = {
+      'source': SourceSlot(1),
+      'steps': ChecklistSlot(priority='elective'),
+      'instructions': FreeTextSlot(priority='elective'),
+      'image': ChecklistSlot(priority='elective'),
+      'position': PositionSlot(priority='optional'),
+    }
+    self.tools = ['read_metadata', 'read_section', 'insert_section', 'insert_content', 'insert_media']
+
+# ── Revise (7 flows) ────────────────────────────────────────────────────────
 
 class ReworkFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'rework'
     self.dax = '{006}'
-    self.goal = 'major revision of draft content'
+    self.goal = 'major revision of draft content; restructures arguments, replaces weak sections, addresses reviewer comments. Scope can go across the whole post, or an entire section. For smaller changes, use polish'
     self.slots = {
       'source': SourceSlot(1),
       'remove': RemovalSlot('section', priority='optional'),
+      'context': FreeTextSlot(priority='elective'),
     }
-    self.tools = ['read_post', 'read_outline', 'revise_content', 'write_section', 'update_section', 'delete_section', 'reorder_sections']
-
+    self.tools = ['read_metadata', 'read_section', 'revise_content', 'insert_section', 'remove_content']
 
 class PolishFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'polish'
     self.dax = '{3BD}'
-    self.goal = 'light editing of a specific section'
+    self.goal = 'editing of a specific paragraph, sentence or phrase; improves word choice, tightens sentences, fixes transitions, and smooths flow without changing meaning or structure. The scope is within a single paragraph or image, not across the whole post'
     self.slots = {
       'source': SourceSlot(1),
       'style_notes': FreeTextSlot(priority='optional'),
+      'image': ImageSlot(priority='optional'),
     }
-    self.tools = ['search_posts', 'get_post', 'read_post', 'revise_content', 'update_section', 'check_grammar', 'detect_issues']
-
+    self.tools = ['read_metadata', 'read_section', 'write_text', 'find_and_replace', 'revise_content']
 
 class ToneFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'tone'
     self.dax = '{38A}'
-    self.goal = 'adjust tone or voice across the entire post'
+    self.goal = 'adjust tone or voice across the entire post; shifts register (formal, casual, technical, academic, witty, natural), adjusts sentence length and vocabulary complexity'
     tone_options = ['formal', 'casual', 'technical', 'academic', 'witty', 'natural']
     self.slots = {
       'source': SourceSlot(1),
@@ -225,48 +229,32 @@ class ToneFlow(ReviseParentFlow):
       'medium': ['natural', 'formal', 'witty'],
       'substack': ['natural', 'casual', 'technical'],
     }
-    self.tools = ['read_post', 'adjust_tone', 'update_section', 'check_channel']
-
+    self.tools = ['read_metadata', 'read_section', 'revise_content', 'channel_status']
 
 class AuditFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'audit'
     self.dax = '{13A}'
-    self.goal = "check consistency with the user's published history"
+    self.goal = "check that the post is written in the user's voice rather than sounding like AI; compares voice, terminology, formatting conventions, and stylistic patterns against previous posts"
     self.slots = {
       'source': SourceSlot(1),
       'reference_count': LevelSlot(priority='optional', threshold=1),
-      'consistency': ProbabilitySlot(priority='optional'),
+      'threshold': ProbabilitySlot(priority='required'),
     }
-    self.tools = ['read_post', 'audit_style']
+    self.tools = ['find_posts', 'compare_style', 'editor_review', 'inspect_post']
 
-
-class FormatFlow(ReviseParentFlow):
+class SimplifyFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
-    self.flow_type = 'format'
-    self.dax = '{3AD}'
-    self.goal = 'apply channel-specific formatting for publication'
+    self.flow_type = 'simplify'
+    self.dax = '{7BD}'
+    self.goal = 'reduce complexity of a section or note; shorten paragraphs, simplify sentence structure, remove redundancy; image simplification means replacing with a simpler alternative or removing entirely'
     self.slots = {
-      'source': SourceSlot(1),
-      'format': CategorySlot(['markdown', 'html', 'plaintext'], priority='required'),
+      'source': SourceSlot(1, priority='elective'),
+      'image': ImageSlot(priority='elective'),
     }
-    self.tools = ['get_post', 'format_content', 'update_metadata', 'analyze_seo', 'insert_media']
-
-
-class AmendFlow(ReviseParentFlow):
-  def __init__(self):
-    super().__init__()
-    self.flow_type = 'amend'
-    self.dax = '{0AF}'
-    self.goal = "push back on Hugo's last revision with specific notes"
-    self.slots = {
-      'feedback': FreeTextSlot(),
-      'source': SourceSlot(1),
-    }
-    self.tools = ['read_post', 'revise_content', 'update_section']
-
+    self.tools = ['read_metadata', 'read_section', 'revise_content', 'remove_content', 'write_text']
 
 class RemoveFlow(ReviseParentFlow):
   def __init__(self):
@@ -275,38 +263,24 @@ class RemoveFlow(ReviseParentFlow):
     self.dax = '{007}'
     self.goal = 'remove a section from the post, delete a draft or note'
     self.slots = {
-      'source': SourceSlot(1),
-      'type': CategorySlot(['section', 'draft', 'note', 'post', 'paragraph'], priority='required'),
+      'source': SourceSlot(1, priority='elective'),
+      'image': ImageSlot(priority='elective'),
+      'type': CategorySlot(['post', 'draft', 'section', 'paragraph', 'note', 'image'], priority='required'),
     }
-    self.tools = ['post_delete', 'post_update', 'post_get']
-
-
-class DiffFlow(ResearchParentFlow):
-  def __init__(self):
-    super().__init__()
-    self.flow_type = 'diff'
-    self.dax = '{0BD}'
-    self.goal = 'compare two versions of a section side by side'
-    self.slots = {
-      'source': SourceSlot(1),
-      'lookback': PositionSlot(priority='elective'),
-      'mapping': DictionarySlot(priority='elective'),
-    }
-    self.tools = ['search_posts', 'get_post', 'diff_versions']
-
+    self.tools = ['delete_post', 'remove_content', 'read_metadata']
 
 class TidyFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'tidy'
     self.dax = '{3AB}'
-    self.goal = 'normalize structural formatting across the post'
+    self.goal = 'normalize structural formatting across the post; consistent heading hierarchy, list indentation, paragraph spacing, and whitespace cleanup. Does not change wording'
     self.slots = {
       'source': SourceSlot(1),
       'settings': DictionarySlot(),
+      'image': ImageSlot(priority='optional'),
     }
-    self.tools = ['get_post', 'normalize_structure', 'update_section', 'update_metadata', 'check_grammar', 'check_links']
-
+    self.tools = ['read_metadata', 'read_section', 'find_and_replace', 'check_links']
 
 # ── Publish (7 flows) ───────────────────────────────────────────────────────
 
@@ -315,91 +289,84 @@ class ReleaseFlow(PublishParentFlow):
     super().__init__()
     self.flow_type = 'release'
     self.dax = '{04A}'
-    self.goal = 'publish the post to the primary blog'
+    self.goal = 'publish the post to the primary blog; makes the post live immediately on the main channel. Use syndicate to cross-post, promote to amplify reach after publishing'
     self.slots = {
       'source': SourceSlot(1),
       'channel': ChannelSlot(),
     }
-    self.tools = ['get_post', 'publish_post']
-
+    self.tools = ['read_metadata', 'channel_status', 'release_post', 'update_post']
 
 class SyndicateFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'syndicate'
     self.dax = '{04C}'
-    self.goal = 'cross-post to a secondary channel'
+    self.goal = 'cross-post to a secondary channel; adapts formatting for the target (Medium, Dev.to, LinkedIn, Substack) and publishes a tailored version'
     self.slots = {
       'channel': ChannelSlot(),
       'source': SourceSlot(1, priority='optional'),
     }
-    self.tools = ['get_post', 'publish_post', 'format_content']
-
+    self.tools = ['read_metadata', 'read_section', 'release_post']
 
 class ScheduleFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'schedule'
     self.dax = '{4AC}'
-    self.goal = 'schedule a post for future publication'
+    self.goal = 'schedule a post for future publication; sets a specific date and time for automatic publishing on a given channel'
     self.slots = {
       'source': SourceSlot(1),
       'channel': ChannelSlot(),
       'datetime': RangeSlot([]),
     }
-    self.tools = ['manage_schedule', 'list_channels', 'check_channel']
-
+    self.tools = ['list_channels', 'channel_status', 'release_post', 'update_post']
 
 class PreviewFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'preview'
     self.dax = '{4AD}'
-    self.goal = 'preview how the post will look when published'
+    self.goal = "preview how the post will look when published; renders the post in the target channel's format so the user can review layout, images, and formatting before going live"
     self.slots = {
       'source': SourceSlot(1),
       'channel': ChannelSlot(priority='optional'),
     }
-    self.tools = ['get_post', 'render_preview']
-
+    self.tools = ['read_metadata', 'read_section']
 
 class PromoteFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'promote'
     self.dax = '{004}'
-    self.goal = 'make a published post more prominent by pinning, featuring, or announcing to subscribers and social channels'
+    self.goal = 'make a published post more prominent; pin to the top of the blog, mark as featured, announce to subscribers, or share to social channels and email lists. Amplifies reach after release or syndicate'
     self.slots = {
       'source': SourceSlot(1),
       'channel': CategorySlot(['pin', 'feature', 'announce', 'social'], priority='optional'),
     }
-    self.tools = ['get_post', 'promote_post']
-
+    self.tools = ['read_metadata', 'promote_post']
 
 class CancelFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'cancel'
     self.dax = '{04F}'
-    self.goal = 'cancel a scheduled publication or unpublish a live post'
+    self.goal = 'cancel a scheduled publication or unpublish a live post; reverts to draft status or removes from the channel entirely'
     self.slots = {
       'source': SourceSlot(1),
       'reason': ExactSlot(priority='optional'),
     }
-    self.tools = ['manage_schedule']
-
+    self.tools = ['read_metadata', 'cancel_release', 'update_post']
 
 class SurveyFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'survey'
     self.dax = '{01C}'
-    self.goal = 'view configured publishing channels and their health'
+    self.goal = 'view configured publishing channels and their health; lists connected channels (WordPress, Medium, etc.), API status, last sync date, and credential validity'
     self.slots = {
       'channel': ChannelSlot(priority='optional'),
     }
-    self.tools = ['list_channels', 'check_channel']
-
+    self.tools = ['list_channels', 'channel_status']
 
 # ── Converse (7 flows) ──────────────────────────────────────────────────────
 
@@ -408,80 +375,73 @@ class ExplainFlow(ConverseParentFlow):
     super().__init__()
     self.flow_type = 'explain'
     self.dax = '{009}'
-    self.goal = 'explain what Hugo did or plans to do'
+    self.goal = 'Hugo explains what it did or plans to do; transparency into the writing process and recent actions'
     self.slots = {
       'turn_id': PositionSlot(priority='elective'),
       'source': SourceSlot(1, priority='elective'),
     }
     self.tools = ['explain_action']
 
-
 class ChatFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'chat'
     self.dax = '{000}'
-    self.goal = 'open-ended conversation'
+    self.goal = 'open-ended conversation; general Q&A about writing craft, blogging strategy, SEO, audience engagement, or any topic not tied to a specific post action'
     self.slots = {}
     self.tools = []
-
 
 class PreferenceFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'preference'
     self.dax = '{08A}'
-    self.goal = 'set a persistent writing preference'
+    self.goal = 'set a persistent writing preference stored in Memory Manager (L2); preferred tone, default post length, heading style, Oxford comma usage, or channel defaults'
     self.slots = {
       'setting': DictionarySlot(['key', 'value']),
     }
     self.tools = []
-
 
 class SuggestFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'suggest'
     self.dax = '{29B}'
-    self.goal = 'suggest a next step based on current context'
+    self.goal = 'Hugo proactively suggests a next step based on current context; what to write next, which section needs attention, a new angle to explore, or an improvement to try'
     self.slots = {}
-    self.tools = ['brainstorm_ideas', 'search_posts']
-
+    self.tools = ['brainstorm_ideas', 'find_posts']
 
 class UndoFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'undo'
     self.dax = '{08F}'
-    self.goal = 'reverse the most recent writing action'
+    self.goal = 'reverse the most recent writing action; rolls back the last edit, addition, deletion, or formatting change and restores the previous version of the affected section'
     self.slots = {
       'turn': LevelSlot(priority='elective', threshold=1),
       'action': ExactSlot(priority='elective'),
     }
     self.tools = ['rollback_post']
 
-
 class EndorseFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'endorse'
-    self.dax = '{08E}'
-    self.goal = "accept Hugo's proactive suggestion or general agreement with next step"
+    self.dax = '{09E}'
+    self.goal = "accept Hugo's proactive suggestion and trigger the corresponding action; e.g., a recommended edit, topic idea, or next step that Hugo offered via suggest"
     self.slots = {
       'action': ExactSlot(),
     }
     self.tools = []
-
 
 class DismissFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'dismiss'
     self.dax = '{09F}'
-    self.goal = "decline Hugo's proactive suggestion or general disagreement with the current path"
+    self.goal = "decline Hugo's proactive suggestion without providing feedback; Hugo notes the preference and moves on without further prompting"
     self.slots = {}
     self.tools = []
-
 
 # ── Plan (6 flows) ──────────────────────────────────────────────────────────
 
@@ -490,77 +450,72 @@ class BlueprintFlow(PlanParentFlow):
     super().__init__()
     self.flow_type = 'blueprint'
     self.dax = '{25A}'
-    self.goal = 'plan the full post creation workflow'
+    self.goal = 'plan the full post creation workflow from idea to publication; orchestrates Research, Draft, Revise, and Publish flows into a sequenced checklist with dependencies'
     self.slots = {
       'topic': ExactSlot(priority='optional'),
       'steps': ChecklistSlot(priority='optional'),
     }
     self.tools = []
 
-
 class TriageFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'triage'
     self.dax = '{23A}'
-    self.goal = 'plan a revision sequence for a draft'
+    self.goal = 'plan a revision sequence; examines a draft and prioritizes which sections need rework, polish, or restructuring; produces an ordered checklist of revision tasks'
     self.slots = {
       'source': SourceSlot(1),
       'scope': CategorySlot(['content', 'structure', 'style', 'seo', 'full'], priority='optional'),
+      'count': LevelSlot(priority='optional', threshold=1),
     }
-    self.tools = ['analyze_content', 'check_readability', 'detect_issues', 'heads_or_tails', 'read_outline']
-
+    self.tools = ['read_metadata', 'inspect_post']
 
 class CalendarFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'calendar'
     self.dax = '{24A}'
-    self.goal = 'plan a content calendar'
+    self.goal = 'plan a content calendar; lays out a publishing schedule over weeks or months: which topics to draft, target publish dates, and how to space content for consistency'
     self.slots = {
       'timeframe': RangeSlot([], priority='elective'),
       'count': LevelSlot(priority='elective', threshold=1),
     }
-    self.tools = ['plan_calendar', 'search_by_time']
-
+    self.tools = ['find_posts']
 
 class ScopeFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'scope'
     self.dax = '{12A}'
-    self.goal = 'plan topic research before writing'
+    self.goal = 'plan topic research before writing; defines what information to gather, which previous posts to reference, and what questions to answer before drafting begins'
     self.slots = {
       'topic': ExactSlot(),
     }
-    self.tools = ['search_posts', 'browse_topics', 'search_sources', 'search_inspiration', 'read_outline']
-
+    self.tools = ['find_posts', 'brainstorm_ideas']
 
 class DigestFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'digest'
     self.dax = '{25B}'
-    self.goal = 'plan a multi-part blog series'
+    self.goal = 'plan a multi-part blog series; splits a broad theme into installments, defines the narrative arc, assigns subtopics to each part, and sets a suggested publication sequence'
     self.slots = {
       'theme': ExactSlot(),
       'part_count': LevelSlot(priority='optional', threshold=1),
     }
-    self.tools = ['plan_series']
-
+    self.tools = ['find_posts']
 
 class RememberFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'remember'
     self.dax = '{19B}'
-    self.goal = 'plan a memory operation'
+    self.goal = 'plan a memory operation; determines whether information should be stored (L1 scratchpad), saved as a preference (L2), or retrieved from business context (L3), then orchestrates the appropriate internal flows'
     self.slots = {
       'key': ExactSlot(priority='elective'),
       'scope': CategorySlot(['session', 'user', 'global'], priority='elective'),
     }
     self.tools = []
-
 
 # ── Internal (7 flows) ──────────────────────────────────────────────────────
 
@@ -569,82 +524,76 @@ class RecapFlow(InternalParentFlow):
     super().__init__()
     self.flow_type = 'recap'
     self.dax = '{018}'
-    self.goal = 'read back a fact from the session scratchpad'
+    self.goal = 'read back a previously noted fact from the current session scratchpad (L1); a decision, constraint, topic preference, or reference the agent stored earlier via store'
     self.slots = {
       'key': ExactSlot(priority='optional'),
     }
     self.tools = []
-
 
 class StoreFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'store'
     self.dax = '{058}'
-    self.goal = 'save a key-value pair to the session scratchpad'
+    self.goal = 'save a key-value pair to the session scratchpad (L1) for later use in the same session; topic preferences, user corrections, interim decisions, or reference snippets'
     self.slots = {
       'entry': DictionarySlot(['key', 'value']),
     }
     self.tools = []
-
 
 class RecallFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'recall'
     self.dax = '{289}'
-    self.goal = 'look up persistent user preferences'
+    self.goal = 'look up persistent user preferences from Memory Manager (L2); default tone, word count targets, stylistic rules, or channel credentials set via the preference flow'
     self.slots = {
       'key': ExactSlot(priority='optional'),
     }
     self.tools = []
-
 
 class RetrieveFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'retrieve'
     self.dax = '{049}'
-    self.goal = 'fetch general business context from Memory Manager'
+    self.goal = 'fetch general business context from Memory Manager; unvetted documents, style guides, or domain knowledge (L3)'
     self.slots = {
       'topic': ExactSlot(),
       'context': ExactSlot(priority='optional'),
     }
     self.tools = []
 
-
 class SearchFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'search'
     self.dax = '{189}'
-    self.goal = 'look up vetted FAQs and curated editorial guidelines'
+    self.goal = 'look up vetted FAQs and curated editorial guidelines; the unstructured equivalent of a style manual'
     self.slots = {
       'query': ExactSlot(),
     }
-    self.tools = ['search_reference']
-
+    self.tools = ['find_posts']
 
 class ReferenceFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'reference'
     self.dax = '{139}'
-    self.goal = 'look up word definitions, synonyms, or usage examples'
+    self.goal = 'look up word definitions, synonyms, antonyms, or usage examples via dictionary and thesaurus; e.g., "synonym for important", "definition of ephemeral", "formal alternatives to good"'
     self.slots = {
       'word': ExactSlot(),
     }
-    self.tools = ['lookup_word']
-
+    self.tools = []
 
 class StudyFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'study'
     self.dax = '{1AC}'
-    self.goal = 'internally load a previous post into agent context'
+    self.goal = 'internally load a previous post into agent context without showing it to the user; used to match voice, structure, or vocabulary patterns when writing new content'
     self.slots = {
       'source': SourceSlot(1),
       'scope': CategorySlot(['voice', 'structure', 'vocabulary', 'full'], priority='optional'),
     }
-    self.tools = ['read_post']
+    self.tools = ['read_metadata', 'read_section']

@@ -1,8 +1,9 @@
 ---
-layout: post
-title: Measuring Uncertainty
-date: '2020-07-29 20:06:00'
+title: "Measuring Uncertainty"
+tags: [ambiguity]
 ---
+
+## _hidden_section_title
 
 Compared to typical goal-oriented dialogue systems, interactive dialogue agents not only aim to solve the task at hand, but also engage with the user by asking questions. &nbsp;Questions can be used to push the conversation forward or to spark some new ideas, but for now we will focus on the use of questions to clarify understanding. &nbsp;[Clarification requests](https://www.researchgate.net/profile/Matthew_Purver/publication/236273309_The_Theory_and_Use_of_Clarification_Requests_in_Dialogue/links/00b7d5313817a20f30000000/The-Theory-and-Use-of-Clarification-Requests-in-Dialogue.pdf), as they are referred to in the academic literature, come in many forms, but the key issues to solve are when to ask such questions and in what format. &nbsp;Asking questions too often, or at inappropriate times, causes the conversation to feel disjointed or annoying. &nbsp;Asking the wrong type of question causes the dialogue agent to seem incoherent or useless.
 
@@ -80,4 +81,3 @@ Saving the best for last, one of the most promising methods for generating a con
 As we analyze all these methods of measuring uncertainty, one final thought is to consider how humans know to ask clarification questions. &nbsp; How do or I know that something is unclear? &nbsp;Is it just a feeling? My general thought is that we have a sense of outlier detection when asking questions, but this is only triggered when something is far outside the what we expect. &nbsp;What we expect is measured likely by some external function, which implies some support for the methods under Category Four. &nbsp;
 
 However, the key is that humans have this expectation, a [theory of mind](https://arxiv.org/abs/1902.08355) of the other individual and a general view of the world at large. &nbsp; Building a comprehensive opinion of the world at large is intractable in the near future, but I remain optimistic that perhaps we can get a model to "fake it" well enough that general users either won't notice or won't care.
-

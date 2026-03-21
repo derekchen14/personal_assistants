@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Deciding when to Ask Questions
-date: '2020-06-28 18:15:06'
+title: "Deciding when to Ask Questions"
 ---
+
+## _hidden_section_title
 
 Performing active learning on data annotation is to decide when the model should query the expert annotator for more samples. &nbsp;Note the parallel with dialogue, which is to decide when the agent should ask a clarification question to the customer for more details on their intent. &nbsp;Such a policy can be obtained through static data with basic supervised learning or in a more interactive manner through imitation learning using algorithms such as DAgger ([Ross 2011](https://arxiv.org/abs/1011.0686)).
 
@@ -15,4 +15,3 @@ Brantley et al. ([2020](https://arxiv.org/abs/2005.12801)) use Apple Tasting and
 To me, the first insight is to use all available information -- which is to say, use both the uncertainty scores from the main model _and_ a forecaster policy. &nbsp;Specifically, if the main model is very certain, then avoid asking the customer any questions. &nbsp;If the model is at all uncertain, even though only query the customer if the difference classifier thinks the gap between the heuristic and the main model is large. &nbsp;The Apple Tasting method helps to train this, but most importantly, the forecaster is now _trained on the distribution it will see in real life_! &nbsp;In other words, be decoupling the confidence score and the query decision, the forecaster only operates on examples where the system has deemed the situation to be uncertain.
 
 The difference classifier (ie. forecaster) combined with a traditional RL policy is then similar to the policy used in conversational machine reading ([Saeidi et al. 2018](https://arxiv.org/abs/1809.01494)) that decides whether to Inquired (ask a follow-up question) or Respond (with a Yes/No answer). &nbsp;As a final step, all of these variables can be passed to a natural langauge generator which can decide on the final response.
-

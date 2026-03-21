@@ -1,9 +1,12 @@
 ---
-layout: post
-title: Expectation Maximization
+title: "Expectation Maximization"
 ---
 
+## _hidden_section_title
+
 Expectation maximization is often used to fill in blanks when there is missing data by imputing those values by considering what makes the most sense.  Use cases include anomaly detection, market segmentation, speech recognition and basic clustering.  The algorithm operates by iteratively alternating between two steps until convergence: the E-step for expectation and the M-step for maximization.
+
+## Results
 
 |         | E-step           | M-step  |
 | ------------- |:-------------:| -----:|
@@ -11,6 +14,8 @@ Expectation maximization is often used to fill in blanks when there is missing d
 | Gaussian Mixture Model      | centered      |   $12 |
 | zebra stripes | are neat      |    $1 |
 
+
+## Table View
 
 <table>
     <tr>
@@ -35,4 +40,4 @@ Expectation maximization is often used to fill in blanks when there is missing d
     </tr>
 </table>
 
-  The E-step typically consists of assigning weights to data based on parameters (calculate p(y|x, )).  
+  The E-step typically consists of assigning weights to data based on parameters (calculate p(y|x, )).

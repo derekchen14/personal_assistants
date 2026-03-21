@@ -1,8 +1,8 @@
 ---
-layout: post
-title: L1 vs. L2 Regularization
-date: '2016-10-17 06:05:27'
+title: "L1 vs. L2 Regularization"
 ---
+
+## _hidden_section_title
 
 It's straightforward to see that L1 and L2 regularization both prefer small numbers, but it is harder to see the intuition in how they get there. 
 

@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Intent Tracking For Task Oriented Dialogue - Best Paper Award Winner
-date: '2018-12-21 01:46:06'
+title: "Intent Tracking For Task Oriented Dialogue - Best Paper Award Winner"
 ---
+
+## _hidden_section_title
 
 Another quarter, another class project on task oriented dialogue agents! &nbsp;This quarter I completed a paper studying the details of Intent Tracking within UW Graduate Machine Learning - CSE 546. &nbsp; And this time around, the paper won the award for best paper in the class!
 
@@ -15,4 +15,3 @@ The first module within such dialogue systems is a natural language understandin
 More specifically, I explored the nuances of belief tracking by experimenting with different approaches for preprocessing the labels, designing the pipeline, and building the network architecture. In doing so, we gain a better understanding of which trade-offs matter when constructing such data-driven models, and a greater appreciation of why robust intent tracking remains an elusive goal. Overall, we find that optimization methods, intelligent decomposition, and pre-trained embeddings play a key role in determining dialogue success.
 
 Full paper here: [https://www.dropbox.com/s/qyda58bgkgwuit6/CSE546%20-%20Project%20Final%20Report.pdf?dl=0](https://www.dropbox.com/s/qyda58bgkgwuit6/CSE546%20-%20Project%20Final%20Report.pdf?dl=0)
-

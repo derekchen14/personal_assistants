@@ -1,0 +1,3654 @@
+[
+  {
+    "convo_id": 1,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Find posts about dialogue",
+        "labels": {
+          "intent": "Research",
+          "flow": "find",
+          "dax": "{001}"
+        },
+        "slots": {
+          "query": "dialogue"
+        },
+        "expected_tools": [
+          "find_posts"
+        ],
+        "rubric": {
+          "did_action": "returned a list of posts matching 'dialogue'",
+          "did_follow_instructions": "results are filtered by the query keyword 'dialogue'"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Found 8 posts mentioning dialogue — Dialog State Tracking Models, Focus of Dialogue Agents, Building User Simulators, and others."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Summarize the Ambiguity is the Bottleneck post",
+        "labels": {
+          "intent": "Research",
+          "flow": "summarize",
+          "dax": "{19A}"
+        },
+        "slots": {
+          "source": {
+            "post": "Ambiguity is the Bottleneck"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 2,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Show me what topic ideas I have saved",
+        "labels": {
+          "intent": "Research",
+          "flow": "browse",
+          "dax": "{012}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Here are your saved topic ideas and notes — Keywords for SEO, Tips to Maximizing Daily Energy, and My Favorite Cookies."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Brainstorm angles for a post about prompt engineering",
+        "labels": {
+          "intent": "Draft",
+          "flow": "brainstorm",
+          "dax": "{29A}"
+        },
+        "slots": {
+          "topic": "prompt engineering"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 3,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Browse anything in the ai category",
+        "labels": {
+          "intent": "Research",
+          "flow": "browse",
+          "dax": "{012}"
+        },
+        "slots": {
+          "category": "technology"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Found several posts in AI — Embracing the AI-First Paradigm, AI as Feature or Foundation, Conversational AI Revolution, and others."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Outline a post about transformer architectures",
+        "labels": {
+          "intent": "Draft",
+          "flow": "outline",
+          "dax": "{002}"
+        },
+        "slots": {
+          "topic": "transformer architectures"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 4,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "How many drafts do I have?",
+        "labels": {
+          "intent": "Research",
+          "flow": "check",
+          "dax": "{0AD}"
+        },
+        "slots": {
+          "source": {}
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "You have 13 drafts — Generate a table of content, Markup: Syntax Highlighting, ML as Software 2.0, and others."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Start a new draft called \"Fine-Tuning LLMs for Production\"",
+        "labels": {
+          "intent": "Draft",
+          "flow": "create",
+          "dax": "{05A}"
+        },
+        "slots": {
+          "title": "Fine-Tuning LLMs for Production",
+          "type": "draft"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 5,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Summarize the History of Seq2Seq draft",
+        "labels": {
+          "intent": "Research",
+          "flow": "summarize",
+          "dax": "{19A}"
+        },
+        "slots": {
+          "source": {
+            "post": "History of Seq2Seq"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Here's the History of Seq2Seq draft — it has a few sections with bullet-point notes but most are still sparse."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Add a citation to support the main argument",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        },
+        "slots": {
+          "source": {
+            "post": "History of Seq2Seq"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 6,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "What's the word count on Common Pitfalls in Machine Learning?",
+        "labels": {
+          "intent": "Research",
+          "flow": "inspect",
+          "dax": "{1BD}"
+        },
+        "slots": {
+          "source": {
+            "post": "Common Pitfalls in Machine Learning"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Common Pitfalls in Machine Learning is 1,847 words — about a 7-minute read. It has 5 sections and 3 external links."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "When was Meta Reinforcement Learning last edited?",
+        "labels": {
+          "intent": "Research",
+          "flow": "check",
+          "dax": "{0AD}"
+        },
+        "slots": {
+          "source": {
+            "post": "Meta Reinforcement Learning"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 7,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Check the readability of the Expectation Maximization draft",
+        "labels": {
+          "intent": "Research",
+          "flow": "inspect",
+          "dax": "{1BD}"
+        },
+        "slots": {
+          "source": {
+            "post": "Expectation Maximization"
+          }
+        },
+        "expected_tools": [
+          "read_metadata",
+          "inspect_post"
+        ],
+        "rubric": {
+          "did_action": "returned readability metrics or post metrics",
+          "did_follow_instructions": "metrics reference 'Expectation Maximization'"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Readability is moderate — Flesch-Kincaid grade 14. Long paragraphs and inconsistent heading levels are dragging the score down."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Clean up the formatting in the table of content draft while you're at it",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tidy",
+          "dax": "{3AB}"
+        },
+        "slots": {
+          "source": {
+            "post": "Generate a table of content"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 8,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Search for anything mentioning recommendation systems, just the top 3",
+        "labels": {
+          "intent": "Research",
+          "flow": "find",
+          "dax": "{001}"
+        },
+        "slots": {
+          "query": "recommendation systems",
+          "count": 3
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Top 3 results: Deep Learning for Recommendation Systems, Competing Goals when Training Recommendation Systems, and Optimizing RecSys Training."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Compare Embracing the AI-First Paradigm with AI as Feature or Foundation",
+        "labels": {
+          "intent": "Research",
+          "flow": "compare",
+          "dax": "{18A}"
+        },
+        "slots": {
+          "source": [
+            {
+              "post": "Embracing the AI-First Paradigm"
+            },
+            {
+              "post": "AI as Feature or Foundation"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 9,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "How does my ML as Software 2.0 draft compare to The Hype of Machine Learning?",
+        "labels": {
+          "intent": "Research",
+          "flow": "compare",
+          "dax": "{18A}"
+        },
+        "slots": {
+          "source": [
+            {
+              "post": "ML as Software 2.0"
+            },
+            {
+              "post": "The Hype of Machine Learning"
+            }
+          ]
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "The draft is noticeably more formal — longer sentences, more passive voice. The Hype post is punchier with shorter paragraphs and direct address."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Make the draft more conversational",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tone",
+          "dax": "{38A}"
+        },
+        "slots": {
+          "source": {
+            "post": "ML as Software 2.0"
+          },
+          "chosen_tone": "casual"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 10,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Give me a detailed outline for a beginner's guide to reinforcement learning",
+        "labels": {
+          "intent": "Draft",
+          "flow": "outline",
+          "dax": "{002}"
+        },
+        "slots": {
+          "topic": "beginner's guide to reinforcement learning"
+        },
+        "expected_tools": [
+          "find_posts",
+          "generate_outline"
+        ],
+        "rubric": {
+          "did_action": "outline saved to disk with ## section headings",
+          "did_follow_instructions": "outline is about reinforcement learning for beginners"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Here's a 5-section outline: 1) What is RL, 2) Key Concepts, 3) Common Algorithms, 4) Practical Examples, 5) Where to Go Next — estimated 2,500 words total."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Write the introduction for the Expectation Maximization draft",
+        "labels": {
+          "intent": "Draft",
+          "flow": "compose",
+          "dax": "{003}"
+        },
+        "slots": {
+          "source": {
+            "post": "Expectation Maximization",
+            "sec": "introduction"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 11,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Refine the intro section of the Insights around Attention Mechanism draft",
+        "labels": {
+          "intent": "Draft",
+          "flow": "refine",
+          "dax": "{02B}"
+        },
+        "slots": {
+          "source": {
+            "post": "Insights around Attention Mechanism",
+            "sec": "intro"
+          }
+        },
+        "expected_tools": [
+          "read_metadata",
+          "generate_outline"
+        ],
+        "rubric": {
+          "did_action": "revised the outline for the intro section",
+          "did_follow_instructions": "changes target the intro of 'Insights around Attention Mechanism'"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Refined the intro — tightened the hook, moved the historical context to paragraph 2, and added a clearer thesis statement."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Add a Prerequisites section to it",
+        "labels": {
+          "intent": "Draft",
+          "flow": "add",
+          "dax": "{005}"
+        },
+        "slots": {
+          "source": {
+            "post": "Insights around Attention Mechanism"
+          },
+          "target": "Prerequisites"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 12,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The conclusion on ML as Software 2.0 needs more concrete takeaways",
+        "labels": {
+          "intent": "Draft",
+          "flow": "refine",
+          "dax": "{02B}"
+        },
+        "slots": {
+          "source": {
+            "post": "ML as Software 2.0",
+            "sec": "conclusion"
+          },
+          "feedback": "more concrete takeaways"
+        },
+        "expected_tools": [
+          "read_metadata",
+          "generate_outline"
+        ],
+        "rubric": {
+          "did_action": "refined the conclusion with more concrete takeaways",
+          "did_follow_instructions": "changes target the conclusion of 'ML as Software 2.0'"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Updated the conclusion with three specific, actionable takeaways — one on testing, one on versioning, and one on team structure."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Now clean up the conclusion on the Expectation Maximization draft — make it punchier",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        },
+        "slots": {
+          "source": {
+            "post": "Expectation Maximization",
+            "sec": "conclusion"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 13,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Cite a source for the Tips to Maximizing Daily Energy note",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        },
+        "slots": {
+          "source": {
+            "note": "Tips to Maximizing Daily Energy"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Expanded the bullet points into full paragraphs — added context around sleep, caffeine timing, and exercise. Word count went from 284 to 820."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Draft a \"Practical Examples\" section for Components of Dialogue Systems — focus on real deployments",
+        "labels": {
+          "intent": "Draft",
+          "flow": "compose",
+          "dax": "{003}"
+        },
+        "slots": {
+          "source": {
+            "post": "Components of Dialogue Systems",
+            "sec": "Practical Examples"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 14,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Create a note about ideas for the dialogue agents series",
+        "labels": {
+          "intent": "Draft",
+          "flow": "create",
+          "dax": "{05A}"
+        },
+        "slots": {
+          "title": "Dialogue Agents Series Ideas",
+          "type": "note",
+          "topic": "next installments for dialogue agent posts"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Created a new note: \"Dialogue Agents Series Ideas\". It's ready for you to add content."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Give me some hook ideas for writing about data collection challenges",
+        "labels": {
+          "intent": "Draft",
+          "flow": "brainstorm",
+          "dax": "{29A}"
+        },
+        "slots": {
+          "topic": "data collection challenges"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 15,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Insert a FAQ section at the end of Markup: Syntax Highlighting",
+        "labels": {
+          "intent": "Draft",
+          "flow": "add",
+          "dax": "{005}"
+        },
+        "slots": {
+          "source": {
+            "post": "Markup: Syntax Highlighting"
+          },
+          "target": "FAQ"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Added an empty \"FAQ\" section at the end of Markup: Syntax Highlighting."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "The Components of Dialogue Systems draft needs a full rewrite",
+        "labels": {
+          "intent": "Revise",
+          "flow": "rework",
+          "dax": "{006}"
+        },
+        "slots": {
+          "source": {
+            "post": "Components of Dialogue Systems"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 16,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Rework ML as Software 2.0 and cut the section about hype cycles",
+        "labels": {
+          "intent": "Revise",
+          "flow": "rework",
+          "dax": "{006}"
+        },
+        "slots": {
+          "source": {
+            "post": "ML as Software 2.0"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Restructured the draft — removed the hype cycles section, consolidated the remaining arguments, and rewrote the transitions."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Simplify the language in the Data Collection Best Practices post",
+        "labels": {
+          "intent": "Revise",
+          "flow": "simplify",
+          "dax": "{7BD}"
+        },
+        "slots": {
+          "source": {
+            "post": "Data Collection Best Practices"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 17,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Polish the intro of Building User Simulators",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        },
+        "slots": {
+          "source": {
+            "post": "Building User Simulators for Scalable Dialogue Systems",
+            "sec": "intro"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Polished the intro — tightened two wordy sentences, replaced \"utilize\" with \"use\", and improved the transition to section 2."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Show me what changed in the intro of Data Augmentation before and after the last edit",
+        "labels": {
+          "intent": "Research",
+          "flow": "diff",
+          "dax": "{0BD}"
+        },
+        "slots": {
+          "source": {
+            "post": "Data Augmentation for Scalable Product Development",
+            "sec": "intro"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 18,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Shift History of Seq2Seq to a dry, academic register",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tone",
+          "dax": "{38A}"
+        },
+        "slots": {
+          "source": {
+            "post": "History of Seq2Seq"
+          },
+          "custom_tone": "dry academic"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Shifted the tone — replaced contractions, lengthened sentence structures, added hedging language. Reads more like a survey paper now."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Audit the Components of Dialogue Systems draft against my last 5 published pieces",
+        "labels": {
+          "intent": "Revise",
+          "flow": "audit",
+          "dax": "{13A}"
+        },
+        "slots": {
+          "source": {
+            "post": "Components of Dialogue Systems"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 19,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Does the Insights around Attention Mechanism draft match my usual writing style?",
+        "labels": {
+          "intent": "Revise",
+          "flow": "audit",
+          "dax": "{13A}"
+        },
+        "slots": {
+          "source": {
+            "post": "Insights around Attention Mechanism"
+          }
+        },
+        "expected_tools": [
+          "find_posts",
+          "compare_style"
+        ],
+        "rubric": {
+          "did_action": "produced a style consistency report",
+          "did_follow_instructions": "analysis targets 'Insights around Attention Mechanism'"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Mostly consistent — your typical explainer voice. But paragraphs 3 and 7 are unusually formal compared to your published posts."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Simplify the sentences in the Markup: Syntax Highlighting draft",
+        "labels": {
+          "intent": "Revise",
+          "flow": "simplify",
+          "dax": "{7BD}"
+        },
+        "slots": {
+          "source": {
+            "post": "Markup: Syntax Highlighting"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 20,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Delete the introduction section from the Color Post draft",
+        "labels": {
+          "intent": "Revise",
+          "flow": "remove",
+          "dax": "{007}"
+        },
+        "slots": {
+          "source": {
+            "post": "Color Post",
+            "sec": "introduction"
+          },
+          "type": "section"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Removed the introduction section from Color Post. The draft now starts with the first content section."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Normalize headings and spacing across EMNLP 2020 Highlights — use h2 for sections",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tidy",
+          "dax": "{3AB}"
+        },
+        "slots": {
+          "source": {
+            "post": "EMNLP 2020 Highlights"
+          },
+          "settings": {
+            "headings": "h2"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 21,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Delete my cookies note",
+        "labels": {
+          "intent": "Revise",
+          "flow": "remove",
+          "dax": "{007}"
+        },
+        "slots": {
+          "source": {
+            "note": "My Favorite Cookies"
+          },
+          "type": "note"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Deleted \"My Favorite Cookies\" from your notes."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Any suggestions for the ML as Software 2.0 draft?",
+        "labels": {
+          "intent": "Converse",
+          "flow": "suggest",
+          "dax": "{29B}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 22,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "What changed in Solving the Long Tail since the last revision?",
+        "labels": {
+          "intent": "Research",
+          "flow": "diff",
+          "dax": "{0BD}"
+        },
+        "slots": {
+          "source": {
+            "post": "Solving the Long Tail of Data Acquisition"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Three changes since the last revision: shortened the abstract, added a new data source in section 4, and fixed two broken links."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Publish the ML as Software 2.0 draft to the blog",
+        "labels": {
+          "intent": "Publish",
+          "flow": "release",
+          "dax": "{04A}"
+        },
+        "slots": {
+          "source": {
+            "post": "ML as Software 2.0"
+          },
+          "channel": "mt1t"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 23,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Push the History of Seq2Seq draft live on Substack",
+        "labels": {
+          "intent": "Publish",
+          "flow": "release",
+          "dax": "{04A}"
+        },
+        "slots": {
+          "source": {
+            "post": "History of Seq2Seq"
+          },
+          "channel": "substack"
+        },
+        "expected_tools": [
+          "read_metadata",
+          "release_post"
+        ],
+        "rubric": {
+          "did_action": "attempted to publish the post to Substack",
+          "did_follow_instructions": "targeted 'History of Seq2Seq' on Substack channel"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Published History of Seq2Seq on Substack. Content has been formatted as Substack-ready HTML."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Cross-post Embracing the AI-First Paradigm to LinkedIn too",
+        "labels": {
+          "intent": "Publish",
+          "flow": "syndicate",
+          "dax": "{04C}"
+        },
+        "slots": {
+          "source": {
+            "post": "Embracing the AI-First Paradigm"
+          },
+          "channel": "linkedin"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 24,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Syndicate the Ambiguity is the Bottleneck post to Medium",
+        "labels": {
+          "intent": "Publish",
+          "flow": "syndicate",
+          "dax": "{04C}"
+        },
+        "slots": {
+          "source": {
+            "post": "Ambiguity is the Bottleneck"
+          },
+          "channel": "medium"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Cross-posted Ambiguity is the Bottleneck to Medium with adapted formatting."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Pin the Conversational AI Revolution post to the top of the blog",
+        "labels": {
+          "intent": "Publish",
+          "flow": "promote",
+          "dax": "{004}"
+        },
+        "slots": {
+          "source": {
+            "post": "Prerequisites for a Conversational AI Revolution"
+          },
+          "channel": "pin"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 25,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Schedule the Expectation Maximization draft for next Monday on the blog",
+        "labels": {
+          "intent": "Publish",
+          "flow": "schedule",
+          "dax": "{4AC}"
+        },
+        "slots": {
+          "source": {
+            "post": "Expectation Maximization"
+          },
+          "channel": "blog",
+          "datetime": "2026-03-16"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Scheduled Expectation Maximization for Monday, March 16th on the blog."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Actually, cancel that",
+        "labels": {
+          "intent": "Publish",
+          "flow": "cancel",
+          "dax": "{04F}"
+        },
+        "slots": {
+          "source": {
+            "post": "Expectation Maximization"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 26,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Preview my 100 Research Papers post as it would appear on the blog",
+        "labels": {
+          "intent": "Publish",
+          "flow": "preview",
+          "dax": "{4AD}"
+        },
+        "slots": {
+          "source": {
+            "post": "100 Research Papers"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Here's the rendered preview — title, body, and tags all look good. One image is missing alt text."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Schedule the Attention Mechanism post on Substack for March 20th",
+        "labels": {
+          "intent": "Publish",
+          "flow": "schedule",
+          "dax": "{4AC}"
+        },
+        "slots": {
+          "source": {
+            "post": "Attention Mechanism"
+          },
+          "channel": "substack",
+          "datetime": "2026-03-20"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 27,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Preview the ML as Software 2.0 draft as it would appear on Substack",
+        "labels": {
+          "intent": "Publish",
+          "flow": "preview",
+          "dax": "{4AD}"
+        },
+        "slots": {
+          "source": {
+            "post": "ML as Software 2.0"
+          },
+          "channel": "substack"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Here's the Substack preview — formatting looks clean. The code blocks rendered correctly and images are inline."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Announce the Data Collection Best Practices post to subscribers",
+        "labels": {
+          "intent": "Publish",
+          "flow": "promote",
+          "dax": "{004}"
+        },
+        "slots": {
+          "source": {
+            "post": "Data Collection Best Practices"
+          },
+          "channel": "announce"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 28,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Unpublish the TrumpBot post — it's outdated",
+        "labels": {
+          "intent": "Publish",
+          "flow": "cancel",
+          "dax": "{04F}"
+        },
+        "slots": {
+          "source": {
+            "post": "TrumpBot: a Chatbot that Sounds like Trump"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Unpublished TrumpBot: a Chatbot that Sounds like Trump. Reverted to draft status."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Why did you change the intro on Ambiguity is the Bottleneck earlier?",
+        "labels": {
+          "intent": "Converse",
+          "flow": "explain",
+          "dax": "{009}"
+        },
+        "slots": {
+          "source": {
+            "post": "Ambiguity is the Bottleneck",
+            "sec": "intro"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 29,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Which platforms am I connected to?",
+        "labels": {
+          "intent": "Publish",
+          "flow": "survey",
+          "dax": "{01C}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "You're connected to 4 platforms — Substack (newsletter), Twitter/X (social), LinkedIn (social), and More Than One Turn (blog)."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "What's the status of my Substack connection?",
+        "labels": {
+          "intent": "Publish",
+          "flow": "survey",
+          "dax": "{01C}"
+        },
+        "slots": {}
+      }
+    ]
+  },
+  {
+    "convo_id": 30,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "What makes a good blog post title?",
+        "labels": {
+          "intent": "Converse",
+          "flow": "chat",
+          "dax": "{000}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Good titles are specific, promise value, and create curiosity. Numbers and \"how to\" formats tend to perform well. Keep it under 60 characters for SEO."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "I always want to use the Oxford comma",
+        "labels": {
+          "intent": "Converse",
+          "flow": "preference",
+          "dax": "{08A}"
+        },
+        "slots": {
+          "setting": {
+            "key": "oxford_comma",
+            "value": true
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 31,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "How often should I be publishing to build an audience?",
+        "labels": {
+          "intent": "Converse",
+          "flow": "chat",
+          "dax": "{000}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Consistency matters more than frequency. Once a week is a good baseline — enough to build momentum without burning out."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Set my default post length to 1500 words",
+        "labels": {
+          "intent": "Converse",
+          "flow": "preference",
+          "dax": "{08A}"
+        },
+        "slots": {
+          "setting": {
+            "key": "default_length",
+            "value": 1500
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 32,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "What did you just do to that section?",
+        "labels": {
+          "intent": "Converse",
+          "flow": "explain",
+          "dax": "{009}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "I polished the transition between paragraphs 2 and 3 — replaced a clunky \"however\" with a smoother lead-in and trimmed a redundant clause."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "What should I work on next?",
+        "labels": {
+          "intent": "Converse",
+          "flow": "suggest",
+          "dax": "{29B}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 33,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Make the tone of my ambiguity post more conversational, it sounds too academic",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tone",
+          "dax": "{38A}"
+        },
+        "slots": {
+          "source": {
+            "post": "ambiguity"
+          },
+          "chosen_tone": "conversational"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "I'll adjust the tone of 'Ambiguity is the Bottleneck' to be more conversational while keeping the analytical edge."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Do the same for the opening paragraphs especially, they read like an abstract",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tone",
+          "dax": "{38A}"
+        },
+        "slots": {
+          "source": {
+            "post": "ambiguity",
+            "sec": "opening paragraphs"
+          },
+          "chosen_tone": "conversational"
+        }
+      },
+      {
+        "turn_count": 4,
+        "role": "agent",
+        "utterance": "I'll rework the opening to be punchier and more engaging, swapping the thesis-style intro for something that pulls readers in."
+      },
+      {
+        "turn_count": 5,
+        "role": "user",
+        "utterance": "Show me the diff between the old and new version of those paragraphs",
+        "labels": {
+          "intent": "Research",
+          "flow": "diff",
+          "dax": "{0BD}"
+        },
+        "slots": {
+          "source": {
+            "post": "ambiguity",
+            "sec": "opening paragraphs"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 34,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "I want to get the data acquisition post out on LinkedIn too, not just the blog. Can you set that up?",
+        "labels": {
+          "intent": "Publish",
+          "flow": "syndicate",
+          "dax": "{04C}"
+        },
+        "slots": {
+          "source": {
+            "post": "588610e9"
+          },
+          "channel": "LinkedIn"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "I'll cross-post 'Solving the Long Tail of Data Acquisition' to LinkedIn. Let me prepare the syndication."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "It should probably have a shorter teaser for LinkedIn since people scroll fast there. Can you write a punchy hook for it?",
+        "labels": {
+          "intent": "Publish",
+          "flow": "syndicate",
+          "dax": "{04C}"
+        },
+        "slots": {
+          "source": {
+            "post": "588610e9"
+          },
+          "channel": "LinkedIn"
+        }
+      },
+      {
+        "turn_count": 4,
+        "role": "agent",
+        "utterance": "I'll draft a concise LinkedIn-optimized teaser that hooks scrollers with the core insight about data labeling economics."
+      },
+      {
+        "turn_count": 5,
+        "role": "user",
+        "utterance": "Good, and maybe schedule it for Tuesday morning when engagement is highest instead of posting right now",
+        "labels": {
+          "intent": "Publish",
+          "flow": "schedule",
+          "dax": "{4AC}"
+        },
+        "slots": {
+          "datetime": "Tuesday morning",
+          "source": {
+            "post": "588610e9"
+          },
+          "channel": "LinkedIn"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 35,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "I'm curious how my writing style differs between the reinforcement learning post and the ambiguity post",
+        "labels": {
+          "intent": "Research",
+          "flow": "compare",
+          "dax": "{18A}"
+        },
+        "slots": {
+          "source": [
+            {
+              "post": "reinforcement learning"
+            },
+            {
+              "post": "ambiguity"
+            }
+          ]
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "I'll compare the writing style across both posts, looking at sentence structure, vocabulary, tone, and argumentation patterns."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Pay special attention to how I handle citations and footnotes in each. I think that's where the biggest difference is",
+        "labels": {
+          "intent": "Research",
+          "flow": "compare",
+          "dax": "{18A}"
+        },
+        "slots": {
+          "source": [
+            {
+              "post": "reinforcement learning"
+            },
+            {
+              "post": "ambiguity"
+            }
+          ]
+        }
+      },
+      {
+        "turn_count": 4,
+        "role": "agent",
+        "utterance": "I'll focus the comparison on citation style, footnote usage, and how you integrate references into the narrative flow."
+      },
+      {
+        "turn_count": 5,
+        "role": "user",
+        "utterance": "Also look at paragraph length and how I transition between sections. I want to understand my own patterns better",
+        "labels": {
+          "intent": "Research",
+          "flow": "compare",
+          "dax": "{18A}"
+        },
+        "slots": {
+          "source": [
+            {
+              "post": "reinforcement learning"
+            },
+            {
+              "post": "ambiguity"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 36,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The data acquisition post needs citations. Can you find some supporting sources?",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        },
+        "slots": {
+          "source": {
+            "post": "588610e9"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "I'll expand your outline bullets into full prose, maintaining your argument structure while fleshing out each point."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Start with the machine-in-the-loop annotation section, find a good citation for that one",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        },
+        "slots": {
+          "source": {
+            "post": "588610e9",
+            "sec": "Machine-in-the-Loop Annotation"
+          }
+        }
+      },
+      {
+        "turn_count": 4,
+        "role": "agent",
+        "utterance": "I'll start expanding the Machine-in-the-Loop Annotation section from your outline notes into polished paragraphs."
+      },
+      {
+        "turn_count": 5,
+        "role": "user",
+        "utterance": "Oh wait, I also realized I need a new subsection about evaluation metrics that doesn't exist in the outline yet. Can you insert that between the human-in-the-loop section and the conclusion?",
+        "labels": {
+          "intent": "Draft",
+          "flow": "add",
+          "dax": "{005}"
+        },
+        "slots": {
+          "position": "before conclusion",
+          "target": {
+            "post": "",
+            "sec": "Evaluation Metrics"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 37,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The self-attention section feels off. Reorder it from Q/K/V intuition into scaled dot-product.",
+        "labels": {
+          "intent": "Draft",
+          "flow": "refine",
+          "dax": "{02B}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "I'll reorder that section to build from Q/K/V intuition into the math and remove the RNN comparison."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Same thing for multi-head attention.",
+        "labels": {
+          "intent": "Draft",
+          "flow": "refine",
+          "dax": "{02B}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 38,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Let's write a new post about why we decided to break apart our monolith.",
+        "labels": {
+          "intent": "Draft",
+          "flow": "create",
+          "dax": "{05A}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "I've set up a new post titled 'Why We Broke Apart Our Monolith' under your engineering blog."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "That's a terrible title, please try again.",
+        "labels": {
+          "intent": "Draft",
+          "flow": "create",
+          "dax": "{05A}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 39,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you go over it to see what else might be missing before scheduling?",
+        "labels": {
+          "intent": "Research",
+          "flow": "inspect",
+          "dax": "{1BD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Sure, I can check your posts for anything missing. Is there a particular one you were referring to?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "The one about butternut squash soup.",
+        "labels": {
+          "intent": "Research",
+          "flow": "inspect",
+          "dax": "{1BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 40,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The intro for the developer tools review reads a bit clunky. Can you tighten it up?",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Smoothing transitions and trimming redundant phrasing. The second paragraph especially had some awkward jumps between ideas."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Same thing for the performance benchmarks section, it's a bit wordy.",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 41,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Rework the async communication section in my remote work post",
+        "labels": {
+          "intent": "Revise",
+          "flow": "rework",
+          "dax": "{006}"
+        },
+        "slots": {
+          "source": {
+            "post": "remote work",
+            "sec": "async communication"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Restructuring the async communication section around a single clear argument instead of the three scattered points."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Rework the conclusion of that same post too, it trails off",
+        "labels": {
+          "intent": "Revise",
+          "flow": "rework",
+          "dax": "{006}"
+        },
+        "slots": {
+          "source": {
+            "post": "remote work",
+            "sec": "conclusion"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 42,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Compare my REST API tutorial and my GraphQL API tutorial side by side",
+        "labels": {
+          "intent": "Research",
+          "flow": "compare",
+          "dax": "{18A}"
+        },
+        "slots": {
+          "source": {
+            "post": "REST API tutorial"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Comparing the two tutorials now — looking at word count, structure, and tone consistency."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Add the authentication tutorial to that comparison too",
+        "labels": {
+          "intent": "Research",
+          "flow": "compare",
+          "dax": "{18A}"
+        },
+        "slots": {
+          "source": {
+            "post": "authentication tutorial"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 43,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Schedule my AI roundup post for Friday at 8am EST on Substack",
+        "labels": {
+          "intent": "Publish",
+          "flow": "schedule",
+          "dax": "{4AC}"
+        },
+        "slots": {
+          "source": {
+            "post": "AI roundup"
+          },
+          "datetime": "Friday 8am EST",
+          "channel": "Substack"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Scheduled the AI roundup for Friday 8:00 AM EST."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Actually reschedule that to Thursday evening instead",
+        "labels": {
+          "intent": "Publish",
+          "flow": "schedule",
+          "dax": "{4AC}"
+        },
+        "slots": {
+          "source": {
+            "post": "AI roundup"
+          },
+          "datetime": "Thursday evening",
+          "channel": "Substack"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 44,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Add a citation for the noise pollution claim",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "I'll develop those bullet points into full prose while keeping your voice."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Cite a source for the commuting section too",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 45,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Make the whole Southeast Asia series feel like a letter to a friend taking the same trip.",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tone",
+          "dax": "{38A}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Got it, I'll shift the voice across the series to casual first-person storytelling, like writing to a friend about to take the same trip."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Can you remember that going forward? I don't want to have to keep telling you for every new installment.",
+        "labels": {
+          "intent": "Converse",
+          "flow": "preference",
+          "dax": "{08A}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 46,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Add a disclaimer section at the bottom of my crypto investing post about this not being financial advice",
+        "labels": {
+          "intent": "Draft",
+          "flow": "add",
+          "dax": "{005}"
+        },
+        "slots": {
+          "source": {
+            "post": "crypto investing",
+            "sec": "disclaimer"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Added a financial disclaimer section at the bottom. That fills in the last empty spot in the post."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Great, release the crypto investing post now",
+        "labels": {
+          "intent": "Publish",
+          "flow": "release",
+          "dax": "{04A}"
+        },
+        "slots": {
+          "source": {
+            "post": "crypto investing"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 47,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Compose the positional encoding section in my transformer deep dive post",
+        "labels": {
+          "intent": "Draft",
+          "flow": "compose",
+          "dax": "{003}"
+        },
+        "slots": {
+          "source": {
+            "post": "transformer deep dive",
+            "sec": "positional encoding"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Drafted the positional encoding section covering sinusoidal embeddings and learned approaches, about 400 words."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Audit that section against my style guide, it reads like a textbook",
+        "labels": {
+          "intent": "Revise",
+          "flow": "audit",
+          "dax": "{13A}"
+        },
+        "slots": {
+          "source": {
+            "post": "transformer deep dive",
+            "sec": "positional encoding"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 48,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Did I ever write anything about Vietnam? I feel like I started something a while back.",
+        "labels": {
+          "intent": "Research",
+          "flow": "find",
+          "dax": "{001}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Found one draft: 'Hanoi to Ho Chi Minh by Motorbike,' last touched in August. About 800 words, mostly bullet points."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "The Hai Van Pass section needs a citation, can you find one?",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 49,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Summarize the asparagus risotto post",
+        "labels": {
+          "intent": "Research",
+          "flow": "summarize",
+          "dax": "{19A}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Here it is. 1,200 words, four sections. Been live for three weeks."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Wait, the parmesan brand is all wrong! Are you kidding me? The brand manager will kill me.",
+        "labels": {
+          "intent": "Publish",
+          "flow": "cancel",
+          "dax": "{04F}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 50,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "I need some fresh angles for this week's AI research roundup",
+        "labels": {
+          "intent": "Draft",
+          "flow": "brainstorm",
+          "dax": "{29A}"
+        },
+        "expected_tools": [
+          "brainstorm_ideas"
+        ],
+        "rubric": {
+          "did_action": "generated multiple creative angles or ideas",
+          "did_follow_instructions": "ideas relate to AI research roundup"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Here are 6 angles: 1) GPT-5 rumor mill recap, 2) open-source models closing the gap, 3) AI safety papers nobody's reading, 4) weird niche applications from arxiv, 5) corporate lab drama, 6) one breakthrough explained simply."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Love 3 and 4. Dig deeper with some hooks?",
+        "labels": {
+          "intent": "Draft",
+          "flow": "brainstorm",
+          "dax": "{29A}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 51,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Where am I set up to post stuff? Like which sites are connected",
+        "labels": {
+          "intent": "Publish",
+          "flow": "survey",
+          "dax": "{01C}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "You have three platforms connected: WordPress (healthy, synced 2 hours ago), Medium (healthy, synced yesterday), and Substack (credential expired; last synced 12 days ago)."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "What's wrong with the Substack one exactly? When did it stop working",
+        "labels": {
+          "intent": "Publish",
+          "flow": "survey",
+          "dax": "{01C}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 52,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "What have I got in the pipeline?",
+        "labels": {
+          "intent": "Research",
+          "flow": "check",
+          "dax": "{0AD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "3 drafts and 5 saved ideas. Drafts are butternut squash soup, spring onion foraging, and rhubarb galette. Want me to filter by season?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Just the spring stuff.",
+        "labels": {
+          "intent": "Research",
+          "flow": "check",
+          "dax": "{0AD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 53,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you show me what changed between the last two edits on the Bangkok section",
+        "labels": {
+          "intent": "Research",
+          "flow": "diff",
+          "dax": "{0BD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Here's the side-by-side for the Bangkok street food section: 3 sentences added to the opening, the hostel recommendation paragraph was reworded, and the budget breakdown got reformatted. Want me to pull up any other section?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Do Chiang Mai too, did the temple stuff get cut?",
+        "labels": {
+          "intent": "Research",
+          "flow": "diff",
+          "dax": "{0BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 54,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The formatting on my beginner investing post is all over the place. Can you clean up the structure without changing any words?",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tidy",
+          "dax": "{3AB}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Normalized the heading hierarchy, fixed inconsistent list indentation, and evened out paragraph spacing across all sections. Wording is untouched."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Do compound interest too, bullets are a mess.",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tidy",
+          "dax": "{3AB}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 55,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The microservices post reads like a Slack message. Needs to sound like a proper engineering blog.",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tone",
+          "dax": "{38A}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Shifted the register across all sections to a professional technical voice. Replaced colloquialisms, tightened sentence structure, and kept jargon accessible with brief inline explanations where needed."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Too far on the intro. Reads like a white paper now.",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tone",
+          "dax": "{38A}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 56,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you clean up the writing in the intro? It reads a bit clunky right now",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        },
+        "expected_tools": [
+          "read_metadata",
+          "read_section",
+          "revise_content"
+        ],
+        "rubric": {
+          "did_action": "tightened prose in the intro section",
+          "did_follow_instructions": "edits target the intro, improving word choice and conciseness"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Tightened the intro on the spring ramps post, smoothed the transition from the farmer's market anecdote into the recipe teaser and trimmed a couple of redundant phrases."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Nice, do the same for the section about sourcing ingredients locally. That one's rough too",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 57,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Hey can you put back what I had before? I messed up the last change",
+        "labels": {
+          "intent": "Converse",
+          "flow": "undo",
+          "dax": "{08F}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Which section did you want rolled back? The intro, the performance benchmarks, or the pricing breakdown?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "The benchmarks part, that one",
+        "labels": {
+          "intent": "Converse",
+          "flow": "undo",
+          "dax": "{08F}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 58,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "What's trending right now for thought leadership topics?",
+        "labels": {
+          "intent": "Research",
+          "flow": "browse",
+          "dax": "{012}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Trending in thought leadership: future of remote work in tech, AI governance frameworks, founder mental health, and the talent migration to smaller cities. Want me to narrow by a specific category?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Yeah just the remote work ones, any content gaps there I haven't covered?",
+        "labels": {
+          "intent": "Research",
+          "flow": "browse",
+          "dax": "{012}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 59,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "hey what did you do to my REST API tutorial draft",
+        "labels": {
+          "intent": "Converse",
+          "flow": "explain",
+          "dax": "{009}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Which section are you asking about? I made changes to both the authentication walkthrough and the endpoint routing part."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "the routing one, walk me through what you changed there",
+        "labels": {
+          "intent": "Converse",
+          "flow": "explain",
+          "dax": "{009}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 60,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Set the AI roundup to go out next Tuesday morning on Substack",
+        "labels": {
+          "intent": "Publish",
+          "flow": "schedule",
+          "dax": "{4AC}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Got it. What time on Tuesday? I'll default to your local timezone."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "8am EST",
+        "labels": {
+          "intent": "Publish",
+          "flow": "schedule",
+          "dax": "{4AC}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 61,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The urban living essay is way too wordy. Can you simplify the language?",
+        "labels": {
+          "intent": "Revise",
+          "flow": "simplify",
+          "dax": "{7BD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Which platform are you targeting? WordPress, Medium, Substack?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Focus on the long paragraphs, those need the most simplification",
+        "labels": {
+          "intent": "Revise",
+          "flow": "simplify",
+          "dax": "{7BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 62,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Draft me a section on multi-head attention for the transformer post",
+        "labels": {
+          "intent": "Draft",
+          "flow": "compose",
+          "dax": "{003}"
+        },
+        "expected_tools": [
+          "read_metadata",
+          "read_section",
+          "write_text"
+        ],
+        "rubric": {
+          "did_action": "drafted prose content about multi-head attention",
+          "did_follow_instructions": "content covers multi-head attention for a transformer post"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Done, wrote ~400 words covering the parallel attention heads, how Q/K/V projections split across heads, and why this helps the model attend to different representation subspaces."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Nice. Now do the same for positional encoding, focus on sinusoidal vs learned embeddings",
+        "labels": {
+          "intent": "Draft",
+          "flow": "compose",
+          "dax": "{003}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 63,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Push the Bangkok street food post live",
+        "labels": {
+          "intent": "Publish",
+          "flow": "syndicate",
+          "dax": "{04C}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Published \"Street Food Bangkok: A Backpacker's Guide\" to your WordPress blog. It's live now."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Nice, do the same for the Chiang Mai temples one",
+        "labels": {
+          "intent": "Publish",
+          "flow": "syndicate",
+          "dax": "{04C}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 64,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "I need a new section in my investing for beginners post, something about index funds. Put it after the intro.",
+        "labels": {
+          "intent": "Draft",
+          "flow": "add",
+          "dax": "{005}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Created an empty \"Index Funds\" section right after the intro. Ready for content whenever you are."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Actually throw in one about compound interest too, right before that index funds one",
+        "labels": {
+          "intent": "Draft",
+          "flow": "add",
+          "dax": "{005}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 65,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Have we written anything about microservices before?",
+        "labels": {
+          "intent": "Research",
+          "flow": "find",
+          "dax": "{001}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Found 3 posts: \"Breaking the Monolith: Our First Steps\" (Mar 2024), \"Service Mesh Lessons Learned\" (Jun 2024), and \"API Gateway Pitfalls\" (Aug 2024)."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "What about database sharding? Don't wanna repeat ourselves.",
+        "labels": {
+          "intent": "Research",
+          "flow": "find",
+          "dax": "{001}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 66,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Give me a summary of the rhubarb galette post",
+        "labels": {
+          "intent": "Research",
+          "flow": "summarize",
+          "dax": "{19A}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Here it is. 900 words across 4 sections, still in draft. No featured image set."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Summarize the spring onions one too",
+        "labels": {
+          "intent": "Research",
+          "flow": "summarize",
+          "dax": "{19A}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 67,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "What's the status on my reviews?",
+        "labels": {
+          "intent": "Research",
+          "flow": "check",
+          "dax": "{0AD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "6 posts total: 3 published, 2 in draft, 1 scheduled for Friday. Want details on a specific group?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "The drafts.",
+        "labels": {
+          "intent": "Research",
+          "flow": "check",
+          "dax": "{0AD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 68,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you blast out that remote work piece to subscribers and social?",
+        "labels": {
+          "intent": "Publish",
+          "flow": "promote",
+          "dax": "{004}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Sent the \"Future of Remote Work in Tech\" post to your email list and shared it on Twitter and LinkedIn."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Pin it to the top of the blog too while it's hot",
+        "labels": {
+          "intent": "Publish",
+          "flow": "promote",
+          "dax": "{004}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 69,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you add a citation to the authentication section? It's for the REST API tutorial",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Done, turned the bullet points into three full paragraphs covering token generation, header format, and expiration handling."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Nice, now find a citation for the error handling section too",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 70,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Start a new post for my weekly AI research roundup on Substack",
+        "labels": {
+          "intent": "Draft",
+          "flow": "create",
+          "dax": "{05A}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Post initialized. What do you want the title to be?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Call it \"AI Weekly #12: Agents, Benchmarks, and Open Models\"",
+        "labels": {
+          "intent": "Draft",
+          "flow": "create",
+          "dax": "{05A}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 71,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The neighborhood comparison section feels off. Can you move the safety stats before the walkability stuff and drop the parking subsection?",
+        "labels": {
+          "intent": "Draft",
+          "flow": "refine",
+          "dax": "{02B}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Reordered section 3 so safety stats come first, walkability second. Removed the parking subsection. The section now has four points instead of five."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Actually keep parking but fold it into the walkability part instead of its own thing",
+        "labels": {
+          "intent": "Draft",
+          "flow": "refine",
+          "dax": "{02B}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 72,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Hey I set up my transformer post to go out tomorrow but I want to pull it back",
+        "labels": {
+          "intent": "Publish",
+          "flow": "cancel",
+          "dax": "{04F}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "You have two posts scheduled for tomorrow: \"Attention Is All You Need: A Beginner's Guide\" and \"How Transformers Handle Long Sequences.\" Which one?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "The attention one, take it off the schedule",
+        "labels": {
+          "intent": "Publish",
+          "flow": "cancel",
+          "dax": "{04F}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 73,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Where are my Southeast Asia posts at right now? Like which ones are live and which aren't",
+        "labels": {
+          "intent": "Research",
+          "flow": "check",
+          "dax": "{0AD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "You have 5 posts in the series: \"Bangkok on $20/Day\" is published on WordPress, \"Chiang Mai Temples\" is scheduled for Thursday, and \"Laos Border Crossing\", \"Vietnam by Train\", and \"Cambodian Street Food\" are all still in draft."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Ok what about the Vietnam one specifically, when was it last touched",
+        "labels": {
+          "intent": "Research",
+          "flow": "check",
+          "dax": "{0AD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 74,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Nah, skip that",
+        "labels": {
+          "intent": "Converse",
+          "flow": "dismiss",
+          "dax": "{09F}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Noted, moving on. By the way, your AI research roundup is done and ready to go - 1,400 words, all sections complete, Substack formatting applied."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Oh nice. Set it to go out Thursday morning at 8am then",
+        "labels": {
+          "intent": "Publish",
+          "flow": "schedule",
+          "dax": "{4AC}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 75,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "I'm kinda stuck on my urban living essay, any ideas what I should work on next?",
+        "labels": {
+          "intent": "Converse",
+          "flow": "suggest",
+          "dax": "{29B}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Your \"Noise as Neighbors\" section has some good raw energy but the sentences are pretty choppy and the transitions between paragraphs feel abrupt. That one could use some smoothing before you move on."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Ok yeah can you clean up that section then? just tighten the writing, don't change what I'm saying",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 76,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The attention mechanism section needs a supporting citation. Can you find one?",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Done. Developed your 6 bullet points into 3 paragraphs, roughly 420 words. I noticed you reference multi-head attention vs. single-head tradeoffs but I'm not sure if you've covered that distinction in a previous post already."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Good point, search my old posts for multi-head attention. Don't want to repeat myself.",
+        "labels": {
+          "intent": "Research",
+          "flow": "find",
+          "dax": "{001}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 77,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you run a health check on the Bangkok street food post? Wanna know if anything's missing before I share it",
+        "labels": {
+          "intent": "Research",
+          "flow": "inspect",
+          "dax": "{1BD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "1,420 words, 6 min read, Flesch-Kincaid grade 9. All images present and links valid. The \"Getting Around Khao San Road\" section reads choppy though, lots of short fragmented sentences back to back."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Yeah clean up that Khao San Road section then, smooth out the flow a bit",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 78,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you map out a structure for a beginner investing strategies post? Headings, key points, rough word counts.",
+        "labels": {
+          "intent": "Draft",
+          "flow": "outline",
+          "dax": "{002}"
+        },
+        "expected_tools": [
+          "find_posts",
+          "generate_outline"
+        ],
+        "rubric": {
+          "did_action": "outline saved to disk with ## section headings",
+          "did_follow_instructions": "outline is about beginner investing strategies"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Generated 3 outline options, each with 6-8 sections. Option B covers index funds, dollar-cost averaging, and risk tolerance in about 1,800 words total. Want me to tweak any of them?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Option B looks solid. Go ahead and start a fresh post with that topic so I can begin filling it in.",
+        "labels": {
+          "intent": "Draft",
+          "flow": "create",
+          "dax": "{05A}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 79,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The microservices post went live yesterday and it's getting traction. Pin it as featured and push it to the email list and socials.",
+        "labels": {
+          "intent": "Publish",
+          "flow": "promote",
+          "dax": "{004}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Pinned as featured and sent to 2,340 subscribers. Shared to Twitter successfully, but LinkedIn returned an auth error, your company page token expired 3 days ago, so that one didn't go through."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "LinkedIn didn't work? Just cross-post the full article as a native LinkedIn post instead.",
+        "labels": {
+          "intent": "Publish",
+          "flow": "syndicate",
+          "dax": "{04C}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 80,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you find a citation for the winter squash section",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Done; fleshed out 6 bullet points into 3 paragraphs (280 words). Heads up, I noticed some image embed tags referencing your WordPress media library, so make sure that connection is still active before you publish."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Good call, show me which platforms are connected and if everything's working",
+        "labels": {
+          "intent": "Publish",
+          "flow": "survey",
+          "dax": "{01C}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 81,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The VS Code review sounds too stiff and formal. Can you make the whole thing more casual and conversational?",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tone",
+          "dax": "{38A}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Shifted the entire post to a conversational register. Shortened sentences by about 30% and swapped formal phrasing for plain language. One thing I noticed: you don't have a dedicated section for pricing, which most developer tool reviews include."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Oh good call. Can you stick a pricing section in right before the final verdict?",
+        "labels": {
+          "intent": "Draft",
+          "flow": "add",
+          "dax": "{005}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 82,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "What do I have sitting around for the remote work series?",
+        "labels": {
+          "intent": "Research",
+          "flow": "browse",
+          "dax": "{012}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "3 drafts: 'Async Culture Shift', 'Hiring Trends 2026', and 'Timezone Equity.' I've been working on the first one, collapsed three overlapping sections on async communication."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Wait you merged three sections? Walk me through what you changed",
+        "labels": {
+          "intent": "Converse",
+          "flow": "explain",
+          "dax": "{009}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 83,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The REST API tutorial is a mess structurally. Heading levels and indentation need fixing.",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tidy",
+          "dax": "{3AB}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Fixed heading hierarchy across all 8 sections, normalized list indentation in the code steps, and evened out paragraph spacing. Noticed 3 sections had no content under their headings though."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "wait 3 empty sections? run a full check on it, wanna see what else is missing",
+        "labels": {
+          "intent": "Research",
+          "flow": "inspect",
+          "dax": "{1BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 84,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "The AI roundup has really complex sentences. Can you simplify the writing?",
+        "labels": {
+          "intent": "Revise",
+          "flow": "simplify",
+          "dax": "{7BD}"
+        },
+        "expected_tools": [
+          "read_metadata",
+          "read_section",
+          "revise_content"
+        ],
+        "rubric": {
+          "did_action": "simplified complex sentences and language",
+          "did_follow_instructions": "simplification targets the AI roundup post"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Done. Adjusted headings to H2/H3, added pull quotes for the GPT-5 and Gemini sections, set tags to \"AI research, weekly roundup, LLMs\", and added the excerpt. The intro paragraph reads a bit clunky though . Long run-on sentence with some awkward transitions."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Yeah clean that intro up, just tighten the wording without changing what it says.",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 85,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Where does my urban loneliness essay stand right now? Still in draft?",
+        "labels": {
+          "intent": "Research",
+          "flow": "check",
+          "dax": "{0AD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "\"Urban Loneliness\" is still in draft, last edited June 2. You also have \"Noise as Neighbor\" published on Medium last month and \"Sidewalk Seasons\" scheduled for Friday."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Compare the tone and sentence patterns between the loneliness one and Noise as Neighbor?",
+        "labels": {
+          "intent": "Research",
+          "flow": "compare",
+          "dax": "{18A}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 86,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Pull that transformer attention post off LinkedIn, it went live too early",
+        "labels": {
+          "intent": "Publish",
+          "flow": "cancel",
+          "dax": "{04F}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Unpublished the \"Multi-Head Attention Demystified\" post from Medium and reverted it to draft. Looks like it was missing the featured image and had two empty sections when it went out."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Yikes. Run a full check on it, word count, broken links, whatever else is incomplete",
+        "labels": {
+          "intent": "Research",
+          "flow": "inspect",
+          "dax": "{1BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 87,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Add a new section on street food to my Bangkok travel post, right after the intro",
+        "labels": {
+          "intent": "Draft",
+          "flow": "add",
+          "dax": "{005}"
+        },
+        "slots": {
+          "source": {
+            "post": "Bangkok travel",
+            "sec": "street food"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Created a Street Food section at position 2. Want me to reorder the other sections around it?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Nah leave the order as is",
+        "labels": {
+          "intent": "Converse",
+          "flow": "dismiss",
+          "dax": "{09F}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 88,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "That beginner investing post went live yesterday, can you blast it out to the email list and pin it on the blog?",
+        "labels": {
+          "intent": "Publish",
+          "flow": "promote",
+          "dax": "{004}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Pinned and subscriber announcement sent to 1,240 contacts. Heads up though, the intro paragraph on dollar-cost averaging reads a bit clunky, a couple of awkward transitions that might turn off new readers landing from the email."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Yeah if people are hitting that first, clean up the transitions and tighten the wording in that intro section",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 89,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Summarize the microservices migration draft for me",
+        "labels": {
+          "intent": "Research",
+          "flow": "summarize",
+          "dax": "{19A}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Here's the full draft: \"Breaking the Monolith: Our Migration Playbook.\" 6 sections, 2,400 words, tagged engineering and architecture. Status is draft. The intro references a \"Part 1\" post about service boundaries but I don't see it linked anywhere."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Wait we wrote a Part 1? Search our old posts for service boundaries, I don't remember publishing that",
+        "labels": {
+          "intent": "Research",
+          "flow": "find",
+          "dax": "{001}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 90,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you clean up the intro on the summer squash post? Just smooth it out a bit, don't change anything major",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Tightened some phrasing and fixed a rough transition, but the intro still opens with three sentences about your garden before mentioning the actual recipe. The structure might be working against you there."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Yeah that's not great. Go ahead and tear that whole intro apart and rebuild it so it gets to the recipe faster",
+        "labels": {
+          "intent": "Revise",
+          "flow": "rework",
+          "dax": "{006}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 91,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you show me what changed between the old and new version of the remote work trends section",
+        "labels": {
+          "intent": "Research",
+          "flow": "diff",
+          "dax": "{0BD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "14 additions and 6 deletions. The new version restructured the argument around async-first culture and added a pull quote, but the heading levels are inconsistent now, mix of H2 and H3 where it used to be uniform."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Keep the new version. Simplify the dense paragraphs before we publish.",
+        "labels": {
+          "intent": "Revise",
+          "flow": "simplify",
+          "dax": "{7BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 92,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you add citations to my AI roundup? The claims need supporting sources.",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Done . Turned 14 bullet points across 5 sections into full paragraphs. The diffusion models section came out pretty bloated though, 380 words for what was originally 3 bullets. The argument kind of meanders."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Yeah that diffusion section needs a heavier pass then. Restructure the argument and cut the fluff, it should be tight like the others.",
+        "labels": {
+          "intent": "Revise",
+          "flow": "rework",
+          "dax": "{006}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 93,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you find a citation for the neighborhood sounds section",
+        "labels": {
+          "intent": "Draft",
+          "flow": "cite",
+          "dax": "{15B}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Done, fleshed out your bullet points into three paragraphs, 340 words. It flows from morning garbage trucks through afternoon construction to the late-night bar crowd. Noticed there's nothing in there about the quiet moments though, the 3 AM stillness."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Good call actually. Put a new section after that one for the silence between the noise",
+        "labels": {
+          "intent": "Draft",
+          "flow": "add",
+          "dax": "{005}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 94,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Can you simplify the transformer post? The language is too technical for a general audience",
+        "labels": {
+          "intent": "Revise",
+          "flow": "simplify",
+          "dax": "{7BD}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Done. Adjusted heading levels to H3/H4, wrapped all Python snippets in fenced code blocks, and added tags: transformers, attention-mechanism, deep-learning. Note: you used \"attention mechanism\" as a tag here, but I'm not sure if that matches what you've used on older posts."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Hmm good point. Can you pull up any older posts I wrote about attention or transformers so I can check what tags I used before?",
+        "labels": {
+          "intent": "Research",
+          "flow": "find",
+          "dax": "{001}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 95,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Tidy up the formatting on my Thailand travel post, the headings and spacing are inconsistent",
+        "labels": {
+          "intent": "Revise",
+          "flow": "tidy",
+          "dax": "{3AB}"
+        },
+        "slots": {
+          "source": {
+            "post": "Thailand travel"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Fixed 4 heading levels to a consistent H2/H3 hierarchy and normalized list indentation throughout."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Audit the Thailand travel post against the style of my older travel posts",
+        "labels": {
+          "intent": "Revise",
+          "flow": "audit",
+          "dax": "{13A}"
+        },
+        "slots": {
+          "source": {
+            "post": "Thailand travel"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 96,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "the VS Code section reads kinda rough, it needs some major revision",
+        "labels": {
+          "intent": "Revise",
+          "flow": "rework",
+          "dax": "{006}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "You got it, please provide some details about how you'd like me to rework or restructure the arguments?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "nah the structure is fine, just make the sentences read better by making them more concise",
+        "labels": {
+          "intent": "Revise",
+          "flow": "polish",
+          "dax": "{3BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 97,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Hey can you push the remote work piece live",
+        "labels": {
+          "intent": "Publish",
+          "flow": "release",
+          "dax": "{04A}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "No problem, it's pushed now, and you should be able to see it on the site shortly."
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Oh wait, how long is it again? Like 7 paragraphs?",
+        "labels": {
+          "intent": "Research",
+          "flow": "inspect",
+          "dax": "{1BD}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 98,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Compose a new post about prompt engineering best practices",
+        "labels": {
+          "intent": "Draft",
+          "flow": "compose",
+          "dax": "{003}"
+        },
+        "slots": {
+          "source": {
+            "post": "prompt engineering best practices"
+          }
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "I can draft that for you. I’d suggest structuring it around three tiers: basic templating, chain-of-thought, and tool-augmented prompting. Want me to go with that structure?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Yes, that structure sounds perfect, go ahead with it",
+        "labels": {
+          "intent": "Converse",
+          "flow": "endorse",
+          "dax": "{09E}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 99,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "Schedule my fine-tuning post for next Monday morning on the blog",
+        "labels": {
+          "intent": "Publish",
+          "flow": "schedule",
+          "dax": "{4AC}"
+        },
+        "slots": {
+          "source": {
+            "post": "fine-tuning post"
+          },
+          "datetime": "next Monday morning",
+          "channel": "blog"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Done. I also noticed your RAG deep-dive is ready — want me to queue that for Wednesday so you have two posts out next week?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Sure, do that too",
+        "labels": {
+          "intent": "Converse",
+          "flow": "endorse",
+          "dax": "{09E}"
+        }
+      }
+    ]
+  },
+  {
+    "convo_id": 100,
+    "turns": [
+      {
+        "turn_count": 1,
+        "role": "user",
+        "utterance": "What should I work on next?",
+        "labels": {
+          "intent": "Converse",
+          "flow": "suggest",
+          "dax": "{29B}"
+        }
+      },
+      {
+        "turn_count": 2,
+        "role": "agent",
+        "utterance": "Your evaluation metrics post is 90% done — just needs a conclusion. Want me to draft one?"
+      },
+      {
+        "turn_count": 3,
+        "role": "user",
+        "utterance": "Nah, skip that for now",
+        "labels": {
+          "intent": "Converse",
+          "flow": "dismiss",
+          "dax": "{09F}"
+        }
+      },
+      {
+        "turn_count": 4,
+        "role": "agent",
+        "utterance": "No problem. Your other option is the distributed training post — I made some edits to the intro last session."
+      },
+      {
+        "turn_count": 5,
+        "role": "user",
+        "utterance": "Undo those edits, I liked the original intro better",
+        "labels": {
+          "intent": "Converse",
+          "flow": "undo",
+          "dax": "{08F}"
+        }
+      }
+    ]
+  }
+]

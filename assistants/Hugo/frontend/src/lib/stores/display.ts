@@ -18,10 +18,9 @@ export function toggleTheme() {
 }
 
 export interface FrameData {
-    type: string;
-    show: boolean;
+    block_type: string;
     data: Record<string, unknown>;
-    source?: string;
+    origin?: string;
     display_name?: string;
     panel?: 'top' | 'bottom';
 }
@@ -64,18 +63,28 @@ export function clearFrames() {
 }
 
 export function setFrame(frame: FrameData) {
-    if (frame.type === 'card' && (frame.data as Record<string, unknown>)?.status === 'note') return;
+    if (frame.block_type === 'card' && (frame.data as Record<string, unknown>)?.status === 'note') return;
     activeFrame.set(frame);
     const data = frame.data as Record<string, unknown>;
-    if (frame.source === 'find' && data?.page) {
+    if (frame.origin === 'find' && data?.page) {
         showPage(data.page as ActivePage);
     }
     const panel = frame.panel || 'bottom';
     if (panel === 'top') {
         topFrame.set(frame);
     } else {
+        _listExpanded.set(false);
         bottomFrame.set(frame);
+        if (frame.origin === 'create') {
+            _expanded.set(true);
+        }
     }
+}
+
+let _onRefresh: ((frameType: string) => void) | null = null;
+
+export function setRefreshCallback(cb: (frameType: string) => void) {
+    _onRefresh = cb;
 }
 
 export function showPage(page: ActivePage) {
@@ -83,9 +92,10 @@ export function showPage(page: ActivePage) {
     _expanded.set(false);
     const frameType = page === 'notes' ? 'grid' : 'list';
     topFrame.update((current) => {
-        if (current) return { ...current, type: frameType };
-        return { type: frameType, show: true, data: { items: [], source: 'welcome' }, source: 'welcome', panel: 'top' };
+        if (current) return { ...current, block_type: frameType };
+        return { block_type: frameType, data: { items: [] }, origin: 'welcome', panel: 'top' };
     });
+    _onRefresh?.(frameType);
 }
 
 export function showTagPage(tag: string) {
@@ -107,6 +117,9 @@ export function expandPost() {
 
 export function collapsePost() {
     _expanded.set(false);
+    const page = get(activePage);
+    const frameType = page === 'notes' ? 'grid' : 'list';
+    _onRefresh?.(frameType);
 }
 
 export function expandList() {

@@ -24,7 +24,7 @@ from backend.prompts.for_contemplate import build_contemplate_prompt
 from backend.components.flow_stack import flow_classes
 from schemas.ontology import FLOW_CATALOG, Intent
 
-_TEMPLATE_BASE = Path(__file__).resolve().parents[2] / 'schemas' / 'templates'
+from backend.modules.templates import get_template as _get_template
 
 _TASK_LABELS = {
     'classify_intent': 'classify_intent',
@@ -59,7 +59,7 @@ class PromptEngineer:
 
     VERSION = 'v1'
 
-    def __init__(self, config: MappingProxyType):
+    def __init__(self, config:MappingProxyType):
         self.config = config
         self._models = config.get('models', {})
         self._persona = config.get('persona', {})
@@ -69,7 +69,6 @@ class PromptEngineer:
         self._gemini_client = None
         self._openai_client = None
         self._qwen_client = None
-        self._template_cache: dict[str, str] = {}
 
     @property
     def client(self) -> anthropic.Anthropic:
@@ -123,20 +122,20 @@ class PromptEngineer:
     # ── Model resolution ─────────────────────────────────────────────
 
     @staticmethod
-    def _resolve_model(model: str) -> str:
+    def _resolve_model(model:str) -> str:
         if model not in _MODEL_IDS:
             raise ValueError(f'Unknown model: {model!r}')
         return _MODEL_IDS[model]
 
     @staticmethod
-    def _model_family(model: str) -> str:
+    def _model_family(model:str) -> str:
         if model in _CLAUDE_MODELS: return 'claude'
         if model in _GEMINI_MODELS: return 'gemini'
         if model in _QWEN_MODELS:   return 'qwen'
         if model in _GPT_MODELS:    return 'gpt'
         raise ValueError(f'Unknown model family for: {model!r}')
 
-    def _get_temperature(self, task: str = 'skill') -> float:
+    def _get_temperature(self, task:str='skill') -> float:
         overrides = self._models.get('overrides', {})
         if task in overrides:
             val = overrides[task].get('temperature')
@@ -177,7 +176,7 @@ class PromptEngineer:
         match self._model_family(model):
             case 'claude':
                 response = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
-                return ''.join(b.text for b in response.content if b.type == 'text')
+                return ''.join(block.text for block in response.content if block.type == 'text')
             case 'gemini':
                 return self._call_gemini(system, messages, model_id, max_tokens)
             case 'qwen':
@@ -220,18 +219,18 @@ class PromptEngineer:
 
             msgs.append({'role': 'assistant', 'content': response.content})
             tool_results = []
-            for tu in tool_uses:
-                log.info('  skill tool=%s  input=%s', tu.name,
-                         {k: v for k, v in tu.input.items()} if tu.input else {})
-                result = tool_dispatcher(tu.name, tu.input)
+            for tool_use in tool_uses:
+                log.info('  skill tool=%s  input=%s', tool_use.name,
+                         {key: val for key, val in tool_use.input.items()} if tool_use.input else {})
+                result = tool_dispatcher(tool_use.name, tool_use.input)
                 tool_log.append({
-                    'tool': tu.name,
-                    'input': tu.input,
+                    'tool': tool_use.name,
+                    'input': tool_use.input,
                     'result': result,
                 })
                 tool_results.append({
                     'type': 'tool_result',
-                    'tool_use_id': tu.id,
+                    'tool_use_id': tool_use.id,
                     'content': json.dumps(result, default=str),
                 })
             msgs.append({'role': 'user', 'content': tool_results})
@@ -257,8 +256,8 @@ class PromptEngineer:
                 with self.client.messages.stream(
                     model=model_id, max_tokens=max_tokens,
                     system=system, messages=messages,
-                ) as s:
-                    for text in s.text_stream:
+                ) as stm:
+                    for text in stm.text_stream:
                         yield text
             case _:
                 # Fallback: non-streaming call, yield full text as single chunk
@@ -292,8 +291,8 @@ class PromptEngineer:
             kwargs['temperature'] = temp
         if tools:
             kwargs['tools'] = [
-                {k: v for k, v in t.items() if k in ('name', 'description', 'input_schema')}
-                for t in tools
+                {key: val for key, val in tool.items() if key in ('name', 'description', 'input_schema')}
+                for tool in tools
             ]
 
         last_error = None
@@ -304,8 +303,8 @@ class PromptEngineer:
                 anthropic.RateLimitError,
                 anthropic.APITimeoutError,
                 anthropic.InternalServerError,
-            ) as e:
-                last_error = e
+            ) as ecp:
+                last_error = ecp
                 if attempt < max_attempts - 1:
                     delay = min(backoff_base * (2 ** attempt), backoff_max)
                     time.sleep(delay)
@@ -352,8 +351,8 @@ class PromptEngineer:
                     config=config,
                 )
                 return response.text
-            except Exception as e:
-                last_error = e
+            except Exception as ecp:
+                last_error = ecp
                 if attempt < max_attempts - 1:
                     delay = min(backoff_base * (2 ** attempt), backoff_max)
                     time.sleep(delay)
@@ -393,8 +392,8 @@ class PromptEngineer:
                 openai.RateLimitError,
                 openai.APITimeoutError,
                 openai.InternalServerError,
-            ) as e:
-                last_error = e
+            ) as ecp:
+                last_error = ecp
                 if attempt < max_attempts - 1:
                     delay = min(backoff_base * (2 ** attempt), backoff_max)
                     time.sleep(delay)
@@ -431,7 +430,7 @@ class PromptEngineer:
         if temp > 0 and not is_thinking:
             kwargs['temperature'] = temp
         # Remove None values
-        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        kwargs = {key: val for key, val in kwargs.items() if val is not None}
 
         last_error = None
         for attempt in range(max_attempts):
@@ -454,8 +453,8 @@ class PromptEngineer:
                 openai.RateLimitError,
                 openai.APITimeoutError,
                 openai.InternalServerError,
-            ) as e:
-                last_error = e
+            ) as ecp:
+                last_error = ecp
                 if attempt < max_attempts - 1:
                     delay = min(backoff_base * (2 ** attempt), backoff_max)
                     time.sleep(delay)
@@ -466,12 +465,12 @@ class PromptEngineer:
     # ── Guardrails ────────────────────────────────────────────────────
 
     @staticmethod
-    def apply_guardrails(text: str) -> dict | None:
+    def apply_guardrails(text:str) -> dict | None:
         """Strip LLM artifacts and parse JSON."""
         text = text.strip()
         if text.startswith('```'):
             lines = text.split('\n')
-            lines = [l for l in lines if not l.strip().startswith('```')]
+            lines = [line for line in lines if not line.strip().startswith('```')]
             text = '\n'.join(lines)
         try:
             return json.loads(text)
@@ -550,11 +549,12 @@ class PromptEngineer:
 
     def build_slot_fill_prompt(self, flow, convo_history:str) -> tuple[str, list[dict]]:
         slot_schema = _describe_slot_schema(flow.slots)
+        slot_types = {type(slot).__name__ for slot in flow.slots.values()}
         system = (f'{self.build_system_prompt()}\n\n'
             'You are a slot extraction engine. Respond with only valid JSON.'
         )
 
-        prompt = build_slot_filling_prompt(flow.name(), slot_schema, convo_history)
+        prompt = build_slot_filling_prompt(flow.name(), slot_schema, convo_history, slot_types)
         messages = [{'role': 'user', 'content': prompt}]
         return system, messages
 
@@ -564,9 +564,10 @@ class PromptEngineer:
         convo_history: str,
         scratchpad: dict,
         skill_prompt: str | None = None,
+        resolved: dict | None = None,
     ) -> list[dict]:
         base_system = self.build_system_prompt()
-        system = build_skill_system(base_system, flow, skill_prompt, scratchpad)
+        system = build_skill_system(base_system, flow, skill_prompt, scratchpad, resolved)
         messages = [{'role': 'system', 'content': system}]
         messages.extend(build_skill_messages(flow.name(), convo_history))
         return messages
@@ -618,49 +619,15 @@ class PromptEngineer:
 
     # ── Template registry ────────────────────────────────────────────
 
-    def get_template(self, flow_name: str, intent: str) -> dict:
-        if flow_name in self._template_cache:
-            raw = self._template_cache[flow_name]
-        else:
-            raw = self._load_template(flow_name, intent)
-            self._template_cache[flow_name] = raw
-
-        lines = raw.strip().split('\n')
-        template_text = lines[0] if lines else '{message}'
-        meta = {}
-        for line in lines[1:]:
-            if ':' in line:
-                key, val = line.split(':', 1)
-                key = key.strip()
-                val = val.strip()
-                if val.lower() in ('true', 'false'):
-                    val = val.lower() == 'true'
-                meta[key] = val
-
-        return {
-            'template': template_text,
-            'block_hint': meta.get('block_hint'),
-            'skip_naturalize': meta.get('skip_naturalize', False),
-        }
-
-    def _load_template(self, flow_name: str, intent: str) -> str:
-        domain_path = _TEMPLATE_BASE / 'blogger' / f'{flow_name}.txt'
-        if domain_path.exists():
-            return domain_path.read_text(encoding='utf-8')
-
-        intent_lower = intent.lower()
-        base_path = _TEMPLATE_BASE / 'base' / f'{intent_lower}.txt'
-        if base_path.exists():
-            return base_path.read_text(encoding='utf-8')
-
-        return '{message}'
+    def get_template(self, flow_name:str, intent:str) -> dict:
+        return _get_template(flow_name, intent)
 
 
 def _slots_desc(cls) -> str:
     if not cls:
         return ''
     inst = cls()
-    return ', '.join(f'{s} ({slot.priority})' for s, slot in inst.slots.items())
+    return ', '.join(f'{name} ({slot.priority})' for name, slot in inst.slots.items())
 
 
 def _get_edge_flows_for_intent(intent: str) -> set[str]:

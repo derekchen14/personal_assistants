@@ -43,4 +43,28 @@ Hugo follows a 10-step workflow from topic to published post. Each step involves
 
 ### Publishing (Step 10)
 
-10. **Publish** — The final post is published or scheduled on your blog, Substack, LinkedIn, and Twitter.
+10. **Release and syndicate** — The final post is published or scheduled on your blog, Substack, LinkedIn, and Twitter.
+
+## CRUD Matrix
+
+| Entity | Create | Read | Update | Delete | Scope |
+|---|---|---|---|---|---|
+| Post | CreateFlow | FindFlow | N/A | RemoveFlow | title, topic, status, metadata, 1-to-1 relationship with outline |
+| Outline | OutlineFlow | N/A | RefineFlow | N/A | bullet points, word count, 1-to-many relationship with sections |
+| Section | ComposeFlow | N/A | ReworkFlow | RemoveFlow | prose, 1-to-many relationship with notes |
+| Note | AddFlow | BrowseFlow | PolishFlow | SimplifyFlow | short prose; can be a paragraph, a sentence, or phrase |
+| Image | AddFlow | N/A | PolishFlow | SimplifyFlow | 1-to-1 relationship with a section, each section may have one image at most |
+
+1. How does 'refine' differ from 'polish' or 'rework'?
+  * RefineFlow is for a revising the bulletpoints in the outline. This covers cases when things are still in the planning stage. Revise includes breaking down high-level bulletpoints into more specific sub-points, or adding more details to existing bulletpoints.
+  * ReworkFlow comes into play when the text in each section is already in sentence form (rather than bulletpoints). It is possible that the final post may still contain bullet-points, but that is more of an formatting choice. The spirit is that once we have left the planning stage, and we are actually writing the post, we use 'rework' instead of 'refine'.
+  * PolishFlow is for improving the prose of a specific paragraph, sentence or phrase. It is smaller in scope than rework.
+
+2. How does 'outline' differ from 'create'? They both deal at a high level of granularity.
+  * CreateFlow is for creating a new post from scratch. It takes in a title and a topic, and outputs a new post with only placeholder content. It may not even have any sections.
+  * OutlineFlow is for creating a new outline for an existing post. It takes in a post and outputs bullet points that start to provide some structure for what the post will be about.
+
+3. How does 'compose' differ from 'add'? Is 'add' even needed?
+  * OutlineFlow is for initializing the sections given a checklist of requirements. The output is groups of bulletpoints, where each group corresponds to a section.
+  * ComposeFlow is for transforming the bulletpoints in the outline to paragraphs and sentences.
+  * Finally, AddFlow is for adding individual sentences or phrases to an existing section.

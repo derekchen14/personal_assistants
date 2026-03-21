@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Top 10  Secrets to Building Effective Dialogue Agents
+title: "Top 10  Secrets to Building Effective Dialogue Agents"
 tags: [dialogue]
-date: '2019-01-11 19:11:28'
 ---
+
+## _hidden_section_title
 
 Some notes to remember when building intelligent task oriented dialogue agents:
 

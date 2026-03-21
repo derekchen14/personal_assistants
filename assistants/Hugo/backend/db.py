@@ -3,7 +3,7 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///hugo.db')
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///database/hugo.db')
 
 engine = create_engine(
     DATABASE_URL,

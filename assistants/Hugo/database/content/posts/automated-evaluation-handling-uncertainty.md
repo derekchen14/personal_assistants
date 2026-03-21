@@ -1,8 +1,8 @@
 ---
-layout: post
-title: 'Automated Evaluation: Handling uncertainty'
-date: '2018-10-08 15:29:45'
+title: "Automated Evaluation: Handling uncertainty"
 ---
+
+## _hidden_section_title
 
 Problem: Training function is imprecise (i.e. BLEU score)
 

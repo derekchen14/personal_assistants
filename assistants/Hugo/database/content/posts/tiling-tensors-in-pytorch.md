@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Tiling Tensors in PyTorch
-date: '2019-03-11 19:06:59'
+title: "Tiling Tensors in PyTorch"
 ---
+
+## _hidden_section_title
 
 Suppose you had sample = tensor([[3,5,4] &nbsp; [0,2,1]])
 

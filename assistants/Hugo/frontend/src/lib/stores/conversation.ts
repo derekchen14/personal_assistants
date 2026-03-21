@@ -8,8 +8,6 @@ export interface Message {
     text: string;
     raw_utterance?: string;
     actions?: unknown[];
-    interaction?: Record<string, unknown>;
-    code_snippet?: Record<string, unknown> | null;
     frame?: Record<string, unknown> | null;
     timestamp: number;
 }
@@ -47,7 +45,7 @@ function createConversationStore() {
 
         const frame = data.frame as Record<string, unknown> | null;
         if (frame) {
-            console.log('[frame] received:', frame.type, 'panel:', frame.panel, 'data:', frame.data);
+            console.log('[frame] received:', frame.block_type, 'panel:', frame.panel, 'data:', frame.data);
         } else {
             console.log('[frame] none');
         }
@@ -58,8 +56,6 @@ function createConversationStore() {
             text: (data.message as string) || '',
             raw_utterance: data.raw_utterance as string,
             actions: data.actions as unknown[],
-            interaction: data.interaction as Record<string, unknown>,
-            code_snippet: data.code_snippet as Record<string, unknown> | null,
             frame,
             timestamp: Date.now(),
         };
@@ -121,15 +117,21 @@ function createConversationStore() {
             ws!.send(body);
         },
 
+        refreshPosts(frameType: string = 'list') {
+            if (!ws?.connected) return;
+            ws.send({ refresh_posts: true, frame_type: frameType });
+        },
+
         selectPost(postId: string) {
             if (!ws?.connected) return;
             activePost.set(postId);
-            ws.send({ select_post: postId });
+            ws.send({ read_post: postId });
         },
 
         viewPost(postId: string) {
+            if (!ws?.connected) return;
             activePost.set(postId);
-            this.action(`view post ${postId}`, '{1AD}', { source: postId });
+            ws.send({ read_post: postId, view: true });
         },
 
         createPost(type: 'draft' | 'note', title = '', body = '') {
@@ -148,6 +150,21 @@ function createConversationStore() {
         updatePost(postId: string, updates: Record<string, unknown>) {
             if (!ws?.connected) return;
             ws.send({ update_post: postId, updates });
+        },
+
+        createNote(body: string) {
+            if (!ws?.connected) return;
+            ws.send({ create_note: true, body });
+        },
+
+        updateNote(noteId: string, body: string) {
+            if (!ws?.connected) return;
+            ws.send({ update_note: noteId, body });
+        },
+
+        deleteNote(noteId: string) {
+            if (!ws?.connected) return;
+            ws.send({ delete_note: noteId });
         },
 
         reset() {

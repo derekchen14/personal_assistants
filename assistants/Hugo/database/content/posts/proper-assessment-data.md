@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Proper Assessment of Data Value
+title: "Proper Assessment of Data Value"
 tags: [ai, data-strategy, explainer]
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 Data is the new oil.  It underpins an undeniable aspect of growth in the popularity and dominance of deep learning.  But is all data created equal? What makes some data points worth more than others?  How could we go about calculating what each data point is worth?  If data is so important, we should certainly want to have a proper way to assess its value.  To do so, we should begin by recognizing that
  <!--more-->

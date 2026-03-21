@@ -1,9 +1,9 @@
 ---
-layout: post
-title: EMNLP 2020 Highlights
+title: "EMNLP 2020 Highlights"
 tags: [conference, trends]
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 This is nominally a review of trends from the EMNLP 2020, but also serves as the end of year review.  As this (crazy) year comes to a close, we take a moment to reflect on what has happened in the world of NLP and specifically in relation to Dialogue Modeling and Natural Language Understanding.  From my (limited) perspective, there are four trends which I noticed, including increased research into (1) data methods rather than models and (2) data efficiency techniques.  In the follow-up, we discuss observations around (3) limitations in dialogue state tracking and (4) convergence around similar ideas.
 

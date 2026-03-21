@@ -45,11 +45,10 @@ class FlowStack:
                 return entry
         return None
 
-    def mark_complete(self, result: dict | None = None) -> BaseFlow | None:
+    def mark_complete(self) -> BaseFlow | None:
         if self._stack:
             top = self._stack[-1]
             top.status = FlowLifecycle.COMPLETED.value
-            top.result = result
             return top
         return None
 
@@ -79,8 +78,8 @@ class FlowStack:
 
     def find_by_name(self, flow_name: str) -> BaseFlow | None:
         for entry in reversed(self._stack):
-            if entry.flow_type == flow_name and entry.status in (
-                FlowLifecycle.PENDING.value, FlowLifecycle.ACTIVE.value,
+            if entry.flow_type == flow_name and entry.status not in (
+                FlowLifecycle.COMPLETED.value, FlowLifecycle.INVALID.value,
             ):
                 return entry
         return None

@@ -1,9 +1,9 @@
 ---
-layout: post
-title: The Hype of Machine Learning
-date: '2015-11-22 02:01:00'
+title: "The Hype of Machine Learning"
 tags: [machine-learning, trends]
 ---
+
+## _hidden_section_title
 
 Many folks in the tech industry are [skeptical](http://www.kdnuggets.com/2015/01/deep-learning-flaws-universal-machine-learning.html) about the hype of machine learning, since the world has been promised to them before, but the reality hasn't really panned out.  In fact this has happened so many times, there is a term for this in the machine learning community called an [AI Winter](https://en.wikipedia.org/wiki/AI_winter "AI Winter"). A number of fundamental factors are different though in 2015 that warrant taking a closer look this time around.
 
@@ -32,5 +32,3 @@ It's no surprise then that [all](https://code.facebook.com/posts/147852351247847
 **Conclusion**
 
 To be clear, we aren't in this wonderful new world yet. The majority of machine learning news you hear these days is simply about incremental improvements in data science that allow a researcher to better predict outcome Y based on features X<sub>1</sub>, X<sub>2</sub>, and X<sub>3</sub>. But we are quickly moving into a reality where machines will simply understand our desires and cater to those personal interests with little to no prompting.  And because [technology improves exponentially](https://www.ted.com/talks/ray_kurzweil_on_how_technology_will_transform_us?language=en), the age of machine learning and artificial intelligence is arriving much sooner than you may have been led to believe.
-
-

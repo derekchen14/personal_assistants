@@ -1,12 +1,8 @@
 ---
-layout: post
-title: 100 Research Papers in 100 Days (Image Edition)
-date: '2016-10-15 14:04:00'
-tags:
-- modeling
-- research
-- lists
+title: "100 Research Papers in 100 Days (Image Edition)"
 ---
+
+## _hidden_section_title
 
 ### Computer Vision (CNNs)
 

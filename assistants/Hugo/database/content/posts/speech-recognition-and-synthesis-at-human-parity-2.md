@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Speech Recognition and Synthesis at Human Parity
-date: '2016-11-17 17:12:12'
+title: "Speech Recognition and Synthesis at Human Parity"
 ---
+
+## _hidden_section_title
 
 ####Microsoft Research dominates Speech-to-Text
 [**Achieving Human Parity in Conversational Speech Recognition**](https://arxiv.org/abs/1610.05256) (*W. Xiong, J. Droppo, X. Huang, F. Seide, M. Seltzer, A. Stolcke, D. Yu, G. Zweig*) [Published: Oct 2016]

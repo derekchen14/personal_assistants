@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Common Pitfalls in Machine Learning
-date: '2015-09-16 01:44:45'
+title: "Common Pitfalls in Machine Learning"
 tags: [machine-learning, research]
 ---
+
+## _hidden_section_title
 
 Machine Learning is hard because:
 

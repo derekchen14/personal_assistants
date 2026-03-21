@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Memory Error when Training in AWS GPUs
-date: '2016-03-07 00:00:00'
+title: "Memory Error when Training in AWS GPUs"
 tags: [machine-learning, aws, gpu]
 ---
+
+## _hidden_section_title
 
 For my Stanford [Convolutional Neural Networks course](http://cs231n.stanford.edu), I partnered with a brilliant friend of mine to analyze images from a collection of 40,000 digitized works of art by classifying them according to artist, genre, and location.  After some standard pre-processing, we employed a modified VGGNet architecture to achieve better than [state-of-the-art results](http://arxiv.org/pdf/1505.00855v1.pdf) on artist and genre classification. Along the way though, we hit a number of roadblocks, and saw `Error allocating 86118400 bytes of device memory (out of memory). Driver report 32735232 bytes free and 4294770688 bytes total.  Segmentation fault (core dumped)` more times than we would like to remember.  In getting our network to  run to properly, we encountered a number of problems and their solutions.
 

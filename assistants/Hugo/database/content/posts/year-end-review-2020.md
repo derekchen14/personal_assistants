@@ -1,9 +1,9 @@
 ---
-layout: post
-title: 2020 Year End Review (Part 2)
+title: "2020 Year End Review (Part 2)"
 tags: [conference, trends]
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 Continuing on the thoughts described in [Part 1](https://morethanoneturn.com/2020/12/28/emnlp-2020-highlights.html), we now describe two trends around dialogue and NLP research. In the previous post, we discussed how data strategy is playing an increasingly important role in the development of modern machine learning models.  How that plays out in more detail will be discussed in the future, but today we will look further into the development of dialogue in the past few months as well as other observations.
 

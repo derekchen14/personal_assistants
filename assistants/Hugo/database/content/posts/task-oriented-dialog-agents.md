@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Task-Oriented Dialog Agents
-date: '2017-12-03 20:42:05'
+title: "Task-Oriented Dialog Agents"
 ---
+
+## _hidden_section_title
 
 ![cs221_poster](/content/images/2017/12/cs221_poster_resized.jpeg)
 
@@ -25,4 +25,4 @@ Concretely, a task-oriented bot will need to process user input, model user inte
 For this project, we will be using data from two separate sources.  First, we will be working with Task 6 from the BaBI Dialog Dataset, put together by Facebook and described in detail within Learning End-to-End Goal-Oriented Dialog.  This data is based off the DSTC2 (Dialog State Tracking Challenge) organized by the University of Cambridge.  Second, we will be working with a multi-domain car-related dataset from Stanford NLP group found in Key-Value Retrieval Networks for Task-Oriented Dialogue, created in collaboration with Ford Motor Company.  The bAbI dataset employs per-turn accuracy and per-dialog accuracy to gauge progress, while the car dataset relies on Entity F1-score.  Additionally, we will also look to word overlap metrics such as BLEU to measure language modeling success.  Finally, we plan to randomly sample from various dialogs to perform human evaluation on whether or not a task was successfully completed.
 
 For the baseline and oracle, we randomly selected data from the datasets and set up a program to display dialogs.  Then for 50 examples per task, the agent is graded on the per-turn and per-dialog accuracy.  We define per-turn accuracy as the number of correct api calls and responses given by the agent, and the per-dialog accuracy as getting all turns correct in an example.
-To implement a baseline, we use TF-IDF matching to select a response for a query from a list of 2000+ candidate responses.   More specifically, we have set up a pipeline with SK-Learn to vectorize the query, and then select the response with the closest cosine distance.   
+To implement a baseline, we use TF-IDF matching to select a response for a query from a list of 2000+ candidate responses.   More specifically, we have set up a pipeline with SK-Learn to vectorize the query, and then select the response with the closest cosine distance.

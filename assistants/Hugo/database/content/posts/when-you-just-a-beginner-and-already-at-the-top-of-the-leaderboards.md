@@ -1,8 +1,8 @@
 ---
-layout: post
-title: When you just a beginner and already at the top of the leaderboards
-date: '2016-01-31 10:51:43'
+title: "When you just a beginner and already at the top of the leaderboards"
 ---
+
+## _hidden_section_title
 
 A couple of days ago, I found out that I had achieved partial Internet fame! Unfortunately, it was for a negative reason due to a simple misunderstanding.  A random person took a screenshot of a Twitter exchange I had with the founder of [Keras](https://twitter.com/fchollet), in which I mentioned being very proud of my high score on a MNIST toy competition.  
 

@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Getting Started with Machine Learning in Python
-date: '2015-12-26 00:56:22'
+title: "Getting Started with Machine Learning in Python"
 ---
+
+## _hidden_section_title
 
 Recently, you've read numerous HN articles telling you machine learning is the future. You've heard that Google uses it for [search](http://www.bloomberg.com/news/articles/2015-10-26/google-turning-its-lucrative-web-search-over-to-ai-machines), Facebook uses it to [detect faces](http://fortune.com/2015/06/15/facebook-ai-moments/), and Netflix uses it for [recommendations](http://techblog.netflix.com/2012/04/netflix-recommendations-beyond-5-stars.hml).  Your interest is sufficiently piqued.  But you might still be left wondering, *"How do I get started?"*
 

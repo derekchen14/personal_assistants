@@ -1,1171 +1,229 @@
 from __future__ import annotations
 
 import json
-import os
 import re
-import subprocess
-import tempfile
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 _DB_DIR = Path(__file__).resolve().parents[2] / 'database'
-_CONTENT_DIR = _DB_DIR / 'content'
-_METADATA_FILE = _CONTENT_DIR / 'metadata.json'
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _load_metadata() -> list[dict]:
-    if _METADATA_FILE.exists():
-        data = json.loads(_METADATA_FILE.read_text(encoding='utf-8'))
-        return data.get('entries', [])
-    return []
-
-
-def _save_metadata(entries: list[dict]):
-    _CONTENT_DIR.mkdir(parents=True, exist_ok=True)
-    _METADATA_FILE.write_text(
-        json.dumps({'entries': entries}, indent=2, default=str),
-        encoding='utf-8',
-    )
-
-
-def _read_content(filename: str) -> str:
-    """Read .md file, strip YAML frontmatter, return body."""
-    filepath = _CONTENT_DIR / filename
-    if not filepath.exists():
-        return ''
-    text = filepath.read_text(encoding='utf-8')
-    if text.startswith('---'):
-        end = text.find('---', 3)
-        if end != -1:
-            return text[end + 3:].strip()
-    return text
-
-
-def _write_content(filename: str, frontmatter: dict, body: str):
-    """Write .md file with YAML frontmatter."""
-    filepath = _CONTENT_DIR / filename
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    lines = ['---']
-    for k, v in frontmatter.items():
-        if isinstance(v, list):
-            lines.append(f'{k}: [{", ".join(str(i) for i in v)}]')
-        else:
-            lines.append(f'{k}: "{v}"' if isinstance(v, str) and ' ' in v else f'{k}: {v}')
-    lines.append('---')
-    lines.append('')
-    lines.append(body)
-    filepath.write_text('\n'.join(lines), encoding='utf-8')
-
-
-def _compute_preview(body: str, max_len: int = 300) -> str:
-    clean = body.replace('<!--more-->', '')
-    for para in clean.split('\n\n'):
-        stripped = para.strip()
-        if not stripped or stripped.startswith('#') or stripped.startswith('!['):
-            continue
-        preview = re.sub(r'<[^>]+>', '', stripped)
-        if len(preview) > max_len:
-            preview = preview[:max_len].rsplit(' ', 1)[0] + '...'
-        return preview
-    return ''
-
-
-def _parse_frontmatter(text: str) -> tuple[str | None, list[str], str | None]:
-    """Extract title, tags, and category from YAML frontmatter. Returns (title, tags, category)."""
-    title, tags, category = None, [], None
-    if not text.startswith('---'):
-        return title, tags, category
-    end = text.find('---', 3)
-    for line in text[3:end].splitlines():
-        if line.startswith('title:'):
-            title = line[6:].strip().strip('"\'')
-        elif line.startswith('tags:'):
-            raw = line[5:].strip().strip('[]')
-            tags = [t.strip().strip('"\'') for t in raw.split(',') if t.strip()]
-        elif line.startswith('category:'):
-            category = line[9:].strip().strip('"\'') or None
-    return title, tags, category
-
-
-def _slugify(text: str) -> str:
-    slug = text.lower().strip()
-    slug = re.sub(r'[^\w\s-]', '', slug)
-    slug = re.sub(r'[\s_]+', '-', slug)
-    return re.sub(r'-+', '-', slug).strip('-')[:80]
-
-
-def _derive_note_slug(body: str) -> str:
-    first_line = body.strip().split('\n')[0].lstrip('#').strip()
-    tokens = (first_line.split() or body.strip().split())[:4]
-    return _slugify(' '.join(tokens)) if tokens else 'note'
-
-
-def _unique_note_filename(base_slug: str, entries: list, exclude_id: str | None = None) -> str:
-    existing = {e['filename'] for e in entries if e.get('post_id') != exclude_id}
-    candidate = f'notes/{base_slug}.md'
-    if candidate not in existing:
-        return candidate
-    n = 1
-    while f'notes/{base_slug}-{n}.md' in existing:
-        n += 1
-    return f'notes/{base_slug}-{n}.md'
 
 
 class ToolService:
 
-    def _success(self, result, **metadata):
-        envelope = {'status': 'success', 'result': result}
-        if metadata:
-            envelope['metadata'] = metadata
-        return envelope
-
-    def _error(self, category: str, message: str,
-               retryable: bool = False, **metadata):
-        envelope = {
-            'status': 'error',
-            'error_category': category,
-            'message': message,
-            'retryable': retryable,
-        }
-        if metadata:
-            envelope['metadata'] = metadata
-        return envelope
-
-
-class PostService(ToolService):
-
-    def list_preview(self, limit: int = 100) -> dict:
-        entries = _load_metadata()
-        previews = []
-        for e in entries[:limit]:
-            preview_item = {
-                'post_id': e['post_id'],
-                'title': e['title'],
-                'status': e.get('status'),
-                'category': e.get('category'),
-                'metadata': {'tags': e.get('tags', []), 'color': e.get('color')},
-                'created_at': e.get('created_at'),
-                'updated_at': e.get('updated_at'),
-                'preview': e.get('preview', ''),
-            }
-            if e.get('status') == 'note':
-                preview_item['content'] = _read_content(e['filename'])
-            previews.append(preview_item)
-        return self._success(previews, count=len(previews))
-
-    def search(self, query: str = '', status: str | None = None,
-               category: str | None = None, limit: int = 20) -> dict:
-        entries = _load_metadata()
-        results = []
-        q = (query or '').lower()
-        for e in entries:
-            snippet = None
-            if q:
-                searchable = ' '.join([
-                    e.get('title', ''),
-                    e.get('category', '') or '',
-                    ' '.join(e.get('tags', [])),
-                ]).lower()
-                if q not in searchable:
-                    content = _read_content(e.get('filename', ''))
-                    idx = content.lower().find(q)
-                    if idx == -1:
-                        continue
-                    start, end = max(0, idx - 60), min(len(content), idx + len(q) + 60)
-                    snippet = '…' + content[start:end].strip() + '…'
-            if status and e.get('status') != status:
-                continue
-            if category and category.lower() not in (e.get('category', '') or '').lower():
-                continue
-            item = {
-                'post_id': e['post_id'],
-                'title': e['title'],
-                'status': e.get('status'),
-                'category': e.get('category'),
-                'updated_at': e.get('updated_at'),
-            }
-            if snippet:
-                item['snippet'] = snippet
-            results.append(item)
-            if len(results) >= limit:
-                break
-        return self._success(results, count=len(results))
-
-    def get(self, post_id: str) -> dict:
-        entries = _load_metadata()
-        for e in entries:
-            if e['post_id'] == post_id:
-                content = _read_content(e['filename'])
-                # Extract sections from ## headings
-                sections = []
-                for line in content.split('\n'):
-                    if line.startswith('## '):
-                        sections.append(line[3:].strip())
-                result = {
-                    'post_id': e['post_id'],
-                    'title': e['title'],
-                    'status': e.get('status'),
-                    'category': e.get('category'),
-                    'metadata': {'tags': e.get('tags', []), 'color': e.get('color')},
-                    'created_at': e.get('created_at'),
-                    'updated_at': e.get('updated_at'),
-                    'content': content,
-                    'sections': sections,
-                    'word_count': e.get('word_count', 0),
-                }
-                return self._success(result)
-        return self._error('not_found', f'Post not found: {post_id}')
-
-    def create(self, title: str, topic: str | None = None,
-               category: str | None = None,
-               type: str | None = None) -> dict:
-        entries = _load_metadata()
-        post_id = str(uuid.uuid4())[:8]
-        status = type if type in ('draft', 'note') else 'draft'
-        now = _now()
-
-        if status == 'note':
-            body = topic or ''
-            if len(body) > 2048:
-                return self._error('validation', 'Note exceeds 2048 character limit.')
-            slug = _derive_note_slug(body) if body else post_id
-            filename = _unique_note_filename(slug, entries)
-            (_CONTENT_DIR / 'notes').mkdir(parents=True, exist_ok=True)
-            (_CONTENT_DIR / filename).write_text(body, encoding='utf-8')
-            entry = {
-                'post_id': post_id,
-                'title': '',
-                'status': 'note',
-                'category': category,
-                'created_at': now,
-                'updated_at': now,
-                'preview': _compute_preview(body),
-                'word_count': len(re.sub(r'<[^>]+>', '', body).split()),
-                'filename': filename,
-            }
-            entries.append(entry)
-            _save_metadata(entries)
-            return self._success({
-                'post_id': post_id,
-                'title': '',
-                'topic': topic,
-                'category': category,
-                'status': 'note',
-                'content': body,
-                'sections': [],
-                'metadata': {},
-                'created_at': now,
-                'updated_at': now,
-            })
-
-        if not title:
-            nums = []
-            for e in entries:
-                t = e.get('title', '')
-                if t.startswith('Untitled-'):
-                    try: nums.append(int(t[9:]))
-                    except ValueError: pass
-            title = f'Untitled-{max(nums, default=0) + 1:03d}'
-
-        slug = _slugify(title) + '.md'
-        filename = f'drafts/{slug}'
-        (_CONTENT_DIR / 'drafts').mkdir(parents=True, exist_ok=True)
-        filepath = _CONTENT_DIR / filename
-        if filepath.exists():
-            existing = next(
-                (e for e in entries if e.get('filename') == filename), None,
-            )
-            return self._error('duplicate', (
-                f'A file already exists at "{filename}". '
-                f'Ask the user if they would like to keep the existing file or override it.'
-            ), existing_post_id=existing['post_id'] if existing else None)
-        body = topic or ''
-        _write_content(filename, {'title': title}, body)
-
-        entry = {
-            'post_id': post_id,
-            'title': title,
-            'status': 'draft',
-            'category': category,
-            'tags': [],
-            'color': '',
-            'created_at': now,
-            'updated_at': now,
-            'preview': _compute_preview(body),
-            'word_count': len(re.sub(r'<[^>]+>', '', body).split()),
-            'filename': filename,
-        }
-        entries.append(entry)
-        _save_metadata(entries)
-
-        return self._success({
-            'post_id': post_id,
-            'title': title,
-            'topic': topic,
-            'category': category,
-            'status': 'draft',
-            'content': body,
-            'sections': [],
-            'metadata': {},
-            'created_at': now,
-            'updated_at': now,
-        })
-
-    def update(self, post_id: str, updates: dict) -> dict:
-        entries = _load_metadata()
-        for e in entries:
-            if e['post_id'] == post_id:
-                # Update metadata fields
-                for k in ('title', 'category', 'tags', 'color'):
-                    if k in updates:
-                        e[k] = updates[k]
-                if 'metadata' in updates:
-                    meta = updates['metadata']
-                    if 'tags' in meta:
-                        e['tags'] = meta['tags']
-                    if 'color' in meta:
-                        e['color'] = meta['color']
-
-                # Validate note content length
-                if 'content' in updates and e.get('status') == 'note':
-                    if len(updates['content']) > 2048:
-                        return self._error('validation', 'Note exceeds 2048 character limit.')
-
-                # Handle content update
-                if 'content' in updates:
-                    body = updates['content']
-                    if e.get('status') == 'note':
-                        (_CONTENT_DIR / e['filename']).write_text(body, encoding='utf-8')
-                    else:
-                        fm = {'title': e['title']}
-                        if e.get('tags'):
-                            fm['tags'] = e['tags']
-                        if e.get('color'):
-                            fm['color'] = e['color']
-                        _write_content(e['filename'], fm, body)
-                    e['preview'] = _compute_preview(body)
-                    e['word_count'] = len(re.sub(r'<[^>]+>', '', body).split())
-
-                # Handle status change (move file between dirs)
-                new_status = updates.get('status')
-                if new_status and new_status != e.get('status'):
-                    old_path = _CONTENT_DIR / e['filename']
-                    slug = Path(e['filename']).name
-                    if new_status == 'published':
-                        new_filename = f'posts/{slug}'
-                    elif new_status == 'note':
-                        new_filename = f'notes/{slug}'
-                    else:
-                        new_filename = f'drafts/{slug}'
-                    new_path = _CONTENT_DIR / new_filename
-                    new_path.parent.mkdir(parents=True, exist_ok=True)
-                    if old_path.exists():
-                        old_path.rename(new_path)
-                    e['filename'] = new_filename
-                    e['status'] = new_status
-
-                e['updated_at'] = _now()
-                _save_metadata(entries)
-
-                # Return full object for compatibility
-                content = _read_content(e['filename'])
-                result = {
-                    'post_id': e['post_id'],
-                    'title': e['title'],
-                    'status': e.get('status'),
-                    'category': e.get('category'),
-                    'metadata': {'tags': e.get('tags', []), 'color': e.get('color')},
-                    'created_at': e.get('created_at'),
-                    'updated_at': e.get('updated_at'),
-                    'content': content,
-                }
-                # Merge any extra keys from updates
-                for k, v in updates.items():
-                    if k not in result and k != 'post_id':
-                        result[k] = v
-                return self._success(result)
-        return self._error('not_found', f'Post not found: {post_id}')
-
-    def sync_check(self) -> dict:
-        """Compare metadata to disk. Auto-register new files; report missing ones."""
-        entries = _load_metadata()
-
-        disk_files: set[str] = set()
-        for subdir in ('posts', 'drafts', 'notes'):
-            dir_path = _CONTENT_DIR / subdir
-            for f in dir_path.glob('*.md'):
-                disk_files.add(f'{subdir}/{f.name}')
-
-        meta_files = {e['filename'] for e in entries}
-        missing = [e for e in entries if e['filename'] not in disk_files]
-        new_filenames = disk_files - meta_files
-
-        added = []
-        if new_filenames:
-            now = _now()
-            for filename in sorted(new_filenames):
-                text = (_CONTENT_DIR / filename).read_text(encoding='utf-8')
-                fm_title, tags, category = _parse_frontmatter(text)
-                title = fm_title or Path(filename).stem.replace('-', ' ').title()
-                subdir = filename.split('/')[0]
-                status = 'note' if subdir == 'notes' else ('published' if subdir == 'posts' else 'draft')
-                body = _read_content(filename)
-                entry = {
-                    'post_id': str(uuid.uuid4())[:8],
-                    'title': title,
-                    'status': status,
-                    'category': category,
-                    'tags': tags,
-                    'color': '',
-                    'created_at': now,
-                    'updated_at': now,
-                    'preview': _compute_preview(body),
-                    'word_count': len(re.sub(r'<[^>]+>', '', body).split()),
-                    'filename': filename,
-                }
-                entries.append(entry)
-                added.append(entry)
-            _save_metadata(entries)
-
-        return {
-            'missing': [{'title': e.get('title', e['filename']), 'filename': e['filename']} for e in missing],
-            'added': [{'title': e['title'], 'filename': e['filename']} for e in added],
-        }
-
-    def delete(self, post_id: str) -> dict:
-        entries = _load_metadata()
-        for i, e in enumerate(entries):
-            if e['post_id'] == post_id:
-                removed = entries.pop(i)
-                _save_metadata(entries)
-                # Delete the .md file
-                filepath = _CONTENT_DIR / removed['filename']
-                if filepath.exists():
-                    filepath.unlink()
-                return self._success(
-                    {'post_id': post_id, 'title': removed.get('title', ''), 'status': removed.get('status', '')},
-                    action='deleted',
-                )
-        return self._error('not_found', f'Post not found: {post_id}')
-
-
-class ContentService(ToolService):
-
-    def generate(self, content_type: str, topic: str | None = None,
-                 source_text: str | None = None,
-                 instructions: str | None = None) -> dict:
-        return self._success({
-            'content_type': content_type,
-            'topic': topic,
-            'instructions': instructions,
-            'generated': True,
-            'note': 'Content generation delegated to LLM via skill prompt',
-        })
-
-    def format(self, content: str, platform: str,
-               format_type: str = 'blog') -> dict:
-        return self._success({
-            'formatted_content': content,
-            'platform': platform,
-            'format_type': format_type,
-        })
-
-
-class PlatformService(ToolService):
-
     def __init__(self):
-        self._publishers: dict[str, PlatformPublisher] = {
-            'substack': SubstackPublisher(),
-            'twitter': TwitterPublisher(),
-            'linkedin': LinkedInPublisher(),
-            'mt1t': MT1TPublisher(),
-        }
+        self._content_dir = _DB_DIR / 'content'
+        self._metadata_file = _DB_DIR / 'content' / 'metadata.json'
+        self._snap_root = _DB_DIR / '.snapshots'
+        self._guides_dir = _DB_DIR / 'guides'
+        self.max_snapshots = 4
 
-    def list_platforms(self) -> dict:
-        result = []
-        for pid, pub in self._publishers.items():
-            result.append({
-                'id': pid,
-                'name': pub.display_name,
-                'connected': pub.is_connected(),
-                'type': pub.platform_type,
-                'max_length': pub.max_length,
-            })
-        return self._success(result)
+    def _success(self, **data):
+        return {'_success': True, **data}
 
-    def publish(self, post_id: str, platform: str,
-                action: str = 'publish', scheduled_at: str | None = None) -> dict:
-        pub = self._publishers.get(platform)
-        if not pub:
-            available = ', '.join(self._publishers.keys())
-            return self._error(
-                'invalid_input',
-                f'Unknown platform: {platform}. Available: {available}',
-            )
-        if not pub.is_connected():
-            return self._error(
-                'auth_error',
-                f'{pub.display_name} is not connected. '
-                f'Set {pub.required_env_vars()} in .keys or .env.',
-            )
+    def _error(self, error:str, message:str):
+        return {'_success': False, '_error': error, '_message': message}
 
-        post_svc = PostService()
-        post_result = post_svc.get(post_id)
-        if post_result['status'] != 'success':
-            return post_result
-        post = post_result['result']
+    # -- Metadata I/O -------------------------------------------------------
 
-        if action == 'publish':
-            return pub.publish(post)
-        elif action == 'schedule':
-            return pub.schedule(post, scheduled_at or '')
-        elif action == 'unpublish':
-            return pub.unpublish(post)
-        return self._error('invalid_input', f'Unknown action: {action}')
+    @staticmethod
+    def _now() -> str:
+        return datetime.now(timezone.utc).isoformat()
 
-    def get_status(self, post_id: str, platform: str) -> dict:
-        pub = self._publishers.get(platform)
-        if not pub:
-            available = ', '.join(self._publishers.keys())
-            return self._error(
-                'invalid_input',
-                f'Unknown platform: {platform}. Available: {available}',
-            )
-        if not pub.is_connected():
-            return self._error(
-                'auth_error',
-                f'{pub.display_name} is not connected. '
-                f'Set {pub.required_env_vars()} in .keys or .env.',
-            )
-        return pub.get_status(post_id)
-
-    def format_for_platform(self, content: str, platform: str) -> dict:
-        pub = self._publishers.get(platform)
-        if not pub:
-            return self._error('invalid_input', f'Unknown platform: {platform}')
-        return pub.format_content(content)
-
-
-class PlatformPublisher(ToolService):
-
-    display_name: str = ''
-    platform_type: str = ''
-    max_length: int | None = None
-
-    def is_connected(self) -> bool:
-        return False
-
-    def required_env_vars(self) -> list[str]:
+    def _load_metadata(self) -> list[dict]:
+        if self._metadata_file.exists():
+            data = json.loads(self._metadata_file.read_text(encoding='utf-8'))
+            return data.get('entries', [])
         return []
 
-    def publish(self, post: dict) -> dict:
-        return self._error('server_error', 'Not implemented')
-
-    def schedule(self, post: dict, scheduled_at: str) -> dict:
-        return self._error('platform_error', 'Scheduling not supported on this platform')
-
-    def unpublish(self, post: dict) -> dict:
-        return self._error('platform_error', 'Unpublish not supported on this platform')
-
-    def get_status(self, post_id: str) -> dict:
-        return self._error('platform_error', 'Status check not supported on this platform')
-
-    def format_content(self, content: str) -> dict:
-        return self._success({'formatted': content})
-
-
-# ── Substack (smart stub) ────────────────────────────────────────────
-
-class SubstackPublisher(PlatformPublisher):
-
-    display_name = 'Substack'
-    platform_type = 'newsletter'
-    max_length = None
-
-    def is_connected(self) -> bool:
-        return True
-
-    def required_env_vars(self) -> list[str]:
-        return []
-
-    def publish(self, post: dict) -> dict:
-        html = self._markdown_to_html(post.get('content', ''))
-        title = post.get('title', 'Untitled')
-        full_html = f'<h1>{title}</h1>\n{html}'
-
-        tmp = Path(tempfile.gettempdir()) / f'substack_{post["post_id"]}.html'
-        tmp.write_text(full_html, encoding='utf-8')
-
-        return {
-            'status': 'manual_required',
-            'message': (
-                'Substack has no public API. Content has been formatted as '
-                'Substack-ready HTML. Copy-paste from the file below into '
-                'the Substack editor.'
-            ),
-            'result': {
-                'post_id': post['post_id'],
-                'platform': 'substack',
-                'title': title,
-                'file_path': str(tmp),
-                'content_length': len(full_html),
-                'action': 'publish',
-            },
-        }
-
-    def schedule(self, post: dict, scheduled_at: str) -> dict:
-        result = self.publish(post)
-        if result.get('result'):
-            result['result']['scheduled_at'] = scheduled_at
-            result['result']['action'] = 'schedule'
-            result['message'] += f' Target publish date: {scheduled_at}'
-        return result
-
-    def get_status(self, post_id: str) -> dict:
-        return self._error(
-            'platform_error',
-            'Substack has no public API — cannot check publication status.',
+    def _save_metadata(self, entries:list[dict]):
+        self._content_dir.mkdir(parents=True, exist_ok=True)
+        self._metadata_file.write_text(
+            json.dumps({'entries': entries}, indent=2, default=str),
+            encoding='utf-8',
         )
 
-    def format_content(self, content: str) -> dict:
-        html = self._markdown_to_html(content)
-        return self._success({
-            'formatted': html,
-            'format': 'html',
-            'platform': 'substack',
-        })
+    @staticmethod
+    def _find_entry(entries:list[dict], post_id:str) -> dict | None:
+        for ent in entries:
+            if ent['post_id'] == post_id:
+                return ent
+        return None
 
-    def _markdown_to_html(self, md: str) -> str:
-        lines = md.split('\n')
-        html_lines = []
-        in_code_block = False
-        in_list = False
+    # -- Content I/O --------------------------------------------------------
 
-        for line in lines:
-            if line.startswith('```'):
-                if in_code_block:
-                    html_lines.append('</code></pre>')
-                    in_code_block = False
-                else:
-                    lang = line[3:].strip()
-                    cls = f' class="language-{lang}"' if lang else ''
-                    html_lines.append(f'<pre><code{cls}>')
-                    in_code_block = True
-                continue
-
-            if in_code_block:
-                html_lines.append(line)
-                continue
-
-            if line.startswith('# '):
-                html_lines.append(f'<h2>{line[2:]}</h2>')
-            elif line.startswith('## '):
-                html_lines.append(f'<h3>{line[3:]}</h3>')
-            elif line.startswith('### '):
-                html_lines.append(f'<h4>{line[4:]}</h4>')
-            elif line.startswith('- ') or line.startswith('* '):
-                if not in_list:
-                    html_lines.append('<ul>')
-                    in_list = True
-                html_lines.append(f'<li>{line[2:]}</li>')
-            else:
-                if in_list:
-                    html_lines.append('</ul>')
-                    in_list = False
-                if line.strip():
-                    formatted = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', line)
-                    formatted = re.sub(r'\*(.+?)\*', r'<em>\1</em>', formatted)
-                    formatted = re.sub(r'`(.+?)`', r'<code>\1</code>', formatted)
-                    html_lines.append(f'<p>{formatted}</p>')
-
-        if in_list:
-            html_lines.append('</ul>')
-        if in_code_block:
-            html_lines.append('</code></pre>')
-        return '\n'.join(html_lines)
-
-
-# ── Twitter/X ─────────────────────────────────────────────────────────
-
-class TwitterPublisher(PlatformPublisher):
-
-    display_name = 'Twitter/X'
-    platform_type = 'social'
-    max_length = 280
-
-    def is_connected(self) -> bool:
-        return bool(
-            os.getenv('TWITTER_API_KEY')
-            and os.getenv('TWITTER_API_SECRET')
-            and os.getenv('TWITTER_ACCESS_TOKEN')
-            and os.getenv('TWITTER_ACCESS_SECRET')
-        )
-
-    def required_env_vars(self) -> list[str]:
-        return [
-            'TWITTER_API_KEY', 'TWITTER_API_SECRET',
-            'TWITTER_ACCESS_TOKEN', 'TWITTER_ACCESS_SECRET',
-        ]
-
-    def publish(self, post: dict) -> dict:
-        try:
-            import tweepy
-        except ImportError:
-            return self._error(
-                'server_error',
-                'tweepy is not installed. Run: pip install tweepy',
-            )
-
-        client = tweepy.Client(
-            consumer_key=os.getenv('TWITTER_API_KEY'),
-            consumer_secret=os.getenv('TWITTER_API_SECRET'),
-            access_token=os.getenv('TWITTER_ACCESS_TOKEN'),
-            access_token_secret=os.getenv('TWITTER_ACCESS_SECRET'),
-        )
-
-        content = post.get('content', '') or post.get('title', '')
-        tweets = self._split_into_tweets(content)
-        posted_ids = []
-
-        try:
-            reply_to = None
-            for i, text in enumerate(tweets):
-                resp = client.create_tweet(
-                    text=text,
-                    in_reply_to_tweet_id=reply_to,
-                )
-                tweet_id = resp.data['id']
-                posted_ids.append(tweet_id)
-                reply_to = tweet_id
-
-            return self._success({
-                'post_id': post['post_id'],
-                'platform': 'twitter',
-                'tweet_ids': posted_ids,
-                'tweet_count': len(posted_ids),
-                'thread': len(posted_ids) > 1,
-                'action': 'publish',
-            })
-        except tweepy.TweepyException as e:
-            return self._error(
-                'platform_error', f'Twitter API error: {e}',
-                retryable='rate' in str(e).lower(),
-            )
-
-    def schedule(self, post: dict, scheduled_at: str) -> dict:
-        return self._error(
-            'platform_error',
-            'Twitter free/basic API does not support native scheduling.',
-        )
-
-    def get_status(self, post_id: str) -> dict:
-        try:
-            import tweepy
-        except ImportError:
-            return self._error('server_error', 'tweepy is not installed.')
-
-        client = tweepy.Client(
-            consumer_key=os.getenv('TWITTER_API_KEY'),
-            consumer_secret=os.getenv('TWITTER_API_SECRET'),
-            access_token=os.getenv('TWITTER_ACCESS_TOKEN'),
-            access_token_secret=os.getenv('TWITTER_ACCESS_SECRET'),
-        )
-
-        try:
-            resp = client.get_tweet(
-                post_id, tweet_fields=['created_at', 'public_metrics'],
-            )
-            if resp.data:
-                return self._success({
-                    'platform': 'twitter',
-                    'tweet_id': post_id,
-                    'text': resp.data.text,
-                    'created_at': str(resp.data.created_at),
-                    'metrics': resp.data.public_metrics,
-                    'live': True,
-                    'url': f'https://x.com/i/status/{post_id}',
-                })
-            return self._error('not_found', f'Tweet not found: {post_id}')
-        except tweepy.TweepyException as e:
-            return self._error(
-                'platform_error', f'Twitter API error: {e}',
-                retryable='rate' in str(e).lower(),
-            )
-
-    def format_content(self, content: str) -> dict:
-        tweets = self._split_into_tweets(content)
-        return self._success({
-            'formatted': tweets,
-            'format': 'thread',
-            'platform': 'twitter',
-            'tweet_count': len(tweets),
-        })
-
-    def _split_into_tweets(self, content: str) -> list[str]:
-        words = content.split()
-        tweets = []
-        current = ''
-        for word in words:
-            candidate = f'{current} {word}'.strip() if current else word
-            if len(candidate) > self.max_length:
-                if current:
-                    tweets.append(current)
-                current = word
-            else:
-                current = candidate
-        if current:
-            tweets.append(current)
-        return tweets or [content[:self.max_length]]
-
-    def _estimate_thread_count(self, post: dict) -> int:
-        content = post.get('content', '') or post.get('title', '')
-        return max(1, len(content) // self.max_length + 1)
-
-
-# ── LinkedIn ──────────────────────────────────────────────────────────
-
-class LinkedInPublisher(PlatformPublisher):
-
-    display_name = 'LinkedIn'
-    platform_type = 'social'
-    max_length = 3000
-    _API_BASE = 'https://api.linkedin.com/v2'
-
-    def is_connected(self) -> bool:
-        return bool(os.getenv('LINKEDIN_ACCESS_TOKEN'))
-
-    def required_env_vars(self) -> list[str]:
-        return ['LINKEDIN_ACCESS_TOKEN', 'LINKEDIN_PERSON_URN']
-
-    def _client(self):
-        import httpx
-        return httpx.Client(
-            base_url=self._API_BASE,
-            headers={
-                'Authorization': f'Bearer {os.getenv("LINKEDIN_ACCESS_TOKEN")}',
-                'Content-Type': 'application/json',
-                'X-Restli-Protocol-Version': '2.0.0',
-            },
-            timeout=15.0,
-        )
-
-    def publish(self, post: dict) -> dict:
-        try:
-            import httpx
-        except ImportError:
-            return self._error('server_error', 'httpx is not installed. Run: pip install httpx')
-
-        person_urn = os.getenv('LINKEDIN_PERSON_URN', '')
-        content = post.get('content', '') or post.get('title', '')
-        formatted = self._format_for_linkedin(content, post.get('metadata', {}))
-
-        body = {
-            'author': person_urn,
-            'commentary': formatted,
-            'visibility': 'PUBLIC',
-            'distribution': {
-                'feedDistribution': 'MAIN_FEED',
-                'targetEntities': [],
-                'thirdPartyDistributionChannels': [],
-            },
-            'lifecycleState': 'PUBLISHED',
-        }
-
-        try:
-            with self._client() as client:
-                resp = client.post('/posts', json=body)
-                if resp.status_code == 201:
-                    post_urn = resp.headers.get('x-restli-id', '')
-                    return self._success({
-                        'post_id': post['post_id'],
-                        'platform': 'linkedin',
-                        'post_urn': post_urn,
-                        'content_length': len(formatted),
-                        'action': 'publish',
-                    })
-                elif resp.status_code == 401:
-                    return self._error(
-                        'auth_error',
-                        'LinkedIn access token expired or invalid. Refresh the token.',
-                        retryable=True,
-                    )
-                elif resp.status_code == 429:
-                    return self._error(
-                        'rate_limit',
-                        'LinkedIn rate limit exceeded. Try again later.',
-                        retryable=True,
-                    )
-                else:
-                    return self._error(
-                        'platform_error',
-                        f'LinkedIn API error {resp.status_code}: {resp.text}',
-                        retryable=resp.status_code >= 500,
-                    )
-        except httpx.HTTPError as e:
-            return self._error(
-                'server_error', f'LinkedIn request failed: {e}', retryable=True,
-            )
-
-    def schedule(self, post: dict, scheduled_at: str) -> dict:
-        return self._error(
-            'platform_error',
-            'LinkedIn API does not support native scheduling. '
-            'Use the schedule flow to set a reminder instead.',
-        )
-
-    def get_status(self, post_id: str) -> dict:
-        try:
-            import httpx
-        except ImportError:
-            return self._error('server_error', 'httpx is not installed.')
-
-        try:
-            with self._client() as client:
-                resp = client.get(f'/posts/{post_id}')
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return self._success({
-                        'platform': 'linkedin',
-                        'post_urn': post_id,
-                        'lifecycle_state': data.get('lifecycleState', 'unknown'),
-                        'live': data.get('lifecycleState') == 'PUBLISHED',
-                        'created_at': data.get('createdAt'),
-                    })
-                elif resp.status_code == 404:
-                    return self._error('not_found', f'LinkedIn post not found: {post_id}')
-                else:
-                    return self._error(
-                        'platform_error',
-                        f'LinkedIn API error {resp.status_code}: {resp.text}',
-                        retryable=resp.status_code >= 500,
-                    )
-        except httpx.HTTPError as e:
-            return self._error('server_error', f'LinkedIn request failed: {e}', retryable=True)
-
-    def format_content(self, content: str) -> dict:
-        formatted = self._format_for_linkedin(content, {})
-        return self._success({
-            'formatted': formatted,
-            'format': 'text',
-            'platform': 'linkedin',
-            'truncated': len(content) > self.max_length,
-        })
-
-    def _format_for_linkedin(self, content: str, metadata: dict) -> str:
-        text = re.sub(r'#{1,6}\s+', '', content)
-        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-        text = re.sub(r'\*(.+?)\*', r'\1', text)
-        text = re.sub(r'`(.+?)`', r'\1', text)
-        text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
-        text = re.sub(r'\[(.+?)\]\((.+?)\)', r'\1 (\2)', text)
-
-        tags = metadata.get('tags', [])
-        if tags:
-            hashtags = ' '.join(f'#{t.replace(" ", "")}' for t in tags)
-            text = f'{text}\n\n{hashtags}'
-
-        if len(text) > self.max_length:
-            text = text[:self.max_length - 3] + '...'
+    def _read_content(self, filename:str) -> str:
+        """Read .md file, strip YAML frontmatter, return body."""
+        filepath = self._content_dir / filename
+        if not filepath.exists():
+            return ''
+        text = filepath.read_text(encoding='utf-8')
+        if text.startswith('---'):
+            end = text.find('---', 3)
+            if end != -1:
+                return text[end + 3:].strip()
         return text
 
+    def _write_content(self, filename:str, frontmatter:dict, body:str):
+        """Write .md file with YAML frontmatter."""
+        filepath = self._content_dir / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        lines = ['---']
+        for key, val in frontmatter.items():
+            if isinstance(val, list):
+                lines.append(f'{key}: [{", ".join(str(item) for item in val)}]')
+            else:
+                lines.append(f'{key}: "{val}"' if isinstance(val, str) and ' ' in val else f'{key}: {val}')
+        lines.append('---')
+        lines.append('')
+        lines.append(body)
+        filepath.write_text('\n'.join(lines), encoding='utf-8')
 
-# ── MT1T (Jekyll + GitHub Pages) ──────────────────────────────────────
+    @staticmethod
+    def _compute_preview(body:str, max_len:int=300) -> str:
+        clean = body.replace('<!--more-->', '')
+        for para in clean.split('\n\n'):
+            stripped = para.strip()
+            if not stripped or stripped.startswith('!['):
+                continue
+            # Skip heading lines within the paragraph
+            lines = [line for line in stripped.split('\n')
+                     if line.strip() and not line.strip().startswith('#')]
+            if not lines:
+                continue
+            preview = re.sub(r'<[^>]+>', '', '\n'.join(lines))
+            if len(preview) > max_len:
+                preview = preview[:max_len].rsplit(' ', 1)[0] + '...'
+            return preview
+        return ''
 
-class MT1TPublisher(PlatformPublisher):
+    # -- Section parsing ----------------------------------------------------
 
-    display_name = 'More Than One Turn'
-    platform_type = 'blog'
-    max_length = None
+    @staticmethod
+    def _extract_sections(content:str) -> list[dict]:
+        """Parse content into section dicts with sec_id, title, and body lines."""
+        sections = []
+        current = None
+        for line in content.split('\n'):
+            if line.startswith('## '):
+                if current:
+                    sections.append(current)
+                title = line[3:].strip()
+                sec_id = ToolService._slugify(title)
+                current = {'sec_id': sec_id, 'title': title, 'lines': []}
+            elif current is not None:
+                current['lines'].append(line)
+        if current:
+            sections.append(current)
+        return sections
 
-    def is_connected(self) -> bool:
-        repo = os.getenv('MT1T_REPO_PATH', '')
-        return bool(repo) and Path(repo).is_dir()
+    @staticmethod
+    def _rebuild_content(sections:list[dict]) -> str:
+        """Rebuild markdown content from section dicts."""
+        parts = []
+        for sec in sections:
+            parts.append(f'## {sec["title"]}')
+            parts.extend(sec['lines'])
+        return '\n'.join(parts)
 
-    def required_env_vars(self) -> list[str]:
-        return ['MT1T_REPO_PATH']
+    @staticmethod
+    def _resolve_section(content:str, sec_id:str) -> dict | None:
+        for sec in ToolService._extract_sections(content):
+            if sec['sec_id'] == sec_id:
+                return sec
+        return None
 
-    def _repo_path(self) -> Path:
-        return Path(os.getenv('MT1T_REPO_PATH', ''))
+    def _save_section_content(self, entry:dict, sections:list[dict]):
+        """Write updated sections back to the post file and update metadata."""
+        body = self._rebuild_content(sections)
+        if entry.get('status') == 'note':
+            (self._content_dir / entry['filename']).write_text(body, encoding='utf-8')
+        else:
+            fm = {'title': entry['title']}
+            if entry.get('tags'):
+                fm['tags'] = entry['tags']
+            if entry.get('color'):
+                fm['color'] = entry['color']
+            self._write_content(entry['filename'], fm, body)
+        entry['preview'] = self._compute_preview(body)
+        entry['word_count'] = len(re.sub(r'<[^>]+>', '', body).split())
+        entry['updated_at'] = self._now()
 
-    def _posts_dir(self) -> Path:
-        return self._repo_path() / '_posts'
+    # -- String helpers -----------------------------------------------------
 
-    def _drafts_dir(self) -> Path:
-        return self._repo_path() / '_drafts'
+    @staticmethod
+    def _slugify(text:str) -> str:
+        slug = text.lower().strip()
+        slug = re.sub(r'[^\w\s-]', '', slug)
+        slug = re.sub(r'[\s_]+', '-', slug)
+        return re.sub(r'-+', '-', slug).strip('-')[:80]
 
-    def _build_filename(self, post: dict) -> str:
-        date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        slug = _slugify(post.get('title', 'untitled'))
-        return f'{date}-{slug}.md'
+    @staticmethod
+    def _parse_frontmatter(text:str) -> tuple[str | None, list[str], str | None]:
+        title, tags, category = None, [], None
+        if not text.startswith('---'):
+            return title, tags, category
+        end = text.find('---', 3)
+        for line in text[3:end].splitlines():
+            if line.startswith('title:'):
+                title = line[6:].strip().strip('"\'')
+            elif line.startswith('tags:'):
+                raw = line[5:].strip().strip('[]')
+                tags = [tag.strip().strip('"\'') for tag in raw.split(',') if tag.strip()]
+            elif line.startswith('category:'):
+                category = line[9:].strip().strip('"\'') or None
+        return title, tags, category
 
-    def _build_frontmatter(self, post: dict) -> str:
-        title = post.get('title', 'Untitled')
-        now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-        meta = post.get('metadata', {})
-        tags = meta.get('tags', [])
-        color = meta.get('color', 'rgb(214, 93, 14)')
+    @staticmethod
+    def _derive_note_slug(body:str) -> str:
+        first_line = body.strip().split('\n')[0].lstrip('#').strip()
+        tokens = (first_line.split() or body.strip().split())[:4]
+        return ToolService._slugify(' '.join(tokens)) if tokens else 'note'
 
-        tag_str = ', '.join(tags) if tags else ''
-        return (
-            '---\n'
-            'layout: post\n'
-            f'title: "{title}"\n'
-            f"date: '{now}'\n"
-            f'tags: [{tag_str}]\n'
-            f'color: {color}\n'
-            'excerpt_separator: <!--more-->\n'
-            '---\n'
-        )
+    @staticmethod
+    def _unique_note_filename(base_slug:str, entries:list, exclude_id:str|None=None) -> str:
+        existing = {ent['filename'] for ent in entries if ent.get('post_id') != exclude_id}
+        candidate = f'notes/{base_slug}.md'
+        if candidate not in existing:
+            return candidate
+        num = 1
+        while f'notes/{base_slug}-{num}.md' in existing:
+            num += 1
+        return f'notes/{base_slug}-{num}.md'
 
-    def _git(self, *args: str) -> subprocess.CompletedProcess:
-        return subprocess.run(
-            ['git', *args],
-            cwd=self._repo_path(),
-            capture_output=True, text=True, timeout=30,
-        )
+    # -- Snapshot helpers ---------------------------------------------------
 
-    def publish(self, post: dict) -> dict:
-        posts_dir = self._posts_dir()
-        if not posts_dir.exists():
-            return self._error(
-                'server_error',
-                f'_posts directory not found at {posts_dir}',
-            )
+    def _snapshot_dir(self, post_id:str) -> Path:
+        return self._snap_root / post_id
 
-        filename = self._build_filename(post)
-        filepath = posts_dir / filename
-        content = self._build_frontmatter(post) + '\n' + post.get('content', '')
-        filepath.write_text(content, encoding='utf-8')
+    def _take_snapshot(self, post_id:str, sec_id:str, content_lines:list[str]):
+        """Rotate and save a new snapshot for a section."""
+        sdir = self._snapshot_dir(post_id) / sec_id
+        sdir.mkdir(parents=True, exist_ok=True)
 
-        result = self._git('add', str(filepath))
-        if result.returncode != 0:
-            return self._error('server_error', f'git add failed: {result.stderr}')
+        oldest = sdir / f'snapshot-{self.max_snapshots}.txt'
+        if oldest.exists():
+            oldest.unlink()
+        for idx in range(self.max_snapshots, 1, -1):
+            src = sdir / f'snapshot-{idx - 1}.txt'
+            dst = sdir / f'snapshot-{idx}.txt'
+            if src.exists():
+                src.rename(dst)
 
-        title = post.get('title', 'Untitled')
-        result = self._git('commit', '-m', f'Publish: {title}')
-        if result.returncode != 0:
-            return self._error('server_error', f'git commit failed: {result.stderr}')
+        (sdir / 'snapshot-1.txt').write_text('\n'.join(content_lines), encoding='utf-8')
 
-        result = self._git('push')
-        if result.returncode != 0:
-            return self._error(
-                'server_error', f'git push failed: {result.stderr}', retryable=True,
-            )
+    def _read_snapshot(self, post_id:str, sec_id:str, version:int) -> str | None:
+        """Read a snapshot. version=0 is current (not stored here), 1-4 are historical."""
+        if version < 1 or version > self.max_snapshots:
+            return None
+        path = self._snapshot_dir(post_id) / sec_id / f'snapshot-{version}.txt'
+        if path.exists():
+            return path.read_text(encoding='utf-8')
+        return None
 
-        return self._success({
-            'post_id': post['post_id'],
-            'platform': 'mt1t',
-            'filename': filename,
-            'file_path': str(filepath),
-            'action': 'publish',
-        })
 
-    def schedule(self, post: dict, scheduled_at: str) -> dict:
-        drafts_dir = self._drafts_dir()
-        drafts_dir.mkdir(parents=True, exist_ok=True)
+# ── Re-exports (so pex.py import doesn't change) ─────────────────────
 
-        filename = self._build_filename(post)
-        filepath = drafts_dir / filename
-
-        meta = dict(post.get('metadata', {}))
-        meta['publish_date'] = scheduled_at
-        post_copy = {**post, 'metadata': meta}
-
-        content = self._build_frontmatter(post_copy) + '\n' + post.get('content', '')
-        filepath.write_text(content, encoding='utf-8')
-
-        return self._success({
-            'post_id': post['post_id'],
-            'platform': 'mt1t',
-            'filename': filename,
-            'file_path': str(filepath),
-            'scheduled_at': scheduled_at,
-            'action': 'schedule',
-            'note': 'Written to _drafts/. Move to _posts/ on publish date.',
-        })
-
-    def unpublish(self, post: dict) -> dict:
-        posts_dir = self._posts_dir()
-        slug = _slugify(post.get('title', ''))
-        matches = list(posts_dir.glob(f'*-{slug}.md'))
-
-        if not matches:
-            return self._error(
-                'not_found',
-                f'No published post matching "{post.get("title", "")}" found in _posts/',
-            )
-
-        filepath = matches[0]
-        result = self._git('rm', str(filepath))
-        if result.returncode != 0:
-            return self._error('server_error', f'git rm failed: {result.stderr}')
-
-        title = post.get('title', 'Untitled')
-        result = self._git('commit', '-m', f'Unpublish: {title}')
-        if result.returncode != 0:
-            return self._error('server_error', f'git commit failed: {result.stderr}')
-
-        result = self._git('push')
-        if result.returncode != 0:
-            return self._error(
-                'server_error', f'git push failed: {result.stderr}', retryable=True,
-            )
-
-        return self._success({
-            'post_id': post['post_id'],
-            'platform': 'mt1t',
-            'filename': filepath.name,
-            'action': 'unpublish',
-        })
-
-    def get_status(self, post_id: str) -> dict:
-        post_svc = PostService()
-        post_result = post_svc.get(post_id)
-        if post_result['status'] != 'success':
-            return post_result
-        post = post_result['result']
-
-        slug = _slugify(post.get('title', ''))
-        posts_dir = self._posts_dir()
-        matches = list(posts_dir.glob(f'*-{slug}.md'))
-
-        if matches:
-            filepath = matches[0]
-            return self._success({
-                'platform': 'mt1t',
-                'post_id': post_id,
-                'filename': filepath.name,
-                'file_path': str(filepath),
-                'live': True,
-            })
-
-        drafts_dir = self._drafts_dir()
-        draft_matches = list(drafts_dir.glob(f'*-{slug}.md'))
-        if draft_matches:
-            return self._success({
-                'platform': 'mt1t',
-                'post_id': post_id,
-                'filename': draft_matches[0].name,
-                'file_path': str(draft_matches[0]),
-                'live': False,
-                'status': 'draft',
-            })
-
-        return self._success({
-            'platform': 'mt1t',
-            'post_id': post_id,
-            'live': False,
-            'status': 'not_published',
-        })
-
-    def format_content(self, content: str) -> dict:
-        return self._success({
-            'formatted': content,
-            'format': 'markdown',
-            'platform': 'mt1t',
-        })
+from backend.utilities.post_service import PostService          # noqa: E402
+from backend.utilities.content_service import ContentService    # noqa: E402
+from backend.utilities.analysis_service import AnalysisService  # noqa: E402
+from backend.utilities.platform_service import PlatformService  # noqa: E402

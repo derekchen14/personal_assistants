@@ -1,10 +1,10 @@
 ---
-layout: post
-title: Building User Simulators for Scalable Dialogue Systems
+title: "Building User Simulators for Scalable Dialogue Systems"
 tags: [modeling, rl, dialogue]
 color: purple
-excerpt_separator: <!--more-->
 ---
+
+## _hidden_section_title
 
 Training dialogue agents for real-life use cases is immensely difficult since manual data annotation quickly hits scaling issues.  One way around this is to build a user simulator which can theoretically then generate tons of examples for the agent to learn from.  However, to build a system representing the user, you would need a model that understands how to react and respond to agents.  But to train such a user model you would then need some dialogue system that acts as an agent.  So we have a chicken-and-egg problem, right?  Well, not quite.  There is at least one key distinction between a user simulator and a dialogue agent.
  <!--more-->

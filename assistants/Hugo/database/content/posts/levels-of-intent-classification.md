@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Label Formats for Intent Classification
-date: '2019-05-13 17:53:21'
+title: "Label Formats for Intent Classification"
 tags: [lists, research]
 ---
+
+## _hidden_section_title
 
 When trying to understand user belief, a NLU model attempts to track the intent over the length of the conversation. &nbsp;However, what format should this intent be represented? &nbsp;Is it continuous or discrete? &nbsp;It it directly passed into the Policy Manager or should it be augmented first? &nbsp;Hundreds of hours and effort will be spent finding labels for training such a model, so it seems reasonable we should agree on what format this label should take. &nbsp;But considering the issue in any depth will show trade-offs in different label formats, so the answer is not immediately obvious.
 
@@ -22,4 +22,3 @@ _\<Most direct and interpretable, but less generalizable. &nbsp;Has more structu
 _\<Least direct and interpretable. &nbsp;Has no predefined structure.\>_
 
 Implied in the spectrum is a shift from rule-based methods to more neural-based methods. &nbsp;While it may seem inevitable that everything moves into a deep learning direction, there is certainly the case to be made that we aren't there yet and also that human-interpretability matters more in certain situations than just high accuracy. As with many decisions involving trade-offs, I don't think there's a right answer overall, but there might be a right answer for your problem – so take the time to choose wisely.
-

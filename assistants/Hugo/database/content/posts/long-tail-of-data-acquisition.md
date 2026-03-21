@@ -1,9 +1,10 @@
 ---
-layout: post
-title: Solving the Long Tail of Data Acquisition
+title: "Solving the Long Tail of Data Acquisition"
 tags: [data-strategy, product-strategy, research, startups]
 color: blue
 ---
+
+## _hidden_section_title
 
 <div class="hidden">The deep learning revolution was initiated not by intelligent algorithms alone, but with the help of powerful compute and access to data. While models have continued to improve and compute power has continued to advance, progress on data collection has not been so fortunate.  Data labeling companies would have you believe that they alone are the solution to all our data problems - provided, of course, that we pay their exorbitant fees.  However, relying on vendors avoids the core issue since the underlying cost and complexity of gathering high quality data remains untouched.  As things currently stand, the effort needed to annotate each additional batch of data increases over time as the examples reach the long tail of the distribution. Any company able to figure out a way to transform data annotation from a cost-center into an area of innovation gains an enviable competitive advantage. But how?</div>
 

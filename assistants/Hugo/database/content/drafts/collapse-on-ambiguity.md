@@ -2,6 +2,8 @@
 title: "Collapse On Ambiguity"
 ---
 
+## _hidden_section_title
+
 # Direct Tool-Calling Collapses on Ambiguous Requests
 
 

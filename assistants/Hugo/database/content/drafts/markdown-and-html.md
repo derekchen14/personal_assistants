@@ -1,9 +1,9 @@
 ---
-layout: post
-title: Markdown and HTML
+title: "Markdown and HTML"
 tags: [Test, Markdown]
-author: rohanchandra
 ---
+
+## _hidden_section_title
 
 Jekyll supports the use of [Markdown](http://daringfireball.net/projects/markdown/syntax) with inline HTML tags which makes it easier to quickly write posts with Jekyll, without having to worry too much about text formatting. A sample of the formatting follows.
 
@@ -60,4 +60,3 @@ Type on Strap uses KaTeX to display maths. Equations such as $$S_n = a \times \f
 Alternatively, they can be shown on a new line:
 
 $$ f(x) = \int \frac{2x^2+4x+6}{x-2} $$
-

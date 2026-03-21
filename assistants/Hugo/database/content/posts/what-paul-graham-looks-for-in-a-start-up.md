@@ -1,10 +1,8 @@
 ---
-layout: post
-title: What Paul Graham looks for in a start-up
-date: '2016-06-21 04:31:00'
-tags:
-- startups
+title: "What Paul Graham looks for in a start-up"
 ---
+
+## _hidden_section_title
 
 Founders over Ideas
 

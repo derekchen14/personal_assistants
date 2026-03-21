@@ -47,6 +47,8 @@ def build_clarification(level: str, metadata: dict,
                         observation: str | None) -> str:
     template = CLARIFICATION_TEMPLATES.get(level, CLARIFICATION_TEMPLATES['general'])
     missing = metadata.get('missing_slots', [])
+    if not missing and metadata.get('missing_slot'):
+        missing = [metadata['missing_slot']]
     return template.format(
         observation=observation or '',
         missing_slots=', '.join(missing) if missing else 'more information',

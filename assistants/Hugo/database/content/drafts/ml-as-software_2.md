@@ -1,14 +1,36 @@
 ---
-layout: post
-title: ML as Software 2.0
+title: "ML as Software 2.0"
 tags: [thoughts, trends]
-excerpt_separator: <!--more-->
 ---
 
-We've heard from Andrej Karpathy that ML is software 2.0.  But what does this mean on a practical level.  We know it is different, but if (as a company) we want to embrace this difference, what should we do?
+## Introduction
+- ML as Software 2.0 (per Andrej Karpathy): what does it mean in practice?
+- Frame the question: if a company wants to embrace this shift, what should they actually do?
 
-Perhaps a key, understudied aspect of machine learning is data strategy.  As an analogy, consider a comparison to web development as Software 1.0.  To start, both areas had a lot of hype required some time to really mature and understand.  In moving from desktop publishing to the web, developers needed to adopt a new mindset around iterative development of software.  Whereas strict and rigid frameworks were needed for the writing desktop software, this was no longer needed for the web.  When shipping shrink-wrapped software, you had better be certain the code is right the first time, but when shipping to the web, you can update the code on the server and the end-user simply refreshes their browser to get the latest version.  Thus, many people thought choosing the right JavaScript framework or other rigid structures were needed to build solid websites.  But it turns out developers can be a lot more flexible and any number of frameworks or pipelines are viable.  Rather, having solid unit tests, version control and having methods for quickly adapting were what ruled the day.
+## The Web Development Analogy
+- Desktop-to-web transition as a parallel to traditional software-to-ML shift
+- Early web: debates over frameworks and rigid structures dominated
+- The real lesson: unit tests, version control, and rapid iteration won — not the framework choice
+- Implication: the same pattern likely holds for ML
 
-Once again, as we are witnessing the adaption to a new medium.  As usual, we still have lots of people arguing over which framework (PyTorch, TensorFlow, JAX, etc.) is the best.  And we also have people debating which models are most critical.  But these are all about writing code.  Instead, the key differentiator of Machine learning is in what kind of data you feed into the model.
+## The Framework Trap
+- Today's ML community repeats the same mistake: PyTorch vs. TensorFlow vs. JAX debates
+- Debating models and architectures is still debating the code layer
+- The differentiator in ML is not the framework — it's the data fed into the model
 
-If this is true, then there should be massive amount of research into what type of data is most suited for best performance.  What is quality data and how can we gather that at scale?  Given a finite budget, what is the trade-off between quality of versus quantity of data.  But we don't really see this.  Part of the reason is that annotating data can be some expensive and it's much easier to rely on unsupervised pre-training.  But then again, doesn't that just warrant increased research into how we can annotate training data with higher efficiency?  Perhaps, it is seen as too boring or not publish-worthy.  In any case, seems like a great area in which to gain an expertise 😉
+## Data Strategy as the Core Differentiator
+- Data is ML's equivalent of "iterative shipping" in web development
+- Key open questions that warrant more research:
+  - What types of data drive the best model performance?
+  - How do you define and measure data quality at scale?
+  - Given a fixed budget, what is the optimal trade-off between data quality and quantity?
+- Gap: annotation is expensive, so the field defaults to unsupervised pre-training — but this sidesteps the problem
+- Opportunity: annotation efficiency research is under-invested and under-published
+
+## Conclusion
+- **Stop debating frameworks** — your framework choice is unlikely to be your competitive edge
+- **Audit your data strategy now** — map what data you have, what quality it is, and how it was labeled
+- **Invest in annotation pipelines** — build or buy tooling that lets your team label data faster and more consistently
+- **Treat data quality vs. quantity as an explicit budget decision** — document the trade-off rather than defaulting to "more data"
+- **Build data as a moat** — proprietary, well-curated datasets are harder to replicate than model architectures
+- **Make data strategy a first-class research priority** — if your team isn't asking "what data should we collect next?", you're optimizing the wrong thing

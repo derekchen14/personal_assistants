@@ -1,10 +1,9 @@
 ---
-layout: post
-title: Feature images
-feature-img: "assets/img/feature-img/desk-messy.jpeg"
-thumbnail: "assets/img/thumbnails/feature-img/desk-messy.jpeg"
+title: "Feature images"
 tags: [Test, Lorem]
 ---
+
+## _hidden_section_title
 
 Hopefully you will find enough information about how to set images in your blog here.
 This is an example of a post which includes a feature image specified in the front matter of the post. 

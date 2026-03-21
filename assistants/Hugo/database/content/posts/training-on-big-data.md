@@ -1,11 +1,8 @@
 ---
-layout: post
-title: Deep Learning using GPUs in the Cloud
-date: '2016-01-11 04:16:29'
-tags:
-- gpu
-- aws
+title: "Deep Learning using GPUs in the Cloud"
 ---
+
+## _hidden_section_title
 
 Recent advances in Deep Learning have come about for a couple of key reasons, not the least of which is the enormous growth of available data.  But if overwhelming amounts of data are required to reach peak performance, how does one actually go about managing the unmanageable?  In other words, how does one get past the hype of Big Data in machine learning and into the practical implementation of leveraging Big Data for meaningful results?
 

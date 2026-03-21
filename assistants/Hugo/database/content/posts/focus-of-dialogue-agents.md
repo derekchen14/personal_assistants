@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Focus of Dialogue Agents
-date: '2018-11-11 01:12:34'
+title: "Focus of Dialogue Agents"
 ---
+
+## _hidden_section_title
 
 What exactly is the task we are trying to solve in task-oriented dialogue modeling? &nbsp; Is there a different goal for academic research vs industry application? &nbsp;First, note that I am already segmenting into chit-chat vs. goal-oriented dialogue. Despite this, even with the realm of goal-oriented chat, there seems to be different categories. &nbsp;
 
@@ -35,4 +35,3 @@ Specifically, there seems to be at least 3 different categorizations:
 What's really interesting is that we actually study Task 3 in academia but we treat it as if it were Task 2. &nbsp;The datasets assume the user knows what he/she wants when in reality it should be more of a conversation to uncover a need, rather than &nbsp;series of utterances to extract a known desire. &nbsp;Otherwise, the most straightforward interface would be a single screen where users can tap on the options they want (area=south, price=cheap, food=Korean), all in a couple of seconds with no loss in fidelity. &nbsp;Additionally, most real-world users care about Task 1, but we lack datasets for it. &nbsp;Then again, datasets could always be better.
 
 What can be done to build systems that survive in the real world? &nbsp;It seems clear that we need to tackle recommendation and move away from limiting ourselves to thinking that virtual assistants are only capable of command execution.
-

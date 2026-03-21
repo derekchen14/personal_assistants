@@ -1,9 +1,9 @@
 ---
-layout: post
-title: AI as Feature or Foundation
+title: "AI as Feature or Foundation"
 tags: [trends, machine-learning, startups]
-date: '2020-01-01 23:53:56'
 ---
+
+## _hidden_section_title
 
 For awhile from 2015 to 2020 it seemed as if every start-up touted itself to be powered by AI. &nbsp;The buzz around artificial intelligence has faded a bit, probably because it's clear that AGI is not just around the corner and also because the media is always looking for the next shiny thing to discuss. &nbsp;But for those of us in the trenches thinking about AI research every day, there remains a critical question to ask - is this latest round of AI, namely around deep learning with SGD, merely a feature to sprinkle onto existing tools and services, or is this truly a new foundation on which to build new technologies?
 
@@ -36,4 +36,3 @@ Lastly, and perhaps most importantly, we will know that AI is the foundation of 
 ### Conclusion
 
 If we're honest, then we have to admit that we have punted on the main question since the analysis above mostly highlights what we _would_ see if AI is the new foundation. &nbsp;We have not really identified the factors that would enable AI to be new electricity. &nbsp;Some promising examples that this might happen include the ability to identify objects, translate languages and generate images with super-human skill. &nbsp;Additionally, the explosion of BERT and friends for various NLP tasks is an interesting starting point for exploration. &nbsp;Ultimately, the future will be determined by those with a vision for turning these research advances into new ways of interacting with the world.
-

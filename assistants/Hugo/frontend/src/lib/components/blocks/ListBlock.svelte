@@ -8,13 +8,12 @@
 
     let confirmDeleteItem: unknown | null = $state(null);
 
-    let { data }: { data: Record<string, unknown> } = $props();
+    let { data, origin = '' }: { data: Record<string, unknown>; origin?: string } = $props();
 
     let items = $derived((data.items as unknown[]) || []);
     let title = $derived((data.title as string) || '');
     let content = $derived((data.content as string) || '');
     let ordered = $derived((data.ordered as boolean) || false);
-    let source = $derived((data.source as string) || '');
     let autoExpanded = $derived(
         new Set<string>((data.expanded_ids as string[]) || [])
     );
@@ -86,7 +85,7 @@
     }
 
     // ── Sectioned list helpers ─────────────────────────────────────────────────
-    let isSectioned = $derived(source === 'welcome' || items.some(
+    let isSectioned = $derived(origin === 'welcome' || items.some(
         (it) => typeof it === 'object' && it !== null && 'status' in (it as Record<string, unknown>)
     ));
 
@@ -114,14 +113,14 @@
     function getDateValue(item: unknown): number {
         if (typeof item !== 'object' || item === null) return 0;
         const o = item as Record<string, unknown>;
-        const d = (o.published_at || o.updated_at || o.created_at || '') as string;
+        const d = (o.created_at || o.published_at || o.updated_at || '') as string;
         return d ? new Date(d).getTime() : 0;
     }
 
     function getPublishedDate(item: unknown): string {
         if (typeof item !== 'object' || item === null) return '';
         const o = item as Record<string, unknown>;
-        const d = (o.published_at || o.updated_at || o.created_at || '') as string;
+        const d = (o.created_at || o.published_at || o.updated_at || '') as string;
         if (!d) return '';
         try {
             return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });

@@ -2,12 +2,12 @@
 Slot types for Hugo (Blog Writing).
 
 12 universal slots + 4 domain-specific.
-Grounding entity_parts: post, section, note, channel.
+Grounding entity_parts: post, section, snippet (snip), channel.
 
 Hierarchy:
   BaseSlot
   ├── GroupSlot            (multiple values in a list)
-  │   ├── SourceSlot       (existing entities: post, section, note)
+  │   ├── SourceSlot       (existing entities: post, section, snippet)
   │   │   ├── TargetSlot   (new entities being created)
   │   │   └── RemovalSlot  (entities being removed)
   │   ├── FreeTextSlot     (open-ended text values)
@@ -86,7 +86,7 @@ class GroupSlot(BaseSlot):
 # ── Grounding Entity ───────────────────────────────────────────────────────
 
 class SourceSlot(GroupSlot):
-  """References existing entities. Each entity is {post, sec, note, chl, ver}."""
+  """References existing entities. Each entity is {post, sec, snip, chl, ver}."""
   def __init__(self, min_size=1, entity_part='', priority='required'):
     super().__init__(min_size, priority)
     self.slot_type = 'source'
@@ -98,7 +98,7 @@ class SourceSlot(GroupSlot):
     else:
       self.purpose = f"at least {min_size} grounding reference" if min_size == 1 else f"at least {min_size} grounding references"
 
-  def add_one(self, post, sec='', note='', chl='', ver=False):
+  def add_one(self, post, sec='', snip='', chl='', ver=False):
     key = f"{post}-{sec}"
     alt_key = f"{self.active_post}-{sec}"
     if key in self._keys:
@@ -107,10 +107,15 @@ class SourceSlot(GroupSlot):
     elif alt_key in self._keys:
       pass  # earlier post is the active one
     else:
-      entity = {'post': post, 'sec': sec, 'note': note, 'chl': chl, 'ver': ver}
+      entity = {'post': post, 'sec': sec, 'snip': snip, 'chl': chl, 'ver': ver}
       self.values.append(entity)
       self._keys.append(key)
     self.check_if_filled()
+
+  def check_if_filled(self):
+    valid = [e for e in self.values if e.get('post')]
+    self.filled = len(valid) >= self.size
+    return self.filled
 
   def _rebuild_keys(self):
     self._keys = [f"{e['post']}-{e['sec']}" for e in self.values]

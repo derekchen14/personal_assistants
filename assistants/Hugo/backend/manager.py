@@ -10,7 +10,7 @@ class Manager:
         self._agents: dict[str, Agent] = {}
         self._write_lock = threading.Lock()
 
-    def get_or_create(self, username: str) -> Agent:
+    def get_or_create(self, username:str) -> Agent:
         if username in self._agents:
             return self._agents[username]
 
@@ -21,7 +21,7 @@ class Manager:
             self._agents[username] = agent
             return agent
 
-    def cleanup(self, username: str, source: str = 'general') -> bool:
+    def cleanup(self, username:str, source:str='general') -> bool:
         agent = self._agents.pop(username, None)
         if agent is None:
             return False
@@ -33,7 +33,7 @@ class Manager:
         gc.collect()
         return True
 
-    def reset(self, username: str) -> dict:
+    def reset(self, username:str) -> dict:
         if username not in self._agents:
             return {'message': 'No active session to reset'}
         self._agents[username].reset()
@@ -43,13 +43,13 @@ class Manager:
 _manager = Manager()
 
 
-def get_or_create_agent(username: str) -> Agent:
+def get_or_create_agent(username:str) -> Agent:
     return _manager.get_or_create(username)
 
 
-def cleanup_agent(username: str, source: str = 'general') -> bool:
+def cleanup_agent(username:str, source:str='general') -> bool:
     return _manager.cleanup(username, source)
 
 
-def reset_agent(username: str) -> dict:
+def reset_agent(username:str) -> dict:
     return _manager.reset(username)

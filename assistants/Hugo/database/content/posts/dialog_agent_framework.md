@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Dialog Agent Framework
-date: '2018-01-04 18:09:00'
+title: "Dialog Agent Framework"
 ---
+
+## _hidden_section_title
 
 (aka. How the technical part of the building a intelligent agent might work)
 

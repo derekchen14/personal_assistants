@@ -1,8 +1,8 @@
 ---
-layout: post
-title: Training a Neural Network
-date: '2016-10-22 17:37:58'
+title: "Training a Neural Network"
 ---
+
+## _hidden_section_title
 
 `(aka. Living a Successful Life)`
 
