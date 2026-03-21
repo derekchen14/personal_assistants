@@ -30,9 +30,9 @@ _UNSUPPORTED = {
 
 class PEX:
 
-    def __init__(self, config: MappingProxyType, ambiguity: AmbiguityHandler,
-                 engineer: PromptEngineer, memory: MemoryManager,
-                 world: 'World'):
+    def __init__(self, config:MappingProxyType, ambiguity:AmbiguityHandler,
+                 engineer:PromptEngineer, memory:MemoryManager,
+                 world:'World'):
         self.config = config
         self.ambiguity = ambiguity
         self.engineer = engineer
@@ -75,8 +75,8 @@ class PEX:
             Intent.INTERNAL: InternalPolicy(components),
         }
 
-    def execute(self, state: DialogueState,
-                context: 'ContextCoordinator') -> tuple[DisplayFrame, bool]:
+    def execute(self, state:DialogueState,
+                context:'ContextCoordinator') -> tuple[DisplayFrame, bool]:
         active_flow = self.flow_stack.get_active_flow()
         if not active_flow:
             frame = DisplayFrame(self.config)
@@ -121,7 +121,7 @@ class PEX:
     # -- Pre-hook ---------------------------------------------------------
 
     def _check(self, flow,
-               context: 'ContextCoordinator') -> DisplayFrame | None:
+               context:'ContextCoordinator') -> DisplayFrame | None:
         if flow.name() in _UNSUPPORTED:
             return None
 
@@ -172,8 +172,8 @@ class PEX:
 
         return None
 
-    def _fill_from_context(self, slot_name: str,
-                           context: 'ContextCoordinator') -> str | None:
+    def _fill_from_context(self, slot_name:str,
+                           context:'ContextCoordinator') -> str | None:
         if slot_name in ('dataset_id', 'source'):
             state = self.world.current_state()
             if state and state.active_dataset:
@@ -190,7 +190,7 @@ class PEX:
 
     # -- Tool dispatch ----------------------------------------------------
 
-    def _dispatch_tool(self, tool_name: str, tool_input: dict) -> dict:
+    def _dispatch_tool(self, tool_name:str, tool_input:dict) -> dict:
         self.world.context.add_turn(
             'Agent', f'[tool:{tool_name}] {json.dumps(tool_input)[:200]}',
             turn_type='action',
@@ -216,15 +216,15 @@ class PEX:
                     'message': f'Unknown tool: {tool_name}',
                     'retryable': False,
                 }
-        except Exception as e:
+        except Exception as ecp:
             return {
                 'status': 'error',
                 'error_category': 'server_error',
-                'message': f'{type(e).__name__}: {e}',
+                'message': f'{type(ecp).__name__}: {ecp}',
                 'retryable': False,
             }
 
-    def _dispatch_context_tool(self, params: dict) -> dict:
+    def _dispatch_context_tool(self, params:dict) -> dict:
         action = params.get('action', '')
         if action == 'get_history':
             turns = params.get('turns', 3)
@@ -240,7 +240,7 @@ class PEX:
             return {'status': 'success', 'result': cp}
         return {'status': 'error', 'message': f'Unknown action: {action}'}
 
-    def _dispatch_flow_stack_tool(self, params: dict) -> dict:
+    def _dispatch_flow_stack_tool(self, params:dict) -> dict:
         action = params.get('action', '')
         if action == 'get_slots':
             flow = self.flow_stack.get_active_flow()
@@ -261,12 +261,12 @@ class PEX:
     @staticmethod
     def _thaw(obj):
         if isinstance(obj, MappingProxyType):
-            return {k: PEX._thaw(v) for k, v in obj.items()}
+            return {key: PEX._thaw(val) for key, val in obj.items()}
         if isinstance(obj, tuple):
             return [PEX._thaw(item) for item in obj]
         return obj
 
-    def _get_tool_def(self, tool_id: str) -> dict | None:
+    def _get_tool_def(self, tool_id:str) -> dict | None:
         tools = self.config.get('tools', {})
         tool = tools.get(tool_id)
         if not tool:

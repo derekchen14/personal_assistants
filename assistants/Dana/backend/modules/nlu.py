@@ -43,8 +43,8 @@ _ACTION_PATTERN = re.compile(
 
 class NLU:
 
-    def __init__(self, config: MappingProxyType, ambiguity: AmbiguityHandler,
-                 engineer: PromptEngineer, world: 'World'):
+    def __init__(self, config:MappingProxyType, ambiguity:AmbiguityHandler,
+                 engineer:PromptEngineer, world:'World'):
         self.config = config
         self.ambiguity = ambiguity
         self.engineer = engineer
@@ -70,7 +70,7 @@ class NLU:
 
     # ── Public operational modes ──────────────────────────────────────
 
-    def prepare(self, user_text: str) -> DialogueState | None:
+    def prepare(self, user_text:str) -> DialogueState | None:
         text = user_text.strip()
 
         if len(text) < 2:
@@ -89,7 +89,7 @@ class NLU:
                     return self._build_state(flow_name=flow_name, confidence=1.0)
         return None
 
-    def think(self, user_text: str) -> DialogueState:
+    def think(self, user_text:str) -> DialogueState:
         result = self.predict(user_text)
         flow_name = result['flow_name']
 
@@ -111,7 +111,7 @@ class NLU:
             )
         return state
 
-    def contemplate(self, user_text: str) -> DialogueState:
+    def contemplate(self, user_text:str) -> DialogueState:
         prev = self.world.current_state()
         failed_flow = prev.flow_name if prev else None
         failure_reason = self.ambiguity.observation or ''
@@ -137,7 +137,7 @@ class NLU:
             flow_name=flow_name, confidence=detection['confidence'],
         )
 
-    def react(self, user_text: str, gold_dax: str | None = None) -> DialogueState:
+    def react(self, user_text:str, gold_dax:str|None=None) -> DialogueState:
         if gold_dax:
             return self._resolve_gold_dax(gold_dax, user_text)
         result = self._process_action(user_text)
@@ -151,7 +151,7 @@ class NLU:
             flow_name=flow_name, confidence=result.get('confidence', 1.0),
         )
 
-    def validate(self, state: DialogueState) -> DialogueState:
+    def validate(self, state:DialogueState) -> DialogueState:
         cat = FLOW_CATALOG.get(state.flow_name)
         if not cat:
             state.pred_intent = 'Converse'
@@ -171,7 +171,7 @@ class NLU:
 
     # ── Entity repair ──────────────────────────────────────────────────
 
-    def _repair_entities(self, state: DialogueState,
+    def _repair_entities(self, state:DialogueState,
                          flow) -> DialogueState:
         from backend.components.flow_stack.slots import FreeTextSlot
 
@@ -223,8 +223,8 @@ class NLU:
                         slot.reset()
         return state
 
-    def _llm_repair_slot(self, value: str, candidates: list[str],
-                         slot_name: str, max_attempts: int = 3) -> str | None:
+    def _llm_repair_slot(self, value:str, candidates:list[str],
+                         slot_name:str, max_attempts:int=3) -> str | None:
         for attempt in range(max_attempts):
             system = (
                 f'The user said "{value}" for the slot "{slot_name}". '
@@ -263,12 +263,12 @@ class NLU:
             for slot in inst.slots.values():
                 if isinstance(slot, CategorySlot):
                     existing = values.setdefault('CategorySlot', [])
-                    existing.extend(o for o in slot.options if o not in existing)
+                    existing.extend(opt for opt in slot.options if opt not in existing)
         return values
 
     # ── Prediction ────────────────────────────────────────────────────
 
-    def predict(self, user_text: str) -> dict:
+    def predict(self, user_text:str) -> dict:
         intent = self._classify_intent(user_text)
         detection = self._detect_flow(user_text, intent)
         flow_name = detection['flow_name']
@@ -293,7 +293,7 @@ class NLU:
 
     # ── Prediction sub-tasks (private) ────────────────────────────────
 
-    def _classify_intent(self, user_text: str) -> str:
+    def _classify_intent(self, user_text:str) -> str:
         history_text = self.world.context.compile_history(look_back=5)
         system, messages = self.engineer.build_nlu_prompt(user_text, history_text)
         text = self.engineer.call_text(
@@ -305,13 +305,13 @@ class NLU:
             return parsed['intent']
         return 'Converse'
 
-    def _detect_flow(self, user_text: str, intent: str | None = None) -> dict:
+    def _detect_flow(self, user_text:str, intent:str|None=None) -> dict:
         history_text = self.world.context.compile_history(look_back=5)
         system, messages = self.engineer.build_flow_prompt(
             user_text, intent, history_text,
         )
 
-        def _call_voter(voter: dict) -> dict | None:
+        def _call_voter(voter:dict) -> dict | None:
             try:
                 text = self.engineer.call_text(
                     system=system, messages=messages,
@@ -322,14 +322,14 @@ class NLU:
                     parsed['_model'] = voter['label']
                     parsed['_weight'] = voter['weight']
                 return parsed
-            except Exception as e:
-                print(f'NLU vote error ({voter["label"]}): {e}')
+            except Exception as ecp:
+                print(f'NLU vote error ({voter["label"]}): {ecp}')
                 return None
 
         votes: list[dict] = []
         with ThreadPoolExecutor(max_workers=len(_ENSEMBLE_VOTERS)) as pool:
             futures = [
-                pool.submit(_call_voter, v) for v in _ENSEMBLE_VOTERS
+                pool.submit(_call_voter, voter) for voter in _ENSEMBLE_VOTERS
             ]
             for future in as_completed(futures):
                 result = future.result()
@@ -344,7 +344,7 @@ class NLU:
 
         return self._tally_votes(votes)
 
-    def _fill_slots(self, user_text: str, flow_name: str) -> dict:
+    def _fill_slots(self, user_text:str, flow_name:str) -> dict:
         history_text = self.world.context.compile_history(look_back=5)
         system, messages = self.engineer.build_slot_filling_prompt(
             user_text, flow_name, history_text,
@@ -360,8 +360,8 @@ class NLU:
 
     # ── Contemplate/React support (private) ───────────────────────────
 
-    def _check_routing(self, user_text: str, failed_flow: str | None,
-                       failure_reason: str) -> dict:
+    def _check_routing(self, user_text:str, failed_flow:str|None,
+                       failure_reason:str) -> dict:
         candidates = self._get_contemplate_candidates(failed_flow)
         if not candidates:
             return {'flow_name': 'chat', 'confidence': 0.5, 'slots': {}}
@@ -384,11 +384,11 @@ class NLU:
             }
         return {'flow_name': 'chat', 'confidence': 0.5, 'slots': {}}
 
-    def _get_contemplate_candidates(self, failed_flow: str | None) -> list[str]:
+    def _get_contemplate_candidates(self, failed_flow:str|None) -> list[str]:
         candidates = set()
         if failed_flow:
-            for ef in edge_flows_for(failed_flow):
-                candidates.add(ef)
+            for edge in edge_flows_for(failed_flow):
+                candidates.add(edge)
         flow = self.flow_stack.get_active_flow()
         if flow and flow.name() != failed_flow:
             candidates.add(flow.name())
@@ -396,7 +396,7 @@ class NLU:
         candidates.discard(failed_flow)
         return sorted(candidates)
 
-    def _process_action(self, user_text: str) -> dict:
+    def _process_action(self, user_text:str) -> dict:
         flow = self.flow_stack.get_active_flow()
         if flow:
             return {
@@ -416,12 +416,12 @@ class NLU:
             return False
         return prev.has_issues or prev.keep_going
 
-    def _is_user_action(self, user_text: str) -> bool:
+    def _is_user_action(self, user_text:str) -> bool:
         return bool(_ACTION_PATTERN.match(user_text.strip()))
 
     # ── Support (private) ─────────────────────────────────────────────
 
-    def _push_or_get(self, flow_name: str):
+    def _push_or_get(self, flow_name:str):
         """Push a new flow or return existing one on the stack."""
         existing = self.flow_stack.find_by_name(flow_name)
         if existing:
@@ -431,8 +431,8 @@ class NLU:
         except (ValueError, RuntimeError):
             return None
 
-    def _build_state(self, flow_name: str,
-                     confidence: float) -> DialogueState:
+    def _build_state(self, flow_name:str,
+                     confidence:float) -> DialogueState:
         prev = self.world.current_state()
         cat = FLOW_CATALOG.get(flow_name, {})
         pred_intent = cat.get('intent', Intent.CONVERSE)
@@ -451,28 +451,28 @@ class NLU:
         self.world.insert_state(state)
         return state
 
-    def _tally_votes(self, votes: list[dict]) -> dict:
+    def _tally_votes(self, votes:list[dict]) -> dict:
         flow_weights: dict[str, float] = {}
         flow_votes: dict[str, list[dict]] = {}
-        for v in votes:
-            fn = v['flow_name']
-            w = v.get('_weight', 1.0 / len(votes))
-            flow_weights[fn] = flow_weights.get(fn, 0.0) + w
-            flow_votes.setdefault(fn, []).append(v)
+        for vote in votes:
+            name = vote['flow_name']
+            weight = vote.get('_weight', 1.0 / len(votes))
+            flow_weights[name] = flow_weights.get(name, 0.0) + weight
+            flow_votes.setdefault(name, []).append(vote)
 
         total_weight = sum(flow_weights.values())
         best_flow = max(flow_weights, key=flow_weights.get)
         final_confidence = flow_weights[best_flow] / total_weight
 
-        ranked = sorted(flow_weights.items(), key=lambda x: x[1], reverse=True)
+        ranked = sorted(flow_weights.items(), key=lambda item: item[1], reverse=True)
         pred_flows = [
-            {'flow_name': fn, 'confidence': w / total_weight}
-            for fn, w in ranked
+            {'flow_name': name, 'confidence': weight / total_weight}
+            for name, weight in ranked
         ]
 
         best_vote = max(
             flow_votes[best_flow],
-            key=lambda v: v.get('_weight', 0),
+            key=lambda vote: vote.get('_weight', 0),
         )
         slots = best_vote.get('slots', {})
 
@@ -483,7 +483,7 @@ class NLU:
             'pred_flows': pred_flows,
         }
 
-    def _resolve_gold_dax(self, gold_dax: str, user_text: str) -> DialogueState:
+    def _resolve_gold_dax(self, gold_dax:str, user_text:str) -> DialogueState:
         for flow_name, cat in FLOW_CATALOG.items():
             if cat['dax'] == gold_dax:
                 slots = self._extract_gold_slots(flow_name, user_text)
@@ -494,7 +494,7 @@ class NLU:
         return self._build_state('chat', 0.5)
 
     @staticmethod
-    def _extract_gold_slots(flow_name: str, user_text: str) -> dict:
+    def _extract_gold_slots(flow_name:str, user_text:str) -> dict:
         result = {}
         text = user_text.strip()
         if not text:

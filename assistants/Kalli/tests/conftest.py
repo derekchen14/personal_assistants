@@ -9,7 +9,7 @@ _KALLI_ROOT = Path(__file__).resolve().parent.parent
 if str(_KALLI_ROOT) not in sys.path:
     sys.path.insert(0, str(_KALLI_ROOT))
 
-from config import load_config
+from schemas.config import load_config
 from backend.agent import Agent
 
 
@@ -22,7 +22,7 @@ def config():
 def agent(monkeypatch):
     """Create an Agent with debug=True so RES skips naturalize."""
     monkeypatch.setattr(
-        'backend.agent.load_config',
+        'schemas.config.load_config',
         lambda: load_config(overrides={'debug': True}),
     )
     a = Agent(username='test_user')

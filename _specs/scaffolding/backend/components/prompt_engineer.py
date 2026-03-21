@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import time
-from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -20,10 +19,9 @@ import anthropic
 # from backend.prompts.for_contemplate import build_contemplate_prompt
 
 from schemas.ontology import FLOW_CATALOG, Intent
+from backend.modules.templates import get_template as _get_template
 
 log = logging.getLogger(__name__)
-
-_TEMPLATE_BASE = Path(__file__).resolve().parents[2] / 'schemas' / 'templates'
 
 
 class PromptEngineer:
@@ -37,7 +35,6 @@ class PromptEngineer:
         self._resilience = config.get('resilience', {})
         self._api_key = os.getenv('ANTHROPIC_API_KEY')
         self._client: anthropic.Anthropic | None = None
-        self._template_cache: dict[str, str] = {}
 
     @property
     def client(self) -> anthropic.Anthropic:
@@ -371,43 +368,8 @@ class PromptEngineer:
 
     # ── Template registry ────────────────────────────────────────────
 
-    def get_template(self, flow_name: str, intent: str) -> dict:
-        if flow_name in self._template_cache:
-            raw = self._template_cache[flow_name]
-        else:
-            raw = self._load_template(flow_name, intent)
-            self._template_cache[flow_name] = raw
-
-        lines = raw.strip().split('\n')
-        template_text = lines[0] if lines else '{message}'
-        meta = {}
-        for line in lines[1:]:
-            if ':' in line:
-                key, val = line.split(':', 1)
-                key = key.strip()
-                val = val.strip()
-                if val.lower() in ('true', 'false'):
-                    val = val.lower() == 'true'
-                meta[key] = val
-
-        return {
-            'template': template_text,
-            'block_hint': meta.get('block_hint'),
-            'skip_naturalize': meta.get('skip_naturalize', False),
-        }
-
-    def _load_template(self, flow_name: str, intent: str) -> str:
-        # Domain-specific: change 'domain' to assistant name
-        domain_path = _TEMPLATE_BASE / 'domain' / f'{flow_name}.txt'
-        if domain_path.exists():
-            return domain_path.read_text(encoding='utf-8')
-
-        intent_lower = intent.lower() if isinstance(intent, str) else intent.value.lower()
-        base_path = _TEMPLATE_BASE / 'base' / f'{intent_lower}.txt'
-        if base_path.exists():
-            return base_path.read_text(encoding='utf-8')
-
-        return '{message}'
+    def get_template(self, flow_name:str, intent:str) -> dict:
+        return _get_template(flow_name, intent)
 
     # ── Helpers ───────────────────────────────────────────────────────
 

@@ -24,10 +24,18 @@ Follow these rules to avoid permission denials:
 
 ## Code style
 
-1. **Consistent naming:**
+1. **Variable naming:**
    - The output of `context.compile_history()` is `convo_history`. Not `history`, `history_text`, or `utterances`.
    - Unless distinguishing between `curr_state` and `prev_state`, use `state` for the dialogue state. Not `dialog_state`, `dialogue_state`, or `convo_state`.
    - Variable names should aim to be the same across all three modules (NLU, PEX, and RES) whenever possible.
+      - variable names should aim to be a single token long
+      - when variable names are just 4 to 7 characters long, it's often acceptable to just use the full word
+      - If more than one word is needed, use underscores to separate words.
+   - Never use variable names that are a single character long
+      - Use `idx` instead of `i`
+      - Use `slot` or `sec` instead of `s`
+      - Use `flow` instead of `f`
+      - Use `ent` for entity, or `entry` for dictionary entry, or `ecp` for exception
 
 2. **Short function signatures:**
    - Pass in fewer parameters whenever possible:
@@ -46,6 +54,12 @@ Follow these rules to avoid permission denials:
    - Removing extraneous safety checks that guard against scenarios that can't occur in this codebase.
    - Extracting the deeply nested logic into a module-level helper function.
    - Simplifying another part of the code that contributes unnecessary nesting.
+
+4. **Function Design**
+   - Functions over 30 lines are likely doing too much and should be split up
+   - Prefer flat code over multiple layers of indirection — don't extract functions prematurely
+   - Only extract a helper function if it's used 3+ times; fewer than that is over-engineering
+   - Helper functions should contain at least 3 lines — one-liners just add indirection without saving space
 
 ## Front-end Design
 

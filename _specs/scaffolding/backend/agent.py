@@ -6,7 +6,7 @@ from io import BytesIO, StringIO
 from types import MappingProxyType
 from uuid import uuid4
 
-from config import load_config
+from schemas.config import load_config
 from backend.components.world import World
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.ambiguity_handler import AmbiguityHandler

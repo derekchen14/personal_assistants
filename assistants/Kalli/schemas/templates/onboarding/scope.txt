@@ -1,3 +1,0 @@
-I've saved your assistant's scope: {message}
-block_hint: form
-skip_naturalize: false

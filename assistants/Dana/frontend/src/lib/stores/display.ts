@@ -27,31 +27,38 @@ export interface FrameData {
 }
 
 export type DisplayLayout = 'top' | 'split' | 'bottom';
-export type ActivePage = 'sheets' | 'queries';
+export type ActivePage = 'sheets' | 'queries' | 'metrics';
 
 export const activeFrame = writable<FrameData | null>(null);
 export const topFrame = writable<FrameData | null>(null);
 export const bottomFrame = writable<FrameData | null>(null);
 export const activePage = writable<ActivePage>('sheets');
 export const searchQuery = writable('');
+export const creatingItem = writable<boolean>(false);
 
 const _expanded = writable(false);
 
 export const displayLayout = derived(
-    [topFrame, bottomFrame, _expanded],
-    ([$top, $bottom, $exp]) => {
+    [topFrame, bottomFrame, _expanded, creatingItem],
+    ([$top, $bottom, $exp, $creating]) => {
         if ($exp && $bottom) return 'bottom' as DisplayLayout;
-        if ($top && $bottom) return 'split' as DisplayLayout;
+        if ($top && ($bottom || $creating)) return 'split' as DisplayLayout;
         if ($top) return 'top' as DisplayLayout;
         return 'bottom' as DisplayLayout;
     },
 );
+
+export function showPage(page: ActivePage) {
+    activePage.set(page);
+    creatingItem.set(false);
+}
 
 export function clearFrames() {
     activeFrame.set(null);
     topFrame.set(null);
     bottomFrame.set(null);
     _expanded.set(false);
+    creatingItem.set(false);
 }
 
 export function setFrame(frame: FrameData) {

@@ -1,9 +1,0 @@
-{
-  "type": "object",
-  "properties": {
-    "dataset": {"type": "string", "description": "Dataset name"},
-    "rules": {"type": "array", "items": {"type": "object", "properties": {"column": {"type": "string"}, "check": {"type": "string"}, "value": {}}, "required": ["column", "check"]}, "description": "Validation rules to apply"},
-    "action": {"type": "string", "enum": ["flag", "drop", "fill"], "description": "What to do with failing rows"}
-  },
-  "required": ["dataset", "rules"]
-}

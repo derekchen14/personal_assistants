@@ -111,19 +111,19 @@ class SourceSlot(GroupSlot):
     self.check_if_filled()
 
   def _rebuild_keys(self):
-    self._keys = [f"{e['ast']}-{e['req']}" for e in self.values]
+    self._keys = [f"{entry['ast']}-{entry['req']}" for entry in self.values]
 
   def replace_entity(self, old_ast, old_req, new_ast='', new_req=''):
-    for i, entity in enumerate(self.values):
+    for index, entity in enumerate(self.values):
       if entity['ast'] == old_ast and entity['req'] == old_req:
         if new_ast:
-          self.values[i]['ast'] = new_ast
+          self.values[index]['ast'] = new_ast
         if new_req:
-          self.values[i]['req'] = new_req
+          self.values[index]['req'] = new_req
     self._rebuild_keys()
 
   def drop_unverified(self, conditional=False):
-    verified = [e for e in self.values if e['ver']]
+    verified = [entry for entry in self.values if entry['ver']]
     if conditional:
       if len(verified) > 0:
         self.values = verified
@@ -133,12 +133,12 @@ class SourceSlot(GroupSlot):
     self.check_if_filled()
 
   def drop_ambiguous(self):
-    self.values = [e for e in self.values if e['tool'] != 'ambiguous']
+    self.values = [entry for entry in self.values if entry['tool'] != 'ambiguous']
     self._rebuild_keys()
     self.check_if_filled()
 
   def is_verified(self):
-    return len([e for e in self.values if e['ver']]) >= self.size
+    return len([entry for entry in self.values if entry['ver']]) >= self.size
 
   def assistant_name(self):
     return self.values[0]['ast'] if self.values else 'N/A'
@@ -199,9 +199,9 @@ class ChecklistSlot(GroupSlot):
     return self.filled and all(step['checked'] for step in self.steps)
 
   def mark_as_complete(self, step_name):
-    for i, step in enumerate(self.steps):
+    for index, step in enumerate(self.steps):
       if step['name'] == step_name and not step['checked']:
-        self.steps[i]['checked'] = True
+        self.steps[index]['checked'] = True
         break
 
   def current_step(self, detail=''):
@@ -313,7 +313,7 @@ class CategorySlot(BaseSlot):
     self.detail = ''
 
   def assign_multiple(self, options):
-    candidates = [o for o in options if o in self.options]
+    candidates = [option for option in options if option in self.options]
     if len(candidates) == 1:
       self.assign_one(candidates[0])
     elif len(candidates) > 1:
@@ -356,7 +356,7 @@ class DictionarySlot(BaseSlot):
   def check_if_filled(self):
     if len(self.value) > 0:
       self.filled = all(
-        not (isinstance(v, str) and len(v) == 0) for v in self.value.values()
+        not (isinstance(val, str) and len(val) == 0) for val in self.value.values()
       )
     return self.filled
 

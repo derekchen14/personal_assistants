@@ -8,13 +8,13 @@ from uuid import uuid4
 
 class ContextCoordinator:
 
-    def __init__(self, config: MappingProxyType):
+    def __init__(self, config:MappingProxyType):
         self.config = config
         self._history: list[dict] = []
         self._checkpoints: list[dict] = []
 
-    def add_turn(self, speaker: str, text: str,
-                 form: str = 'text', turn_type: str | None = None) -> str:
+    def add_turn(self, speaker:str, text:str,
+                 form:str='text', turn_type:str|None=None) -> str:
         turn_id = str(uuid4())[:8]
         turn = {
             'turn_id': turn_id,
@@ -27,12 +27,12 @@ class ContextCoordinator:
         self._history.append(turn)
         return turn_id
 
-    def compile_history(self, look_back: int = 5,
-                        keep_system: bool = True) -> str:
+    def compile_history(self, look_back:int=5,
+                        keep_system:bool=True) -> str:
         if keep_system:
             source = self._history
         else:
-            source = [t for t in self._history if t['speaker'] != 'System']
+            source = [turn for turn in self._history if turn['speaker'] != 'System']
         recent = source[-look_back:]
         lines = []
         for turn in recent:
@@ -41,35 +41,35 @@ class ContextCoordinator:
             lines.append(f'{role}: {text}')
         return '\n'.join(lines)
 
-    def full_conversation(self, keep_system: bool = True) -> list[str]:
+    def full_conversation(self, keep_system:bool=True) -> list[str]:
         if keep_system:
             source = self._history
         else:
-            source = [t for t in self._history if t['speaker'] != 'System']
-        return [f"{t['speaker']}: {t['text']}" for t in source]
+            source = [turn for turn in self._history if turn['speaker'] != 'System']
+        return [f"{turn['speaker']}: {turn['text']}" for turn in source]
 
-    def recent_turns(self, n: int = 3) -> list[dict]:
+    def recent_turns(self, n:int=3) -> list[dict]:
         utterances = [
-            t for t in self._history
-            if t['speaker'] in ('User', 'Agent')
+            turn for turn in self._history
+            if turn['speaker'] in ('User', 'Agent')
         ]
         return utterances[-n:]
 
-    def get_turn(self, turn_id: str) -> dict | None:
+    def get_turn(self, turn_id:str) -> dict|None:
         for turn in self._history:
             if turn['turn_id'] == turn_id:
                 return turn
         return None
 
-    def save_checkpoint(self, label: str, data: dict | None = None):
+    def save_checkpoint(self, label:str, data:dict|None=None):
         self._checkpoints.append({
             'label': label,
             'turn_count': len(self._history),
-            'history_snapshot': [dict(t) for t in self._history],
+            'history_snapshot': [dict(turn) for turn in self._history],
             'data': data or {},
         })
 
-    def get_checkpoint(self, label: str) -> dict | None:
+    def get_checkpoint(self, label:str) -> dict|None:
         for cp in reversed(self._checkpoints):
             if cp['label'] == label:
                 return cp

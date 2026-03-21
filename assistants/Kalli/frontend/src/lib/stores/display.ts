@@ -28,15 +28,18 @@ export interface FrameData {
 }
 
 export type DisplayLayout = 'top' | 'split' | 'bottom';
+export type ActivePage = 'assistants' | 'requirements' | 'tools';
 
 export const activeFrame = writable<FrameData | null>(null);
 export const topFrame = writable<FrameData | null>(null);
 export const bottomFrame = writable<FrameData | null>(null);
+export const activePage = writable<ActivePage>('assistants');
+export const creatingItem = writable<boolean>(false);
 
 export const displayLayout = derived(
-    [topFrame, bottomFrame],
-    ([$top, $bottom]) => {
-        if ($top && $bottom) return 'split' as DisplayLayout;
+    [topFrame, bottomFrame, creatingItem],
+    ([$top, $bottom, $creating]) => {
+        if ($top && ($bottom || $creating)) return 'split' as DisplayLayout;
         if ($top) return 'top' as DisplayLayout;
         return 'bottom' as DisplayLayout;
     },
@@ -46,6 +49,7 @@ export function clearFrames() {
     activeFrame.set(null);
     topFrame.set(null);
     bottomFrame.set(null);
+    creatingItem.set(false);
 }
 
 export function setFrame(frame: FrameData) {
@@ -57,4 +61,9 @@ export function setFrame(frame: FrameData) {
     } else {
         bottomFrame.set(frame);
     }
+}
+
+export function showPage(page: ActivePage) {
+    activePage.set(page);
+    creatingItem.set(false);
 }

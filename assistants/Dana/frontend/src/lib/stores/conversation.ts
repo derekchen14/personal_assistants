@@ -129,6 +129,42 @@ function createConversationStore() {
                 typing: false,
             }));
         },
+
+        selectSheet(name: string) {
+            ws?.send({ select_sheet: name });
+        },
+
+        selectQuery(queryId: string) {
+            ws?.send({ select_query: queryId });
+        },
+
+        selectMetric(metricId: string) {
+            ws?.send({ select_metric: metricId });
+        },
+
+        createQuery(text: string) {
+            ws?.send({ create_query: true, text });
+        },
+
+        deleteQuery(queryId: string) {
+            ws?.send({ delete_query: queryId });
+        },
+
+        updateQuery(queryId: string, text: string) {
+            ws?.send({ update_query: queryId, text });
+        },
+
+        createMetric(name: string, definition: string) {
+            ws?.send({ create_metric: true, name, definition });
+        },
+
+        deleteMetric(metricId: string) {
+            ws?.send({ delete_metric: metricId });
+        },
+
+        updateMetric(metricId: string, name: string, definition: string) {
+            ws?.send({ update_metric: metricId, name, definition });
+        },
     };
 }
 

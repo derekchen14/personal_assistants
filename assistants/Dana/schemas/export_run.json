@@ -1,9 +1,0 @@
-{
-  "type": "object",
-  "properties": {
-    "dataset": {"type": "string", "description": "Dataset name to export"},
-    "format": {"type": "string", "enum": ["csv", "json", "clipboard"], "description": "Export format"},
-    "path": {"type": "string", "description": "Output file path (optional for clipboard)"}
-  },
-  "required": ["dataset", "format"]
-}

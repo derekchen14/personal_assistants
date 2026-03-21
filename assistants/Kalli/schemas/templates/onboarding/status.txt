@@ -1,3 +1,0 @@
-Here's where we stand: {message}
-block_hint: card
-skip_naturalize: false

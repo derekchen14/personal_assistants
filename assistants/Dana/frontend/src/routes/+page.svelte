@@ -1,6 +1,6 @@
 <script lang="ts">
     import { conversation, type Message } from '$lib/stores/conversation';
-    import { setFrame, clearFrames, topFrame, bottomFrame, displayLayout, activePage, searchQuery, initTheme, type ActivePage } from '$lib/stores/display';
+    import { setFrame, clearFrames, showPage, topFrame, bottomFrame, displayLayout, activePage, searchQuery, creatingItem, initTheme, type ActivePage } from '$lib/stores/display';
     import FlowMenu from '$lib/components/FlowMenu.svelte';
     import BlockRenderer from '$lib/components/blocks/BlockRenderer.svelte';
     import IconMagnifyingGlass from '$lib/assets/IconMagnifyingGlass.svelte';
@@ -10,6 +10,13 @@
     let messageInput = $state('');
     let chatContainer: HTMLElement | undefined = $state();
     let sidebarOpen = $state(false);
+    let newQueryText = $state('');
+    let newMetricName = $state('');
+    let newMetricDefinition = $state('');
+
+    function focusEl(el: HTMLElement) {
+        tick().then(() => el.focus());
+    }
 
     onMount(() => {
         initTheme();
@@ -58,6 +65,25 @@
     function handleLogout() {
         conversation.disconnect();
         clearFrames();
+    }
+
+    function handleQuerySubmit() {
+        const text = newQueryText.trim();
+        if (text) {
+            conversation.createQuery(text);
+        }
+        creatingItem.set(false);
+        newQueryText = '';
+    }
+
+    function handleMetricSubmit() {
+        const name = newMetricName.trim();
+        if (name) {
+            conversation.createMetric(name, newMetricDefinition.trim());
+        }
+        creatingItem.set(false);
+        newMetricName = '';
+        newMetricDefinition = '';
     }
 
     $effect(() => {
@@ -133,9 +159,9 @@
                     />
                 </div>
                 <nav class="flex items-center gap-3 text-sm">
-                    {#each [['sheets', 'Sheets'], ['queries', 'Queries']] as [page, label]}
+                    {#each [['sheets', 'Sheets'], ['queries', 'Queries'], ['metrics', 'Metrics']] as [page, label]}
                         <button
-                            onclick={() => $activePage = page as ActivePage}
+                            onclick={() => showPage(page as ActivePage)}
                             class="cursor-pointer transition-colors {$activePage === page ? 'font-medium hover:text-[var(--accent)]' : 'text-[var(--muted)] hover:text-[var(--accent)]'}"
                         >
                             {label}
@@ -215,10 +241,39 @@
                     </div>
                 {/if}
 
-                <!-- Bottom container (CardBlock) -->
-                {#if $displayLayout === 'bottom' || $displayLayout === 'split'}
-                    <div class="flex flex-col grow-[2] h-0 overflow-y-auto p-4 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                        {#if $bottomFrame}
+                <!-- Bottom container (CardBlock or ghost creation) -->
+                {#if $displayLayout === 'bottom' || $displayLayout === 'split' || $creatingItem}
+                    <div class="flex flex-col grow-[2] h-0 min-h-0 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                        {#if $creatingItem}
+                            <div class="flex flex-col h-full p-6 gap-3">
+                                {#if $activePage === 'queries'}
+                                    <textarea
+                                        class="flex-1 resize-none bg-transparent border border-[var(--border)] rounded p-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)] font-mono"
+                                        placeholder="Enter SQL…"
+                                        bind:value={newQueryText}
+                                        onblur={handleQuerySubmit}
+                                        onkeydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleQuerySubmit(); } else if (e.key === 'Escape') { creatingItem.set(false); newQueryText = ''; } }}
+                                        use:focusEl
+                                    ></textarea>
+                                {:else if $activePage === 'metrics'}
+                                    <input
+                                        class="text-lg font-semibold bg-transparent border-b border-[var(--border)] pb-2 outline-none focus:border-[var(--accent)] text-[var(--text)] placeholder:text-[var(--muted)]"
+                                        placeholder="Metric name"
+                                        bind:value={newMetricName}
+                                        onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleMetricSubmit(); } else if (e.key === 'Escape') { creatingItem.set(false); newMetricName = ''; newMetricDefinition = ''; } }}
+                                        use:focusEl
+                                    />
+                                    <textarea
+                                        class="flex-1 resize-none bg-transparent border border-[var(--border)] rounded p-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)] placeholder:text-[var(--muted)]"
+                                        placeholder="Definition (optional)"
+                                        bind:value={newMetricDefinition}
+                                        onblur={handleMetricSubmit}
+                                        onkeydown={(e) => { if (e.key === 'Escape') { creatingItem.set(false); newMetricName = ''; newMetricDefinition = ''; } }}
+                                    ></textarea>
+                                {/if}
+                                <p class="text-sm text-[var(--muted)] italic">Press 'Enter' to save, or 'Esc' to cancel.</p>
+                            </div>
+                        {:else if $bottomFrame}
                             <BlockRenderer frame={$bottomFrame} />
                         {:else}
                             <div class="flex items-center justify-center h-full text-[var(--muted)] text-sm">

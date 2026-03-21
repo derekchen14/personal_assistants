@@ -13,6 +13,20 @@ export interface Message {
     timestamp: number;
 }
 
+function getCookie(name: string): string {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : '';
+}
+
+function setCookie(name: string, value: string, days = 30) {
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires};path=/`;
+}
+
+function deleteCookie(name: string) {
+    document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+}
+
 function createConversationStore() {
     const { subscribe, update } = writable({
         messages: [] as Message[],
@@ -69,9 +83,13 @@ function createConversationStore() {
         connect(username: string) {
             ws = new WebSocketManager('/api/v1/ws', onMessage, onStatus);
             ws.connect();
-            // Queue the username — it will be sent once the connection opens
             ws.send({ username });
+            setCookie('kalli_username', username);
             update((s) => ({ ...s, username, connected: true }));
+        },
+
+        savedUsername(): string {
+            return getCookie('kalli_username');
         },
 
         send(text: string) {
@@ -93,6 +111,51 @@ function createConversationStore() {
             ws.send({ text: text.trim() });
         },
 
+        selectAssistant(name: string) {
+            if (!ws?.connected) return;
+            ws.send({ select_assistant: name });
+        },
+
+        selectRequirement(reqId: string) {
+            if (!ws?.connected) return;
+            ws.send({ select_requirement: reqId });
+        },
+
+        selectTool(toolId: string) {
+            if (!ws?.connected) return;
+            ws.send({ select_tool: toolId });
+        },
+
+        createRequirement(text: string) {
+            if (!ws?.connected) return;
+            ws.send({ create_requirement: true, text });
+        },
+
+        deleteRequirement(reqId: string) {
+            if (!ws?.connected) return;
+            ws.send({ delete_requirement: reqId });
+        },
+
+        updateRequirement(reqId: string, text: string) {
+            if (!ws?.connected) return;
+            ws.send({ update_requirement: reqId, text });
+        },
+
+        createTool(name: string, description: string) {
+            if (!ws?.connected) return;
+            ws.send({ create_tool: true, name, description });
+        },
+
+        deleteTool(toolId: string) {
+            if (!ws?.connected) return;
+            ws.send({ delete_tool: toolId });
+        },
+
+        updateTool(toolId: string, name: string, description: string) {
+            if (!ws?.connected) return;
+            ws.send({ update_tool: toolId, name, description });
+        },
+
         reset() {
             if (!ws?.connected) return;
             ws.send({ reset: true });
@@ -101,7 +164,15 @@ function createConversationStore() {
 
         disconnect() {
             ws?.disconnect();
-            update((s) => ({ ...s, connected: false }));
+            ws = null;
+            msgId = 0;
+            deleteCookie('kalli_username');
+            update(() => ({
+                messages: [],
+                username: '',
+                connected: false,
+                typing: false,
+            }));
         },
     };
 }

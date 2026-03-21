@@ -57,16 +57,16 @@ class BaseFlow(object):
     for slot in self.slots.values():
       slot.check_if_filled()
 
-    elective_slots = [s for s in self.slots.values() if s.priority == 'elective']
-    at_least_one_elective = not elective_slots or any(s.filled for s in elective_slots)
-    all_required = all(s.filled for s in self.slots.values() if s.priority == 'required')
+    elective_slots = [slot for slot in self.slots.values() if slot.priority == 'elective']
+    at_least_one_elective = not elective_slots or any(slot.filled for slot in elective_slots)
+    all_required = all(slot.filled for slot in self.slots.values() if slot.priority == 'required')
     return all_required and at_least_one_elective
 
   def fill_slots_by_label(self, labels):
     """System 1: Fast entity extraction from NLU prediction labels."""
     raise NotImplementedError
 
-  def fill_slot_values(self, values: dict):
+  def fill_slot_values(self, values:dict):
     """Transfer prediction values onto slot objects."""
     if not values:
       return
@@ -88,14 +88,14 @@ class BaseFlow(object):
             slot.add_one(ast=str(item))
       elif isinstance(value, dict) and st == 'dictionary':
         predefined = set(slot.value.keys()) if hasattr(slot, 'value') and isinstance(slot.value, dict) else set()
-        if predefined == {'key', 'value'} and not any(k in predefined for k in value):
-          for k, v in value.items():
-            slot.add_one(key='key', val=str(k))
-            slot.add_one(key='value', val=str(v))
+        if predefined == {'key', 'value'} and not any(dkey in predefined for dkey in value):
+          for dkey, dval in value.items():
+            slot.add_one(key='key', val=str(dkey))
+            slot.add_one(key='value', val=str(dval))
             break
         else:
-          for k, v in value.items():
-            slot.add_one(key=str(k), val=str(v))
+          for dkey, dval in value.items():
+            slot.add_one(key=str(dkey), val=str(dval))
       elif isinstance(value, dict) and hasattr(slot, 'add_one'):
         try:
           slot.add_one(**value)
@@ -121,7 +121,7 @@ class BaseFlow(object):
   def slot_values_dict(self) -> dict:
     """Read filled slot values as a flat dict (for prompt serialization)."""
     return {
-      sn: slot.to_dict() for sn, slot in self.slots.items()
+      name: slot.to_dict() for name, slot in self.slots.items()
       if slot.filled or (slot.criteria == 'multiple' and slot.to_dict())
          or (slot.criteria == 'numeric' and slot.to_dict())
     }

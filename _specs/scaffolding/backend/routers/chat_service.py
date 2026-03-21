@@ -1,303 +1,413 @@
-import os
+"""
+WebSocket chat router — canonical template for personal assistants.
+
+Architecture:
+  - One WebSocket per user, opened on connect and closed on disconnect.
+  - A per-user asyncio.Queue decouples the send path from the receive path.
+    This lets the agent's blocking take_turn() run in a thread while the sender
+    can push silent CRUD responses without waiting.
+  - Username is read from the first JSON message after connect ("intro").
+    No JWT — the cookie is managed by the frontend conversation store and
+    re-sent as the intro on each reconnect.
+
+Panel CRUD pattern (lessons 7–10):
+  Lesson 7 — _build_list_frame:
+    Always bundle ALL entity types into one list frame.  The client filters by
+    $activePage, so it always has fresh data regardless of which tab is active.
+    Never build separate frames per entity type.
+
+  Lesson 8 — _silent:
+    All panel CRUD responses have message: '' so no chat bubble appears.
+    The user sees only the panel update.
+
+  Lesson 9 — entity tagging:
+    Services tag every item with 'entity': 'entity1' etc. in list_all().
+    ListBlock uses this tag to filter items by active page.
+
+  Lesson 10 — CRUD → frame routing:
+    select  → card frame only (bottom panel)
+    delete  → list frame only (top panel refresh)
+    create  → list frame + card frame (refresh + open new item)
+    update  → list frame + card frame (same as create)
+
+Replace placeholder names:
+  entity1  — read-only entity (e.g., 'sheet' in Dana, 'post' in Hugo)
+  entity2  — plain-text editable (e.g., 'query' in Dana)
+  entity3  — structured editable (e.g., 'metric' in Dana)
+  Entity1Service / Entity2Service / Entity3Service — from utilities/services.py
+"""
+
 import asyncio
-import random
 import traceback
-from uuid import uuid4
 
-from fastapi import (WebSocket, WebSocketDisconnect, APIRouter, Cookie)
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.auth.JWT_helpers import decode_JWT
-from backend.assets.ontology import delay_responses
-from backend.utilities.routing import build_json_response_for_state, build_json_response_for_frame
-from backend.manager import get_agent_with_token, reset_agent_with_token, cleanup_agent_by_token, register_cleanup_callback, update_last_activity
-from database.tables import Conversation, ConversationDataSource, Utterance, DialogueState, Frame
+from backend.manager import get_or_create_agent, cleanup_agent, reset_agent
+from backend.utilities.services import Entity1Service, Entity2Service, Entity3Service
+from backend.components.dialogue_state import DialogueState
 
-ENV = os.getenv("SOLEDA_ENV", "development")
 
-# Global dictionaries to store active connections and message queues
-websocket_connections = {}
-queues = {}
-
-# Create a router for the chat service
 chat_router = APIRouter()
 
-def get_queue(user_email: str):
-  if user_email not in queues:
-    queues[user_email] = asyncio.Queue()
-  return queues[user_email]
+# Process-global dicts: one entry per connected user.
+websocket_connections: dict = {}
+queues: dict = {}
 
-def reset_agent_chat(user_email: str, token: str):
-  """Reset the agent for a user using the token for auth"""
-  reset_agent_with_token(token)
-  return {'message': "Chat reset successfully!"}
 
-# This function will be called when an agent is cleaned up by the manager
-async def notify_agent_cleanup(user_id):
-  try:
-    user_email = None
-    # Find the user's email from the websocket_connections keys
-    for email, connection_info in websocket_connections.items():
-      if connection_info.get("user_id") == user_id:
-        user_email = email
-        break
-        
-    if user_email and user_email in queues:
-      disconnect_message = {
-        "connection_status": "disconnected",
-        "message": "Your session has timed out due to inactivity. Please import your data again."
-      }
-      await queues[user_email].put(disconnect_message)
-  except Exception as e:
-    print(f"Error notifying client of agent cleanup: {e}")
+# ── Frame helpers ──────────────────────────────────────────────────────────────
 
-# Define the synchronous wrapper function that will be registered as the callback
-def cleanup_notification_callback(user_id):
-  """
-  Wrapper function for the notify_agent_cleanup coroutine.
-  This is the callback that will be registered with the manager.
-  """
-  try:
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-      asyncio.create_task(notify_agent_cleanup(user_id))
-    else:
-      # Run in a new event loop if we're not in an async context
-      asyncio.run(notify_agent_cleanup(user_id))
-  except Exception as e:
-    print(f"Error in cleanup notification callback: {e}")
+def _build_list_frame(e1s: list, e2s: list, e3s: list) -> dict:
+    """
+    Build the combined list frame sent after any CRUD mutation.
 
-# Register the cleanup notification callback with the manager
-register_cleanup_callback(cleanup_notification_callback)
+    All three entity lists merge into one 'items' list.  Each item is tagged
+    with its 'entity' type (set by the service's list_all()).  ListBlock reads
+    $activePage and filters by that entity tag, so the correct tab is always
+    shown without extra requests.
+
+    Why merge all types:  if we sent only the mutated entity's list, the other
+    tabs would show stale data the next time the user switches tabs.
+    """
+    return {
+        'type': 'list',
+        'show': True,
+        'panel': 'top',
+        'source': 'welcome',
+        'data': {
+            'title': 'Your Items',  # Domain-specific: rename to match assistant
+            'items': e1s + e2s + e3s,
+            'source': 'welcome',
+        },
+    }
+
+
+def _silent(frame: dict | None) -> dict:
+    """
+    Wrap a frame in the full response envelope with an empty message.
+
+    Empty message → no chat bubble in the conversation panel.  The user sees
+    only the panel update.  Use for ALL panel CRUD responses.  The agent turn
+    path (bottom of the receive loop) sets its own message from the LLM.
+    """
+    return {
+        'message': '',
+        'raw_utterance': '',
+        'actions': [],
+        'interaction': {'type': 'default', 'show': False, 'data': {}},
+        'code_snippet': None,
+        'frame': frame,
+    }
+
+
+def _get_queue(username: str) -> asyncio.Queue:
+    """Return or create the send queue for this user."""
+    if username not in queues:
+        queues[username] = asyncio.Queue()
+    return queues[username]
+
+
+# ── WebSocket endpoint ─────────────────────────────────────────────────────────
 
 @chat_router.websocket('/ws')
-# Manages real-time WebSocket connections for chat functionality. Handles message processing,
-# agent interactions, and streaming responses with background tasks for delay responses.
-async def chat(websocket: WebSocket, auth_token: str = Cookie(None)):
-  user_id = None
-  user_email = None
-  
-  async def sender(queue):
-    while True:
-      try:
-        message = await queue.get()
-        await websocket.send_json(message)
-      except WebSocketDisconnect as e:
-        print(f"WebSocket disconnected with code: {e.code}")
-        break
-      except asyncio.CancelledError:
-        print("WebSocket closed by client")
-        break
-      except Exception as e:
-        print(f"Error occurred while processing message: {e}")
+async def chat(websocket: WebSocket):
+    """
+    Main WebSocket handler. One connection per user.
 
-  async def stall_for_time(delay, queue):
-    try:
-      await asyncio.sleep(delay)
-    except asyncio.CancelledError:
-      print("  Delay is canceled")
-      return
-    payload = {'message': random.choice(delay_responses)}
-    await queue.put(payload)
-
-  # Authenticate with cookie token
-  if not auth_token:
+    Lifecycle:
+      1. Accept + wait for intro message (username).
+      2. Load/create agent and services for this user.
+      3. Build welcome response with initial list frame and enqueue it.
+      4. Start the sender coroutine task (drains queue → socket).
+      5. Enter the receive loop: dispatch CRUD or agent-turn messages.
+      6. On disconnect (any cause): cancel sender, clean up agent.
+    """
+    username = None
     await websocket.accept()
-    await websocket.close(code=1008, reason="Authentication failed")
-    return
-  
-  # Verify token validity
-  try:
-    payload = decode_JWT(auth_token)
-    user_email = payload.get('email')
-    user_id = payload.get('userID')
-    if not user_email:
-      await websocket.accept()
-      await websocket.close(code=1008, reason="Invalid authentication token")
-      return
-  except Exception as e:
-    await websocket.accept()
-    await websocket.close(code=1008, reason="Invalid authentication token")
-    return
-  
-  # If authentication succeeded, accept the connection
-  await websocket.accept()
-  
-  # Set up the data analyst with the authenticated token
-  data_analyst = get_agent_with_token(auth_token)
-  queue = get_queue(user_email)
-  sender_task = asyncio.create_task(sender(queue))
-  
-  # Store websocket connection
-  websocket_connections[user_email] = {
-    "websocket": websocket,
-    "user_id": user_id
-  }
 
-  async def create_conversation():
-    """Create a new conversation in the storage database"""
+    error_message = "Sorry, I couldn't process that. Please try rephrasing."
+
     try:
-      id = uuid4()
-      ss_name = data_analyst.memory.db_name
-      # Temporarily skip making conversations for test data
-      if ss_name == 'Shoe Store Sales' or ss_name == 'E-commerce Web Traffic' or ss_name == 'Customer Integration':
-        return 'no_db_conversation'
-      data_analyst.storage.insert_item(Conversation(
-        id=id,
-        name=data_analyst.memory.db_name,
-        description=data_analyst.memory.description.get('goal', ''),
-        user_id=user_id,
-        agent_id=1, #Dana
-        source="production" if ENV == "production" else "development",
-      ))
-      data_analyst.conversation_id = str(id)  # Convert UUID to string
+        # ── Intro: read username ───────────────────────────────────────────
+        # Frontend sends {username: "..."} immediately after connecting.
+        # This is simpler than URL params and works with all WS client libs.
+        intro = await websocket.receive_json()
+        username = intro.get('username', '').strip()
+        if not username:
+            await websocket.send_json({'error': 'Username required'})
+            await websocket.close(code=1008, reason='Username required')
+            return
 
-      # Add entries to ConversationDataSource table for each data source
-      for data_source_id in data_analyst.data_source_ids:
-        data_analyst.storage.insert_item(ConversationDataSource(
-          conversation_id=id,
-          data_source_id=data_source_id
-        ))
+        first_name = username.split()[0]
+        agent = get_or_create_agent(username)
+        queue = _get_queue(username)
 
-      return str(id)  # Return string version of UUID
-    except Exception as e:
-      print(f"Error creating conversation: {str(e)}")
-      return None
+        # ── Load initial data ──────────────────────────────────────────────
+        # Services are stateless thin wrappers — creating them per-connection
+        # (and again per-request below) is intentional for thread safety.
+        all_e1 = Entity1Service().list_all().get('result', [])
+        all_e2 = Entity2Service().list_all().get('result', [])
+        all_e3 = Entity3Service().list_all().get('result', [])
+        has_items = any([all_e1, all_e2, all_e3])
+        welcome_frame = _build_list_frame(all_e1, all_e2, all_e3) if has_items else None
 
-  while True:
-    try:      
-      data_analyst = get_agent_with_token(auth_token)
-      error_message = "Sorry, I couldn't process that request. Please try asking a simpler question or phrasing it differently. If the issue persists, contact us at support@soleda.ai."
-      unsupported_message = "This request isn't supported yet, but we're working on it! Please try a different request or contact us at support@soleda.ai."
-      body = await websocket.receive_json(mode='binary')
-        
-      user_actions, user_text, gold_dax = body['lastAction'], body['currentMessage'], body['dialogueAct']
-      data_analyst.handle_user_actions(user_actions, gold_dax)
+        welcome = _silent(welcome_frame)
+        welcome['message'] = f"Hey {first_name}! What can I help you with today?"
+        await queue.put(welcome)
 
-      """
-      # Create conversation on first message if not exists
-      if not data_analyst.conversation_id:
-        conversation_id = await create_conversation()
-        if not conversation_id:
-          await queue.put({'message': "Error creating conversation. Please try again."})
-          continue
-      if data_analyst.conversation_id != 'no_db_conversation':
-        utt_id = uuid4()
-        data_analyst.storage.insert_item(Utterance(
-          id=utt_id,
-          conversation_id=data_analyst.conversation_id,
-          speaker='User',
-          text=user_text,
-          utt_type='text',
-          operations=user_actions if user_actions else [],
-          dact_id=gold_dax if gold_dax else None
-        ))
-      """
-      stall_task = asyncio.create_task(stall_for_time(24, queue))
-      
-      try:
-        output, out_type = await asyncio.to_thread(data_analyst.understand_language, user_text, gold_dax)
-        if out_type == 'error':
-          await queue.put({**output, 'conversation_id': data_analyst.conversation_id})
-        elif out_type == 'stream':
-          stall_task.cancel()
-          for chunk in output:
-            stream_json, still_thinking = await asyncio.to_thread(data_analyst.process_thoughts, chunk)
-            if still_thinking:
-              await queue.put({**stream_json, 'conversation_id': data_analyst.conversation_id})
+        # ── Sender task ────────────────────────────────────────────────────
+        # Drains the queue in a separate coroutine so the receive loop is never
+        # blocked waiting for a send.  This matters when take_turn() runs in a
+        # thread and may enqueue results while a CRUD response is in flight.
+        async def sender(q: asyncio.Queue):
+            while True:
+                try:
+                    msg = await q.get()
+                    await websocket.send_json(msg)
+                except (WebSocketDisconnect, asyncio.CancelledError):
+                    break
+                except Exception as e:
+                    print(f'WebSocket send error: {e}')
 
-          thought_json = data_analyst.wrap_up_thinking()
-          data_analyst.res.top_panel = thought_json
-          stall_task = asyncio.create_task(stall_for_time(24, queue))
-          dialogue_state = data_analyst.complete_nlu()
-        elif out_type == 'state' and len(output.thought) > 0:
-          thought_json = build_json_response_for_state(output)
-          data_analyst.res.top_panel = thought_json
-          await queue.put({**thought_json, 'conversation_id': data_analyst.conversation_id})
-          stall_task.cancel()
-          stall_task = asyncio.create_task(stall_for_time(24, queue))
-        if out_type == 'unsupported':
-          await queue.put({'message': unsupported_message, 'conversation_id': data_analyst.conversation_id})
-          if 'stall_task' in locals() and stall_task:
-            stall_task.cancel()
-          continue
+        sender_task = asyncio.create_task(sender(queue))
+        websocket_connections[username] = websocket
 
-        take_action = True
-        while take_action:
-          frame, actions, take_action = await asyncio.to_thread(data_analyst.execute_policy)
+        # ── Receive loop ───────────────────────────────────────────────────
+        while True:
+            try:
+                body = await websocket.receive_json()
 
-          if len(frame.code) > 0 or frame.source == 'change':
-            frame_json = build_json_response_for_frame(frame)
-            if frame_json['interaction']['show']:
-              data_analyst.res.top_panel = frame_json
+                # ── reset ──────────────────────────────────────────────────
+                # Clears conversation history and re-shows the welcome frame.
+                if body.get('reset'):
+                    reset_agent(username)
+                    e1s = Entity1Service().list_all().get('result', [])
+                    e2s = Entity2Service().list_all().get('result', [])
+                    e3s = Entity3Service().list_all().get('result', [])
+                    has_r = any([e1s, e2s, e3s])
+                    resp = _silent(_build_list_frame(e1s, e2s, e3s) if has_r else None)
+                    resp['message'] = f"Hey {first_name}! What can I help you with today?"
+                    await queue.put(resp)
+                    continue
 
-            if frame.properties.get('respond', False):
-              response, _ = await asyncio.to_thread(data_analyst.generate_response, frame, actions)
-              await queue.put({**response, 'conversation_id': data_analyst.conversation_id})
-            elif 'CREATION' in actions:
-              pass
-            else:
-              await queue.put({**frame_json, 'conversation_id': data_analyst.conversation_id})
+                # ── select_entity1 → card frame (read-only) ────────────────
+                # select: find the item and display it in the bottom panel.
+                # No mutation → no list refresh needed.
+                select_e1_id = body.get('select_entity1')
+                if select_e1_id:
+                    try:
+                        result = Entity1Service().select(select_e1_id)
+                        if result.get('status') == 'success':
+                            card_frame = {
+                                'type': 'card', 'show': True,
+                                'panel': 'bottom', 'source': 'select',
+                                'data': {**result['result'], 'entity': 'entity1'},
+                            }
+                            await queue.put(_silent(card_frame))
+                    except Exception as e:
+                        print(f'select_entity1 error: {e}')
+                    continue
 
-            stall_task.cancel()
-            stall_task = asyncio.create_task(stall_for_time(24, queue))
+                # ── select_entity2 → card frame (editable, plain text) ─────
+                select_e2_id = body.get('select_entity2')
+                if select_e2_id:
+                    try:
+                        result = Entity2Service().select(select_e2_id)
+                        if result.get('status') == 'success':
+                            card_frame = {
+                                'type': 'card', 'show': True,
+                                'panel': 'bottom', 'source': 'select',
+                                'data': {**result['result'], 'entity': 'entity2'},
+                            }
+                            await queue.put(_silent(card_frame))
+                    except Exception as e:
+                        print(f'select_entity2 error: {e}')
+                    continue
 
-        response, _ = await asyncio.to_thread(data_analyst.generate_response, frame, actions)
-        await queue.put({**response, 'conversation_id': data_analyst.conversation_id})
-        if user_id:
-          update_last_activity(user_id)
-        stall_task.cancel()
-      
-      except Exception as main_error:
-        await queue.put({'message': error_message, 'conversation_id': data_analyst.conversation_id})
-        print(f"Error: {str(main_error)}\n{traceback.format_exc()}")
-        if 'stall_task' in locals() and stall_task:
-          stall_task.cancel()
-      
-    except WebSocketDisconnect as wsd:
-      close_code = wsd.code
-      close_reason = getattr(wsd, 'reason', 'No reason provided')
-      print(f"WebSocket disconnected with code: {close_code}, reason: {close_reason}")
-            
-      if auth_token and 'data_analyst' in locals():
-        # Call end_session before cleanup
-        try:
-          data_analyst.close()
-        except Exception as e:
-          print(f"Error saving session state: {str(e)}")
-        cleanup_agent_by_token(auth_token, 'websocket')
-      
-      if user_email and user_email in websocket_connections:
-        del websocket_connections[user_email]
-          
-      if 'sender_task' in locals() and sender_task:
+                # ── select_entity3 → card frame (editable, structured) ─────
+                select_e3_id = body.get('select_entity3')
+                if select_e3_id:
+                    try:
+                        result = Entity3Service().select(select_e3_id)
+                        if result.get('status') == 'success':
+                            card_frame = {
+                                'type': 'card', 'show': True,
+                                'panel': 'bottom', 'source': 'select',
+                                'data': {**result['result'], 'entity': 'entity3'},
+                            }
+                            await queue.put(_silent(card_frame))
+                    except Exception as e:
+                        print(f'select_entity3 error: {e}')
+                    continue
+
+                # ── create_entity2 → list + card ──────────────────────────
+                # create: refresh the list AND open the new item in bottom panel.
+                if body.get('create_entity2'):
+                    text = body.get('text', '')
+                    try:
+                        svc = Entity2Service()
+                        result = svc.create(text)
+                        if result.get('status') == 'success':
+                            e1s = Entity1Service().list_all().get('result', [])
+                            e2s = svc.list_all().get('result', [])
+                            e3s = Entity3Service().list_all().get('result', [])
+                            await queue.put(_silent(_build_list_frame(e1s, e2s, e3s)))
+                            card_frame = {
+                                'type': 'card', 'show': True,
+                                'panel': 'bottom', 'source': 'create',
+                                'data': {**result['result'], 'entity': 'entity2'},
+                            }
+                            await queue.put(_silent(card_frame))
+                        else:
+                            await queue.put({'message': result.get('message', error_message)})
+                    except Exception as e:
+                        print(f'create_entity2 error: {e}\n{traceback.format_exc()}')
+                        await queue.put({'message': error_message})
+                    continue
+
+                # ── create_entity3 → list + card ──────────────────────────
+                if body.get('create_entity3'):
+                    name = body.get('name', '')
+                    definition = body.get('definition', '')
+                    try:
+                        svc = Entity3Service()
+                        result = svc.create(name, definition)
+                        if result.get('status') == 'success':
+                            e1s = Entity1Service().list_all().get('result', [])
+                            e2s = Entity2Service().list_all().get('result', [])
+                            e3s = svc.list_all().get('result', [])
+                            await queue.put(_silent(_build_list_frame(e1s, e2s, e3s)))
+                            card_frame = {
+                                'type': 'card', 'show': True,
+                                'panel': 'bottom', 'source': 'create',
+                                'data': {**result['result'], 'entity': 'entity3'},
+                            }
+                            await queue.put(_silent(card_frame))
+                        else:
+                            await queue.put({'message': result.get('message', error_message)})
+                    except Exception as e:
+                        print(f'create_entity3 error: {e}\n{traceback.format_exc()}')
+                        await queue.put({'message': error_message})
+                    continue
+
+                # ── delete_entity2 → list only ────────────────────────────
+                # delete: item is gone, so only refresh the list; no card.
+                delete_e2_id = body.get('delete_entity2')
+                if delete_e2_id:
+                    try:
+                        svc = Entity2Service()
+                        result = svc.delete(delete_e2_id)
+                        if result.get('status') == 'success':
+                            e1s = Entity1Service().list_all().get('result', [])
+                            e2s = svc.list_all().get('result', [])
+                            e3s = Entity3Service().list_all().get('result', [])
+                            await queue.put(_silent(_build_list_frame(e1s, e2s, e3s)))
+                        else:
+                            await queue.put({'message': result.get('message', error_message)})
+                    except Exception as e:
+                        print(f'delete_entity2 error: {e}\n{traceback.format_exc()}')
+                        await queue.put({'message': error_message})
+                    continue
+
+                # ── delete_entity3 → list only ────────────────────────────
+                delete_e3_id = body.get('delete_entity3')
+                if delete_e3_id:
+                    try:
+                        svc = Entity3Service()
+                        result = svc.delete(delete_e3_id)
+                        if result.get('status') == 'success':
+                            e1s = Entity1Service().list_all().get('result', [])
+                            e2s = Entity2Service().list_all().get('result', [])
+                            e3s = svc.list_all().get('result', [])
+                            await queue.put(_silent(_build_list_frame(e1s, e2s, e3s)))
+                        else:
+                            await queue.put({'message': result.get('message', error_message)})
+                    except Exception as e:
+                        print(f'delete_entity3 error: {e}\n{traceback.format_exc()}')
+                        await queue.put({'message': error_message})
+                    continue
+
+                # ── update_entity2 → list + card ──────────────────────────
+                # update: refresh list (label may have changed) + re-open card.
+                update_e2_id = body.get('update_entity2')
+                if update_e2_id:
+                    text = body.get('text', '')
+                    try:
+                        svc = Entity2Service()
+                        result = svc.update(update_e2_id, text)
+                        if result.get('status') == 'success':
+                            e1s = Entity1Service().list_all().get('result', [])
+                            e2s = svc.list_all().get('result', [])
+                            e3s = Entity3Service().list_all().get('result', [])
+                            await queue.put(_silent(_build_list_frame(e1s, e2s, e3s)))
+                            card_frame = {
+                                'type': 'card', 'show': True,
+                                'panel': 'bottom', 'source': 'update',
+                                'data': {**result['result'], 'entity': 'entity2'},
+                            }
+                            await queue.put(_silent(card_frame))
+                        else:
+                            await queue.put({'message': result.get('message', error_message)})
+                    except Exception as e:
+                        print(f'update_entity2 error: {e}\n{traceback.format_exc()}')
+                        await queue.put({'message': error_message})
+                    continue
+
+                # ── update_entity3 → list + card ──────────────────────────
+                update_e3_id = body.get('update_entity3')
+                if update_e3_id:
+                    name = body.get('name', '')
+                    definition = body.get('definition', '')
+                    try:
+                        svc = Entity3Service()
+                        result = svc.update(update_e3_id, name, definition)
+                        if result.get('status') == 'success':
+                            e1s = Entity1Service().list_all().get('result', [])
+                            e2s = Entity2Service().list_all().get('result', [])
+                            e3s = svc.list_all().get('result', [])
+                            await queue.put(_silent(_build_list_frame(e1s, e2s, e3s)))
+                            card_frame = {
+                                'type': 'card', 'show': True,
+                                'panel': 'bottom', 'source': 'update',
+                                'data': {**result['result'], 'entity': 'entity3'},
+                            }
+                            await queue.put(_silent(card_frame))
+                        else:
+                            await queue.put({'message': result.get('message', error_message)})
+                    except Exception as e:
+                        print(f'update_entity3 error: {e}\n{traceback.format_exc()}')
+                        await queue.put({'message': error_message})
+                    continue
+
+                # ── Agent turn (fallback) ──────────────────────────────────
+                # Falls through here when no CRUD key matched.  Run the agent
+                # in a thread so it doesn't block the event loop.
+                user_text = body.get('text', '') or body.get('currentMessage', '')
+                dax = body.get('dax')
+                payload = body.get('payload') or {}
+                try:
+                    result = await asyncio.to_thread(agent.take_turn, user_text, dax, payload)
+                    await queue.put(result)
+                except Exception as turn_error:
+                    print(f'Turn error: {turn_error}\n{traceback.format_exc()}')
+                    await queue.put({'message': error_message})
+
+            except WebSocketDisconnect:
+                break
+            except asyncio.CancelledError:
+                break
+            except Exception as error:
+                print(f'Unexpected WS error: {error}\n{traceback.format_exc()}')
+                try:
+                    await queue.put({'message': error_message})
+                except Exception:
+                    pass
+                break
+
         sender_task.cancel()
-      break
-    except asyncio.CancelledError:
-      print("WebSocket closed by client")
-      
-      if auth_token and 'data_analyst' in locals():
-        cleanup_agent_by_token(auth_token, 'websocket')
-      
-      if user_email and user_email in websocket_connections:
-        del websocket_connections[user_email]
-          
-      if 'sender_task' in locals() and sender_task:
-        sender_task.cancel()
 
-      break
-    except Exception as error:
-      print(f"Unexpected error in chat WebSocket handler: {str(error)}\n{traceback.format_exc()}")
-      
-      if auth_token and 'data_analyst' in locals():
-        cleanup_agent_by_token(auth_token, 'websocket')
-      
-      if user_email and user_email in websocket_connections:
-        del websocket_connections[user_email]
-          
-      try:
-        await queue.put({'message': error_message, 'conversation_id': data_analyst.conversation_id})
-      except:
-        pass
-
-  if 'sender_task' in locals() and sender_task:
-    sender_task.cancel()
+    finally:
+        # Always clean up — whether the client disconnected cleanly, timed out,
+        # or threw an exception.  cleanup_agent() is idempotent.
+        if username:
+            websocket_connections.pop(username, None)
+            cleanup_agent(username, 'websocket')

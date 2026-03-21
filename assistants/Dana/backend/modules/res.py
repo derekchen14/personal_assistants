@@ -25,15 +25,15 @@ _UNSUPPORTED_MESSAGE = (
 
 class RES:
 
-    def __init__(self, config: MappingProxyType, ambiguity: AmbiguityHandler,
-                 engineer: PromptEngineer, world: 'World'):
+    def __init__(self, config:MappingProxyType, ambiguity:AmbiguityHandler,
+                 engineer:PromptEngineer, world:'World'):
         self.config = config
         self.ambiguity = ambiguity
         self.engineer = engineer
         self.world = world
         self.flow_stack = world.flow_stack
 
-    def respond(self, frame: DisplayFrame) -> tuple[str, DisplayFrame]:
+    def respond(self, frame:DisplayFrame) -> tuple[str, DisplayFrame]:
         completed_flows = self._start()
 
         if self.ambiguity.present():
@@ -79,7 +79,7 @@ class RES:
     def _start(self) -> list[BaseFlow]:
         popped = self.flow_stack.pop_completed_and_invalid()
 
-        completed = [f for f in popped if f.result is not None]
+        completed = [flow for flow in popped if flow.result is not None]
         for flow in completed:
             if flow.intent == Intent.PLAN:
                 state = self.world.current_state()
@@ -114,8 +114,8 @@ class RES:
 
     # ── Generate ──────────────────────────────────────────────────────
 
-    def _generate(self, frame: DisplayFrame, state: DialogueState | None,
-                  completed_flows: list[BaseFlow]) -> str:
+    def _generate(self, frame:DisplayFrame, state:DialogueState|None,
+                  completed_flows:list[BaseFlow]) -> str:
         content = frame.data.get('content', '') if frame.has_content() else ''
         if not content:
             return ''
@@ -131,8 +131,8 @@ class RES:
 
         return self._naturalize(raw, frame.block_type if frame.has_content() else None)
 
-    def _template_fill(self, message: str, state: DialogueState | None,
-                       intent: str, flow_name: str) -> str:
+    def _template_fill(self, message:str, state:DialogueState|None,
+                       intent:str, flow_name:str) -> str:
         tmpl_info = self.engineer.get_template(flow_name, intent)
         template = tmpl_info.get('template', '{message}')
 
@@ -141,7 +141,7 @@ class RES:
         if flow:
             sv = flow.slot_values_dict()
             if sv:
-                parts = [f'{k}: {v}' for k, v in sv.items()]
+                parts = [f'{key}: {val}' for key, val in sv.items()]
                 slot_summary = ', '.join(parts)
 
         try:
@@ -153,7 +153,7 @@ class RES:
         except KeyError:
             return message
 
-    def _naturalize(self, raw_text: str, block_type: str | None) -> str:
+    def _naturalize(self, raw_text:str, block_type:str|None) -> str:
         if self.config.get('debug', False):
             return raw_text
 
@@ -174,14 +174,14 @@ class RES:
                 call_site='naturalize', max_tokens=2048,
             )
             return text.strip() if text.strip() else raw_text
-        except Exception as e:
-            print(f'RES naturalization error: {e}')
+        except Exception as ecp:
+            print(f'RES naturalization error: {ecp}')
             return raw_text
 
     # ── Display ───────────────────────────────────────────────────────
 
-    def display(self, frame: DisplayFrame, state: DialogueState | None,
-                text: str) -> dict | None:
+    def display(self, frame:DisplayFrame, state:DialogueState|None,
+                text:str) -> dict | None:
         if not frame or not frame.has_content():
             return None
         if not frame.data or frame.block_type == 'default':
@@ -214,7 +214,7 @@ class RES:
 
     # ── Post-hook ─────────────────────────────────────────────────────
 
-    def _finish(self, text: str, frame: DisplayFrame):
+    def _finish(self, text:str, frame:DisplayFrame):
         state = self.world.current_state()
         intent = state.pred_intent if state else 'Converse'
 

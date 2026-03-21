@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from config import load_config
+from schemas.config import load_config
 from backend.modules.nlu import NLU
 from backend.modules.pex import PEX
 from backend.modules.res import RES
