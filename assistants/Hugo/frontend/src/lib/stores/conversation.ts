@@ -45,7 +45,7 @@ function createConversationStore() {
 
         const frame = data.frame as Record<string, unknown> | null;
         if (frame) {
-            console.log('[frame] received:', frame.block_type, 'panel:', frame.panel, 'data:', frame.data);
+            console.log('[frame] received:', { origin: frame.origin, panel: frame.panel, blocks: frame.blocks });
         } else {
             console.log('[frame] none');
         }
@@ -111,7 +111,7 @@ function createConversationStore() {
             ws.send(body);
         },
 
-        action(description: string, dax: string, payload: Record<string, string> = {}) {
+        action(description: string, dax: string, payload: Record<string, unknown> = {}) {
             const body: Record<string, unknown> = { text: `<action>${description}</action>`, dax };
             if (Object.keys(payload).length) body.payload = payload;
             ws!.send(body);

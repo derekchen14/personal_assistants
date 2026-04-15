@@ -1,30 +1,67 @@
 # Skill: brainstorm
 
-Brainstorm new topic ideas for a post, alternatives for wording or phrasing, or new angles for existing themes.
+Brainstorm new topic ideas for a post, alternatives for wording, or new angles for existing themes.
 
 ## Behavior
 
-### When `source.note` is filled (word/phrase)
-- The user has highlighted a specific word or phrase (`source.note`) in their post
-- Follow the user's instructions for what to do with the word/phrase
-- Consider the tone and context of the post when suggesting alternatives
-- Keep the output concise and focused on the task
-- Do NOT ask for a topic — the highlighted text is the subject
+### Mode A — Topic / theme (when `topic` is filled)
+- `brainstorm_ideas(topic=<topic>)` for creative angles.
+- Optionally `find_posts(query=<topic>)` to avoid repeating what the user already wrote.
+- Produce 3–5 distinct ideas. Vary format, audience, and angle.
 
-### When `topic` is filled (topic/theme)
-- Generate 3-5 creative angles or subtopics for the given topic
-- Use `find_posts` to check what the user has already written about
-- Vary the types of ideas: different formats, audiences, angles
-- For each idea, include a one-line hook or thesis statement
-- Suggest ideas ultimately based on the user's preferences and stated goals
-- If the user likes an idea, suggest `generate_outline` as the next step
-
-## Slots
-- `source.post` (elective): The post the highlight came from
-- `source.section` (elective): The section within the post that the highlight came from
-- `source.note` (elective): A highlighted word or phrase the user wants alternatives for
-- `topic` (elective): A broad topic to brainstorm blog ideas about
+### Mode B — Highlighted word or phrase (when `source.snip` is filled)
+- The user highlighted a phrase; suggest 2–3 alternatives that match the post's tone.
+- `read_section(post_id=..., sec_id=...)` if you need the surrounding context.
 
 ## Output
-- **Word alternatives mode**: A short list of 2-3 replacement options
-- **Idea brainstorm mode**: A numbered list of 3-5 creative ideas with brief descriptions
+Respond with **JSON** in one of the two shapes below.
+
+Mode A (topic):
+```json
+{
+  "mode": "topic",
+  "topic": "...",
+  "ideas": [
+    {"title": "...", "hook": "<one-line thesis>"},
+    {"title": "...", "hook": "..."}
+  ]
+}
+```
+
+Mode B (highlight):
+```json
+{
+  "mode": "highlight",
+  "original": "the highlighted phrase",
+  "alternatives": ["option 1", "option 2", "option 3"]
+}
+```
+
+## Few-shot example
+
+User: "Brainstorm some alternative angles for the synthetic data topic"
+
+Correct tool trajectory:
+1. `brainstorm_ideas(topic='synthetic data generation')` → returns candidate angles.
+2. `find_posts(query='synthetic data')` → returns existing coverage.
+
+Correct final reply:
+```json
+{
+  "mode": "topic",
+  "topic": "synthetic data generation",
+  "ideas": [
+    {"title": "When synthetic data beats human labels", "hook": "A cost/quality tradeoff teardown"},
+    {"title": "Denoising the noise you created", "hook": "How to QA synthetic training sets"},
+    {"title": "Synthetic-first intent classifiers", "hook": "Lessons from shipping one in production"}
+  ]
+}
+```
+
+## Slots
+- `topic` (elective): Broad topic to brainstorm ideas about.
+- `source` (elective): Post/section/snippet grounding when highlighting a phrase.
+
+## Important
+- Do not propose more than 5 ideas. Fewer strong ideas beat many weak ones.
+- Match the user's stated interests and prior post themes.

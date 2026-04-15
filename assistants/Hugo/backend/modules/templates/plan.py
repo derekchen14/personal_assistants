@@ -12,5 +12,4 @@ TEMPLATES = {
 
 def fill_plan_template(template:str, flow:BaseFlow, frame:DisplayFrame) -> str:
     template = TEMPLATES[flow.name()]['template']
-    message = frame.thoughts or frame.data.get('content', '')
-    return template.format(message=message)
+    return template.format(message=frame.thoughts)

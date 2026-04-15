@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
+from dataclasses import dataclass
+from enum import Enum
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -17,6 +20,21 @@ from schemas.ontology import Intent
 if TYPE_CHECKING:
     from backend.components.context_coordinator import ContextCoordinator
     from backend.components.world import World
+
+log = logging.getLogger(__name__)
+
+
+class RecoveryAction(Enum):
+    RETRY = 'retry'
+    GATHER_CONTEXT = 'gather'    # future
+    REROUTE = 'reroute'          # future
+    ESCALATE = 'escalate'
+
+
+@dataclass
+class FrameCheck:
+    passed: bool
+    reason: str = ''
 
 class PEX:
 
@@ -89,17 +107,23 @@ class PEX:
         }
 
     def execute(self, state:DialogueState, context:'ContextCoordinator') -> tuple[DisplayFrame, bool]:
-        active_flow = self.flow_stack.get_active_flow()
-        if not active_flow:
-            frame = DisplayFrame(self.config)
-            return frame, False
+        active_flow = self.flow_stack.get_flow()
 
         check_result = self._security_check(active_flow)
         if check_result:
             return check_result, False
 
-        policy = self._policies.get(active_flow.intent)
+        policy = self._policies[active_flow.intent]
         frame = policy.execute(state, context, self._dispatch_tool)
+
+        check = self._validate_frame(frame, active_flow)
+        if not check.passed:
+            frame, action = self.recover(check, active_flow, context)
+            if action == RecoveryAction.ESCALATE:
+                state.has_issues = True
+                self.world.insert_frame(frame)
+                self._verify(active_flow)
+                return frame, False
 
         self.world.insert_frame(frame)
         keep_going = self._verify(active_flow)
@@ -125,22 +149,176 @@ class PEX:
                     ),
                 )
                 frame = DisplayFrame(self.config)
-                frame.set_frame('confirmation', {
+                frame.add_block({'type': 'confirmation', 'data': {
                     'prompt': self.ambiguity.ask(),
                     'confirm_label': 'Approve',
                     'cancel_label': 'Cancel',
-                })
+                }})
                 return frame
 
         return None
 
-    def _update_active_post(self, flow):
-        """Update dialogue state's active_post from the flow's entity slot."""
-        ent_slot = flow.slots.get(flow.entity_slot)
-        if ent_slot and ent_slot.filled:
-            state = self.world.current_state()
-            if state:
-                state.active_post = ent_slot.values[0]['post']
+    def _verify_active_post(self, flow):
+        """Read-only check: if the flow is grounded on a post/section/channel,
+        state.active_post must be set by the policy. Topic-grounded flows skip this."""
+        state = self.world.current_state()
+        ent_slot = flow.slots[flow.entity_slot]
+        if ent_slot.slot_type in ['source', 'target', 'removal', 'channel'] and not state.active_post:
+            state.has_issues = True
+
+    # -- Validation -------------------------------------------------------
+
+    def _validate_frame(self, frame:DisplayFrame, flow) -> FrameCheck:
+        """Check whether a frame is good enough to show to the user."""
+        if self.ambiguity.present():
+            return FrameCheck(passed=True)
+        block_data = self._merge_block_data(frame)
+        if frame.block_type() != 'default' and not block_data:
+            return FrameCheck(passed=False, reason='Frame has no data')
+        if 'error' in block_data and block_data.get('status') == 'error':
+            return FrameCheck(passed=False, reason=f'Tool error: {block_data["error"]}')
+        last_user = self.world.context.last_user_text
+        thoughts = frame.thoughts
+        if last_user and thoughts.strip() == last_user.strip():
+            return FrameCheck(passed=False, reason='Response echoes user input verbatim')
+        if self._should_llm_validate(flow):
+            card_content = block_data.get('content', '')
+            slot_text = self._collect_slot_evidence(flow)
+            visible = '\n'.join(part for part in (thoughts, card_content, slot_text) if part)
+            return self._llm_quality_check(visible)
+        return FrameCheck(passed=True)
+
+    @staticmethod
+    def _merge_block_data(frame:DisplayFrame) -> dict:
+        merged = {}
+        for block in frame.blocks:
+            merged.update(block.data)
+        return merged
+
+    @staticmethod
+    def _collect_slot_evidence(flow) -> str:
+        """Aggregate slot data that represents user-visible work (proposals, etc)."""
+        slot = flow.slots.get('proposals')
+        if not slot or not slot.options:
+            return ''
+        parts = []
+        for idx, option in enumerate(slot.options, start=1):
+            if isinstance(option, list):
+                sec_lines = [f"## {sec['name']}\n{sec.get('description', '')}"
+                             for sec in option]
+                parts.append(f"### Option {idx}\n" + '\n'.join(sec_lines))
+            else:
+                parts.append(f"### Option {idx}\n{option}")
+        return '\n\n'.join(parts)
+
+    def _should_llm_validate(self, flow) -> bool:
+        flows = self.config.get('recovery', {}).get('llm_validate_flows', [])
+        return flow.name() in flows
+
+    def _llm_quality_check(self, content:str) -> FrameCheck:
+        last_user = self.world.context.last_user_text
+        if not last_user:
+            return FrameCheck(passed=True)
+        convo = self.world.context.compile_history(look_back=4)
+        system = (
+            'You are a quality checker. Given recent conversation history, '
+            'the user\'s latest request, and the agent\'s output (which may '
+            'include the agent\'s spoken reply, card content, and structured '
+            'data like proposed options), decide whether the response addresses '
+            'what the user asked. Treat persisted action (an outline saved, a '
+            'section written) as success even if the spoken reply is brief. '
+            'Reply with ONLY "pass" or "fail: <one-sentence reason>".'
+        )
+        prompt = (
+            f'Recent conversation:\n{convo}\n\n'
+            f'User request: {last_user}\n\nAgent output:\n{content}'
+        )
+        try:
+            result = self.engineer.call(
+                prompt, system=system, task='quality_check',
+                model='haiku', max_tokens=100,
+            )
+            result = result.strip().lower()
+            if result.startswith('pass'):
+                return FrameCheck(passed=True)
+            reason = result.removeprefix('fail:').strip() or 'LLM quality check failed'
+            return FrameCheck(passed=False, reason=reason)
+        except Exception:
+            return FrameCheck(passed=True)
+
+    # -- Recovery ---------------------------------------------------------
+
+    def recover(self, check:FrameCheck, flow,
+                context:'ContextCoordinator') -> tuple[DisplayFrame, RecoveryAction]:
+        """Attempt to recover from a failed frame validation.
+
+        Tries strategies in escalating order. Returns the best frame
+        achievable and an action for the Agent.
+        """
+        log.warning('recover: %s (flow=%s)', check.reason, flow.name())
+
+        # ── Tier 1: Retry skill with error feedback ─────────────────
+        repair_msg = (
+            f'[Recovery] Your previous output was rejected: {check.reason}. '
+            f'Please try again, addressing this issue.'
+        )
+        self.memory.write_scratchpad('repair', check.reason)
+        context.add_turn('System', repair_msg, turn_type='system')
+
+        policy = self._policies[flow.intent]
+        retry_frame = policy.execute(
+            self.world.current_state(), context, self._dispatch_tool,
+        )
+        retry_check = self._validate_frame(retry_frame, flow)
+        if retry_check.passed:
+            log.info('recover: tier-1 retry succeeded')
+            return retry_frame, RecoveryAction.RETRY
+        log.warning('recover: tier-1 failed: %s', retry_check.reason)
+
+        # ── Tier 2: Gather more context from BusinessContext ─────────
+        #
+        # Retrieve relevant business context from MemoryManager to enrich
+        # the retry. Push Internal/retrieve flow onto stack, execute it
+        # to populate scratchpad, then retry original policy.
+        #
+        # self.memory.write_scratchpad('recovery_query', check.reason)
+        # retrieve_flow = self.flow_stack.push('retrieve', interjected=True)
+        # internal = self._policies.get(Intent.INTERNAL)
+        # if internal:
+        #     internal.execute(self.world.current_state(), context, self._dispatch_tool)
+        # self.flow_stack.mark_complete(retrieve_flow)
+        # retry_frame = policy.execute(self.world.current_state(), context, self._dispatch_tool)
+        # retry_check = self._validate_frame(retry_frame, flow)
+        # if retry_check.passed:
+        #     return retry_frame, RecoveryAction.GATHER_CONTEXT
+
+        # ── Tier 3: Re-route via NLU contemplate() ──────────────────
+        #
+        # Record failure in scratchpad, set ambiguity observation so
+        # contemplate() sees why the flow failed, then signal Agent
+        # to call nlu.contemplate() for a fallback flow.
+        #
+        # self.memory.write_scratchpad('reroute_reason', check.reason)
+        # self.ambiguity.declare(
+        #     'reroute',
+        #     metadata={'flow': flow.name(), 'failure_reason': check.reason},
+        #     observation=f'Flow {flow.name()} failed: {check.reason}',
+        # )
+        # frame = DisplayFrame(self.config)
+        # return frame, RecoveryAction.REROUTE
+
+        # ── Tier 4: Escalate to user ────────────────────────────────
+        log.info('recover: escalating to user')
+        self.ambiguity.declare(
+            'partial',
+            metadata={'flow': flow.name(), 'failure_reason': check.reason},
+            observation=(
+                f'I had trouble completing this — {check.reason}. '
+                f'Could you provide more details or try a different approach?'
+            ),
+        )
+        frame = DisplayFrame(self.config)
+        return frame, RecoveryAction.ESCALATE
 
     # -- Tool dispatch ----------------------------------------------------
 
@@ -195,15 +373,9 @@ class PEX:
     def _dispatch_flow_stack_tool(self, params:dict) -> dict:
         action = params.get('action', '')
         if action == 'get_slots':
-            flow = self.flow_stack.get_active_flow()
-            if flow:
-                return {'_success': True, 'slots': flow.slot_values_dict()}
-            return {'_success': True, 'slots': {}}
+            return {'_success': True, 'slots': self.flow_stack.get_flow().slot_values_dict()}
         elif action == 'get_flow_meta':
-            flow = self.flow_stack.get_active_flow()
-            if flow:
-                return {'_success': True, 'flow': flow.to_dict()}
-            return {'_success': True, 'flow': None}
+            return {'_success': True, 'flow': self.flow_stack.get_flow().to_dict()}
         elif action == 'get_stack':
             return {'_success': True, 'stack': self.flow_stack.to_list()}
         return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
@@ -312,11 +484,7 @@ class PEX:
 
     def _verify(self, active_flow):
         state = self.world.current_state()
-        if state and state.keep_going and not self.flow_stack.get_pending_flows():
-            state.keep_going = False
-
-        if active_flow.intent in ['Research', 'Draft', 'Revise', 'Publish']:
-            self._update_active_post(active_flow)
-        
+        if active_flow.intent not in ['Converse', 'Internal'] and not state.has_issues:
+            self._verify_active_post(active_flow)
         return state.keep_going
 

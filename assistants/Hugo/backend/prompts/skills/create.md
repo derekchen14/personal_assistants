@@ -15,4 +15,30 @@ Start a new blog post or note from scratch.
 - `topic` (optional): Topic description for initial outline
 
 ## Output
-Confirmation of the new post/note creation with post ID and next step suggestions.
+Respond with **JSON** in this shape:
+
+```json
+{
+  "post_id": "...",
+  "title": "...",
+  "type": "draft" | "note",
+  "next_steps": ["outline", "brainstorm", "compose"]
+}
+```
+
+## Few-shot example
+
+User: "Create a new post about Synthetic Data Generation for Classification"
+
+Correct tool trajectory:
+1. `create_post(title='Synthetic Data Generation for Classification', type='draft')` → returns `{post_id: 'abc123'}`.
+
+Correct final reply:
+```json
+{
+  "post_id": "abc123",
+  "title": "Synthetic Data Generation for Classification",
+  "type": "draft",
+  "next_steps": ["outline", "brainstorm"]
+}
+```

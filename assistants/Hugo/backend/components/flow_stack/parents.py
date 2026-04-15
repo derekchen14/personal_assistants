@@ -94,6 +94,9 @@ class BaseFlow(object):
             slot.add_one(**item)
           else:
             slot.add_one(post=str(item))
+      elif isinstance(value, list) and hasattr(slot, 'add_one') and st not in ('dictionary', 'range'):
+        for item in value:
+          slot.add_one(item)
       elif isinstance(value, dict) and st == 'dictionary':
         predefined = set(slot.value.keys()) if hasattr(slot, 'value') and isinstance(slot.value, dict) else set()
         if predefined == {'key', 'value'} and not any(k in predefined for k in value):

@@ -16,4 +16,36 @@ Add a new section to an existing blog post.
 - `position` (optional): Where to insert (beginning, end, after section X)
 
 ## Output
-Confirmation of the added section with its position in the post.
+Respond with **JSON** in this shape:
+
+```json
+{
+  "post_id": "...",
+  "new_section": {
+    "title": "...",
+    "sec_id": "...",
+    "position": <integer index>
+  },
+  "ordering_after": ["<sec_id>", "<sec_id>", "..."]
+}
+```
+
+## Few-shot example
+
+User: "Add a new section called Best Practices after Process"
+
+Correct tool trajectory:
+1. `insert_section(post_id=..., title='Best Practices', position='after:process')` → returns the new section's id.
+
+Correct final reply:
+```json
+{
+  "post_id": "abc123",
+  "new_section": {
+    "title": "Best Practices",
+    "sec_id": "best-practices",
+    "position": 3
+  },
+  "ordering_after": ["motivation", "breakthrough-ideas", "process", "best-practices", "takeaways"]
+}
+```

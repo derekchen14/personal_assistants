@@ -19,6 +19,15 @@ if str(_HUGO_ROOT) not in sys.path:
     sys.path.insert(0, str(_HUGO_ROOT))
 
 
+def _merge_block_data(frame:dict) -> dict:
+    merged = {}
+    for block in frame.get('blocks') or []:
+        bd = block.get('data') or {}
+        if isinstance(bd, dict):
+            merged.update(bd)
+    return merged
+
+
 def _assert_turn(agent, text, dax, flow, intent, *, allow_empty=False):
     """Run a full turn and assert routing + content."""
     result = agent.take_turn(text, dax=dax)
@@ -31,11 +40,11 @@ def _assert_turn(agent, text, dax, flow, intent, *, allow_empty=False):
 
     message = result.get('message', '')
     frame = result.get('frame') or {}
-    frame_data = frame.get('data', {})
-    content = frame_data.get('content', '') or message
+    block_data = _merge_block_data(frame)
+    content = block_data.get('content', '') or message
 
     if not allow_empty:
-        assert len(content) > 10 or frame_data.get('post_id') or frame_data.get('items'), \
+        assert len(content) > 10 or block_data.get('post_id') or block_data.get('items'), \
             f"No substantive response for {flow} (content_len={len(content)})"
 
     return result, state
@@ -99,6 +108,31 @@ class TestOutline:
     def test_outline_specific(self, agent):
         _assert_turn(agent, "Create a structure for an article on AI ethics with 4 sections",
                      '{002}', 'outline', 'Draft')
+
+    def test_outline_propose_no_sections(self, agent):
+        """Propose path: candidates render in a selection block, chat line stays short."""
+        result, _ = _assert_turn(
+            agent, "Generate an outline for a post about remote work",
+            '{002}', 'outline', 'Draft', allow_empty=True,
+        )
+        frame = result.get('frame') or {}
+        blocks = frame.get('blocks') or []
+        selection = next((b for b in blocks if b.get('type') == 'selection'), None)
+        message = result.get('message', '')
+
+        assert selection is not None, \
+            f"Expected a selection block in propose mode, got {[b.get('type') for b in blocks]}"
+        candidates = (selection.get('data') or {}).get('candidates') or []
+        assert len(candidates) >= 2, \
+            f"Expected multiple candidates; got {len(candidates)}"
+        for cand in candidates:
+            assert isinstance(cand, list) and cand, \
+                f"Each candidate must be a non-empty list of sections; got {cand!r}"
+            for sec in cand:
+                assert isinstance(sec, dict) and sec.get('name'), \
+                    f"Each section must be a dict with a name; got {sec!r}"
+        assert len(message) < 200, \
+            f"Chat line should be short; got {len(message)} chars — candidates likely leaked into utterance"
 
 
 # ── 6. compose {003} — Draft ────────────────────────────────────

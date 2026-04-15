@@ -13,5 +13,5 @@ TEMPLATES = {
 
 def fill_research_template(template:str, flow:BaseFlow, frame:DisplayFrame) -> str:
     template = TEMPLATES[flow.name()]['template']
-    message = frame.thoughts or frame.data.get('content', '')
+    message = frame.thoughts
     return template.format(message=message)

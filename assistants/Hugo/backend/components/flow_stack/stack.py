@@ -16,7 +16,7 @@ class FlowStack:
         self._flow_classes = flow_classes or {}
 
     def push(self, flow_name: str, plan_id: str | None = None) -> BaseFlow:
-        """Instantiate and push a flow. Slots are NOT filled here."""
+        """Instantiate and push a flow as Active. Slots are NOT filled here."""
         if len(self._stack) >= self._max_depth:
             raise RuntimeError(
                 f'Flow stack depth limit ({self._max_depth}) exceeded'
@@ -28,8 +28,6 @@ class FlowStack:
         flow.flow_id = str(uuid4())[:8]
         flow.status = FlowLifecycle.ACTIVE.value
         flow.plan_id = plan_id
-        if self._stack:
-            flow.status = FlowLifecycle.PENDING.value
         self._stack.append(flow)
         return flow
 
@@ -39,9 +37,10 @@ class FlowStack:
     def peek(self) -> BaseFlow | None:
         return self._stack[-1] if self._stack else None
 
-    def get_active_flow(self) -> BaseFlow | None:
+    def get_flow(self, status:str|None=None) -> BaseFlow | None:
+        """Top-of-stack flow. Pass status to filter (e.g. 'Active', 'Pending')."""
         for entry in reversed(self._stack):
-            if entry.status == FlowLifecycle.ACTIVE.value:
+            if status is None or entry.status == status:
                 return entry
         return None
 

@@ -17,12 +17,25 @@ export function toggleTheme() {
     document.documentElement.dataset.theme = next;
 }
 
-export interface FrameData {
-    block_type: string;
+export interface Block {
+    type: string;
     data: Record<string, unknown>;
+    location: 'top' | 'bottom';
+}
+
+export interface FrameData {
     origin?: string;
-    display_name?: string;
-    panel?: 'top' | 'bottom';
+    blocks?: Block[];
+    metadata?: Record<string, unknown>;
+    panel?: 'top' | 'bottom' | 'split';
+    thoughts?: string;
+    // Legacy single-block shape — still used by locally-synthesized frames (showPage).
+    block_type?: string;
+    data?: Record<string, unknown>;
+}
+
+function firstBlock(frame: FrameData | null): Block | undefined {
+    return frame?.blocks?.[0];
 }
 
 export type DisplayLayout = 'top' | 'split' | 'bottom';
@@ -63,15 +76,18 @@ export function clearFrames() {
 }
 
 export function setFrame(frame: FrameData) {
-    if (frame.block_type === 'card' && (frame.data as Record<string, unknown>)?.status === 'note') return;
+    const primary = firstBlock(frame) ?? { type: frame.block_type ?? 'default', data: frame.data ?? {}, location: 'bottom' };
+    if (primary.type === 'card' && (primary.data as Record<string, unknown>)?.status === 'note') return;
     activeFrame.set(frame);
-    const data = frame.data as Record<string, unknown>;
-    if (frame.origin === 'find' && data?.page) {
-        showPage(data.page as ActivePage);
+    if (frame.origin === 'find' && (primary.data as Record<string, unknown>)?.page) {
+        showPage((primary.data as Record<string, unknown>).page as ActivePage);
     }
     const panel = frame.panel || 'bottom';
     if (panel === 'top') {
         topFrame.set(frame);
+    } else if (panel === 'split') {
+        topFrame.set(frame);
+        bottomFrame.set(frame);
     } else {
         _listExpanded.set(false);
         bottomFrame.set(frame);

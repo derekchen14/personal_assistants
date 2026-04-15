@@ -58,12 +58,14 @@ def engineer(minimal_config):
 
 @pytest.fixture
 def nlu(minimal_config):
+    from backend.components.dialogue_state import DialogueState
     ambiguity = MagicMock()
     ambiguity.needs_clarification.return_value = False
     engineer = PromptEngineer(minimal_config)
     world = MagicMock()
     world.context.compile_history.return_value = ''
-    world.current_state.return_value = None
+    # Contract: current_state() always returns a DialogueState.
+    world.current_state.return_value = DialogueState(minimal_config)
     world.flow_stack.find_by_name.return_value = None
     world.flow_stack.depth = 0
     return NLU(minimal_config, ambiguity, engineer, world)
@@ -320,22 +322,24 @@ class TestTemplateFill:
                     thoughts='', content='', origin=None):
         from backend.components.display_frame import DisplayFrame
         frame = DisplayFrame(minimal_config)
-        data = {'content': content} if content else {}
-        frame.set_frame(block_type, data, origin=origin)
+        frame.origin = origin or ''
         frame.thoughts = thoughts
+        if block_type != 'default' or content:
+            data = {'content': content} if content else {}
+            frame.add_block({'type': block_type, 'data': data})
         return frame
 
     def test_thoughts_used_when_set(self, minimal_config):
         from backend.modules.templates.draft import fill_draft_template
-        flow = flow_classes['outline']()
+        flow = flow_classes['brainstorm']()
         frame = self._make_frame(minimal_config, thoughts='My outline ideas')
-        result = fill_draft_template('', flow, frame)
+        result = fill_draft_template('{message}', flow, frame)
         assert 'My outline ideas' in result
 
-    def test_falls_back_to_data_content(self, minimal_config):
+    def test_research_template_uses_thoughts(self, minimal_config):
         from backend.modules.templates.research import fill_research_template
         flow = flow_classes['browse']()
-        frame = self._make_frame(minimal_config, content='Found 5 items')
+        frame = self._make_frame(minimal_config, thoughts='Found 5 items')
         result = fill_research_template('', flow, frame)
         assert 'Found 5 items' in result
 
@@ -356,21 +360,18 @@ class TestTemplateFill:
         assert info2['skip_naturalize'] is True
         assert '{message}' in info2['template']
 
-    def test_display_builds_block_dict(self, minimal_config):
+    def test_build_payload_frame_sets_panel(self, minimal_config):
         from backend.modules.res import RES
-        from backend.components.dialogue_state import DialogueState
         world = MagicMock()
         world.flow_stack.pop_completed_and_invalid.return_value = []
-        world.flow_stack.get_active_flow.return_value = None
+        world.flow_stack.get_flow.return_value = None
         res = RES(minimal_config, MagicMock(), MagicMock(), world)
         frame = self._make_frame(minimal_config, block_type='card',
                                  content='Hello', origin='compose')
-        state = DialogueState(minimal_config)
-        state.update('Draft', 'compose', 0.99)
-        block = res.display(frame, state, 'Some text')
-        assert block is not None
-        assert block['display_panel'] == 'split'
-        assert block['data']['content'] == 'Hello'
+        payload = res.build_payload_frame(frame, 'Some text')
+        assert payload['panel'] == 'split'
+        assert payload['blocks'][0]['type'] == 'card'
+        assert payload['blocks'][0]['data']['content'] == 'Hello'
 
 
 # ═══════════════════════════════════════════════════════════════════

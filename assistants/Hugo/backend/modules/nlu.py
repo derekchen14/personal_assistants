@@ -136,6 +136,11 @@ class NLU:
             slot = flow.slots.get(slot_name)
             if not slot or isinstance(slot, FreeTextSlot):
                 continue
+            # Entity repair only handles single-string slots. Group slots
+            # (source/target/removal/channel/proposals/checklist) carry list
+            # or dict values that don't go through case-normalization.
+            if not isinstance(value, str):
+                continue
 
             slot_type = type(slot).__name__
             candidates = valid_values.get(slot_type, [])
@@ -331,7 +336,7 @@ class NLU:
         if failed_flow:
             for ef in edge_flows_for(failed_flow):
                 candidates.add(ef)
-        flow = self.flow_stack.get_active_flow()
+        flow = self.flow_stack.get_flow()
         if flow and flow.name() != failed_flow:
             candidates.add(flow.name())
         candidates.add('chat')
@@ -364,22 +369,10 @@ class NLU:
         pred_intent = cat.get('intent', Intent.CONVERSE)
 
         state = DialogueState(self.config)
-        state.update(
-            pred_intent=pred_intent, flow_name=flow_name,
-            confidence=confidence,
-        )
-
-        if prev:
-            state.has_plan = prev.has_plan
-            state.natural_birth = prev.natural_birth
-            state.active_post = prev.active_post
-
-        # Update active_post from the flow's entity slot if filled
-        flow = self.flow_stack.find_by_name(flow_name)
-        if flow:
-            ent_slot = flow.slots.get(flow.entity_slot)
-            if ent_slot and ent_slot.filled:
-                state.active_post = ent_slot.values[0]['post']
+        state.update(pred_intent=pred_intent, flow_name=flow_name, confidence=confidence)
+        state.has_plan = prev.has_plan
+        state.natural_birth = prev.natural_birth
+        state.active_post = prev.active_post
 
         self.world.insert_state(state)
         return state

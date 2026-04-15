@@ -41,10 +41,10 @@ STEPS = [
         'step': 1,
         'flow': 'create',
         'dax': '{05A}',
-        'utterance': 'Create a new post about Synthetic Data Generation for Classification',
+        'utterance': 'Create a new post about Using Multi-modal Models to Improve AI Agents',
         'expected_tools': ['create_post'],
         'rubric': {
-            'did_action': 'Post created with title containing synthetic data',
+            'did_action': 'Post created with title containing multi-modal models / AI agents',
             'did_follow_instructions': 'Post type is draft, title matches request',
         },
     },
@@ -54,10 +54,13 @@ STEPS = [
         'dax': '{002}',
         'utterance': (
             'Make an outline with 4 sections: Motivation, Process, Ideas, '
-            'and Takeaways. Under Motivation, add bullets about labeling being slow and '
-            'expensive, and how we hit this problem building an intent classification chatbot.'
+            'and Takeaways. Under Motivation, add bullets about text-only agents '
+            'missing visual context, and how we hit this problem building a '
+            'screen-reading customer support agent.'
         ),
         'expected_tools': ['generate_outline'],
+        'expected_block_type': 'card',
+        'max_message_chars': 300,
         'rubric': {
             'did_action': '4 sections saved to disk with bullet points under Motivation',
             'did_follow_instructions': 'Sections are Motivation, Process, Ideas, Takeaways in that order',
@@ -68,15 +71,16 @@ STEPS = [
         'flow': 'refine',
         'dax': '{02B}',
         'utterance': (
-            'Add bullets to the outline. Under Process, add: design scenarios, assign labels, '
-            'generate conversations, review samples, and denoise at scale. Under Ideas, add: '
-            'using LLMs to generate examples, going in reverse from label to conversation, '
-            'and denoising after augmentation.'
+            'Add bullets to the outline. Under Process, add: pick a vision encoder, '
+            'wire it to the planner, fine-tune on UI traces, evaluate on held-out '
+            'workflows, and ship behind a flag. Under Ideas, add: using video for '
+            'temporal grounding, treating screenshots as a tool the agent can call, '
+            'and falling back to text-only when latency budget is tight.'
         ),
         'expected_tools': ['read_metadata', 'generate_outline'],
         'rubric': {
-            'did_action': 'Process and Ideas sections updated with bullet points',
-            'did_follow_instructions': 'Process has 5 bullets, Ideas has 3 bullets',
+            'did_action': 'Process and Ideas sections each have the requested bullets appended to (not replacing) any existing bullets',
+            'did_follow_instructions': 'All 5 new Process bullets and all 3 new Ideas bullets are present; prior bullets are preserved',
         },
     },
     {
@@ -111,12 +115,12 @@ STEPS = [
         'dax': '{006}',
         'utterance': (
             'Expand the Motivation section — flesh out the customer story about '
-            'the intent classification chatbot and why manual labeling hit a wall'
+            'the screen-reading support agent and why text-only context kept failing'
         ),
         'expected_tools': ['read_section', 'revise_content'],
         'rubric': {
             'did_action': 'Prose expanded with richer detail',
-            'did_follow_instructions': 'Expanded content includes chatbot story and labeling bottleneck',
+            'did_follow_instructions': 'Expanded content includes the screen-reading agent story and the text-only context limitation',
         },
     },
     {
@@ -156,18 +160,18 @@ STEPS = [
         'step': 10,
         'flow': 'inspect',
         'dax': '{1BD}',
-        'utterance': 'What are the metrics on the synthetic data post?',
+        'utterance': 'What are the metrics on the multi-modal models post?',
         'expected_tools': ['inspect_post'],
         'rubric': {
             'did_action': 'Reports word count, section count, read time',
-            'did_follow_instructions': 'Metrics are for the synthetic data post',
+            'did_follow_instructions': 'Metrics are for the multi-modal models post',
         },
     },
     {
         'step': 11,
         'flow': 'audit',
         'dax': '{13A}',
-        'utterance': 'Check if the synthetic data post matches my usual writing style',
+        'utterance': 'Check if the multi-modal models post matches my usual writing style',
         'expected_tools': ['find_posts', 'compare_style'],
         'rubric': {
             'did_action': 'Produces a style consistency report',
@@ -178,11 +182,11 @@ STEPS = [
         'step': 12,
         'flow': 'brainstorm',
         'dax': '{29A}',
-        'utterance': 'Brainstorm some alternative angles for the synthetic data topic',
+        'utterance': 'Brainstorm some alternative angles for the multi-modal models topic',
         'expected_tools': ['brainstorm_ideas'],
         'rubric': {
             'did_action': 'Generates multiple creative angles',
-            'did_follow_instructions': 'Angles relate to synthetic data',
+            'did_follow_instructions': 'Angles relate to multi-modal models for AI agents',
         },
     },
     {
@@ -200,12 +204,49 @@ STEPS = [
         'step': 14,
         'flow': 'release',
         'dax': '{04A}',
-        'utterance': 'Publish the synthetic data post to Substack',
-        'expected_tools': [],
+        'utterance': 'Publish the multi-modal models post to Substack',
+        'expected_tools': ['channel_status'],
         'expected_errors': {'channel_status', 'release_post'},
+        'expected_ambiguity': {'channel_unavailable'},
         'rubric': {
             'did_action': 'Attempts publication (errors from platform tools are expected)',
-            'did_follow_instructions': 'Targets the synthetic data post and Substack channel',
+            'did_follow_instructions': 'Targets the multi-modal models post and Substack channel',
+        },
+    },
+]
+
+
+# Propose/select sub-steps for the outline flow. These run between
+# test_step_01_create and test_step_02_outline; the direct step at
+# STEPS[1] then overwrites with the canonical Motivation/Process/
+# Ideas/Takeaways sections that later steps reference.
+OUTLINE_SUBSTEPS = [
+    {
+        'step': '02a',
+        'flow': 'outline',
+        'dax': '{002}',
+        'utterance': 'Make an outline — propose a few options I can pick from',
+        # Propose mode: the policy pre-resolves the active post (read_metadata)
+        # and the skill MAY call find_posts once to vary angles, but MUST NOT
+        # call generate_outline. No other tools allowed.
+        'expected_tools': ['read_metadata'],
+        'expected_block_type': 'selection',
+        'max_message_chars': 300,
+        'rubric': {
+            'did_action': 'Generated multiple outline options without saving to disk',
+            'did_follow_instructions': 'Offered options for the user to pick between',
+        },
+    },
+    {
+        'step': '02b',
+        'flow': 'outline',
+        'dax': '{002}',
+        'utterance': "Let's go with Option 2",
+        'expected_tools': ['generate_outline'],
+        'expected_block_type': 'card',
+        'rubric': {
+            'did_action': "Persisted the selected option's sections to disk",
+            'did_follow_instructions': "Saved Option 2's sections, not Option 1 or Option 3",
         },
     },
 ]
@@ -240,31 +281,73 @@ def _domain_tools(tool_log):
 
 # ── Level 1: Basic Functionality ──────────────────────────────────────
 
-def _check_level1(result, tool_log, expected_errors=None):
-    """Returns list of issue strings. Empty = pass."""
+def _check_level1(step_def, result, tool_log, agent):
+    """Returns list of issue strings. Empty = pass.
+
+    Checks:
+      - The active flow matches step_def['flow'] (or it was completed this turn).
+      - The frame has the expected block_type.
+      - state.has_issues is False and no ambiguity is present (unless the step expects one).
+      - Message length, fallback phrases, tool errors.
+    """
     issues = []
-    expected_errors = expected_errors or set()
+    expected_errors = step_def.get('expected_errors') or set()
+    expected_bt = step_def.get('expected_block_type')
+    expected_flow = step_def.get('flow')
+    max_chars = step_def.get('max_message_chars')
 
     message = result.get('message', '')
     frame = result.get('frame') or {}
-    frame_data = frame.get('data', {})
-    frame_content = frame_data.get('content', '')
-    content = frame_content or message
+    blocks = frame.get('blocks') or []
+    block_types = [b.get('type') for b in blocks]
+    merged_data = {}
+    for b in blocks:
+        bd = b.get('data') or {}
+        if isinstance(bd, dict):
+            merged_data.update(bd)
+    frame_content = merged_data.get('content', '')
 
-    # Frame with structured data (e.g. create returns title/post_id) counts as valid
-    has_frame_data = any(v for k, v in frame_data.items() if k != 'content' and v)
+    # Active-flow check: either still on the stack, or it just completed this turn.
+    active_flow = agent.world.flow_stack.get_flow()
+    state = agent.world.current_state()
+    flow_name = active_flow.name() if active_flow else state.flow_name
+    if expected_flow and flow_name != expected_flow:
+        issues.append(f'expected active flow={expected_flow}, got {flow_name}')
 
-    if not content or len(content) < 10:
-        if not has_frame_data:
+    # State invariants after the turn.
+    expected_amb = step_def.get('expected_ambiguity') or set()
+    if state.has_issues and not expected_amb:
+        issues.append('state.has_issues is True — policy or verifier flagged a problem')
+    if agent.ambiguity.present():
+        amb_label = (agent.ambiguity.metadata or {}).get('reason') or agent.ambiguity.level
+        if amb_label not in expected_amb:
+            issues.append(f'unexpected ambiguity: {amb_label!r}')
+
+    # For block-expecting steps, the payload must live in frame.blocks, not the chat utterance.
+    if expected_bt in ('card', 'selection', 'list', 'compare', 'form', 'confirmation', 'toast'):
+        if not blocks:
+            issues.append(f'empty {expected_bt} — no blocks in frame')
+    else:
+        content = frame_content or message
+        has_block_data = any(v for k, v in merged_data.items() if k not in ('content',) and v)
+        if (not content or len(content) < 10) and not has_block_data:
             issues.append('empty response')
+
+    if expected_bt:
+        if expected_bt not in block_types:
+            issues.append(f'expected block_type={expected_bt}, got {block_types}')
+
+    if max_chars and len(message) > max_chars:
+        issues.append(f'message too long ({len(message)} > {max_chars} chars) — should be in block data, not utterance')
 
     fallback_phrases = [
         "I'm having trouble understanding",
         'Could you try rephrasing',
         'Could not find',
     ]
+    combined = frame_content or message
     for phrase in fallback_phrases:
-        if phrase in content:
+        if phrase in combined:
             issues.append(f'fallback response: "{phrase}"')
             break
 
@@ -282,13 +365,17 @@ def _check_level1(result, tool_log, expected_errors=None):
 def _check_level2(tool_log, expected_tools, strict=False):
     """Check domain tools match expected. Returns issues.
 
-    Default: each expected tool must appear at least once (any order).
-    Strict:  expected tools must appear as an ordered subsequence.
+    expected_tools == []:  no domain tools are allowed (used for Converse-style
+                           flows that do no external work).
+    expected_tools == [..]: each tool must appear at least once; under --strict
+                           they must appear in order as a subsequence.
     """
     issues = []
     actual = _domain_tools(tool_log)
 
     if not expected_tools:
+        if actual:
+            issues.append(f'expected no domain tools, got {actual}')
         return issues
 
     if strict:
@@ -322,7 +409,12 @@ def _check_level3(utterance, rubric, result, tool_log, agent):
 
     message = result.get('message', '')
     frame = result.get('frame') or {}
-    frame_content = frame.get('data', {}).get('content', '')
+    merged = {}
+    for b in (frame.get('blocks') or []):
+        bd = b.get('data') or {}
+        if isinstance(bd, dict):
+            merged.update(bd)
+    frame_content = merged.get('content', '')
     content = frame_content or message
 
     tool_summary = '\n'.join(
@@ -336,7 +428,7 @@ def _check_level3(utterance, rubric, result, tool_log, agent):
         f'You are evaluating a blog writing assistant called Hugo.\n\n'
         f'The user said:\n  "{utterance}"\n\n'
         f'The expected behavior is:\n{rubric_text}\n\n'
-        f'The agent responded with:\n  "{content[:1000]}"\n\n'
+        f'The agent responded with:\n  "{content}"\n\n'
         f'The agent called these tools:\n{tool_summary}\n\n'
         f'Score each dimension. Reply ONLY with this exact format:\n'
         f'useful: pass OR fail — one line explanation\n'
@@ -443,7 +535,7 @@ class TestSyntheticDataPostE2E:
             agent.world.insert_state(state)
         state.active_post = _TEST_POST_ID
 
-        title = meta.get('title', 'Synthetic Data Generation for Classification')
+        title = meta.get('title', 'Using Multi-modal Models to Improve AI Agents')
         sections = meta.get('section_ids', [])
 
         context = agent.world.context
@@ -491,8 +583,7 @@ class TestSyntheticDataPostE2E:
 
         self._log(f'Step {step_def["step"]} [{step_def["flow"]}] — tools: {_domain_tools(tool_log)}')
 
-        expected_errors = step_def.get('expected_errors', set())
-        l1_issues = _check_level1(result, tool_log, expected_errors)
+        l1_issues = _check_level1(step_def, result, tool_log, agent)
         l2_issues = (
             _check_level2(tool_log, step_def['expected_tools'], strict=self._strict)
             if not l1_issues else ['skipped (L1 failed)']
@@ -565,7 +656,16 @@ class TestSyntheticDataPostE2E:
         finally:
             uuid.uuid4 = orig_uuid4
 
+    def test_step_02a_outline_propose(self, request):
+        """Propose mode: 3 options rendered in the card, nothing persisted."""
+        self._assert_step(OUTLINE_SUBSTEPS[0], request)
+
+    def test_step_02b_outline_select(self, request):
+        """Select mode: user picks Option 2, sections saved to disk."""
+        self._assert_step(OUTLINE_SUBSTEPS[1], request)
+
     def test_step_02_outline(self, request):
+        """Direct mode: explicit sections overwrite the selected outline."""
         self._assert_step(STEPS[1], request)
 
     def test_step_03_refine_bullets(self, request):

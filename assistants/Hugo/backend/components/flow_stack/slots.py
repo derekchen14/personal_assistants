@@ -9,19 +9,19 @@ Hierarchy:
   ├── GroupSlot            (multiple values in a list)
   │   ├── SourceSlot       (existing entities: post, section, snippet)
   │   │   ├── TargetSlot   (new entities being created)
-  │   │   └── RemovalSlot  (entities being removed)
+  │   │   ├── RemovalSlot  (entities being removed)
+  │   │   └── ChannelSlot  (publishing destination)       [domain-specific]
   │   ├── FreeTextSlot     (open-ended text values)
   │   ├── ChecklistSlot    (ordered steps to check off)
   │   └── ProposalSlot     (selectable options)
   ├── LevelSlot            (numeric threshold)
   │   ├── PositionSlot     (non-negative integer)
-  │   ├── ProbabilitySlot  (0-1 range)                   [domain-specific]
+  │   ├── ProbabilitySlot  (0-1 range)                    [domain-specific]
   │   └── ScoreSlot        (any numeric value)            [domain-specific]
   ├── CategorySlot         (one from predefined list, 8 max)
   ├── ExactSlot            (specific term or phrase)
   ├── DictionarySlot       (key-value pairs)
   ├── RangeSlot            (time or value range)
-  ├── ChannelSlot          (publishing destination)       [domain-specific]
   └── ImageSlot            (hero image, diagram, picture) [domain-specific]
 """
 
@@ -160,11 +160,10 @@ class TargetSlot(SourceSlot):
 
 class RemovalSlot(SourceSlot):
   """Entities to remove from the document."""
-  def __init__(self, removal_type, priority='required'):
-    super().__init__(1, removal_type, priority)
+  def __init__(self, min_size=1, entity_part='sec', priority='required'):
+    super().__init__(min_size, entity_part, priority)
     self.slot_type = 'removal'
-    self.rtype = removal_type
-    self.purpose = f"target {removal_type} to remove"
+    self.purpose = f'target {entity_part} to remove'
 
 
 # ── Group Slots ───────────────────────────────────────────────────────────
@@ -220,14 +219,14 @@ class ChecklistSlot(GroupSlot):
 
 class ProposalSlot(GroupSlot):
   """Selectable options where at least one must be chosen."""
-  def __init__(self, options=None, priority='required'):
-    super().__init__(1, priority)
+  def __init__(self, options=None, size=2, priority='required'):
+    super().__init__(size, priority)
     self.slot_type = 'proposal'
     self.purpose = 'options for the user to select from'
     self.options = options or []
 
   def check_if_filled(self):
-    self.filled = len(self.options) >= 2 and len(self.values) >= self.size
+    self.filled = len(self.options) >= self.size and len(self.values) >= 1
     return self.filled
 
   def add_one(self, option):
@@ -339,6 +338,7 @@ class ExactSlot(BaseSlot):
   def __init__(self, priority='required'):
     super().__init__(priority)
     self.slot_type = 'exact'
+    self.entity_part = 'snip'
     self.purpose = 'a specific term or phrase'
     self.term = ''
 
@@ -417,21 +417,12 @@ class RangeSlot(BaseSlot):
 
 # ── Domain-Specific Slots (Hugo) ─────────────────────────────────────────
 
-class ChannelSlot(BaseSlot):
+class ChannelSlot(SourceSlot):
   """Identifies a publishing channel destination."""
   def __init__(self, priority='required'):
-    super().__init__(priority)
+    super().__init__(min_size=1, entity_part='chl', priority=priority)
     self.slot_type = 'channel'
     self.purpose = 'a publishing channel'
-    self.channel_name = ''
-    self.config = {}
-
-  def assign_one(self, channel, config=None):
-    self.value = channel
-    self.channel_name = channel
-    if config:
-      self.config = config
-    self.check_if_filled()
 
 
 class ImageSlot(BaseSlot):

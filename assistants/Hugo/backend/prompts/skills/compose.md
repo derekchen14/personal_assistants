@@ -20,4 +20,20 @@ Transform a section's outline bullets into polished prose paragraphs.
 - `instructions` (optional): Specific instructions for the section
 
 ## Output
-The composed prose section displayed as a card.
+The composed prose, saved via `revise_content`. Plain TXT (a card displays the saved post). Do not wrap in JSON — the prose is the output.
+
+## Few-shot example
+
+User: "Convert the entire outline into prose"
+
+Correct tool trajectory (one section at a time):
+1. `read_section(post_id=..., sec_id='motivation')` → returns the bullets.
+2. `convert_to_prose(content=<bullets>)` → returns prose draft.
+3. `revise_content(post_id=..., sec_id='motivation', content=<prose>)`.
+4. Repeat for each remaining section.
+
+Correct final reply: a short summary of what was done; the saved prose itself is shown via the card. Example reply:
+
+```
+Converted all 4 sections from bullets to prose. Motivation, Process, Breakthrough Ideas, and Takeaways now read as paragraphs.
+```

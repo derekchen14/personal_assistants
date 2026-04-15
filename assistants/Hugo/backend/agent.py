@@ -45,12 +45,9 @@ class Agent:
 
         state = self.nlu.understand(text, self.world.context, dax, payload)
 
-        flow = self.world.flow_stack.get_active_flow()
-        dax = flow.dax if flow else ''
-        slots = flow.slot_values_dict() if flow else {}
+        flow = self.world.flow_stack.get_flow()
         log.info('pred = %s {%s}  score=%.2f   slots=%s',
-                 flow.name(True) if flow else state.flow_name,
-                 dax, state.confidence, slots)
+                 flow.name(True), flow.dax, state.confidence, flow.slot_values_dict())
 
         if not self._self_check(state):
             fallback_message = "I'm having trouble understanding. Could you try rephrasing?"
@@ -64,32 +61,33 @@ class Agent:
             frame, keep_going = self.pex.execute(state, self.world.context)
             rounds += 1
             log.info('  pex round=%d  keep_going=%s', rounds, keep_going)
+            
+            flow = self.world.flow_stack.get_flow('Active')
+            if not flow:
+                keep_going = False
 
             if keep_going:
-                flow = self.world.flow_stack.get_active_flow()
-                if flow:
-                    new_state = DialogueState(self.config)
-                    new_state.update(pred_intent=flow.intent,
-                        flow_name=flow.name(), confidence=1.0)
-                    new_state.keep_going = True
-                    self.world.insert_state(new_state)
-                    state = new_state
+                new_state = DialogueState(self.config)
+                new_state.update(pred_intent=flow.intent,
+                    flow_name=flow.name(), confidence=1.0)
+                new_state.has_plan = state.has_plan
+                new_state.active_post = state.active_post
+                # One-shot for stack-on; Plans keep keep_going alive across sub-flows.
+                new_state.keep_going = state.has_plan
+                self.world.insert_state(new_state)
+                state = new_state
 
-        if frame and frame.has_content():
-            log.info('  frame=%s  origin=%s', frame.block_type, frame.origin)
-
-        utterance, frame = self.res.respond(frame)
-
-        if utterance:
-            log.info('AGENT: %s', utterance[:200])
+        agent_utt, frame = self.res.respond(frame)
+        if agent_utt:
+            self.world.context.add_turn('Agent', agent_utt, turn_type='utterance')
 
         if self.memory.should_summarize(state.turn_count):
-            self.world.context.save_checkpoint(
-                'auto_summarize',
-                data={'turn_count': state.turn_count},
-            )
+            turn_data = {'turn_count': state.turn_count}
+            self.world.context.save_checkpoint('auto_summarize', data=turn_data)
 
-        return self._build_payload(utterance, frame)
+        log.info(f'AGENT: {agent_utt[:200]}')
+        log.info(f'  frame={frame.block_type()}  origin={frame.origin}')
+        return self._build_payload(agent_utt, frame)
 
     def _self_check(self, state: DialogueState) -> bool:
         if state.confidence < 0.1:
@@ -100,31 +98,15 @@ class Agent:
 
     def _fallback_response(self, message: str) -> dict:
         self.world.context.add_turn('Agent', message, turn_type='agent_response')
-        return {
-            'message': message,
-            'raw_utterance': message,
-            'actions': [],
-            'frame': None,
-        }
+        payload = {'message': message, 'actions': [], 'frame': None, 'block': 'default'}
+        return payload
 
     def _build_payload(self, utterance: str, frame: DisplayFrame) -> dict:
-        frame_data = frame.to_dict() if frame and frame.has_content() else None
+        frame_data = self.res.build_payload_frame(frame, utterance)
+        block_type = frame.block_type()
 
-        message = utterance
-        if not message and not frame_data:
-            state = self.world.current_state()
-            if state and state.pred_intent not in ('Internal', 'Plan'):
-                message = (
-                    "I've processed your request. Let me know if you need "
-                    "anything else."
-                )
-
-        return {
-            'message': message,
-            'raw_utterance': utterance,
-            'actions': [],
-            'frame': frame_data,
-        }
+        payload = {'message': utterance, 'actions': [], 'frame': frame_data, 'block': block_type}
+        return payload
 
     # ── Session management ────────────────────────────────────────────
 

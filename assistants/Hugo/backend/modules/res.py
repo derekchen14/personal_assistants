@@ -33,53 +33,33 @@ class RES(object):
         completed_flows = self.start()
 
         if self.ambiguity.present():
-            text = self._clarify()
-            return text, frame
+            return self._clarify(), frame
 
         state = self.world.current_state()
-        intent = state.pred_intent if state else 'Converse'
+        flow = completed_flows[-1] if completed_flows else self.flow_stack.get_flow()
 
-        log.info('  res intent=%s  keep_going=%s  has_frame=%s',
-                 intent, state.keep_going if state else False,
-                 frame.has_content())
-
-        if intent == Intent.INTERNAL:
+        if flow.intent == Intent.INTERNAL:
             return '', frame
-        if intent == Intent.PLAN and state and state.keep_going:
-            self.finish('', frame)
+        if flow.intent == Intent.PLAN and state.keep_going:
+            self.finish('', frame, flow)
             return '', frame
 
-        text = self.generate(frame, state, completed_flows)
-        self.display(frame, state, text)
-        self.finish(text, frame)
+        agent_utt = self.generate(frame, state, flow)
+        frame = self.display(frame, flow)
 
-        if text:
-            self.world.context.add_turn('Agent', text, turn_type='agent_response')
+        self.finish(agent_utt, frame, flow)
+        return agent_utt, frame
 
-        return text, frame
+    # ── Helpers ──────────────────────────────────────────────────────
 
-    # ── Pre-hook ──────────────────────────────────────────────────────
-
-    def start(self) -> list[BaseFlow]:
-        popped = self.flow_stack.pop_completed_and_invalid()
-
-        completed = [flow for flow in popped if flow.status == 'Completed']
-        for flow in completed:
-            if flow.intent == Intent.PLAN:
-                state = self.world.current_state()
-                if state:
-                    state.update_flags(has_plan=False)
-                    state.structured_plan = {}
-
-        if len(completed) > 1:
-            self.world.context.save_checkpoint(
-                'multi_flow_completion',
-                data={'completed_count': len(completed)},
-            )
-
-        return completed
-
-    # ── Clarify ───────────────────────────────────────────────────────
+    def build_payload_frame(self, frame:DisplayFrame, text:str) -> dict:
+        data = frame.to_dict()
+        has_text = bool(text and text.strip())
+        has_blocks = bool(frame.blocks)
+        if has_text and has_blocks:  data['panel'] = 'split'
+        elif has_blocks:             data['panel'] = 'bottom'
+        else:                        data['panel'] = 'top'
+        return data
 
     def _clarify(self) -> str:
         level = self.ambiguity.level or 'general'
@@ -95,16 +75,7 @@ class RES(object):
         )
         return clarification_text
 
-    # ── Generate ──────────────────────────────────────────────────────
-
-    def generate(self, frame:DisplayFrame, state:DialogueState, completed_flows:list[BaseFlow]) -> str:
-        if len(completed_flows) > 0:
-            # assume just a single flow for now
-            flow = completed_flows[0]
-        else:
-            # we can't assume that there is an active flow since it may be completed, so we check there first
-            flow = self.flow_stack.get_active_flow()
-
+    def generate(self, frame:DisplayFrame, state:DialogueState, flow:BaseFlow) -> str:
         template_info = self.engineer.get_template(flow.name(), flow.intent)
         template = template_info.get('template', '{message}')
 
@@ -119,17 +90,15 @@ class RES(object):
         if template_info.get('skip_naturalize'):
             response = filled
         else:
-            block_type = frame.block_type if frame.has_content() else None
+            block_type = frame.block_type() if frame.blocks else None
             response = self._naturalize(filled, block_type)
         return response
 
     def _naturalize(self, raw_text:str, block_type:str|None) -> str:
         if self.config.get('debug', False):
             return raw_text
-
         if not raw_text.strip():
             return raw_text
-
         if len(raw_text) < 80:
             return raw_text
 
@@ -137,8 +106,7 @@ class RES(object):
         system, messages = self.engineer.build_naturalize_prompt(raw_text, convo_history, block_type)
 
         try:
-            text = self.engineer.call(
-                messages, system=system,
+            text = self.engineer.call(messages, system=system,
                 task='naturalize', max_tokens=2048,
             )
             return text.strip() if text.strip() else raw_text
@@ -146,45 +114,39 @@ class RES(object):
             print(f'RES naturalization error: {ecp}')
             return raw_text
 
-    # ── Display ───────────────────────────────────────────────────────
+    def display(self, frame:DisplayFrame, flow:BaseFlow) -> DisplayFrame:
+        """Append any RES-driven blocks (e.g. proposals selection) to the frame."""
+        if hasattr(flow, 'stage') and flow.stage == 'propose':
+            proposal_slot = flow.slots['proposals']
+            if len(proposal_slot.options) > 0:                
+                block_data = {
+                    'type': 'selection',
+                    'data': {'candidates': proposal_slot.options},
+                }
+                frame.add_block(block_data)
+        return frame
 
-    def display(self, frame:DisplayFrame, state:DialogueState|None,
-                text:str) -> dict | None:
-        if not frame or not frame.has_content():
-            return None
-        if not frame.data or frame.block_type == 'default':
-            return None
+    # ── Hooks ─────────────────────────────────────────────────────
 
-        flow_name = state.flow_name if state else ''
-        block_hint = output_for_flow(flow_name) if flow_name else frame.block_type
-        block_type = block_hint if block_hint != '(internal)' else frame.block_type
+    def start(self) -> list[BaseFlow]:
+        popped = self.flow_stack.pop_completed_and_invalid()
 
-        block = frame.compose(block_type, dict(frame.data))
-        block['panel'] = frame.panel
-        block['location'] = ['top', 'bottom']
-        block['display_name'] = frame.display_name
-        if frame.code:
-            block['code'] = frame.code
+        completed = [flow for flow in popped if flow.status == 'Completed']
+        for flow in completed:
+            if flow.intent == Intent.PLAN:
+                state = self.world.current_state()
+                state.update_flags(has_plan=False)
+                state.structured_plan = {}
 
-        has_text = bool(text and text.strip())
-        has_frame = frame.has_content()
-        if has_text and has_frame:
-            block['display_panel'] = 'split'
-        elif has_frame:
-            block['display_panel'] = 'bottom'
-        else:
-            block['display_panel'] = 'top'
+        if len(completed) > 1:
+            self.world.context.save_checkpoint(
+                'multi_flow_completion',
+                data={'completed_count': len(completed)},
+            )
 
-        if not block.get('data'):
-            return None
-        return block
+        return completed
 
-    # ── Post-hook ─────────────────────────────────────────────────────
-
-    def finish(self, text:str, frame:DisplayFrame):
-        state = self.world.current_state()
-        intent = state.pred_intent if state else 'Converse'
-
-        if intent not in (Intent.INTERNAL, Intent.PLAN):
-            if not text and not frame.has_content():
+    def finish(self, text:str, frame:DisplayFrame, flow:BaseFlow):
+        if flow.intent not in (Intent.INTERNAL, Intent.PLAN):
+            if not text and not frame.blocks:
                 pass  # orchestrator handles fallback

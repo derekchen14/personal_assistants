@@ -17,7 +17,8 @@ Hugo helps you write and publish blog posts. He guides you from topic selection 
 Start both the backend and frontend servers:
 
 ```bash
-./run.sh
+./init_backend.sh
+./init_frontend.sh
 ```
 
 Then open **http://localhost:5174** in your browser. The backend API runs on port 8001.

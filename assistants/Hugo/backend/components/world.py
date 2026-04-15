@@ -16,12 +16,21 @@ class World:
         self.frames: list[DisplayFrame] = []
         self.flow_stack = FlowStack(config, flow_classes=flow_classes)
         self.context = ContextCoordinator(config)
+        self._seed_session()
 
-    def current_state(self) -> DialogueState | None:
-        return self.states[-1] if self.states else None
+    def _seed_session(self):
+        """Every session starts with an initial state, a default frame, and a
+        system kickoff turn so the first user turn has turn_count = 1 and every
+        downstream component can assume current_state() is non-None."""
+        self.states.append(DialogueState(self.config))
+        self.frames.append(DisplayFrame(self.config))
+        self.context.add_turn('System', 'Session started.', 'system')
 
-    def latest_frame(self) -> DisplayFrame | None:
-        return self.frames[-1] if self.frames else None
+    def current_state(self) -> DialogueState:
+        return self.states[-1]
+
+    def latest_frame(self) -> DisplayFrame:
+        return self.frames[-1]
 
     def insert_state(self, state: DialogueState) -> DialogueState:
         self.states.append(state)
@@ -36,3 +45,4 @@ class World:
         self.frames.clear()
         self.flow_stack.clear()
         self.context.reset()
+        self._seed_session()

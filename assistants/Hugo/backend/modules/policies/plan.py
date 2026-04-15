@@ -21,7 +21,7 @@ class PlanPolicy(BasePolicy):
         self.flow_stack = components['flow_stack']
 
     def execute(self, state, context, tools) -> 'DisplayFrame':
-        flow = self.flow_stack.get_active_flow()
+        flow = self.flow_stack.get_flow()
 
         match flow.name():
             case 'remember': return self.remember_policy(flow, state, context, tools)
@@ -43,19 +43,16 @@ class PlanPolicy(BasePolicy):
     def remember_policy(self, flow, state, context, tools):
         """Deterministic — skips plan lifecycle."""
         slots = flow.slot_values_dict()
-        key = slots.get('key', '')
-        scope = slots.get('scope', 'session')
+        topic = slots.get('topic', '')
 
-        if key:
-            scratchpad = self.memory.read_scratchpad(key)
+        if topic:
+            scratchpad = self.memory.read_scratchpad(topic)
             content = str(scratchpad) if scratchpad else ''
         else:
             content = str(self.memory.read_scratchpad())
 
         flow.status = 'Completed'
-        frame = self.build_frame('default', origin='remember')
-        frame.data = {'content': content}
-        return frame
+        return self.build_frame(origin='remember', thoughts=content)
 
     # -- Mode A: Generate plan ----------------------------------------------
 
@@ -68,9 +65,7 @@ class PlanPolicy(BasePolicy):
 
         state.structured_plan = structured_plan
 
-        frame = self.build_frame('default', origin=flow.name(), thoughts=freeform)
-        frame.data = {'content': freeform}
-        return frame
+        return self.build_frame(origin=flow.name(), thoughts=freeform)
 
     # -- Mode B: Handle approval --------------------------------------------
 
@@ -81,16 +76,13 @@ class PlanPolicy(BasePolicy):
             state.structured_plan = {}
             return self._generate_plan(flow, state, context, tools)
 
-        plan_flow = self.flow_stack.get_active_flow()
-        plan_id = plan_flow.flow_id if plan_flow else None
+        plan_id = self.flow_stack.get_flow().flow_id
 
         self._push_next_sub_flow(state, plan_id)
 
         state.update_flags(has_plan=True, keep_going=True)
 
-        frame = self.build_frame('default', origin=flow.name())
-        frame.data = {'content': 'Plan approved — executing now.'}
-        return frame
+        return self.build_frame(origin=flow.name())
 
     # -- Mode C: Verify and continue ----------------------------------------
 
@@ -123,23 +115,14 @@ class PlanPolicy(BasePolicy):
         if all_done:
             self.flow_stack.mark_complete()
             state.update_flags(keep_going=False)
-            frame = self.build_frame('default', origin=flow.name())
-            frame.data = {
-                'content': f'Plan completed: {structured_plan.get("description", flow.name())}',
-            }
-            return frame
+            summary = f'Plan completed: {structured_plan.get("description", flow.name())}'
+            return self.build_frame(origin=flow.name(), thoughts=summary)
 
-        plan_flow = self.flow_stack.get_active_flow()
-        plan_id = plan_flow.flow_id if plan_flow else None
+        plan_id = self.flow_stack.get_flow().flow_id
         self._push_next_sub_flow(state, plan_id)
         state.update_flags(keep_going=True)
 
-        completed_names = [sf['flow_name'] for sf in sub_flows if sf['status'] == 'completed']
-        frame = self.build_frame('default', origin=flow.name())
-        frame.data = {
-            'content': f'Completed: {", ".join(completed_names)}. Continuing to next step.',
-        }
-        return frame
+        return self.build_frame(origin=flow.name())
 
     # -- Helpers ------------------------------------------------------------
 

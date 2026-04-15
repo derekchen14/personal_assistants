@@ -52,9 +52,7 @@ class ContextCoordinator:
         self.completed_flows: list[str] = []
         self.last_actions: dict[str, list[str]] = {}
 
-    def add_turn(self, speaker:str, text:str,
-                 form:str='text', turn_type:str|None=None) -> Turn:
-        turn_type = turn_type or 'utterance'
+    def add_turn(self, speaker:str, text:str, turn_type:str) -> Turn:
         turn = Turn(speaker, text, turn_type, turn_id=self.num_utterances)
         self._history.append(turn)
         if turn_type == 'utterance':

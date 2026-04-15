@@ -10,7 +10,7 @@ class ConversePolicy(BasePolicy):
         self.flow_stack = components['flow_stack']
 
     def execute(self, state, context, tools) -> 'DisplayFrame':
-        flow = self.flow_stack.get_active_flow()
+        flow = self.flow_stack.get_flow()
 
         match flow.name():
             case 'chat': return self.chat_policy(flow, state, context, tools)
@@ -23,17 +23,13 @@ class ConversePolicy(BasePolicy):
             case 'dismiss': return self.dismiss_policy(flow, state, context, tools)
             case 'undo': return self.undo_policy(flow, state, context, tools)
             case _:
-                frame = self.build_frame('default')
-                frame.data = {'content': ''}
-                return frame
+                return self.build_frame()
 
     def chat_policy(self, flow, state, context, tools):
         convo_history = context.compile_history()
         text = self.engineer.call(convo_history)
         flow.status = 'Completed'
-        frame = self.build_frame('default', origin='chat')
-        frame.data = {'content': text}
-        return frame
+        return self.build_frame(origin='chat', thoughts=text)
 
     def next_policy(self, flow, state, context, tools):
         convo_history = context.compile_history()
@@ -41,9 +37,7 @@ class ConversePolicy(BasePolicy):
         messages = self.engineer.build_skill_prompt(flow, convo_history, self.memory.read_scratchpad(), skill_prompt)
         text = self.engineer.call(messages)
         flow.status = 'Completed'
-        frame = self.build_frame('default', origin='next')
-        frame.data = {'content': text}
-        return frame
+        return self.build_frame(origin='next', thoughts=text)
 
     def feedback_policy(self, flow, state, context, tools):
         convo_history = context.compile_history()
@@ -51,22 +45,18 @@ class ConversePolicy(BasePolicy):
         messages = self.engineer.build_skill_prompt(flow, convo_history, self.memory.read_scratchpad(), skill_prompt)
         text = self.engineer.call(messages)
         flow.status = 'Completed'
-        frame = self.build_frame('default', origin='feedback')
-        frame.data = {'content': text}
-        return frame
+        return self.build_frame(origin='feedback', thoughts=text)
 
     def preference_policy(self, flow, state, context, tools):
-        if not flow.slots.get('setting', None) or not flow.slots['setting'].filled:
+        if not flow.slots['setting'].check_if_filled():
             convo_history = context.compile_history(look_back=3)
             text = self.engineer.call(convo_history, system="Extract the preference key and value from the conversation.")
             parsed = self._parse_value(text)
             if parsed:
                 flow.fill_slots_by_label({'setting': parsed})
-            if not flow.slots.get('setting') or not flow.slots['setting'].filled:
+            if not flow.slots['setting'].check_if_filled():
                 self.ambiguity.declare('specific', metadata={'missing_slot': 'setting'})
-                frame = self.build_frame('default')
-                frame.data = {'content': self.ambiguity.ask()}
-                return frame
+                return self.build_frame()
 
         slots = flow.slot_values_dict()
         setting = slots.get('setting', {})
@@ -81,9 +71,7 @@ class ConversePolicy(BasePolicy):
         messages = self.engineer.build_skill_prompt(flow, convo_history, self.memory.read_scratchpad(), skill_prompt)
         text = self.engineer.call(messages)
         flow.status = 'Completed'
-        frame = self.build_frame('default', origin='preference')
-        frame.data = {'content': text}
-        return frame
+        return self.build_frame(origin='preference', thoughts=text)
 
     def suggest_policy(self, flow, state, context, tools):
         scratchpad = self.memory.read_scratchpad()
@@ -110,16 +98,12 @@ class ConversePolicy(BasePolicy):
         messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
         text = self.engineer.call(messages)
         flow.status = 'Completed'
-        frame = self.build_frame('card', origin='suggest')
-        frame.data = {'content': text}
-        return frame
+        return self.build_frame(origin='suggest', thoughts=text)
 
     def explain_policy(self, flow, state, context, tools):
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = self.build_frame('default', origin='explain', thoughts=text)
-        frame.data = {'content': text}
-        return frame
+        return self.build_frame(origin='explain', thoughts=text)
 
     def endorse_policy(self, flow, state, context, tools):
         convo_history = context.compile_history()
@@ -127,9 +111,7 @@ class ConversePolicy(BasePolicy):
         messages = self.engineer.build_skill_prompt(flow, convo_history, self.memory.read_scratchpad(), skill_prompt)
         text = self.engineer.call(messages)
         flow.status = 'Completed'
-        frame = self.build_frame('default', origin='endorse', thoughts=text)
-        frame.data = {'content': text}
-        return frame
+        return self.build_frame(origin='endorse', thoughts=text)
 
     def dismiss_policy(self, flow, state, context, tools):
         convo_history = context.compile_history()
@@ -137,13 +119,9 @@ class ConversePolicy(BasePolicy):
         messages = self.engineer.build_skill_prompt(flow, convo_history, self.memory.read_scratchpad(), skill_prompt)
         text = self.engineer.call(messages)
         flow.status = 'Completed'
-        frame = self.build_frame('default', origin='dismiss', thoughts=text)
-        frame.data = {'content': text}
-        return frame
+        return self.build_frame(origin='dismiss', thoughts=text)
 
     def undo_policy(self, flow, state, context, tools):
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = self.build_frame('default', origin='undo', thoughts=text)
-        frame.data = {'content': text}
-        return frame
+        return self.build_frame(origin='undo', thoughts=text)

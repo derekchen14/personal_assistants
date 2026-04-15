@@ -33,12 +33,10 @@ class BasePolicy:
         text, tool_log = self.engineer.tool_call(messages, tool_defs, tools)
         return text, tool_log
 
-    def build_frame(self, block_type:str, origin:str=None, panel:str=None,
-                    thoughts:str='', content:str='') -> DisplayFrame:
+    def build_frame(self, origin:str='', thoughts:str='') -> DisplayFrame:
         frame = DisplayFrame(self.config)
-        frame.set_frame(block_type, {}, origin=origin, panel=panel)
+        frame.origin = origin
         frame.thoughts = thoughts
-        frame.data = {'content': content}
         return frame
 
     @staticmethod
@@ -118,21 +116,23 @@ class BasePolicy:
     # -- Persistence helpers ------------------------------------------------
 
     def _resolve_source_ids(self, flow, state, tools):
-        """Extract (post_id, sec_id) from entity slot."""
-        grounding = flow.slots.get(flow.entity_slot)
-        if not grounding or not grounding.filled:
+        """Extract (post_id, sec_id) from entity slot. Syncs state.active_post
+        as a side-effect so downstream turns can rely on the dialogue state."""
+        grounding = flow.slots[flow.entity_slot]
+        if grounding.slot_type == 'topic' or not grounding.filled:
             return None, None
         vals = grounding.values[0]
         post_id = self.resolve_post_id(vals['post'], tools)
         sec_id = vals.get('sec', '') or None
+        if post_id:
+            state.active_post = post_id
         return post_id, sec_id
 
     def _build_resolved_context(self, flow, state, tools) -> dict|None:
         """Pre-resolve post/section IDs so the LLM gets deterministic entities."""
-        grounding = flow.slots.get(flow.entity_slot)
-        if not grounding or not grounding.filled:
-            return None
         post_id, sec_id = self._resolve_source_ids(flow, state, tools)
+        if not post_id and state.active_post:
+            post_id = state.active_post
         if not post_id:
             return None
         meta = tools('read_metadata', {'post_id': post_id})

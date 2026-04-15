@@ -21,4 +21,26 @@ Refine an existing outline by adjusting headings, reordering sections, or incorp
 - `feedback` (optional): Specific guidance for the refinement
 
 ## Output
-The refined outline in `## Heading` format with bullet points.
+The refined outline saved via `generate_outline`. Format the markdown content as `## Heading` per section with `- bullet` lines underneath.
+
+## Few-shot example
+
+User: "Add bullets to the outline. Under Process, add: design scenarios, assign labels, generate conversations."
+
+Correct tool trajectory:
+1. `read_metadata(post_id=..., include_outline=True)` → returns existing outline.
+2. `generate_outline(post_id=..., content=<full outline with new bullets appended under Process>)`.
+
+Correct final reply (TXT, not JSON — refine's "output" is the saved outline content):
+```
+## Motivation
+- (existing bullets preserved)
+
+## Process
+- (existing bullets preserved)
+- design scenarios
+- assign labels
+- generate conversations
+
+## (other sections preserved)
+```

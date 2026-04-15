@@ -10,7 +10,7 @@ class InternalPolicy:
         self.flow_stack = components['flow_stack']
 
     def execute(self, state, context, tools) -> 'DisplayFrame':
-        flow = self.flow_stack.get_active_flow()
+        flow = self.flow_stack.get_flow()
 
         match flow.name():
             case 'recap': return self.recap_policy(flow, tools)
@@ -21,44 +21,31 @@ class InternalPolicy:
             case 'search': return self.search_policy(flow, tools)
             case 'reference': return self.reference_policy(flow, tools)
             case 'study': return self.study_policy(flow, tools)
-            case _:
-                frame = DisplayFrame(self.config)
-                frame.set_frame('default', {'content': ''})
-                return frame
+            case _: return DisplayFrame(self.config)
 
     def recap_policy(self, flow, tools):
-        slot = flow.slots.get('key')
-        key = slot.to_dict() if slot and slot.filled else None
-        if key:
+        slot = flow.slots['key']
+        if slot.check_if_filled():
+            key = slot.to_dict()
             val = self.memory.read_scratchpad(key)
-            content = val or ''
-        else:
-            content = str(self.memory.read_scratchpad())
-
+            if val:
+                self.memory.write_scratchpad(f'recap:{key}', val)
         flow.status = 'Completed'
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': content})
-        return frame
+        return DisplayFrame(self.config)
 
     def remember_policy(self, flow, tools):
         flow.status = 'Completed'
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': ''})
-        return frame
+        return DisplayFrame(self.config)
 
     def recall_policy(self, flow, tools):
-        slot = flow.slots.get('key')
-        key = slot.to_dict() if slot and slot.filled else None
-        if key:
+        slot = flow.slots['key']
+        if slot.check_if_filled():
+            key = slot.to_dict()
             val = self.memory.read_preference(key)
-            content = str(val) if val else ''
-        else:
-            content = ''
-
+            if val:
+                self.memory.write_scratchpad(f'recall:{key}', str(val))
         flow.status = 'Completed'
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': content})
-        return frame
+        return DisplayFrame(self.config)
 
     def store_policy(self, flow, tools):
         key_slot = flow.slots.get('key')
@@ -67,56 +54,40 @@ class InternalPolicy:
         value = val_slot.to_dict() if val_slot and val_slot.filled else ''
         if key and value:
             self.memory.write_scratchpad(key, value)
-
         flow.status = 'Completed'
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': ''})
-        return frame
+        return DisplayFrame(self.config)
 
     def retrieve_policy(self, flow, tools):
         result = tools('manage_memory', {'action': 'read_scratchpad'})
-        content = ''
         if result.get('_success'):
-            content = str(result.get('scratchpad', result.get('result', '')))
-
+            payload = result.get('scratchpad', result.get('result', ''))
+            self.memory.write_scratchpad('retrieve:last', str(payload))
         flow.status = 'Completed'
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': content})
-        return frame
+        return DisplayFrame(self.config)
 
     def search_policy(self, flow, tools):
-        query_slot = flow.slots.get('query')
-        query = str(query_slot.to_dict()) if query_slot and query_slot.filled else ''
-
-        content = ''
-        if query:
+        query_slot = flow.slots['query']
+        if query_slot.check_if_filled():
+            query = str(query_slot.to_dict())
             result = tools('find_posts', {'query': query})
             if result.get('_success'):
                 items = result.get('items', [])
-                content = str(items)
-
+                self.memory.write_scratchpad(f'search:{query}', str(items))
         flow.status = 'Completed'
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': content})
-        return frame
+        return DisplayFrame(self.config)
 
     def reference_policy(self, flow, tools):
         flow.status = 'Completed'
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': ''})
-        return frame
+        return DisplayFrame(self.config)
 
     def study_policy(self, flow, tools):
-        grounding = flow.slots.get(flow.entity_slot)
-        post_id = grounding.values[0]['post'] if grounding and grounding.filled else ''
+        grounding = flow.slots[flow.entity_slot]
+        post_id = grounding.values[0]['post'] if grounding.check_if_filled() else ''
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         if result.get('_success'):
             self.memory.write_scratchpad(
                 f'post:{post_id}',
                 f'{result.get("title", "")}: {result.get("outline", "")[:500]}',
             )
-
         flow.status = 'Completed'
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': ''})
-        return frame
+        return DisplayFrame(self.config)

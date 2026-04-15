@@ -54,6 +54,14 @@ guardrails:
     enabled: true
     sensitivity: medium
 
+recovery:
+  llm_validate_flows:
+    - refine
+    - compose
+    - rework
+    - polish
+    - simplify
+
 key_entities: [post, section, note, platform]
 
 display:

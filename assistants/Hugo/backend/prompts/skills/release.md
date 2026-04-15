@@ -3,20 +3,49 @@
 Publish a post to a specific platform channel.
 
 ## Behavior
-1. Use `read_metadata` to verify the post exists and is in draft status
-2. Use `channel_status` to verify the target channel is connected and available
-3. Use `release_post` to publish to the specified platform
-4. Use `update_post` to flip the post status to "published" on success
-5. If publication fails, explain the error and suggest fixes
-
-## Important
-- The policy flips post status to published automatically after success.
-- Verify draft status before attempting release.
-- While `read_metadata` can be used to get post IDs, the post title has been resolved for you within "Resolved entities". The mapping of section titles to section IDs can also be found there. You are encouraged to use these provided IDs rather than executing extra tool calls to get this information.
-
-## Slots
-- `source` (required): The post to publish (by title or ID)
-- `channel` (required): The platform channel to publish to
+1. `channel_status(channel=<channel>)` to verify the channel is connected.
+2. `release_post(post_id=..., channel=<channel>)` to publish.
+3. The policy flips the post's status to `published` automatically after success.
+4. If publication fails, surface the error and suggest a fix.
 
 ## Output
-Confirmation of successful publication with platform details.
+Respond with **JSON** in this shape:
+
+```json
+{
+  "post_id": "...",
+  "title": "...",
+  "channel": "...",
+  "status": "published" | "failed",
+  "url": "https://...",
+  "notes": "<one-sentence summary or error message>"
+}
+```
+
+## Few-shot example
+
+User: "Publish the synthetic data post to the blog"
+
+Correct tool trajectory:
+1. `channel_status(channel='blog')` → returns `{ok: true}`.
+2. `release_post(post_id=..., channel='blog')` → returns `{url: "https://blog.example.com/synthetic-data"}`.
+
+Correct final reply:
+```json
+{
+  "post_id": "abc123",
+  "title": "Synthetic Data Generation for Classification",
+  "channel": "blog",
+  "status": "published",
+  "url": "https://blog.example.com/synthetic-data",
+  "notes": "Published successfully; ready to syndicate."
+}
+```
+
+## Slots
+- `source` (required): The post to publish.
+- `channel` (required): The destination channel (`blog`, `medium`, `linkedin`, etc.). Defaults to `mt1t` if not given.
+
+## Important
+- `Resolved entities` gives you `post_id` — use it instead of extra `read_metadata` calls.
+- Do not retry `release_post` on failure unless the user explicitly asks. Explain the failure instead.

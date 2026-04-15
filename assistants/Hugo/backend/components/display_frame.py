@@ -1,64 +1,82 @@
-from __future__ import annotations
-
 from types import MappingProxyType
 
+VALID_BLOCK_TYPES = frozenset(('card', 'form', 'confirmation', 'toast', 'default', 'selection'))
+_TOP_TYPES = frozenset(('form', 'confirmation', 'toast'))
+
+class BuildingBlock:
+
+    def __init__(self, block_type:str, data:dict, location:str):
+        self.block_type = block_type
+        self.data = data
+        self.location = location
+
+    def to_dict(self) -> dict:
+        block_dict = {
+            'type': self.block_type,
+            'data': self.data,
+            'location': self.location,
+        }
+        return block_dict
 
 class DisplayFrame:
 
     def __init__(self, config: MappingProxyType):
         self.config = config
-        self._display_config = config.get('display', {})
-        self._page_size = self._display_config.get('page_size', 512)
 
-        self.block_type: str = 'default'
-        self.data: dict = {}
-        self.origin: str | None = None
-        self.display_name: str | None = None
+        self.origin: str = ''
+        self.metadata: dict = {}
+        self.blocks: list = []
         self.code: str | None = None
-        self.panel: str = 'bottom'
         self.thoughts: str = ''
 
-    _TOP_TYPES = frozenset(('form', 'confirmation', 'toast'))
+    def set_frame(self, origin:str='', blocks:list=[], new_data:dict={}):
+        if len(origin) > 0:
+            self.origin = origin
+        for new_block in blocks:
+            self.add_block(new_block)
+        self.metadata.update(new_data)
 
-    def set_frame(self, block_type: str, data: dict,
-                  origin: str | None = None,
-                  display_name: str | None = None,
-                  code: str | None = None,
-                  panel: str | None = None):
-        self.block_type = block_type
-        self.data = data
-        self.origin = origin
-        self.display_name = display_name
-        self.code = code
-        if panel is not None:
-            self.panel = panel
+    def add_block(self, block_data:dict):
+        block_type = block_data['type']
+        data = block_data['data']
+
+        if 'location' in block_data:
+            location = block_data['location']
+        elif block_type in _TOP_TYPES:
+            location = 'top'
         else:
-            self.panel = 'top' if block_type in self._TOP_TYPES else 'bottom'
+            location = 'bottom'
+
+        block = BuildingBlock(block_type, data, location)
+        self.blocks.append(block)
 
     def clear(self):
-        self.block_type = 'default'
-        self.data = {}
         self.origin = None
-        self.display_name = None
+        self.blocks = []
+        self.metadata = {}
         self.code = None
-        self.panel = 'bottom'
+        self.thoughts = ''
 
-    def has_content(self) -> bool:
-        return self.block_type != 'default' and bool(self.data)
-
-    def compose(self, block_type: str, data: dict) -> dict:
+    def compose(self, block: str, data: dict) -> dict:
         return {
-            'type': block_type,
-            'show': block_type != 'default',
+            'type': block,
+            'show': block != 'default',
             'data': data,
         }
+    
+    def block_type(self) -> str:
+        if self.blocks:
+            return self.blocks[-1].block_type
+        return 'default'
 
     def to_dict(self) -> dict:
-        return {
-            'block_type': self.block_type,
-            'data': self.data,
+        frame_dict = {
             'origin': self.origin,
-            'display_name': self.display_name,
-            'code': self.code,
-            'panel': self.panel,
+            'blocks': [block.to_dict() for block in self.blocks],
+            'metadata': self.metadata,
         }
+        if self.code:
+            frame_dict['code'] = self.code
+        if self.thoughts:
+            frame_dict['thoughts'] = self.thoughts
+        return frame_dict
