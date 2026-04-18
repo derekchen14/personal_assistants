@@ -44,6 +44,7 @@ export type ActivePage = 'posts' | 'drafts' | 'notes' | 'tags';
 export const activeFrame = writable<FrameData | null>(null);
 export const topFrame = writable<FrameData | null>(null);
 export const bottomFrame = writable<FrameData | null>(null);
+export const lastCardFrame = writable<FrameData | null>(null);
 export const activePage = writable<ActivePage>('posts');
 export const activeTag = writable<string>('');
 export const searchQuery = writable('');
@@ -71,6 +72,7 @@ export function clearFrames() {
     activeFrame.set(null);
     topFrame.set(null);
     bottomFrame.set(null);
+    lastCardFrame.set(null);
     _expanded.set(false);
     _listExpanded.set(false);
 }
@@ -83,6 +85,9 @@ export function setFrame(frame: FrameData) {
         showPage((primary.data as Record<string, unknown>).page as ActivePage);
     }
     const panel = frame.panel || 'bottom';
+    if (primary.type === 'card' && panel === 'bottom') {
+        lastCardFrame.set(frame);
+    }
     if (panel === 'top') {
         topFrame.set(frame);
     } else if (panel === 'split') {
@@ -95,6 +100,22 @@ export function setFrame(frame: FrameData) {
             _expanded.set(true);
         }
     }
+}
+
+export function restorePendingCard() {
+    const saved = get(lastCardFrame);
+    if (!saved) return;
+    let pending: FrameData;
+    if (saved.blocks && saved.blocks.length > 0) {
+        const blocks = saved.blocks.map(b =>
+            b.type === 'card' ? { ...b, data: { ...b.data, pending: true } } : b,
+        );
+        pending = { ...saved, blocks };
+    } else {
+        pending = { ...saved, data: { ...(saved.data ?? {}), pending: true } };
+    }
+    activeFrame.set(pending);
+    bottomFrame.set(pending);
 }
 
 let _onRefresh: ((frameType: string) => void) | null = null;

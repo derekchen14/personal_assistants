@@ -1,0 +1,100 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e924]: Hey derek! What are we writing today?
+        - generic [ref=e1074]: outline this please
+        - generic [ref=e1082]: I drafted 3 outline options — click one to continue, or tell me what to adjust.
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [active] [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e1083]:
+      - heading "Outline options" [level=3] [ref=e1084]
+      - generic [ref=e1085]:
+        - generic [ref=e1086]:
+          - generic [ref=e1087]:
+            - generic [ref=e1088]: Option 1
+            - button "Pick" [ref=e1089] [cursor=pointer]
+          - generic [ref=e1090]:
+            - paragraph [ref=e1091]:
+              - strong [ref=e1092]: What Is Seq2Seq? A Plain-Language Introduction
+            - paragraph [ref=e1093]: Set the stage by explaining the sequence-to-sequence paradigm in simple terms — what it means to map one sequence to another and why that's useful.
+            - paragraph [ref=e1094]:
+              - strong [ref=e1095]: "The Problem It Solved: NLP Before Seq2Seq"
+            - paragraph [ref=e1096]: Describe the limitations of earlier approaches (n-grams, fixed-window models, RNNs alone) that Seq2Seq was designed to overcome.
+            - paragraph [ref=e1097]:
+              - strong [ref=e1098]: "The 2014 Breakthrough: Sutskever, Vinyals & Le"
+            - paragraph [ref=e1099]: Walk through the landmark Google paper that introduced the encoder–decoder architecture and its immediate impact on machine translation.
+            - paragraph [ref=e1100]:
+              - strong [ref=e1101]: Attention Changes Everything
+            - paragraph [ref=e1102]: Cover Bahdanau's 2015 attention mechanism, explaining how it addressed the information bottleneck of fixed-length context vectors.
+            - paragraph [ref=e1103]:
+              - strong [ref=e1104]: From Seq2Seq to Transformers
+            - paragraph [ref=e1105]: Trace how Seq2Seq laid the conceptual groundwork for the "Attention Is All You Need" paper and the Transformer revolution.
+            - paragraph [ref=e1106]:
+              - strong [ref=e1107]: Legacy and Modern Descendants
+            - paragraph [ref=e1108]: Highlight how Seq2Seq lives on in models like BERT, GPT, and T5, and summarize its lasting influence on NLP.
+            - separator [ref=e1109]
+        - generic [ref=e1110]:
+          - generic [ref=e1111]:
+            - generic [ref=e1112]: Option 2
+            - button "Pick" [ref=e1113] [cursor=pointer]
+          - generic [ref=e1114]:
+            - paragraph [ref=e1115]:
+              - strong [ref=e1116]: "The Early Days: Language Modeling Before Deep Learning"
+            - paragraph [ref=e1117]: Briefly survey the statistical and rule-based era of NLP to give readers historical context before neural approaches emerged.
+            - paragraph [ref=e1118]:
+              - strong [ref=e1119]: "Enter the RNN: Promises and Pitfalls"
+            - paragraph [ref=e1120]: Explain recurrent neural networks — their sequence-handling ability and their well-known vanishing gradient problem.
+            - paragraph [ref=e1121]:
+              - strong [ref=e1122]: The Encoder–Decoder Architecture Explained
+            - paragraph [ref=e1123]: "Break down the core Seq2Seq design: how an encoder compresses input into a context vector and a decoder generates output step by step."
+            - paragraph [ref=e1124]:
+              - strong [ref=e1125]: "Key Milestones: A Timeline of Seq2Seq Research (2014–2020)"
+            - paragraph [ref=e1126]: Present a chronological walkthrough of pivotal papers — from the original Seq2Seq to attention, beam search improvements, and beyond.
+            - paragraph [ref=e1127]:
+              - strong [ref=e1128]: Real-World Applications That Seq2Seq Made Possible
+            - paragraph [ref=e1129]: Show how the architecture powered breakthroughs in machine translation, summarization, speech recognition, and chatbots.
+            - paragraph [ref=e1130]:
+              - strong [ref=e1131]: Why Seq2Seq Still Matters Today
+            - paragraph [ref=e1132]: Argue for the model's enduring relevance and its role as a conceptual building block in modern large language models.
+            - separator [ref=e1133]
+        - generic [ref=e1134]:
+          - generic [ref=e1135]:
+            - generic [ref=e1136]: Option 3
+            - button "Pick" [ref=e1137] [cursor=pointer]
+          - generic [ref=e1138]:
+            - paragraph [ref=e1139]:
+              - strong [ref=e1140]: "The Big Idea: Mapping Sequences to Sequences"
+            - paragraph [ref=e1141]: Open with a compelling real-world example (e.g., translating a sentence) to immediately ground the concept for the reader.
+            - paragraph [ref=e1142]:
+              - strong [ref=e1143]: "Anatomy of the Architecture: Encoder, Decoder, Context Vector"
+            - paragraph [ref=e1144]: Provide a detailed teardown of each component, explaining what data flows where and why the design works.
+            - paragraph [ref=e1145]:
+              - strong [ref=e1146]: "What Went Wrong First: The Bottleneck Problem"
+            - paragraph [ref=e1147]: Dive into the critical flaw of fixed-length context vectors and how it degraded performance on long sequences.
+            - paragraph [ref=e1148]:
+              - strong [ref=e1149]: "The Attention Fix: A Deep Dive"
+            - paragraph [ref=e1150]: Give a thorough technical explanation of attention mechanisms — how they let the decoder "look back" at the full input sequence.
+            - paragraph [ref=e1151]:
+              - strong [ref=e1152]: Competing Architectures and Why Seq2Seq Won
+            - paragraph [ref=e1153]: Compare Seq2Seq against contemporary alternatives (e.g., memory networks, tree-based models) to explain its rise to dominance.
+            - paragraph [ref=e1154]:
+              - strong [ref=e1155]: "The Transformer Takeover: End of an Era or Evolution?"
+            - paragraph [ref=e1156]: Critically examine whether Transformers replaced or merely extended Seq2Seq, and what that means for understanding AI history.
+            - paragraph [ref=e1157]:
+              - strong [ref=e1158]: Lessons for Today's AI Builders
+            - paragraph [ref=e1159]: Distill key design principles from Seq2Seq's history that remain relevant for practitioners building modern NLP systems.

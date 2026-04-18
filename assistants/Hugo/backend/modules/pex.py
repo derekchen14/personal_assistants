@@ -172,8 +172,15 @@ class PEX:
         """Check whether a frame is good enough to show to the user."""
         if self.ambiguity.present():
             return FrameCheck(passed=True)
-        block_data = self._merge_block_data(frame)
-        if frame.block_type() != 'default' and not block_data:
+        block_data, block_types = self._merge_block_data(frame)
+
+        has_data = (
+            'default' in block_types
+            or block_data
+            or frame.thoughts
+            or frame.metadata
+        )
+        if not has_data:
             return FrameCheck(passed=False, reason='Frame has no data')
         if 'error' in block_data and block_data.get('status') == 'error':
             return FrameCheck(passed=False, reason=f'Tool error: {block_data["error"]}')
@@ -191,9 +198,11 @@ class PEX:
     @staticmethod
     def _merge_block_data(frame:DisplayFrame) -> dict:
         merged = {}
+        block_types = []
         for block in frame.blocks:
             merged.update(block.data)
-        return merged
+            block_types.append(block.block_type)
+        return merged, block_types
 
     @staticmethod
     def _collect_slot_evidence(flow) -> str:
@@ -220,28 +229,16 @@ class PEX:
         if not last_user:
             return FrameCheck(passed=True)
         convo = self.world.context.compile_history(look_back=4)
-        system = (
-            'You are a quality checker. Given recent conversation history, '
-            'the user\'s latest request, and the agent\'s output (which may '
-            'include the agent\'s spoken reply, card content, and structured '
-            'data like proposed options), decide whether the response addresses '
-            'what the user asked. Treat persisted action (an outline saved, a '
-            'section written) as success even if the spoken reply is brief. '
-            'Reply with ONLY "pass" or "fail: <one-sentence reason>".'
-        )
         prompt = (
             f'Recent conversation:\n{convo}\n\n'
             f'User request: {last_user}\n\nAgent output:\n{content}'
         )
         try:
-            result = self.engineer.call(
-                prompt, system=system, task='quality_check',
-                model='haiku', max_tokens=100,
-            )
-            result = result.strip().lower()
-            if result.startswith('pass'):
+            raw_output = self.engineer(prompt, 'quality_check', model='haiku', max_tokens=128)
+            verdict = raw_output.strip().lower()
+            if verdict.startswith('pass'):
                 return FrameCheck(passed=True)
-            reason = result.removeprefix('fail:').strip() or 'LLM quality check failed'
+            reason = verdict.removeprefix('fail:').strip() or 'LLM quality check failed'
             return FrameCheck(passed=False, reason=reason)
         except Exception:
             return FrameCheck(passed=True)
@@ -282,11 +279,11 @@ class PEX:
         # to populate scratchpad, then retry original policy.
         #
         # self.memory.write_scratchpad('recovery_query', check.reason)
-        # retrieve_flow = self.flow_stack.push('retrieve', interjected=True)
+        # retrieve_flow = self.flow_stack.stackon('retrieve')
         # internal = self._policies.get(Intent.INTERNAL)
         # if internal:
         #     internal.execute(self.world.current_state(), context, self._dispatch_tool)
-        # self.flow_stack.mark_complete(retrieve_flow)
+        # retrieve_flow.status = 'Completed'
         # retry_frame = policy.execute(self.world.current_state(), context, self._dispatch_tool)
         # retry_check = self._validate_frame(retry_frame, flow)
         # if retry_check.passed:

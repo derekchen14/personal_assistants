@@ -1,0 +1,59 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e31]: Hey derek! What are we writing today?
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e410]:
+      - generic [ref=e411]:
+        - button "Edit" [ref=e412] [cursor=pointer]:
+          - img [ref=e413]
+        - button "Collapse" [ref=e415] [cursor=pointer]:
+          - img [ref=e416]
+      - heading "Collapse On Ambiguity" [level=3] [ref=e418]
+      - generic [ref=e419]:
+        - heading "What Is Ambiguity, Really?" [level=2] [ref=e420]
+        - list [ref=e421]:
+          - listitem [ref=e422]: Define ambiguity in the context of writing, communication, and AI systems
+          - listitem [ref=e423]:
+            - text: Distinguish between
+            - emphasis [ref=e424]: lexical
+            - text: ","
+            - emphasis [ref=e425]: structural
+            - text: ", and"
+            - emphasis [ref=e426]: intentional
+            - text: ambiguity with examples
+          - listitem [ref=e427]: Explain why ambiguity is often invisible to the sender but disruptive to the receiver
+          - listitem [ref=e428]: "Set up the central thesis: unresolved ambiguity doesn't just confuse — it collapses meaning entirely"
+        - heading "How Ambiguity Breaks Conversations" [level=2] [ref=e429]
+        - list [ref=e430]:
+          - listitem [ref=e431]: Walk through a real-world example of a conversation derailed by an ambiguous request
+          - listitem [ref=e432]: "Identify the three failure modes: misinterpretation, over-clarification, and silent wrong assumption"
+          - listitem [ref=e433]: Show how downstream decisions compound the original ambiguity
+          - listitem [ref=e434]: Highlight the cost of late-stage discovery (when you realize the misunderstanding too late)
+        - 'heading "Catching Ambiguity Early: The Pipeline Approach" [level=2] [ref=e435]'
+        - list [ref=e436]:
+          - listitem [ref=e437]: Introduce the idea of ambiguity as a signal to detect, not a problem to tolerate
+          - listitem [ref=e438]: "Describe a practical \"pipeline\" framework: detect → classify → resolve or flag"
+          - listitem [ref=e439]: "Offer concrete techniques: slot-filling, confidence thresholds, explicit clarification prompts"
+          - listitem [ref=e440]: Compare proactive vs. reactive ambiguity handling with trade-offs for each
+        - heading "Designing for Uncertainty" [level=2] [ref=e441]
+        - list [ref=e442]:
+          - listitem [ref=e443]: Reframe uncertainty as a design constraint rather than a flaw
+          - listitem [ref=e444]: Propose principles for building systems (or writing) that are resilient to ambiguity
+          - listitem [ref=e445]: "Discuss graceful degradation: how to fail usefully when ambiguity can't be resolved"
+          - listitem [ref=e446]: "Close with a call to action: audit your own workflows or content for hidden ambiguity traps"

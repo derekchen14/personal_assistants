@@ -1,0 +1,10 @@
+Total messages: 9 (Errors: 1, Warnings: 0)
+Returning 7 messages for level "info"
+
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5174/favicon.ico:0
+[LOG] [WS] connected @ http://localhost:5174/src/lib/stores/conversation.ts?t=1776294513866:50
+[LOG] [frame] received: {origin: welcome, panel: top, blocks: undefined} @ http://localhost:5174/src/lib/stores/conversation.ts?t=1776294513866:30
+[LOG] [frame] received: {origin: welcome, panel: top, blocks: undefined} @ http://localhost:5174/src/lib/stores/conversation.ts?t=1776294513866:30
+[LOG] [frame] received: {origin: view, panel: bottom, blocks: undefined} @ http://localhost:5174/src/lib/stores/conversation.ts?t=1776294513866:30
+[LOG] [frame] received: {origin: outline, panel: undefined, blocks: Array(1)} @ http://localhost:5174/src/lib/stores/conversation.ts?t=1776294513866:30
+[LOG] [frame] received: {origin: outline, panel: undefined, blocks: Array(1)} @ http://localhost:5174/src/lib/stores/conversation.ts?t=1776294513866:30

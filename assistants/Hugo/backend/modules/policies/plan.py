@@ -52,7 +52,7 @@ class PlanPolicy(BasePolicy):
             content = str(self.memory.read_scratchpad())
 
         flow.status = 'Completed'
-        return self.build_frame(origin='remember', thoughts=content)
+        return DisplayFrame(origin='remember', thoughts=content)
 
     # -- Mode A: Generate plan ----------------------------------------------
 
@@ -65,7 +65,7 @@ class PlanPolicy(BasePolicy):
 
         state.structured_plan = structured_plan
 
-        return self.build_frame(origin=flow.name(), thoughts=freeform)
+        return DisplayFrame(origin=flow.name(), thoughts=freeform)
 
     # -- Mode B: Handle approval --------------------------------------------
 
@@ -82,7 +82,7 @@ class PlanPolicy(BasePolicy):
 
         state.update_flags(has_plan=True, keep_going=True)
 
-        return self.build_frame(origin=flow.name())
+        return DisplayFrame(origin=flow.name())
 
     # -- Mode C: Verify and continue ----------------------------------------
 
@@ -113,16 +113,16 @@ class PlanPolicy(BasePolicy):
         all_done = all(sf['status'] == 'completed' for sf in sub_flows)
 
         if all_done:
-            self.flow_stack.mark_complete()
+            self.flow_stack.get_flow().status = 'Completed'
             state.update_flags(keep_going=False)
             summary = f'Plan completed: {structured_plan.get("description", flow.name())}'
-            return self.build_frame(origin=flow.name(), thoughts=summary)
+            return DisplayFrame(origin=flow.name(), thoughts=summary)
 
         plan_id = self.flow_stack.get_flow().flow_id
         self._push_next_sub_flow(state, plan_id)
         state.update_flags(keep_going=True)
 
-        return self.build_frame(origin=flow.name())
+        return DisplayFrame(origin=flow.name())
 
     # -- Helpers ------------------------------------------------------------
 
@@ -135,7 +135,7 @@ class PlanPolicy(BasePolicy):
             flow_name = sf['flow_name']
 
             try:
-                flow = self.flow_stack.push(flow_name, plan_id=plan_id)
+                flow = self.flow_stack.stackon(flow_name, plan_id=plan_id)
             except ValueError:
                 sf['status'] = 'completed'
                 continue

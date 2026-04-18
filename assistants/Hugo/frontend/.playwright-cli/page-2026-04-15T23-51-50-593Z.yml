@@ -1,0 +1,55 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e31]: Hey derek! What are we writing today?
+        - generic [ref=e448]: Make an outline with 4 sections
+        - generic [ref=e456]: Saved the outline.
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [active] [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e410]:
+      - generic [ref=e411]:
+        - button "Edit" [ref=e412] [cursor=pointer]:
+          - img [ref=e413]
+        - button "Collapse" [ref=e415] [cursor=pointer]:
+          - img [ref=e416]
+      - heading "Collapse On Ambiguity" [level=3] [ref=e418]
+      - generic [ref=e419]:
+        - heading "What Is Ambiguity, Really?" [level=2] [ref=e457]
+        - list [ref=e458]:
+          - listitem [ref=e459]: Define ambiguity in the context of language, communication, and AI systems
+          - listitem [ref=e460]: Distinguish between lexical, syntactic, and pragmatic ambiguity with concrete examples
+          - listitem [ref=e461]: Explain why ambiguity is not a bug but an inherent feature of natural language
+          - listitem [ref=e462]: "Set up the core tension: humans navigate ambiguity intuitively, but systems struggle"
+        - heading "How Ambiguity Breaks Conversations" [level=2] [ref=e463]
+        - list [ref=e464]:
+          - listitem [ref=e465]: Walk through real-world failure cases where unresolved ambiguity derails a dialogue
+          - listitem [ref=e466]: "Explore the cascade effect: one ambiguous turn poisons downstream context"
+          - listitem [ref=e467]: Discuss the cost of ambiguity in high-stakes domains (customer support, medical, legal)
+          - listitem [ref=e468]: Highlight why silence or confident wrong answers are both dangerous responses
+        - 'heading "Catching Ambiguity Early: The Pipeline Approach" [level=2] [ref=e469]'
+        - list [ref=e470]:
+          - listitem [ref=e471]: Introduce the concept of an ambiguity detection layer at the input stage
+          - listitem [ref=e472]: "Outline a practical pipeline: detect → classify → resolve or escalate"
+          - listitem [ref=e473]: "Cover techniques: slot-filling, confidence thresholds, clarifying question generation"
+          - listitem [ref=e474]: Show how early detection reduces recovery cost versus catching ambiguity late
+        - heading "Designing for Uncertainty" [level=2] [ref=e475]
+        - list [ref=e476]:
+          - listitem [ref=e477]: "Reframe the goal: instead of eliminating ambiguity, design systems that are robust to it"
+          - listitem [ref=e478]: Introduce patterns like graceful degradation, hedged responses, and explicit confirmation loops
+          - listitem [ref=e479]: Discuss how UX and copy choices can reduce ambiguity at the source
+          - listitem [ref=e480]: Close with a call to treat uncertainty as a first-class design constraint, not an edge case

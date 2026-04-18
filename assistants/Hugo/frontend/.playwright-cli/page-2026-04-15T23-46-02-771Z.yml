@@ -1,0 +1,52 @@
+- generic [ref=e11]:
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - button "📖" [ref=e14] [cursor=pointer]
+      - generic [ref=e15]: Hugo
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - img [ref=e18]
+        - textbox "Search" [ref=e20]
+      - navigation [ref=e21]:
+        - button "Posts" [ref=e22] [cursor=pointer]
+        - button "Drafts" [active] [ref=e23] [cursor=pointer]
+        - button "Notes" [ref=e24] [cursor=pointer]
+      - button "Log out" [ref=e25] [cursor=pointer]
+  - generic [ref=e26]:
+    - generic [ref=e30]:
+      - textbox "Message Hugo..." [ref=e31]
+      - button "Send" [ref=e32]
+    - generic [ref=e38]:
+      - button "Your Drafts" [ref=e40] [cursor=pointer]
+      - generic [ref=e44]:
+        - button "Collapse On Ambiguity" [ref=e47] [cursor=pointer]:
+          - img [ref=e49]
+          - generic [ref=e56]: Collapse On Ambiguity
+        - button "Color Post" [ref=e59] [cursor=pointer]:
+          - img [ref=e61]
+          - generic [ref=e68]: Color Post
+        - button "Components of Dialogue Systems" [ref=e71] [cursor=pointer]:
+          - img [ref=e73]
+          - generic [ref=e80]: Components of Dialogue Systems
+        - button "Expectation Maximization" [ref=e83] [cursor=pointer]:
+          - img [ref=e85]
+          - generic [ref=e92]: Expectation Maximization
+        - button "Feature images" [ref=e95] [cursor=pointer]:
+          - img [ref=e97]
+          - generic [ref=e104]: Feature images
+        - button "History of Seq2Seq" [ref=e107] [cursor=pointer]:
+          - img [ref=e109]
+          - generic [ref=e116]: History of Seq2Seq
+        - button "Insights around Attention Mechanism" [ref=e119] [cursor=pointer]:
+          - img [ref=e121]
+          - generic [ref=e128]: Insights around Attention Mechanism
+        - button "Markdown and HTML" [ref=e131] [cursor=pointer]:
+          - img [ref=e133]
+          - generic [ref=e140]: Markdown and HTML
+        - 'button "Markup: Syntax Highlighting" [ref=e143] [cursor=pointer]':
+          - img [ref=e145]
+          - generic [ref=e152]: "Markup: Syntax Highlighting"
+        - button "ML as Software 2.0" [ref=e155] [cursor=pointer]:
+          - img [ref=e157]
+          - generic [ref=e164]: ML as Software 2.0
+      - button "+ New Draft" [ref=e43] [cursor=pointer]

@@ -1,0 +1,83 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e31]: Hey derek! What are we writing today?
+        - generic [ref=e445]: Make an outline with 4 sections
+        - generic [ref=e453]: I drafted 3 outline options — click one to continue, or tell me what to adjust.
+        - generic [ref=e512]:
+          - generic [ref=e513]: .
+          - generic [ref=e514]: .
+          - generic [ref=e515]: .
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e516]:
+      - heading "Outline options" [level=3] [ref=e517]
+      - generic [ref=e518]:
+        - generic [ref=e519]:
+          - generic [ref=e520]:
+            - generic [ref=e521]: Option 1
+            - button "Pick" [ref=e522] [cursor=pointer]
+          - generic [ref=e523]:
+            - paragraph [ref=e524]:
+              - strong [ref=e525]: What Is Ambiguity, Really?
+            - paragraph [ref=e526]: Most people treat ambiguity as a bug — this section reframes it as an inevitable feature of language and communication, drawing on real-world examples.
+            - paragraph [ref=e527]:
+              - strong [ref=e528]: How Ambiguity Breaks Conversations
+            - paragraph [ref=e529]: "A deep dive into the failure modes: miscommunication, stalled decisions, and the hidden cost of leaving things undefined for too long."
+            - paragraph [ref=e530]:
+              - strong [ref=e531]: "Catching Ambiguity Early: The Pipeline Approach"
+            - paragraph [ref=e532]: Introduces a systematic method for identifying ambiguity at the source — before it cascades into bigger problems downstream.
+            - paragraph [ref=e533]:
+              - strong [ref=e534]: Designing for Uncertainty
+            - paragraph [ref=e535]: Practical frameworks for building systems, teams, and workflows that handle ambiguity gracefully rather than collapsing under it.
+            - separator [ref=e536]
+        - generic [ref=e537]:
+          - generic [ref=e538]:
+            - generic [ref=e539]: Option 2
+            - button "Pick" [ref=e540] [cursor=pointer]
+          - generic [ref=e541]:
+            - paragraph [ref=e542]:
+              - strong [ref=e543]: The Moment Everything Falls Apart
+            - paragraph [ref=e544]: "A narrative opening: a single ambiguous instruction derails a project, told as a story to hook the reader and make the stakes visceral."
+            - paragraph [ref=e545]:
+              - strong [ref=e546]: Why Our Brains Fill In the Gaps (And Get It Wrong)
+            - paragraph [ref=e547]: Explores the cognitive science behind how humans instinctively resolve ambiguity — often incorrectly — and why that instinct backfires in collaborative settings.
+            - paragraph [ref=e548]:
+              - strong [ref=e549]: Three Places Ambiguity Hides in Plain Sight
+            - paragraph [ref=e550]: "A listicle-style breakdown of the most common ambiguity traps: vague requirements, implicit assumptions, and underspecified ownership."
+            - paragraph [ref=e551]:
+              - strong [ref=e552]: "From Collapse to Clarity: A Repair Playbook"
+            - paragraph [ref=e553]: Step-by-step guidance for recovering when ambiguity has already caused damage — how to diagnose, align, and move forward.
+            - separator [ref=e554]
+        - generic [ref=e555]:
+          - generic [ref=e556]:
+            - generic [ref=e557]: Option 3
+            - button "Pick" [ref=e558] [cursor=pointer]
+          - generic [ref=e559]:
+            - paragraph [ref=e560]:
+              - strong [ref=e561]: Ambiguity as a Design Problem
+            - paragraph [ref=e562]: "Reframes the entire post's thesis upfront: ambiguity isn't a communication failure, it's a design failure — and it can be engineered away."
+            - paragraph [ref=e563]:
+              - strong [ref=e564]: "Teardown: A Real Ambiguity Disaster"
+            - paragraph [ref=e565]: An analytical teardown of a well-known project or process failure, tracing the root cause back to unresolved ambiguity at a critical decision point.
+            - paragraph [ref=e566]:
+              - strong [ref=e567]: "The Ambiguity Stack: Where It Lives in Your Organization"
+            - paragraph [ref=e568]: Maps ambiguity across four organizational layers — strategy, process, language, and tooling — showing where each type tends to live and fester.
+            - paragraph [ref=e569]:
+              - strong [ref=e570]: Building an Ambiguity-Resistant Culture
+            - paragraph [ref=e571]: "Actionable steps for leaders and teams to institutionalize clarity: from writing better briefs to running structured alignment rituals."

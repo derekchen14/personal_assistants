@@ -1,0 +1,22 @@
+- generic [ref=e11]:
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - button "📖" [ref=e14] [cursor=pointer]
+      - generic [ref=e15]: Hugo
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - img [ref=e18]
+        - textbox "Search" [ref=e20]
+      - navigation [ref=e21]:
+        - button "Posts" [ref=e22] [cursor=pointer]
+        - button "Drafts" [ref=e23] [cursor=pointer]
+        - button "Notes" [ref=e24] [cursor=pointer]
+      - button "Log out" [ref=e25] [cursor=pointer]
+  - generic [ref=e26]:
+    - generic [ref=e30]:
+      - textbox "Message Hugo..." [ref=e31]
+      - button "Send" [ref=e32]
+    - generic [ref=e38]:
+      - button "Your Drafts" [active] [ref=e40] [cursor=pointer]
+      - paragraph [ref=e41]: No drafts yet
+      - button "+ New Draft" [ref=e43] [cursor=pointer]

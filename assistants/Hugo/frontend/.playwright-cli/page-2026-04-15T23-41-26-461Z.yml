@@ -1,0 +1,272 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e31]: Hey derek! What are we writing today?
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e414]:
+      - generic [ref=e415]:
+        - button "Edit" [ref=e416] [cursor=pointer]:
+          - img [ref=e417]
+        - button "Collapse" [ref=e419] [cursor=pointer]:
+          - img [ref=e420]
+      - heading "Collapse On Ambiguity" [level=3] [ref=e422]
+      - generic [ref=e423]:
+        - heading "Direct Tool-Calling Collapses on Ambiguous Requests" [level=1] [ref=e424]
+        - heading "1. Introduction" [level=2] [ref=e425]
+        - paragraph [ref=e426]:
+          - text: "Imagine a user says:"
+          - emphasis [ref=e427]: "\"Can you check on that last post?\""
+        - paragraph [ref=e428]: "This could mean at least three things: pull up the post to review it, check its publication status, or analyze how it's performing. In a well-designed system, the agent asks a clarifying question. In direct tool-calling, the agent picks the most probable tool and executes, often incorrectly."
+        - paragraph [ref=e429]:
+          - text: This failure mode differs from
+          - strong [ref=e430]: hallucination
+          - text: "in a specific way: the routing decision happens before any content is generated. The model selected the wrong tool for the user's underlying intent, and nothing in the output revealed that. The response is fluent. The parameters look reasonable. If a human glanced at the output, nothing would seem amiss."
+        - paragraph [ref=e431]:
+          - text: We call this
+          - strong [ref=e432]: confident misdirection
+          - text: ": fluent, grammatically correct, but executed for the wrong task."
+        - paragraph [ref=e433]:
+          - text: In our evaluation, direct tool-calling accuracy on underspecified first-turn requests ranged from
+          - strong [ref=e434]: 37.5% to 57.3%
+          - text: across 8 models, averaging
+          - strong [ref=e435]: 47.2%
+          - text: . This is not a failure of a single weak model. It is a consistent gap across every model we tested.
+        - paragraph [ref=e436]: "When the model doesn't know what it doesn't know, you get confident misdirection: below 50% accuracy on ambiguous turns for most models."
+        - separator [ref=e437]
+        - heading "2. What Ambiguity Looks Like in Dialogue" [level=2] [ref=e438]
+        - paragraph [ref=e439]: "Our evaluation dataset includes four conversational turn categories:"
+        - list [ref=e440]:
+          - listitem [ref=e441]:
+            - strong [ref=e442]: same-flow
+            - text: ": the user continues the same task as the previous turn ("
+            - emphasis [ref=e443]: "\"Same thing for the performance benchmarks section\""
+            - text: )
+          - listitem [ref=e444]:
+            - strong [ref=e445]: switch-flow
+            - text: ": the user pivots to a different task mid-conversation ("
+            - emphasis [ref=e446]: "\"Now I want to check when this is scheduled to go out\""
+            - text: )
+          - listitem [ref=e447]:
+            - strong [ref=e448]: ambiguous-first
+            - text: ": the opening message is underspecified, and the user's intent can't be resolved without context or clarification ("
+            - emphasis [ref=e449]: "\"Can you help me with the developer tools post?\""
+            - text: )
+          - listitem [ref=e450]:
+            - strong [ref=e451]: ambiguous-second
+            - text: ": the follow-up turn introduces context that conflicts with or overrides the apparent intent established earlier"
+        - paragraph [ref=e452]:
+          - text: The last two categories are inevitable in any real deployment. Users don't narrate their intent. They rely on shared context, anaphora, and implicit reference.
+          - emphasis [ref=e453]: "\"That last one\""
+          - text: ","
+          - emphasis [ref=e454]: "\"the same thing\""
+          - text: ","
+          - emphasis [ref=e455]: "\"can you check on it\""
+          - text: are how people talk to systems they expect to understand them.
+        - paragraph [ref=e456]: "These utterances are well-formed. The direct tool-selection model just has to do two things at once in a single inference step:"
+        - list [ref=e457]:
+          - listitem [ref=e458]:
+            - strong [ref=e459]: Detect
+            - text: whether the request is ambiguous
+          - listitem [ref=e460]:
+            - strong [ref=e461]: Select
+            - text: the right tool, given that judgment
+        - paragraph [ref=e462]: Both tasks get conflated into a single inference step. The model has no signal that it's in an ambiguous situation. It sees an underspecified utterance and assigns probability mass across the tool inventory.
+        - separator [ref=e463]
+        - 'heading "3. The Flat Baseline: Where It Breaks" [level=2] [ref=e464]'
+        - blockquote [ref=e465]:
+          - paragraph [ref=e466]:
+            - strong [ref=e467]: Ambiguous-first turns lagged switch-flow turns by roughly 21 percentage points across all 8 models, the largest per-category gap in our evaluation.
+        - paragraph [ref=e468]:
+          - strong [ref=e469]: Figure 1
+          - text: ":"
+          - emphasis [ref=e470]: Flat tool-calling accuracy by turn category per model. Ambiguous-first is the hardest category for every model. Models that perform well on clear turns (same-flow, switch-flow) show large accuracy drops on ambiguous-first.
+        - paragraph [ref=e471]: "The per-category breakdown tells the story:"
+        - table [ref=e472]:
+          - rowgroup [ref=e473]:
+            - row "Category Accuracy Range Avg" [ref=e474]:
+              - columnheader "Category" [ref=e475]
+              - columnheader "Accuracy Range" [ref=e476]
+              - columnheader "Avg" [ref=e477]
+          - rowgroup [ref=e478]:
+            - row "switch-flow 56.3%–88.8% 74.3%" [ref=e479]:
+              - cell "switch-flow" [ref=e480]
+              - cell "56.3%–88.8%" [ref=e481]
+              - cell "74.3%" [ref=e482]
+            - row "same-flow 51.8%–84.9% 68.3%" [ref=e483]:
+              - cell "same-flow" [ref=e484]
+              - cell "51.8%–84.9%" [ref=e485]
+              - cell "68.3%" [ref=e486]
+            - row "ambiguous-second 45.1%–78.1% 63.9%" [ref=e487]:
+              - cell "ambiguous-second" [ref=e488]
+              - cell "45.1%–78.1%" [ref=e489]
+              - cell "63.9%" [ref=e490]
+            - row "ambiguous-first 37.5%–57.3% 47.2%" [ref=e491]:
+              - cell "ambiguous-first" [ref=e492]
+              - cell "37.5%–57.3%" [ref=e493]:
+                - strong [ref=e494]: 37.5%–57.3%
+              - cell "47.2%" [ref=e495]:
+                - strong [ref=e496]: 47.2%
+        - paragraph [ref=e497]: "The gradient is consistent across capability tiers: high-tier models (Opus, Qwen3) score 45.6% and 50.5% respectively on ambiguous-first. Mid-tier Sonnet manages 43.5%. Even Gemini 3.1 Pro, the strongest direct model in our benchmark at 76.4% overall, only reaches 55.2% on ambiguous-first. GPT-5 mini scores highest (57.3%) but this is still well below any model's performance on clear turns."
+        - paragraph [ref=e498]:
+          - text: Two reasons compound to produce this failure mode. First, the model has no mechanism to recognize it's in an ambiguous situation before committing to a tool call. It receives the utterance, generates logits over the tool vocabulary, and picks the argmax. The prompt can say "call
+          - code [ref=e499]: handle_ambiguity
+          - text: when uncertain," but without a prior classification step, the model can't reliably distinguish uncertain from certain contexts.
+        - paragraph [ref=e500]:
+          - text: Second, ambiguous turns expose the model to high-entropy tool distributions. On a clear expansion request, the probability mass concentrates on
+          - code [ref=e501]: expand_content
+          - text: . On
+          - emphasis [ref=e502]: "\"can you check on that post?\""
+          - text: ", the mass spreads across"
+          - code [ref=e503]: read_post
+          - text: ","
+          - code [ref=e504]: check_platform
+          - text: ","
+          - code [ref=e505]: analyze_content
+          - text: ","
+          - code [ref=e506]: search_posts
+          - text: ", and"
+          - code [ref=e507]: handle_ambiguity
+          - text: . The model picks the plurality winner, which may or may not be the right call.
+        - paragraph [ref=e508]: "Under direct tool-calling, the most common errors on ambiguous Hugo turns were:"
+        - list [ref=e509]:
+          - listitem [ref=e510]:
+            - code [ref=e511]: ambiguous
+            - text: →
+            - code [ref=e512]: search_posts
+            - text: (97 occurrences across models/seeds)
+          - listitem [ref=e513]:
+            - code [ref=e514]: ambiguous
+            - text: →
+            - code [ref=e515]: read_post
+            - text: (78 occurrences)
+          - listitem [ref=e516]:
+            - code [ref=e517]: ambiguous
+            - text: →
+            - code [ref=e518]: analyze_content
+            - text: (58 occurrences)
+          - listitem [ref=e519]:
+            - code [ref=e520]: ambiguous
+            - text: →
+            - code [ref=e521]: publish_post
+            - text: (57 occurrences)
+        - paragraph [ref=e522]: The model defaults to semantically plausible tools (reading, searching, analyzing) because those are the most likely responses to underspecified inputs. But "likely" and "correct" diverge badly when the right action is to ask a clarifying question.
+        - separator [ref=e523]
+        - 'heading "4. The Pipeline Solution: Catching Ambiguity Early" [level=2] [ref=e524]'
+        - paragraph [ref=e525]:
+          - text: The pipeline addresses this at the architectural level.
+          - strong [ref=e526]: Flow detection
+          - text: runs before tool selection. When the flow detector is uncertain about which specific user intent applies, the system can route to an ambiguity handler instead of guessing at a tool.
+        - paragraph [ref=e527]:
+          - text: "The mechanism: the flow detection stage produces a confidence signal over the ~42 candidate flows. When confidence is low, as it will be for underspecified inputs, the system routes to the"
+          - code [ref=e528]: ambiguity_handler
+          - text: intent rather than propagating uncertainty down to the tool-selection stage.
+        - blockquote [ref=e529]:
+          - paragraph [ref=e530]: You can't fix the ambiguity problem at the tool-selection layer, because the model at that layer has no access to the information that would tell it something is ambiguous. You have to fix it upstream.
+        - paragraph [ref=e531]:
+          - text: For ambiguous-first turns, our flow detection ensemble achieved
+          - strong [ref=e532]: 78.8% accuracy
+          - text: ", a ~31 percentage point improvement over the direct baseline."
+        - paragraph [ref=e533]: That's still imperfect. 78.8% flow detection on ambiguous-first leaves 21.2% of cases reaching the tool-selection stage unresolved. But it is achievable with a dedicated ensemble rather than hoping the base model self-reports uncertainty.
+        - paragraph [ref=e534]:
+          - strong [ref=e535]: Figure 2
+          - text: ":"
+          - emphasis [ref=e536]: Pipeline E2E vs. direct accuracy, with ambiguous categories highlighted. The pipeline's advantage is largest on the turn categories where direct tool-calling breaks down.
+        - paragraph [ref=e537]: "For other turn categories, the flow detection ensemble performs better by 15+ percentage points: 93.4% on same-flow and ambiguous-second, 92.8% on switch-flow. The 78.8% on ambiguous-first reflects the difficulty of the case. These are utterances where even human annotators might disagree about intent. And it's still better than what direct mode achieves."
+        - separator [ref=e538]
+        - heading "5. Can You Prompt Your Way Out of This?" [level=2] [ref=e539]
+        - paragraph [ref=e540]: "The natural counter-proposal: add an explicit instruction to the direct prompt."
+        - paragraph [ref=e541]: "We tested this in our Experiment 2C, adding the following to the system prompt:"
+        - blockquote [ref=e542]:
+          - paragraph [ref=e543]:
+            - emphasis [ref=e544]:
+              - text: "\"When a request is ambiguous or underspecified, prefer calling"
+              - code [ref=e545]: handle_ambiguity
+              - text: rather than guessing at the user's intent."
+        - paragraph [ref=e546]:
+          - strong [ref=e547]: Figure 3
+          - text: ":"
+          - emphasis [ref=e548]: "Hint ablation: direct vs. hint accuracy by turn category, across 3 models (Haiku, Gemini Flash, Sonnet). Per-category deltas show the hint's effect is minimal on ambiguous turns and introduces regression on some clear-turn categories."
+        - paragraph [ref=e549]: "The results across 3 models:"
+        - table [ref=e550]:
+          - rowgroup [ref=e551]:
+            - row "Model Flat Acc Hint Acc Delta" [ref=e552]:
+              - columnheader "Model" [ref=e553]
+              - columnheader "Flat Acc" [ref=e554]
+              - columnheader "Hint Acc" [ref=e555]
+              - columnheader "Delta" [ref=e556]
+          - rowgroup [ref=e557]:
+            - row "Haiku 4.5 54.6% 59.7% +5.1%" [ref=e558]:
+              - cell "Haiku 4.5" [ref=e559]
+              - cell "54.6%" [ref=e560]
+              - cell "59.7%" [ref=e561]
+              - cell "+5.1%" [ref=e562]
+            - row "Gemini 3 Flash 73.0% 74.2% +1.3%" [ref=e563]:
+              - cell "Gemini 3 Flash" [ref=e564]
+              - cell "73.0%" [ref=e565]
+              - cell "74.2%" [ref=e566]
+              - cell "+1.3%" [ref=e567]
+            - row "Sonnet 4.6 61.5% 63.7% +2.1%" [ref=e568]:
+              - cell "Sonnet 4.6" [ref=e569]
+              - cell "61.5%" [ref=e570]
+              - cell "63.7%" [ref=e571]
+              - cell "+2.1%" [ref=e572]
+        - paragraph [ref=e573]:
+          - text: The average improvement is
+          - strong [ref=e574]: +2.8%
+          - text: ", which is modest and concentrated in overall accuracy rather than in ambiguous-turn categories. Looking at ambiguous-first specifically:"
+        - list [ref=e575]:
+          - listitem [ref=e576]: "Haiku: 37.5% → 49.2% (+11.7%)"
+          - listitem [ref=e577]: "Gemini Flash: 47.7% → 52.1% (+4.5%)"
+          - listitem [ref=e578]: "Sonnet: 43.5% → 48.4% (+4.9%)"
+        - paragraph [ref=e579]:
+          - text: "There's a real signal here. The hint does help Haiku on ambiguous-first, but note the side effect: Gemini Flash's ambiguous-second accuracy"
+          - emphasis [ref=e580]: dropped
+          - text: from 77.6% to 72.7% with the hint. The model over-triggers
+          - code [ref=e581]: handle_ambiguity
+          - text: on turns that aren't actually ambiguous.
+        - paragraph [ref=e582]:
+          - text: "This is the core problem with the prompt approach:"
+          - strong [ref=e583]: the model lacks the context to know when it's in an ambiguous situation
+          - text: . The prompt tells it to be cautious, but without a prior classification signal, the model sometimes applies that caution to clear requests too, which degrades performance on the categories where it was already doing well.
+        - separator [ref=e584]
+        - heading "6. Designing for Uncertainty" [level=2] [ref=e585]
+        - paragraph [ref=e586]: The pipeline provides three things direct tool-calling doesn't.
+        - paragraph [ref=e587]: First, flow detection produces a distribution over flows rather than a point estimate. Low confidence is a signal, not noise. Second, the ambiguity handler is accessible before the tool-selection stage, not nominally available as one of 56 tools. Third, detecting ambiguity and selecting a tool are two distinct decisions, handled by two distinct stages.
+        - paragraph [ref=e588]: "The practical recommendation for agent builders: if your system has a \"clarify\" or \"ask_followup\" tool, make it reachable before tool selection, rather than relying on prompt instructions alone. An upstream classifier that routes to clarification before the tool-selection stage is doing work that the tool-selection model cannot replicate through prompting alone."
+        - paragraph [ref=e589]: This generalizes beyond ambiguity handling. The flow detection stage is doing intent disambiguation through a dedicated classification step rather than being folded into the tool-selection inference. Any multi-intent agent where users can make underspecified requests should consider a similar architecture.
+        - paragraph [ref=e590]: "The broader principle: identify which decisions require routing and which decisions require content understanding. Flat tool-calling conflates both. The pipeline separates them."
+        - separator [ref=e591]
+        - heading "7. Limitations and Open Questions" [level=2] [ref=e592]
+        - list [ref=e593]:
+          - listitem [ref=e594]:
+            - text: Our ambiguous turn categories were
+            - strong [ref=e595]: synthetically constructed
+            - text: "to have specific ambiguity properties. Real-world ambiguity has a different distribution: more diverse, less controlled, potentially higher entropy."
+          - listitem [ref=e596]:
+            - text: The
+            - strong [ref=e597]: 78.8% flow detection accuracy
+            - text: on ambiguous-first is imperfect. The ensemble approach helps, but there is meaningful headroom remaining.
+          - listitem [ref=e598]:
+            - text: We tested prompt-level intervention with a single instruction variant.
+            - strong [ref=e599]: Chain-of-thought
+            - text: ","
+            - strong [ref=e600]: few-shot examples of ambiguity recognition
+            - text: ", or"
+            - strong [ref=e601]: retrieval-augmented context injection
+            - text: may achieve larger gains via prompting than our simple hint experiment suggests. We did not test these.
+          - listitem [ref=e602]: The study measures routing accuracy, not downstream quality. Even when the pipeline routes correctly to the ambiguity handler, the quality of the clarification question generated is a separate issue we did not evaluate.

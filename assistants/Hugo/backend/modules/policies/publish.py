@@ -21,7 +21,7 @@ class PublishPolicy(BasePolicy):
             case 'cancel': return self.cancel_policy(flow, state, context, tools)
             case 'survey': return self.survey_policy(flow, state, context, tools)
             case _:
-                return self.build_frame()
+                return DisplayFrame()
 
     def _slot_steps(self, flow):
         steps = []
@@ -33,7 +33,7 @@ class PublishPolicy(BasePolicy):
 
     def _clarify_with_steps(self, flow):
         steps, current = self._slot_steps(flow)
-        frame = self.build_frame(origin=flow.name())
+        frame = DisplayFrame(origin=flow.name())
         frame.add_block({'type': 'toast', 'data': {
             'message': self.ambiguity.ask(),
             'level': 'info',
@@ -55,7 +55,7 @@ class PublishPolicy(BasePolicy):
         if post_id:
             tools('update_post', {'post_id': post_id, 'updates': {'status': 'published'}})
         flow.status = 'Completed'
-        frame = self.build_frame(origin='release', thoughts=text)
+        frame = DisplayFrame(origin='release', thoughts=text)
         frame.add_block({'type': 'toast', 'data': {'message': text}})
         return frame
 
@@ -66,7 +66,7 @@ class PublishPolicy(BasePolicy):
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = self.build_frame(origin='syndicate', thoughts=text)
+        frame = DisplayFrame(origin='syndicate', thoughts=text)
         frame.add_block({'type': 'toast', 'data': {'message': text}})
         return frame
 
@@ -79,7 +79,7 @@ class PublishPolicy(BasePolicy):
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = self.build_frame(origin='schedule', thoughts=text)
+        frame = DisplayFrame(origin='schedule', thoughts=text)
         frame.add_block({'type': 'toast', 'data': {'message': text}})
         return frame
 
@@ -92,7 +92,7 @@ class PublishPolicy(BasePolicy):
         post_id, _ = self._resolve_source_ids(flow, state, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = self.build_frame(origin='preview', thoughts=text)
+        frame = DisplayFrame(origin='preview', thoughts=text)
         if post_id:
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
@@ -117,7 +117,7 @@ class PublishPolicy(BasePolicy):
 
         post_data = self._read_post_content(source_id, tools) if source_id else {}
         flow.status = 'Completed'
-        frame = self.build_frame(origin='promote', thoughts=text)
+        frame = DisplayFrame(origin='promote', thoughts=text)
         card_data = post_data if post_data else {'post_id': source_id or '', 'title': source_title}
         frame.add_block({'type': 'card', 'data': card_data})
         return frame
@@ -137,11 +137,11 @@ class PublishPolicy(BasePolicy):
 
         message = 'Publication cancelled.' if result.get('_success') else 'Could not cancel.'
         flow.status = 'Completed'
-        frame = self.build_frame(origin='cancel')
+        frame = DisplayFrame(origin='cancel')
         frame.add_block({'type': 'toast', 'data': {'message': message}})
         return frame
 
     def survey_policy(self, flow, state, context, tools):
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        return self.build_frame(origin='survey', thoughts=text)
+        return DisplayFrame(origin='survey', thoughts=text)

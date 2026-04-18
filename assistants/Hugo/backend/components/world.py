@@ -43,6 +43,6 @@ class World:
     def reset(self):
         self.states.clear()
         self.frames.clear()
-        self.flow_stack.clear()
+        self.flow_stack._stack.clear()
         self.context.reset()
         self._seed_session()

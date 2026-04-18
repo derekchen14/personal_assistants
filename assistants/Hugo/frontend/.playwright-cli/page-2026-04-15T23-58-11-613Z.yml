@@ -1,0 +1,68 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e924]: Hey derek! What are we writing today?
+        - generic [ref=e1074]: outline this please
+        - generic [ref=e1082]: I drafted 3 outline options — click one to continue, or tell me what to adjust.
+        - generic [ref=e1244]: Saved the outline.
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e1245]:
+      - generic [ref=e1246]:
+        - button "Edit" [ref=e1247] [cursor=pointer]:
+          - img [ref=e1248]
+        - button "Collapse" [ref=e1250] [cursor=pointer]:
+          - img [ref=e1251]
+      - heading "History of Seq2Seq" [level=3] [ref=e1253]
+      - generic [ref=e1254]:
+        - heading "The Problem Before Seq2Seq" [level=2] [ref=e1255]
+        - list [ref=e1256]:
+          - listitem [ref=e1257]: The limitations of fixed-length input/output in early neural networks
+          - listitem [ref=e1258]: Why traditional RNNs struggled with variable-length sequences
+          - listitem [ref=e1259]: "The bottleneck problem: compressing entire sentences into a single vector"
+          - listitem [ref=e1260]: Real-world tasks that demanded a better solution (translation, summarization, Q&A)
+        - 'heading "The Breakthrough: Sutskever, Vinyals & Le (2014)" [level=2] [ref=e1261]'
+        - list [ref=e1262]:
+          - listitem [ref=e1263]: Overview of the landmark "Sequence to Sequence Learning with Neural Networks" paper
+          - listitem [ref=e1264]: The encoder–decoder architecture explained
+          - listitem [ref=e1265]: How LSTM units addressed vanishing gradient problems
+          - listitem [ref=e1266]: Initial benchmark results on English-to-French translation
+        - heading "How the Architecture Works" [level=2] [ref=e1267]
+        - list [ref=e1268]:
+          - listitem [ref=e1269]: Step-by-step walkthrough of the encoder phase
+          - listitem [ref=e1270]: "The context vector: what it captures and its role in decoding"
+          - listitem [ref=e1271]: Step-by-step walkthrough of the decoder phase
+          - listitem [ref=e1272]: Teacher forcing and how models are trained
+        - 'heading "The Attention Mechanism: A Game-Changer" [level=2] [ref=e1273]'
+        - list [ref=e1274]:
+          - listitem [ref=e1275]: The bottleneck flaw in vanilla Seq2Seq and why it mattered
+          - listitem [ref=e1276]: Bahdanau et al. (2015) and the introduction of attention
+          - listitem [ref=e1277]: How attention allows the decoder to "look back" at the full input sequence
+          - listitem [ref=e1278]: Impact on translation quality and longer sequences
+        - heading "Key Applications That Shaped the Field" [level=2] [ref=e1279]
+        - list [ref=e1280]:
+          - listitem [ref=e1281]: "Machine translation: Google Neural Machine Translation (GNMT)"
+          - listitem [ref=e1282]: Text summarization and dialogue systems
+          - listitem [ref=e1283]: Speech recognition and image captioning
+          - listitem [ref=e1284]: Code generation and beyond
+        - heading "The Road to Transformers" [level=2] [ref=e1285]
+        - list [ref=e1286]:
+          - listitem [ref=e1287]: How Seq2Seq laid the conceptual groundwork for self-attention
+          - listitem [ref=e1288]: "\"Attention Is All You Need\" (Vaswani et al., 2017) and the departure from RNNs"
+          - listitem [ref=e1289]: Legacy of Seq2Seq in modern large language models
+          - listitem [ref=e1290]: Why understanding Seq2Seq still matters today

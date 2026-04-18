@@ -111,9 +111,10 @@ function createConversationStore() {
             ws.send(body);
         },
 
-        action(description: string, dax: string, payload: Record<string, unknown> = {}) {
+        action(description: string, dax: string, payload: Record<string, unknown> = {}, pending = false) {
             const body: Record<string, unknown> = { text: `<action>${description}</action>`, dax };
             if (Object.keys(payload).length) body.payload = payload;
+            if (pending) update((s) => ({ ...s, typing: true }));
             ws!.send(body);
         },
 

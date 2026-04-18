@@ -67,7 +67,7 @@ def nlu(minimal_config):
     # Contract: current_state() always returns a DialogueState.
     world.current_state.return_value = DialogueState(minimal_config)
     world.flow_stack.find_by_name.return_value = None
-    world.flow_stack.depth = 0
+    world.flow_stack._stack = []
     return NLU(minimal_config, ambiguity, engineer, world)
 
 
@@ -103,20 +103,12 @@ class TestPromptEngineer:
         mock_response.content = [mock_block]
 
         with patch.object(engineer, '_call_claude', return_value=mock_response):
-            result = engineer.call(
-                [{'role': 'user', 'content': 'hi'}],
-                system='test', task='detect_flow',
-                model='haiku',
-            )
+            result = engineer('hi', task='detect_flow', model='haiku')
         assert result == '{"flow_name": "chat"}'
 
     def test_gemini_dispatch(self, engineer):
         with patch.object(engineer, '_call_gemini', return_value='{"flow_name": "chat"}'):
-            result = engineer.call(
-                [{'role': 'user', 'content': 'hi'}],
-                system='test', task='detect_flow',
-                model='flash',
-            )
+            result = engineer('hi', task='detect_flow', model='flash')
         assert result == '{"flow_name": "chat"}'
 
 
@@ -170,44 +162,44 @@ class TestEnsembleVoting:
     # -- _detect_flow (mocked LLM) -----------------------------------------
 
     def test_one_voter_fails(self, nlu):
-        def mock_call(messages, *, system=None, task='skill',
-                      family='claude', model='sonnet', max_tokens=4096):
-            if family == 'gemini':
+        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024):
+            if model == 'flash':
                 raise RuntimeError('Gemini down')
             return '{"flow_name": "chat", "confidence": 0.8}'
 
-        with patch.object(nlu.engineer, 'call', side_effect=mock_call):
-            with patch.object(nlu.engineer, 'build_flow_prompt',
-                              return_value=('sys', [{'role': 'user', 'content': 'hi'}])):
-                result = nlu._detect_flow('hello')
+        real_engineer = nlu.engineer
+        stub = MagicMock(side_effect=mock_call)
+        stub.apply_guardrails = real_engineer.apply_guardrails
+        nlu.engineer = stub
+        result = nlu._detect_flow('hello')
 
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == pytest.approx(1.0)
 
     def test_all_voters_fail(self, nlu):
-        def mock_call(messages, *, system=None, task='skill',
-                      family='claude', model='sonnet', max_tokens=4096):
+        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024):
             raise RuntimeError('All down')
 
-        with patch.object(nlu.engineer, 'call', side_effect=mock_call):
-            with patch.object(nlu.engineer, 'build_flow_prompt',
-                              return_value=('sys', [{'role': 'user', 'content': 'hi'}])):
-                result = nlu._detect_flow('hello')
+        real_engineer = nlu.engineer
+        stub = MagicMock(side_effect=mock_call)
+        stub.apply_guardrails = real_engineer.apply_guardrails
+        nlu.engineer = stub
+        result = nlu._detect_flow('hello')
 
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == 0.3
 
     def test_disagreement_weighted(self, nlu):
-        def mock_call(messages, *, system=None, task='skill',
-                      family='claude', model='sonnet', max_tokens=4096):
-            if family == 'claude' and model == 'haiku':
+        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024):
+            if model == 'haiku':
                 return '{"flow_name": "chat"}'
             return '{"flow_name": "brainstorm"}'
 
-        with patch.object(nlu.engineer, 'call', side_effect=mock_call):
-            with patch.object(nlu.engineer, 'build_flow_prompt',
-                              return_value=('sys', [{'role': 'user', 'content': 'ideas'}])):
-                result = nlu._detect_flow('give me ideas')
+        real_engineer = nlu.engineer
+        stub = MagicMock(side_effect=mock_call)
+        stub.apply_guardrails = real_engineer.apply_guardrails
+        nlu.engineer = stub
+        result = nlu._detect_flow('give me ideas')
 
         assert result['flow_name'] == 'brainstorm'
         assert result['confidence'] == pytest.approx(0.80)
@@ -231,7 +223,7 @@ class TestReact:
     def test_multi_slot_values_parsed(self, nlu):
         real_flow = flow_classes['create']()
         nlu.flow_stack.find_by_name.return_value = None
-        nlu.flow_stack.push.return_value = real_flow
+        nlu.flow_stack.stackon.return_value = real_flow
         nlu.react('{05A}', {'type': 'draft', 'topic': 'SEO tips'})
         slot_vals = real_flow.slot_values_dict()
         assert slot_vals.get('type') == 'draft'
@@ -240,7 +232,7 @@ class TestReact:
     def test_utterance_calls_fill_slots(self, nlu):
         real_flow = flow_classes['create']()
         nlu.flow_stack.find_by_name.return_value = None
-        nlu.flow_stack.push.return_value = real_flow
+        nlu.flow_stack.stackon.return_value = real_flow
         with patch.object(nlu, '_fill_slots') as mock_fill:
             state = nlu.react('{05A}', {'topic': 'SEO'})
         mock_fill.assert_called_once()
@@ -249,7 +241,7 @@ class TestReact:
     def test_fill_slot_values_called_with_payload(self, nlu):
         real_flow = flow_classes['create']()
         nlu.flow_stack.find_by_name.return_value = None
-        nlu.flow_stack.push.return_value = real_flow
+        nlu.flow_stack.stackon.return_value = real_flow
         spy = MagicMock(wraps=real_flow.fill_slot_values)
         real_flow.fill_slot_values = spy
         nlu.react('{05A}', {'type': 'note'})
@@ -361,17 +353,13 @@ class TestTemplateFill:
         assert '{message}' in info2['template']
 
     def test_build_payload_frame_sets_panel(self, minimal_config):
-        from backend.modules.res import RES
-        world = MagicMock()
-        world.flow_stack.pop_completed_and_invalid.return_value = []
-        world.flow_stack.get_flow.return_value = None
-        res = RES(minimal_config, MagicMock(), MagicMock(), world)
+        from backend.agent import Agent
         frame = self._make_frame(minimal_config, block_type='card',
                                  content='Hello', origin='compose')
-        payload = res.build_payload_frame(frame, 'Some text')
-        assert payload['panel'] == 'split'
-        assert payload['blocks'][0]['type'] == 'card'
-        assert payload['blocks'][0]['data']['content'] == 'Hello'
+        payload = Agent._build_payload(None, 'Some text', frame)
+        assert payload['panel'] == 'bottom'
+        assert payload['frame']['blocks'][0]['type'] == 'card'
+        assert payload['frame']['blocks'][0]['data']['content'] == 'Hello'
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from backend.prompts.for_res import build_clarification
 from schemas.ontology import AmbiguityLevel
 
 if TYPE_CHECKING:
@@ -24,7 +25,6 @@ class AmbiguityHandler:
         self._observation: str | None = None
         self._generation: dict[str, bool] = {
             'lexicalize': False,
-            'naturalize': False,
             'compile': False,
         }
         self._counts: dict[str, int] = {
@@ -69,27 +69,8 @@ class AmbiguityHandler:
         meta = self._metadata
         obs = self._observation
 
-        if self._generation.get('lexicalize'):
-            prompt = self.engineer.build_clarification_prompt(
-                level, meta, obs, history=[],
-            )
-            return prompt
-
-        if self._generation.get('naturalize'):
-            system, messages = self.engineer.build_naturalize_prompt(
-                obs or '', '', None,
-            )
-            text = self.engineer.call(
-                messages, system=system,
-                task='clarify', max_tokens=512,
-            )
-            return text.strip() or obs or ''
-
-        if self._generation.get('compile'):
-            prompt = self.engineer.build_clarification_prompt(
-                level, meta, obs, history=[],
-            )
-            return prompt
+        if self._generation.get('lexicalize') or self._generation.get('compile'):
+            return build_clarification(level, meta, obs)
 
         return ''
 

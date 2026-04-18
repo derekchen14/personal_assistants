@@ -1,0 +1,52 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e924]: Hey derek! What are we writing today?
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e1062]:
+      - generic [ref=e1063]:
+        - button "Edit" [ref=e1064] [cursor=pointer]:
+          - img [ref=e1065]
+        - button "Collapse" [ref=e1067] [cursor=pointer]:
+          - img [ref=e1068]
+      - heading "History of Seq2Seq" [level=3] [ref=e1070]
+      - paragraph [ref=e1072]:
+        - text: Even though deep networks have been successfully used in many applications, until recently, they
+        - text: "have mainly been used in classification: mapping a fixed-length vector to an output category [21]."
+        - text: For structured problems, such as mapping one variable-length sequence to another variable-length
+        - text: sequence, neural networks have to be combined with other sequential models such as Hidden
+        - text: Markov Models (HMMs) [22] and Conditional Random Fields (CRFs) [23]. A drawback of this
+        - text: combining approach is that the resulting models cannot be easily trained end-to-end and they make
+        - text: simplistic assumptions about the probability distribution of the data.
+        - text: Sequence to sequence learning is a framework that attempts to address the problem of learning
+        - text: variable-length input and output sequences [17]. It uses an encoder RNN to map the sequential
+        - text: variable-length input into a fixed-length vector. A decoder RNN then uses this vector to produce
+        - text: the variable-length output sequence, one token at a time. During training, the model feeds the
+        - text: groundtruth labels as inputs to the decoder. During inference, the model performs a beam search to
+        - text: generate suitable candidates for next step predictions.
+        - text: Sequence to sequence models can be improved significantly by the use of an attention mechanism
+        - text: that provides the decoder RNN more information when it produces the output tokens [16]. At each
+        - text: output step, the last hidden state of the decoder RNN is used to generate an attention vector over
+        - text: the input sequence of the encoder. The attention vector is used to propagate information from the
+        - text: encoder to the decoder at every time step, instead of just once, as with the original sequence to
+        - text: sequence model [17]. This attention vector can be thought of as skip connections that allow the
+        - text: information and the gradients to flow more effectively in an RNN.
+        - text: "The sequence to sequence framework has been used extensively for many applications: machine"
+        - text: translation [24, 25], image captioning [26, 27], parsing [28] and conversational modeling [29]. The
+        - text: generality of this framework suggests that speech recognition can also be a direct application [14,
+        - text: 15].

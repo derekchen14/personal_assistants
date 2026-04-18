@@ -1,0 +1,83 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e31]: Hey derek! What are we writing today?
+        - generic [ref=e604]: Make an outline with 4 sections
+        - generic [ref=e612]: I drafted 3 outline options — click one to continue, or tell me what to adjust.
+        - generic [ref=e671]:
+          - generic [ref=e672]: .
+          - generic [ref=e673]: .
+          - generic [ref=e674]: .
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e675]:
+      - heading "Outline options" [level=3] [ref=e676]
+      - generic [ref=e677]:
+        - generic [ref=e678]:
+          - generic [ref=e679]:
+            - generic [ref=e680]: Option 1
+            - button "Pick" [ref=e681] [cursor=pointer]
+          - generic [ref=e682]:
+            - paragraph [ref=e683]:
+              - strong [ref=e684]: What Is Ambiguity, Really?
+            - paragraph [ref=e685]: A precise definition of ambiguity in conversational AI and dialogue systems, distinguishing lexical, referential, and intent-level ambiguity with concrete examples.
+            - paragraph [ref=e686]:
+              - strong [ref=e687]: How Ambiguity Breaks Flat Pipelines
+            - paragraph [ref=e688]: An examination of why sequential, stateless architectures fail to gracefully handle ambiguous input, leading to silent errors or wrong-path execution.
+            - paragraph [ref=e689]:
+              - strong [ref=e690]: "Catching It Early: A Pipeline-First Solution"
+            - paragraph [ref=e691]: A walkthrough of inserting an ambiguity-detection stage upstream in the pipeline, including signal types to watch for and decision logic for when to halt vs. proceed.
+            - paragraph [ref=e692]:
+              - strong [ref=e693]: Designing for Uncertainty by Default
+            - paragraph [ref=e694]: A forward-looking design philosophy that treats ambiguity as a first-class citizen, covering UI patterns, fallback strategies, and how to keep the user in the loop.
+            - separator [ref=e695]
+        - generic [ref=e696]:
+          - generic [ref=e697]:
+            - generic [ref=e698]: Option 2
+            - button "Pick" [ref=e699] [cursor=pointer]
+          - generic [ref=e700]:
+            - paragraph [ref=e701]:
+              - strong [ref=e702]: The Moment Everything Collapses
+            - paragraph [ref=e703]: A narrative opener tracing a single ambiguous user utterance through a system end-to-end, showing exactly where and why the collapse happens.
+            - paragraph [ref=e704]:
+              - strong [ref=e705]: Ambiguity's Many Disguises
+            - paragraph [ref=e706]: A catalog of the different forms ambiguity takes in real dialogue — vague references, competing intents, missing context — with side-by-side examples of each.
+            - paragraph [ref=e707]:
+              - strong [ref=e708]: Can You Prompt Your Way Out?
+            - paragraph [ref=e709]: An honest evaluation of whether clever prompting alone can solve ambiguity, where it helps, and where it fundamentally cannot substitute for structural solutions.
+            - paragraph [ref=e710]:
+              - strong [ref=e711]: Open Questions and What Comes Next
+            - paragraph [ref=e712]: A candid look at the limitations of current approaches and the open research and design questions that still need answers.
+            - separator [ref=e713]
+        - generic [ref=e714]:
+          - generic [ref=e715]:
+            - generic [ref=e716]: Option 3
+            - button "Pick" [ref=e717] [cursor=pointer]
+          - generic [ref=e718]:
+            - paragraph [ref=e719]:
+              - strong [ref=e720]: The Ambiguity Problem in Five Minutes
+            - paragraph [ref=e721]: A tight, accessible explainer establishing why ambiguity is hard, why it matters, and what's at stake when systems get it wrong — written for a technical-but-broad audience.
+            - paragraph [ref=e722]:
+              - strong [ref=e723]: Three Places Ambiguity Hides
+            - paragraph [ref=e724]: A structured teardown of the three most common ambiguity hotspots — input parsing, context resolution, and intent ranking — with a diagnostic lens on each.
+            - paragraph [ref=e725]:
+              - strong [ref=e726]: The Detection-First Playbook
+            - paragraph [ref=e727]: "A practical how-to covering the steps a team can take today to surface ambiguity before it propagates: validation layers, confidence thresholds, and clarification triggers."
+            - paragraph [ref=e728]:
+              - strong [ref=e729]: Trade-offs and Honest Limitations
+            - paragraph [ref=e730]: A balanced closing section acknowledging what detection-first gets wrong, edge cases it misses, and the philosophical tension between fluency and precision.

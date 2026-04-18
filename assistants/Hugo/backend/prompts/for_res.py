@@ -29,12 +29,11 @@ CLARIFICATION_TEMPLATES = {
 }
 
 
-def build_naturalize_prompt(raw_text: str, convo_history: str,
-                            block_type: str | None) -> str:
+def get_naturalize_prompt(raw_text:str, convo_history:str, block_desc:str) -> str:
     parts = [NATURALIZE_INSTRUCTIONS, '\n\n']
-    if block_type and block_type != 'default':
+    if block_desc != 'default':
         parts.append(
-            f'A visual block ({block_type}) will accompany this response. '
+            f'A visual block ({block_desc}) will accompany this response. '
             f'Reference it rather than repeating its content.\n\n'
         )
     if convo_history:

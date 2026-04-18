@@ -1,6 +1,6 @@
 from types import MappingProxyType
 
-VALID_BLOCK_TYPES = frozenset(('card', 'form', 'confirmation', 'toast', 'default', 'selection'))
+VALID_BLOCK_TYPES = frozenset(('card', 'form', 'confirmation', 'toast', 'default', 'selection', 'list'))
 _TOP_TYPES = frozenset(('form', 'confirmation', 'toast'))
 
 class BuildingBlock:
@@ -20,14 +20,12 @@ class BuildingBlock:
 
 class DisplayFrame:
 
-    def __init__(self, config: MappingProxyType):
-        self.config = config
-
-        self.origin: str = ''
-        self.metadata: dict = {}
-        self.blocks: list = []
-        self.code: str | None = None
-        self.thoughts: str = ''
+    def __init__(self, origin:str='', metadata:dict={}, blocks:list=[], code:str|None=None, thoughts:str=''):
+        self.origin = origin
+        self.metadata = dict(metadata)
+        self.blocks = list(blocks)
+        self.code = code
+        self.thoughts = thoughts
 
     def set_frame(self, origin:str='', blocks:list=[], new_data:dict={}):
         if len(origin) > 0:
@@ -63,11 +61,6 @@ class DisplayFrame:
             'show': block != 'default',
             'data': data,
         }
-    
-    def block_type(self) -> str:
-        if self.blocks:
-            return self.blocks[-1].block_type
-        return 'default'
 
     def to_dict(self) -> dict:
         frame_dict = {

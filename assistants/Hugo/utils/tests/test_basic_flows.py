@@ -134,6 +134,56 @@ class TestOutline:
         assert len(message) < 200, \
             f"Chat line should be short; got {len(message)} chars — candidates likely leaked into utterance"
 
+    def test_outline_count_does_not_fill_sections_or_depth(self, agent):
+        """A bare section count ("with N sections") must not fill the sections
+        ChecklistSlot or the depth LevelSlot — otherwise OutlineFlow skips
+        propose mode. Regression for the NLU slot-filling bug where 'with 4
+        sections' was being mapped to both sections (hallucinated headings)
+        and depth=4. Drives NLU directly so the test doesn't depend on PEX
+        post-state (the flow may have been popped during recovery)."""
+        agent.world.context.add_turn(
+            'User', "Let's make a post about the discovery of flight by the Wright Brothers",
+            turn_type='utterance',
+        )
+        agent.world.context.add_turn(
+            'Agent', 'Created "The Discovery of Flight" as a draft.',
+            turn_type='utterance',
+        )
+        utt = "Make an outline with 4 sections"
+        agent.world.context.add_turn('User', utt, turn_type='utterance')
+        agent.nlu.understand(utt, agent.world.context, dax='{002}', payload={})
+        flow = agent.world.flow_stack.find_by_name('outline')
+        assert flow is not None, \
+            f"OutlineFlow should be on the stack after react('{{002}}'); stack={[(f.name(), f.status) for f in agent.world.flow_stack._stack]}"
+        assert not flow.slots['sections'].filled, \
+            f"sections was filled from a bare count; steps={flow.slots['sections'].steps}"
+        assert flow.slots['depth'].level == 0, \
+            f"depth was set from a section count; level={flow.slots['depth'].level}"
+
+    def test_outline_enumeration_fills_sections(self, agent):
+        """Positive counter-test: an explicit enumeration of section names must
+        fill the sections slot. Guards against the prompt tightening in the
+        count-based test over-correcting and missing legitimate enumerations."""
+        agent.world.context.add_turn(
+            'User', "Let's make a post about the discovery of flight by the Wright Brothers",
+            turn_type='utterance',
+        )
+        agent.world.context.add_turn(
+            'Agent', 'Created "The Discovery of Flight" as a draft.',
+            turn_type='utterance',
+        )
+        utt = ("Outline the discovery of flight post with sections on early history, "
+               "the wright brothers, the first flights, and lasting impact")
+        agent.world.context.add_turn('User', utt, turn_type='utterance')
+        agent.nlu.understand(utt, agent.world.context, dax='{002}', payload={})
+        flow = agent.world.flow_stack.find_by_name('outline')
+        assert flow is not None, \
+            f"OutlineFlow should be on the stack; stack={[(f.name(), f.status) for f in agent.world.flow_stack._stack]}"
+        assert flow.slots['sections'].filled, \
+            f"sections should fill from an explicit enumeration; steps={flow.slots['sections'].steps}"
+        assert len(flow.slots['sections'].steps) >= 3, \
+            f"Expected ≥3 enumerated sections; got {flow.slots['sections'].steps}"
+
 
 # ── 6. compose {003} — Draft ────────────────────────────────────
 

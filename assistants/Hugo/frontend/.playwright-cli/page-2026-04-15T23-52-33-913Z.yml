@@ -1,0 +1,98 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e31]: Hey derek! What are we writing today?
+        - generic [ref=e448]: Make an outline with 4 sections
+        - generic [ref=e456]: Saved the outline.
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e36]:
+      - generic [ref=e482]:
+        - button "Your Drafts" [ref=e484] [cursor=pointer]
+        - generic [ref=e485]:
+          - button "Collapse On Ambiguity" [ref=e488] [cursor=pointer]:
+            - img [ref=e490]
+            - generic [ref=e497]: Collapse On Ambiguity
+          - button "Color Post" [ref=e500] [cursor=pointer]:
+            - img [ref=e502]
+            - generic [ref=e509]: Color Post
+          - button "Components of Dialogue Systems" [ref=e512] [cursor=pointer]:
+            - img [ref=e514]
+            - generic [ref=e521]: Components of Dialogue Systems
+          - generic [ref=e523]:
+            - button "Expectation Maximization" [active] [ref=e524] [cursor=pointer]:
+              - img [ref=e526]
+              - generic [ref=e533]: Expectation Maximization
+            - generic [ref=e611]:
+              - button "+ tag" [ref=e613] [cursor=pointer]
+              - paragraph [ref=e614]: Expectation maximization is often used to fill in blanks when there is missing data by imputing those values by considering what makes the most sense. Use cases include anomaly detection, market segmentation, speech recognition and basic clustering. The algorithm operates by iteratively...
+              - generic [ref=e615]:
+                - button "View Full Draft →" [ref=e616] [cursor=pointer]
+                - button "Delete" [ref=e617] [cursor=pointer]:
+                  - img [ref=e618]
+          - button "Feature images" [ref=e536] [cursor=pointer]:
+            - img [ref=e538]
+            - generic [ref=e545]: Feature images
+          - button "History of Seq2Seq" [ref=e548] [cursor=pointer]:
+            - img [ref=e550]
+            - generic [ref=e557]: History of Seq2Seq
+          - button "Insights around Attention Mechanism" [ref=e560] [cursor=pointer]:
+            - img [ref=e562]
+            - generic [ref=e569]: Insights around Attention Mechanism
+          - button "Markdown and HTML" [ref=e572] [cursor=pointer]:
+            - img [ref=e574]
+            - generic [ref=e581]: Markdown and HTML
+          - 'button "Markup: Syntax Highlighting" [ref=e584] [cursor=pointer]':
+            - img [ref=e586]
+            - generic [ref=e593]: "Markup: Syntax Highlighting"
+          - button "ML as Software 2.0" [ref=e596] [cursor=pointer]:
+            - img [ref=e598]
+            - generic [ref=e605]: ML as Software 2.0
+        - button "+ New Draft" [ref=e607] [cursor=pointer]
+      - generic [ref=e410]:
+        - generic [ref=e411]:
+          - button "Edit" [ref=e412] [cursor=pointer]:
+            - img [ref=e413]
+          - button "Expand" [ref=e608] [cursor=pointer]:
+            - img [ref=e609]
+        - heading "Collapse On Ambiguity" [level=3] [ref=e418]
+        - generic [ref=e419]:
+          - heading "What Is Ambiguity, Really?" [level=2] [ref=e457]
+          - list [ref=e458]:
+            - listitem [ref=e459]: Define ambiguity in the context of language, communication, and AI systems
+            - listitem [ref=e460]: Distinguish between lexical, syntactic, and pragmatic ambiguity with concrete examples
+            - listitem [ref=e461]: Explain why ambiguity is not a bug but an inherent feature of natural language
+            - listitem [ref=e462]: "Set up the core tension: humans navigate ambiguity intuitively, but systems struggle"
+          - heading "How Ambiguity Breaks Conversations" [level=2] [ref=e463]
+          - list [ref=e464]:
+            - listitem [ref=e465]: Walk through real-world failure cases where unresolved ambiguity derails a dialogue
+            - listitem [ref=e466]: "Explore the cascade effect: one ambiguous turn poisons downstream context"
+            - listitem [ref=e467]: Discuss the cost of ambiguity in high-stakes domains (customer support, medical, legal)
+            - listitem [ref=e468]: Highlight why silence or confident wrong answers are both dangerous responses
+          - 'heading "Catching Ambiguity Early: The Pipeline Approach" [level=2] [ref=e469]'
+          - list [ref=e470]:
+            - listitem [ref=e471]: Introduce the concept of an ambiguity detection layer at the input stage
+            - listitem [ref=e472]: "Outline a practical pipeline: detect → classify → resolve or escalate"
+            - listitem [ref=e473]: "Cover techniques: slot-filling, confidence thresholds, clarifying question generation"
+            - listitem [ref=e474]: Show how early detection reduces recovery cost versus catching ambiguity late
+          - heading "Designing for Uncertainty" [level=2] [ref=e475]
+          - list [ref=e476]:
+            - listitem [ref=e477]: "Reframe the goal: instead of eliminating ambiguity, design systems that are robust to it"
+            - listitem [ref=e478]: Introduce patterns like graceful degradation, hedged responses, and explicit confirmation loops
+            - listitem [ref=e479]: Discuss how UX and copy choices can reduce ambiguity at the source
+            - listitem [ref=e480]: Close with a call to treat uncertainty as a first-class design constraint, not an edge case

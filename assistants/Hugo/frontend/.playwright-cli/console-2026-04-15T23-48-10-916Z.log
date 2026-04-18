@@ -1,0 +1,12 @@
+Total messages: 11 (Errors: 1, Warnings: 0)
+Returning 9 messages for level "info"
+
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5174/favicon.ico:0
+[LOG] [WS] connected @ http://localhost:5174/src/lib/stores/conversation.ts?t=1776296717292:50
+[LOG] [frame] received: {origin: welcome, panel: top, blocks: undefined} @ http://localhost:5174/src/lib/stores/conversation.ts?t=1776296717292:30
+[LOG] [setFrame] {primaryType: list, origin: welcome, panel: top, hasBlocks: false} @ http://localhost:5174/src/lib/stores/display.ts?t=1776296717292:51
+[LOG] [frame] received: {origin: welcome, panel: top, blocks: undefined} @ http://localhost:5174/src/lib/stores/conversation.ts?t=1776296717292:30
+[LOG] [setFrame] {primaryType: list, origin: welcome, panel: top, hasBlocks: false} @ http://localhost:5174/src/lib/stores/display.ts?t=1776296717292:51
+[LOG] [frame] received: {origin: view, panel: bottom, blocks: undefined} @ http://localhost:5174/src/lib/stores/conversation.ts?t=1776296717292:30
+[LOG] [setFrame] {primaryType: card, origin: view, panel: bottom, hasBlocks: false} @ http://localhost:5174/src/lib/stores/display.ts?t=1776296717292:51
+[LOG] [setFrame] snapshotting card frame to lastCardFrame @ http://localhost:5174/src/lib/stores/display.ts?t=1776296717292:59

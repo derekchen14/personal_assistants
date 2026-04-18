@@ -94,6 +94,11 @@ class PostService(ToolService):
 
         return self._success(items=results, count=len(results))
 
+    def get_title(self, post_id:str) -> str | None:
+        entries = self._load_metadata()
+        ent = self._find_entry(entries, post_id)
+        return ent['title'] if ent else None
+
     def read_metadata(self, post_id:str, include_outline:bool=False,
                       include_preview:bool=False) -> dict:
         entries = self._load_metadata()

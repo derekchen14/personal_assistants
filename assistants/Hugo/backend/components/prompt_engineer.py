@@ -9,32 +9,32 @@ from types import MappingProxyType
 from typing import Any
 
 import logging
-
 import anthropic
+from pydantic import BaseModel
 
-from backend.prompts.general import build_system, SLOT_7_REMINDER
+from backend.prompts.general import build_system
+from backend.prompts.for_pex import build_skill_system, build_skill_messages
 
 log = logging.getLogger(__name__)
-from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt
-from backend.prompts.for_nlu import build_slot_filling_prompt
-from backend.prompts.for_pex import build_skill_system, build_skill_messages
-from backend.prompts.for_res import build_naturalize_prompt, build_clarification
-from backend.prompts.for_contemplate import build_contemplate_prompt
 
-from backend.components.flow_stack import flow_classes
-from schemas.ontology import FLOW_CATALOG, Intent
-
-from backend.modules.templates import get_template as _get_template
-
-_TASK_LABELS = {
-    'classify_intent': 'classify_intent',
-    'detect_flow': 'detect_flow',
-    'fill_slots': 'fill_slots',
-    'contemplate': 'contemplate',
-    'repair_slot': 'repair_slot',
-    'naturalize': 'naturalize',
-    'clarify': 'clarify',
-    'skill': 'skill',
+_TASK_SUFFIXES = {
+    'classify_intent': 'You are a precise NLU classifier. Respond with only valid JSON. No markdown fences, no explanation.',
+    'detect_flow': 'You are a precise flow classifier. Respond with only valid JSON. No markdown fences.',
+    'fill_slots': 'You are a slot extraction engine. Respond with only valid JSON.',
+    'contemplate': 'You are re-evaluating a failed flow detection. Respond with only valid JSON.',
+    'repair_slot': 'Reply with ONLY the best matching valid option, or "NONE" if no match is reasonable.',
+    'skill': '',
+    'naturalize': 'Rewrite the given response to sound natural. Keep the same information. Do not add information. Respond with ONLY the rewritten text.',
+    'quality_check': (
+        'You are a quality checker. Given recent conversation history, '
+        'the user\'s latest request, and the agent\'s output (which may '
+        'include the agent\'s spoken reply, card content, and structured '
+        'data like proposed options), decide whether the response addresses '
+        'what the user asked. Treat persisted action (an outline saved, a '
+        'section written) as success even if the spoken reply is brief. '
+        'Reply with ONLY "pass" or "fail: <one-sentence reason>".'
+    ),
+    'clarify': '',
 }
 
 # model tier → concrete model ID
@@ -58,66 +58,44 @@ _GPT_MODELS    = {'mini', 'gpt'}
 class PromptEngineer:
 
     VERSION = 'v1'
+    _SKILL_DIR = Path(__file__).resolve().parents[1] / 'prompts' / 'skills'
+
+    _CLIENT_ENVARS = {
+        'anthropic': 'ANTHROPIC_API_KEY',
+        'google':    'GOOGLE_API_KEY',
+        'openai':    'OPENAI_API_KEY',
+        'qwen':      ('TOGETHER_API_KEY', 'QWEN_API_KEY'),
+    }
 
     def __init__(self, config:MappingProxyType):
         self.config = config
         self._models = config.get('models', {})
-        self._persona = config.get('persona', {})
+        self.persona = config.get('persona', {})
         self._resilience = config.get('resilience', {})
-        self._api_key = os.getenv('ANTHROPIC_API_KEY')
-        self._client: anthropic.Anthropic | None = None
-        self._gemini_client = None
-        self._openai_client = None
-        self._qwen_client = None
+        self._clients: dict[str, object] = {}
 
-    @property
-    def client(self) -> anthropic.Anthropic:
-        if self._client is None:
-            if not self._api_key:
-                raise RuntimeError(
-                    'ANTHROPIC_API_KEY not set. Set it in .env or environment.'
-                )
-            self._client = anthropic.Anthropic(api_key=self._api_key)
-        return self._client
-
-    @property
-    def gemini_client(self):
-        if self._gemini_client is None:
-            api_key = os.getenv('GOOGLE_API_KEY')
-            if not api_key:
-                raise RuntimeError(
-                    'GOOGLE_API_KEY not set. Set it in .env or environment.'
-                )
+    def _get_client(self, provider:str):
+        if provider in self._clients:
+            return self._clients[provider]
+        envars = self._CLIENT_ENVARS[provider]
+        if isinstance(envars, str):
+            envars = (envars,)
+        api_key = next((os.getenv(e) for e in envars if os.getenv(e)), None)
+        if not api_key:
+            raise RuntimeError(f'{envars[0]} not set. Set it in .env or environment.')
+        if provider == 'anthropic':
+            client = anthropic.Anthropic(api_key=api_key)
+        elif provider == 'google':
             from google import genai
-            self._gemini_client = genai.Client(api_key=api_key)
-        return self._gemini_client
-
-    @property
-    def openai_client(self):
-        if self._openai_client is None:
-            api_key = os.getenv('OPENAI_API_KEY')
-            if not api_key:
-                raise RuntimeError(
-                    'OPENAI_API_KEY not set. Set it in .env or environment.'
-                )
+            client = genai.Client(api_key=api_key)
+        elif provider == 'openai':
             import openai
-            self._openai_client = openai.OpenAI(api_key=api_key)
-        return self._openai_client
-
-    @property
-    def qwen_client(self):
-        if self._qwen_client is None:
-            api_key = os.getenv('TOGETHER_API_KEY') or os.getenv('QWEN_API_KEY')
-            if not api_key:
-                raise RuntimeError(
-                    'TOGETHER_API_KEY not set. Set it in .env or environment.'
-                )
+            client = openai.OpenAI(api_key=api_key)
+        elif provider == 'qwen':
             import openai
-            self._qwen_client = openai.OpenAI(
-                api_key=api_key,
-                base_url='https://api.together.xyz/v1',
-            )
-        return self._qwen_client
+            client = openai.OpenAI(api_key=api_key, base_url='https://api.together.xyz/v1')
+        self._clients[provider] = client
+        return client
 
     # ── Model resolution ─────────────────────────────────────────────
 
@@ -143,8 +121,6 @@ class PromptEngineer:
                 return val
         return self._models.get('default', {}).get('temperature', 0.0)
 
-    # ── Resilience config ────────────────────────────────────────────
-
     def _get_retry_config(self) -> tuple[int, float, float]:
         llm_cfg = self._resilience.get('llm_retries', {})
         max_attempts = llm_cfg.get('max_attempts', 2)
@@ -154,57 +130,77 @@ class PromptEngineer:
 
     # ── Public API ────────────────────────────────────────────────────
 
-    def call(
-        self,
-        messages: str | list[dict],
-        *,
-        system: str | None = None,
-        task: str = 'skill',
-        model: str = 'sonnet',
-        max_tokens: int = 1024,
-    ) -> str:
-        """Universal text-return LLM call. Routes to the right provider."""
-        if isinstance(messages, str):
-            messages = [{'role': 'user', 'content': messages}]
-        if system is None and messages and messages[0].get('role') == 'system':
-            system = messages[0]['content']
-            messages = messages[1:]
-        if system is None:
-            system = self.build_system_prompt()
+    def _system_for_task(self, task:str) -> str:
+        base = build_system(self.persona)
+        suffix = _TASK_SUFFIXES.get(task, '')
+        return f'{base}\n\n{suffix}'.strip() if suffix else base
+
+    def __call__(self, prompt:str, task:str='skill',
+                 model:str='sonnet', max_tokens:int=1024,
+                 schema:type[BaseModel]|dict|None=None) -> str|dict|BaseModel:
+        messages = [{'role': 'user', 'content': prompt}]
+        system = self._system_for_task(task)
         model_id = self._resolve_model(model)
-        log.info('  task=%s  model=%s', _TASK_LABELS.get(task, task), model_id)
+        log.info('  task=%s  model=%s', task, model_id)
+        schema_dict = self._to_json_schema(schema) if schema is not None else None
         match self._model_family(model):
             case 'claude':
-                response = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
-                return ''.join(block.text for block in response.content if block.type == 'text')
+                response = self._call_claude(system, messages, model_id, max_tokens=max_tokens, schema_dict=schema_dict)
+                text = ''.join(block.text for block in response.content if block.type == 'text')
             case 'gemini':
-                return self._call_gemini(system, messages, model_id, max_tokens)
+                text = self._call_gemini(system, messages, model_id, max_tokens, schema_dict=schema_dict)
             case 'qwen':
-                return self._call_qwen(system, messages, model_id, max_tokens)
+                text = self._call_qwen(system, messages, model_id, max_tokens, schema_dict=schema_dict)
             case 'gpt':
-                return self._call_gpt(system, messages, model_id, max_tokens)
+                text = self._call_gpt(system, messages, model_id, max_tokens, schema_dict=schema_dict)
+        if schema is None:
+            return text
+        parsed = self.apply_guardrails(text, format='json')
+        if parsed is None:
+            raise ValueError(f'schema-constrained call returned unparseable JSON: {text!r}')
+        if isinstance(schema, type) and issubclass(schema, BaseModel):
+            return schema.model_validate(parsed)
+        return parsed
 
-    def tool_call(
-        self,
-        messages: list[dict],
-        tools: list[dict],
-        tool_dispatcher,
-        *,
-        system: str | None = None,
-        max_tokens: int = 4096,
-    ) -> tuple[str, list[dict]]:
-        """Agentic tool-use loop. Claude only (depends on Anthropic tool_use blocks)."""
-        if system is None and messages and messages[0].get('role') == 'system':
-            system = messages[0]['content']
-            messages = messages[1:]
-        if system is None:
-            system = self.build_system_prompt()
+    @staticmethod
+    def _to_json_schema(schema:type[BaseModel]|dict) -> dict:
+        if isinstance(schema, dict):
+            return schema
+        if isinstance(schema, type) and issubclass(schema, BaseModel):
+            return schema.model_json_schema()
+        raise TypeError(f'schema must be a dict or Pydantic BaseModel subclass, got {type(schema)!r}')
+
+    def skill_call(self, flow, convo_history:str, scratchpad:dict,
+                   skill_name:str|None=None, skill_prompt:str|None=None,
+                   resolved:dict|None=None, max_tokens:int=1024) -> str:
+        """Skill execution WITHOUT tool use. Sibling of tool_call.
+        Loads the skill template (or uses skill_prompt override), builds
+        [system, user], returns LLM text."""
+        if skill_prompt is None:
+            skill_prompt = self.load_skill_template(skill_name or flow.name())
+        base_system = build_system(self.persona)
+        system = build_skill_system(base_system, flow, skill_prompt, scratchpad, resolved)
+        messages = list(build_skill_messages(flow.name(), convo_history))
         model_id = self._resolve_model('sonnet')
-        msgs = list(messages)
+        response = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
+        return ''.join(block.text for block in response.content if block.type == 'text')
+
+    def tool_call(self, flow, convo_history:str, scratchpad:dict,
+                  tool_defs:list[dict], tool_dispatcher,
+                  skill_name:str|None=None, skill_prompt:str|None=None,
+                  resolved:dict|None=None, max_tokens:int=4096) -> tuple[str, list[dict]]:
+        """Skill execution WITH tool use. Sibling of skill_call.
+        Loads skill template, assembles [system, user], runs agentic tool loop."""
+        if skill_prompt is None:
+            skill_prompt = self.load_skill_template(skill_name or flow.name())
+        base_system = build_system(self.persona)
+        system = build_skill_system(base_system, flow, skill_prompt, scratchpad, resolved)
+        msgs = list(build_skill_messages(flow.name(), convo_history))
+        model_id = self._resolve_model('sonnet')
         tool_log: list[dict] = []
 
         for _ in range(10):
-            response = self._call_claude(system, msgs, model_id, tools=tools, max_tokens=max_tokens)
+            response = self._call_claude(system, msgs, model_id, tools=tool_defs, max_tokens=max_tokens)
 
             text_parts = []
             tool_uses = []
@@ -237,54 +233,43 @@ class PromptEngineer:
 
         return '\n'.join(text_parts) if text_parts else '', tool_log
 
-    async def stream(
-        self,
-        messages: list[dict],
-        *,
-        system: str | None = None,
-        task: str = 'skill',
-        model: str = 'sonnet',
-        max_tokens: int = 4096,
-    ):
-        """Token streaming. Same routing as call(), yields text chunks."""
-        if system is None:
-            system = self.build_system_prompt()
+    async def stream(self, prompt:str, task:str='skill',
+                     model:str='sonnet', max_tokens:int=4096):
+        """Token streaming. Same routing as __call__, yields text chunks."""
+        messages = [{'role': 'user', 'content': prompt}]
+        system = self._system_for_task(task)
         model_id = self._resolve_model(model)
-        log.info('  task=%s  model=%s  stream=true', _TASK_LABELS.get(task, task), model_id)
+        log.info('  task=%s  model=%s  stream=true', task, model_id)
         match self._model_family(model):
             case 'claude':
-                with self.client.messages.stream(
+                with self._get_client('anthropic').messages.stream(
                     model=model_id, max_tokens=max_tokens,
                     system=system, messages=messages,
                 ) as stm:
                     for text in stm.text_stream:
                         yield text
             case _:
-                # Fallback: non-streaming call, yield full text as single chunk
-                text = self.call(
-                    messages, system=system, task=task,
-                    model=model, max_tokens=max_tokens,
-                )
+                text = self(prompt, task=task, model=model, max_tokens=max_tokens)
                 yield text
 
     # ── Private provider methods ──────────────────────────────────────
 
-    def _call_claude(
-        self,
-        system: str,
-        messages: list[dict],
-        model_id: str,
-        *,
-        tools: list[dict] | None = None,
-        max_tokens: int = 4096,
-    ) -> anthropic.types.Message:
+    def _retry(self, fn, retryable):
         max_attempts, backoff_base, backoff_max = self._get_retry_config()
+        last_error = None
+        for attempt in range(max_attempts):
+            try:
+                return fn()
+            except retryable as ecp:
+                last_error = ecp
+                if attempt < max_attempts - 1:
+                    time.sleep(min(backoff_base * (2 ** attempt), backoff_max))
+        raise last_error
 
+    def _call_claude(self, system, messages, model_id, *, tools=None, max_tokens=4096, schema_dict=None):
         kwargs: dict[str, Any] = {
-            'model': model_id,
-            'max_tokens': max_tokens,
-            'system': system,
-            'messages': messages,
+            'model': model_id, 'max_tokens': max_tokens,
+            'system': system, 'messages': messages,
         }
         temp = self._get_temperature()
         if temp > 0:
@@ -294,184 +279,123 @@ class PromptEngineer:
                 {key: val for key, val in tool.items() if key in ('name', 'description', 'input_schema')}
                 for tool in tools
             ]
+        if schema_dict is not None:
+            kwargs['output_config'] = {'format': {'type': 'json_schema', 'schema': schema_dict}}
+        client = self._get_client('anthropic')
+        try:
+            return self._retry(lambda: client.messages.create(**kwargs),
+                (anthropic.RateLimitError, anthropic.APITimeoutError, anthropic.InternalServerError))
+        except anthropic.APIError:
+            raise
 
-        last_error = None
-        for attempt in range(max_attempts):
-            try:
-                return self.client.messages.create(**kwargs)
-            except (
-                anthropic.RateLimitError,
-                anthropic.APITimeoutError,
-                anthropic.InternalServerError,
-            ) as ecp:
-                last_error = ecp
-                if attempt < max_attempts - 1:
-                    delay = min(backoff_base * (2 ** attempt), backoff_max)
-                    time.sleep(delay)
-            except anthropic.APIError:
-                raise
-        raise last_error
-
-    def _call_gemini(
-        self,
-        system: str,
-        messages: list[dict],
-        model_id: str,
-        max_tokens: int = 4096,
-    ) -> str:
-        from google import genai
+    def _call_gemini(self, system, messages, model_id, max_tokens=4096, schema_dict=None):
         from google.genai import types
-
-        max_attempts, backoff_base, backoff_max = self._get_retry_config()
         temp = self._get_temperature()
-
-        gemini_contents = []
-        for msg in messages:
-            role = 'model' if msg['role'] == 'assistant' else 'user'
-            gemini_contents.append(
-                types.Content(
-                    role=role,
-                    parts=[types.Part.from_text(text=msg['content'])],
-                )
-            )
-
+        gemini_contents = [
+            types.Content(role=('model' if msg['role'] == 'assistant' else 'user'),
+                parts=[types.Part.from_text(text=msg['content'])])
+            for msg in messages
+        ]
         config = types.GenerateContentConfig(
-            system_instruction=system,
-            max_output_tokens=max_tokens,
+            system_instruction=system, max_output_tokens=max_tokens,
         )
         if temp > 0:
             config.temperature = temp
+        if schema_dict is not None:
+            config.response_mime_type = 'application/json'
+            config.response_json_schema = schema_dict
+        client = self._get_client('google')
+        response = self._retry(
+            lambda: client.models.generate_content(
+                model=model_id, contents=gemini_contents, config=config),
+            Exception,
+        )
+        return response.text
 
-        last_error = None
-        for attempt in range(max_attempts):
-            try:
-                response = self.gemini_client.models.generate_content(
-                    model=model_id,
-                    contents=gemini_contents,
-                    config=config,
-                )
-                return response.text
-            except Exception as ecp:
-                last_error = ecp
-                if attempt < max_attempts - 1:
-                    delay = min(backoff_base * (2 ** attempt), backoff_max)
-                    time.sleep(delay)
-        raise last_error
-
-    def _call_gpt(
-        self,
-        system: str,
-        messages: list[dict],
-        model_id: str,
-        max_tokens: int = 4096,
-    ) -> str:
-        """Call OpenAI GPT models."""
+    def _call_gpt(self, system, messages, model_id, max_tokens=4096, schema_dict=None):
         import openai
-
-        max_attempts, backoff_base, backoff_max = self._get_retry_config()
         temp = self._get_temperature()
-
         oai_messages = [{'role': 'system', 'content': system}]
-        for msg in messages:
-            oai_messages.append({'role': msg['role'], 'content': msg['content']})
-
+        oai_messages.extend({'role': msg['role'], 'content': msg['content']} for msg in messages)
         kwargs: dict[str, Any] = {
-            'model': model_id,
-            'messages': oai_messages,
+            'model': model_id, 'messages': oai_messages,
             'max_completion_tokens': max_tokens,
         }
         if temp > 0:
             kwargs['temperature'] = temp
+        if schema_dict is not None:
+            kwargs['response_format'] = {
+                'type': 'json_schema',
+                'json_schema': {'name': 'response', 'schema': schema_dict, 'strict': True},
+            }
+        client = self._get_client('openai')
+        try:
+            response = self._retry(lambda: client.chat.completions.create(**kwargs),
+                (openai.RateLimitError, openai.APITimeoutError, openai.InternalServerError))
+            return response.choices[0].message.content or ''
+        except openai.APIError:
+            raise
 
-        last_error = None
-        for attempt in range(max_attempts):
-            try:
-                response = self.openai_client.chat.completions.create(**kwargs)
-                return response.choices[0].message.content or ''
-            except (
-                openai.RateLimitError,
-                openai.APITimeoutError,
-                openai.InternalServerError,
-            ) as ecp:
-                last_error = ecp
-                if attempt < max_attempts - 1:
-                    delay = min(backoff_base * (2 ** attempt), backoff_max)
-                    time.sleep(delay)
-            except openai.APIError:
-                raise
-        raise last_error
-
-    def _call_qwen(
-        self,
-        system: str,
-        messages: list[dict],
-        model_id: str,
-        max_tokens: int = 4096,
-    ) -> str:
-        """Call Qwen models via Together.AI's OpenAI-compatible endpoint."""
+    def _call_qwen(self, system, messages, model_id, max_tokens=4096, schema_dict=None):
         import openai
-
-        max_attempts, backoff_base, backoff_max = self._get_retry_config()
         temp = self._get_temperature()
         is_thinking = 'thinking' in model_id.lower()
-
         qwen_messages = [{'role': 'system', 'content': system}]
-        for msg in messages:
-            qwen_messages.append({'role': msg['role'], 'content': msg['content']})
-
+        qwen_messages.extend({'role': msg['role'], 'content': msg['content']} for msg in messages)
         kwargs: dict[str, Any] = {
-            'model': model_id,
-            'messages': qwen_messages,
+            'model': model_id, 'messages': qwen_messages,
             'max_completion_tokens': max_tokens if is_thinking else None,
         }
         if not is_thinking:
             kwargs['max_tokens'] = max_tokens
-        # Thinking models don't support temperature
         if temp > 0 and not is_thinking:
             kwargs['temperature'] = temp
-        # Remove None values
+        if schema_dict is not None:
+            kwargs['response_format'] = {
+                'type': 'json_schema',
+                'json_schema': {'name': 'response', 'schema': schema_dict, 'strict': True},
+            }
         kwargs = {key: val for key, val in kwargs.items() if val is not None}
+        client = self._get_client('qwen')
+        try:
+            response = self._retry(lambda: client.chat.completions.create(**kwargs),
+                (openai.RateLimitError, openai.APITimeoutError, openai.InternalServerError))
+        except openai.APIError:
+            raise
+        raw_text = response.choices[0].message.content or ''
+        if is_thinking and '<think>' in raw_text:
+            parts = raw_text.split('</think>')
+            if len(parts) > 1:
+                raw_text = parts[-1].strip()
+            else:
+                match = re.search(r'\{[^{}]*\}', raw_text)
+                if match:
+                    raw_text = match.group()
+        return raw_text
 
-        last_error = None
-        for attempt in range(max_attempts):
-            try:
-                response = self.qwen_client.chat.completions.create(**kwargs)
-                raw_text = response.choices[0].message.content or ''
+    # ── Output parsers ───────────────────────────────────────────────
 
-                # Thinking models wrap output in <think>...</think> tags
-                if is_thinking and '<think>' in raw_text:
-                    parts = raw_text.split('</think>')
-                    if len(parts) > 1:
-                        raw_text = parts[-1].strip()
-                    else:
-                        match = re.search(r'\{[^{}]*\}', raw_text)
-                        if match:
-                            raw_text = match.group()
-
-                return raw_text
-            except (
-                openai.RateLimitError,
-                openai.APITimeoutError,
-                openai.InternalServerError,
-            ) as ecp:
-                last_error = ecp
-                if attempt < max_attempts - 1:
-                    delay = min(backoff_base * (2 ** attempt), backoff_max)
-                    time.sleep(delay)
-            except openai.APIError:
-                raise
-        raise last_error
-
-    # ── Guardrails ────────────────────────────────────────────────────
+    @classmethod
+    def apply_guardrails(cls, text:str, format:str='json', shape:str|None=None):
+        """Strip fences, then dispatch to the right format parser.
+        format: 'json' | 'sql' | 'markdown'
+        shape: optional hint passed to the format parser (e.g. 'outline', 'candidates')."""
+        text = cls._strip_fences(text)
+        match format:
+            case 'json':     return cls._parse_json(text)
+            case 'sql':      return cls._parse_sql(text)
+            case 'markdown': return cls._parse_markdown(text, shape)
 
     @staticmethod
-    def apply_guardrails(text:str) -> dict | None:
-        """Strip LLM artifacts and parse JSON."""
+    def _strip_fences(text:str) -> str:
         text = text.strip()
         if text.startswith('```'):
-            lines = text.split('\n')
-            lines = [line for line in lines if not line.strip().startswith('```')]
+            lines = [line for line in text.split('\n') if not line.strip().startswith('```')]
             text = '\n'.join(lines)
+        return text
+
+    @staticmethod
+    def _parse_json(text:str) -> dict | None:
         try:
             return json.loads(text)
         except json.JSONDecodeError:
@@ -483,171 +407,65 @@ class PromptEngineer:
                     pass
         return None
 
-    # ── Prompt assembly ──────────────────────────────────────────────
+    @staticmethod
+    def _parse_sql(text:str) -> str:
+        return text.strip()
 
-    def build_system_prompt(self) -> str:
-        return build_system(self._persona)
+    @staticmethod
+    def _parse_markdown(text:str, shape:str|None=None):
+        if not text:
+            return [] if shape == 'candidates' else ''
+        if shape == 'candidates':
+            option_parts = re.split(r'(?m)^###\s+Option\s+\d+\s*\n', text)
+            candidates = []
+            for option_body in option_parts[1:]:
+                sections = []
+                for section_body in re.split(r'(?m)^##\s+', option_body)[1:]:
+                    lines = section_body.strip().split('\n', 1)
+                    name = lines[0].strip()
+                    description = lines[1].strip() if len(lines) > 1 else ''
+                    if name:
+                        sections.append({'name': name, 'description': description, 'checked': False})
+                if sections:
+                    candidates.append(sections)
+            return candidates
+        # shape='outline' or default: extract ## sections
+        lines = text.split('\n')
+        outline_lines = []
+        in_outline = False
+        for line in lines:
+            if line.startswith('## '):
+                in_outline = True
+            if in_outline:
+                outline_lines.append(line)
+        if outline_lines:
+            return '\n'.join(outline_lines)
+        sections = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped and stripped[0].isdigit() and '**' in stripped:
+                match = re.search(r'\*\*(.+?)\*\*', stripped)
+                if match:
+                    title = match.group(1).strip().lstrip('#').strip()
+                    desc = stripped.split('**')[-1].strip(' —-–:')
+                    sections.append(f'## {title}')
+                    if desc:
+                        sections.append(f'\n- {desc}')
+                    sections.append('')
+        return '\n'.join(sections) if sections else ''
 
-    def build_nlu_prompt(
-        self, user_text: str, convo_history: str,
-    ) -> tuple[str, list[dict]]:
-        system = (
-            f'{self.build_system_prompt()}\n\n'
-            'You are a precise NLU classifier. '
-            'Respond with only valid JSON. No markdown fences, no explanation.'
-        )
+    @classmethod
+    def load_skill_template(cls, flow_name:str) -> str | None:
+        path = cls._SKILL_DIR / f'{flow_name}.md'
+        return path.read_text(encoding='utf-8') if path.exists() else None
 
-        intent_prompt = build_intent_prompt(user_text, convo_history)
-        messages = [{'role': 'user', 'content': intent_prompt}]
-        return system, messages
+    @staticmethod
+    def extract_tool_result(tool_log:list, tool_name:str) -> dict:
+        for entry in tool_log:
+            if entry.get('tool') != tool_name:
+                continue
+            result = entry.get('result', {})
+            if result.get('_success'):
+                return {k: v for k, v in result.items() if not k.startswith('_')}
+        return {}
 
-    def build_flow_prompt(
-        self, user_text: str, intent: str | None, convo_history: str,
-    ) -> tuple[str, list[dict]]:
-        if intent is None:
-            groups: dict[str, list[str]] = {}
-            for name, cat in FLOW_CATALOG.items():
-                fi = cat['intent']
-                if fi == Intent.INTERNAL:
-                    continue
-                cls = flow_classes.get(name)
-                slots_desc = _slots_desc(cls)
-                line = (
-                    f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
-                    + (f' [slots: {slots_desc}]' if slots_desc else '')
-                )
-                groups.setdefault(fi, []).append(line)
-            parts = []
-            for gi in sorted(groups):
-                parts.append(f'### {gi}')
-                parts.extend(groups[gi])
-                parts.append('')
-            candidates = '\n'.join(parts)
-        else:
-            candidate_lines = []
-            edge_flows = _get_edge_flows_for_intent(intent)
-            for name, cat in FLOW_CATALOG.items():
-                fi = cat['intent']
-                if fi == intent or name in edge_flows:
-                    cls = flow_classes.get(name)
-                    slots_desc = _slots_desc(cls)
-                    candidate_lines.append(
-                        f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
-                        + (f' [slots: {slots_desc}]' if slots_desc else '')
-                    )
-            candidates = '\n'.join(candidate_lines)
-
-        system = (
-            f'{self.build_system_prompt()}\n\n'
-            'You are a precise flow classifier. '
-            'Respond with only valid JSON. No markdown fences.'
-        )
-
-        flow_prompt = build_flow_prompt(user_text, intent, convo_history, candidates)
-        messages = [{'role': 'user', 'content': flow_prompt}]
-        return system, messages
-
-    def build_slot_fill_prompt(self, flow, convo_history:str) -> tuple[str, list[dict]]:
-        slot_schema = _describe_slot_schema(flow.slots)
-        slot_types = {type(slot).__name__ for slot in flow.slots.values()}
-        system = (f'{self.build_system_prompt()}\n\n'
-            'You are a slot extraction engine. Respond with only valid JSON.'
-        )
-
-        prompt = build_slot_filling_prompt(flow.name(), slot_schema, convo_history, slot_types)
-        messages = [{'role': 'user', 'content': prompt}]
-        return system, messages
-
-    def build_skill_prompt(
-        self,
-        flow,
-        convo_history: str,
-        scratchpad: dict,
-        skill_prompt: str | None = None,
-        resolved: dict | None = None,
-    ) -> list[dict]:
-        base_system = self.build_system_prompt()
-        system = build_skill_system(base_system, flow, skill_prompt, scratchpad, resolved)
-        messages = [{'role': 'system', 'content': system}]
-        messages.extend(build_skill_messages(flow.name(), convo_history))
-        return messages
-
-    def build_naturalize_prompt(
-        self,
-        raw_response: str,
-        convo_history: str,
-        block_type: str | None = None,
-    ) -> tuple[str, list[dict]]:
-        system = (
-            f'{self.build_system_prompt()}\n\n'
-            'Rewrite the given response to sound natural. '
-            'Keep the same information. Do not add information. '
-            'Respond with ONLY the rewritten text.'
-        )
-
-        prompt = build_naturalize_prompt(raw_response, convo_history, block_type)
-        messages = [{'role': 'user', 'content': prompt}]
-        return system, messages
-
-    def build_clarification_prompt(
-        self, level: str, metadata: dict, observation: str | None,
-    ) -> str:
-        return build_clarification(level, metadata, observation)
-
-    def build_contemplate_prompt(
-        self, user_text: str, failed_flow: str, failure_reason: str,
-        candidates: list[str], convo_history: str,
-    ) -> tuple[str, list[dict]]:
-        candidate_lines = []
-        for name in candidates:
-            cat = FLOW_CATALOG.get(name, {})
-            candidate_lines.append(f'- {name}: {cat.get("description", "")}')
-        candidates_text = '\n'.join(candidate_lines)
-
-        system = (
-            f'{self.build_system_prompt()}\n\n'
-            'You are re-evaluating a failed flow detection. '
-            'Respond with only valid JSON.'
-        )
-
-        prompt = build_contemplate_prompt(
-            user_text, failed_flow, failure_reason,
-            candidates_text, convo_history,
-        )
-        messages = [{'role': 'user', 'content': prompt}]
-        return system, messages
-
-    # ── Template registry ────────────────────────────────────────────
-
-    def get_template(self, flow_name:str, intent:str) -> dict:
-        return _get_template(flow_name, intent)
-
-
-def _slots_desc(cls) -> str:
-    if not cls:
-        return ''
-    inst = cls()
-    return ', '.join(f'{name} ({slot.priority})' for name, slot in inst.slots.items())
-
-
-def _get_edge_flows_for_intent(intent: str) -> set[str]:
-    edge_flows = set()
-    for name, cat in FLOW_CATALOG.items():
-        if cat['intent'] == intent:
-            for ef in cat.get('edge_flows', []):
-                edge_flows.add(ef)
-    return edge_flows
-
-
-def _describe_slot_schema(slots: dict) -> str:
-    if not slots:
-        return 'No slots defined.'
-    lines = []
-    for name, slot in slots.items():
-        desc = f'- {name} ({slot.priority}): type={type(slot).__name__}'
-        if hasattr(slot, 'options') and slot.options:
-            desc += f', options={slot.options}'
-        if hasattr(slot, 'purpose') and slot.purpose:
-            desc += f', purpose="{slot.purpose}"'
-        lines.append(desc)
-    return '\n'.join(lines)

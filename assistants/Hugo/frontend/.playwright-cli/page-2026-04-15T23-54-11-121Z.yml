@@ -1,0 +1,57 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e709]: Hey derek! What are we writing today?
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e849]:
+      - generic [ref=e850]:
+        - button "Edit" [ref=e851] [cursor=pointer]:
+          - img [ref=e852]
+        - button "Collapse" [ref=e854] [cursor=pointer]:
+          - img [ref=e855]
+      - heading "Color Post" [level=3] [ref=e857]
+      - generic [ref=e858]:
+        - heading "What a colorful post!" [level=1] [ref=e859]
+        - paragraph [ref=e860]:
+          - text: This is an idea that came from
+          - link "xukimseven/HardCandy-Jekyll" [ref=e861] [cursor=pointer]:
+            - /url: https://github.com/xukimseven/HardCandy-Jekyll
+          - text: looking at this cheerful and colorful them, I wanted to enable something similar for mine.
+        - paragraph [ref=e862]: You can go fork and star hers too! 😉
+        - heading "How does it work?" [level=2] [ref=e863]
+        - paragraph [ref=e864]: "Basically you need to add just one thing, the color:"
+        - code [ref=e866]: "--- layout: post title: Color Post color: brown ---"
+        - paragraph [ref=e867]:
+          - text: It can either be a html color like
+          - code [ref=e868]: brown
+          - text: "(which look like red to me). Or with the rgb:"
+        - code [ref=e870]: "--- layout: post title: Color Post color: rgb(165,42,42) ---"
+        - paragraph [ref=e871]:
+          - text: The background used is
+          - code [ref=e872]: lineart.png
+          - text: from
+          - link "xukimseven" [ref=e873] [cursor=pointer]:
+            - /url: https://github.com/xukimseven
+          - text: you can edit it in the config file.
+          - text: If you want another one, put it in
+          - code [ref=e874]: /assets/img
+          - text: as well.
+        - blockquote [ref=e875]:
+          - paragraph [ref=e876]:
+            - text: ⚠️ It's a bit hacking the css in the
+            - code [ref=e877]: post.html

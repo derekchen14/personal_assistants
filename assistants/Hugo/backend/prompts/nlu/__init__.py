@@ -1,3 +1,16 @@
+"""Per-flow slot-filling prompt registry.
+
+Each `<intent>_slots.py` exports a module-level `PROMPTS: dict[str, dict[str, str]]`
+keyed by flow_name. Each entry has four authored fields:
+  - 'instructions'  markdown body for `## Instructions`
+  - 'rules'         markdown body for `## Rules`
+  - 'slots'         markdown body for `## {Flow} Slots` (per-slot `### name (priority)`
+                     blocks; empty string triggers procedural rendering from `flow.slots`)
+  - 'examples'      XML-tagged `<positive_example>` / `<edge_case>` blocks
+"""
+
+from __future__ import annotations
+
 from backend.prompts.nlu import (
     research_slots, draft_slots, revise_slots, publish_slots,
     converse_slots, plan_slots, internal_slots,
@@ -6,20 +19,10 @@ from backend.prompts.nlu import (
 _MODULES = (research_slots, draft_slots, revise_slots, publish_slots,
             converse_slots, plan_slots, internal_slots)
 
-_EXEMPLAR_REGISTRY = {}
-_INSTRUCTION_REGISTRY = {}
+PROMPTS: dict[str, dict[str, str]] = {}
+for _mod in _MODULES:
+    PROMPTS.update(_mod.PROMPTS)
 
-def _build():
-    for module in _MODULES:
-        _EXEMPLAR_REGISTRY.update(module.EXEMPLARS)
-        _INSTRUCTION_REGISTRY.update(module.INSTRUCTIONS)
 
-def get_exemplars(flow_name:str) -> str:
-    if not _EXEMPLAR_REGISTRY:
-        _build()
-    return _EXEMPLAR_REGISTRY.get(flow_name, '')
-
-def get_instructions(flow_name:str) -> str:
-    if not _INSTRUCTION_REGISTRY:
-        _build()
-    return _INSTRUCTION_REGISTRY.get(flow_name, '')
+def get_prompt(flow_name:str) -> dict[str, str]:
+    return PROMPTS[flow_name]

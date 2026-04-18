@@ -1,5 +1,4 @@
 from __future__ import annotations
-from pathlib import Path
 from backend.components.display_frame import DisplayFrame
 
 class BasePolicy:
@@ -7,7 +6,6 @@ class BasePolicy:
     No lifecycle orchestration — each flow method decides what to call and when.
     """
 
-    _SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'skills'
     _STATUS_SUFFIXES = (' draft', ' post', ' note', ' published')
 
     def __init__(self, components: dict):
@@ -18,37 +16,14 @@ class BasePolicy:
         self._get_tools_fn = components.get('get_tools')
 
     def llm_execute(self, flow, state, context, tools):
-        """Agentic tool-use loop for multi-tool flows.
-
-        Returns (text, tool_log).
-        """
+        """Agentic tool-use loop for multi-tool flows. Returns (text, tool_log)."""
         resolved = self._build_resolved_context(flow, state, tools)
         convo_history = context.compile_history()
-        skill_prompt = self._load_skill_template(flow.name())
-        messages = self.engineer.build_skill_prompt(
-            flow, convo_history, self.memory.read_scratchpad(),
-            skill_prompt, resolved,
-        )
         tool_defs = self._get_tools_fn(flow)
-        text, tool_log = self.engineer.tool_call(messages, tool_defs, tools)
-        return text, tool_log
-
-    def build_frame(self, origin:str='', thoughts:str='') -> DisplayFrame:
-        frame = DisplayFrame(self.config)
-        frame.origin = origin
-        frame.thoughts = thoughts
-        return frame
-
-    @staticmethod
-    def extract_tool_result(tool_log:list, tool_name:str) -> dict:
-        """Extract the first successful result for a given tool name."""
-        for entry in tool_log:
-            if entry.get('tool') != tool_name:
-                continue
-            result = entry.get('result', {})
-            if result.get('_success'):
-                return {k: v for k, v in result.items() if not k.startswith('_')}
-        return {}
+        return self.engineer.tool_call(
+            flow, convo_history, self.memory.read_scratchpad(),
+            tool_defs, tools, resolved=resolved,
+        )
 
     # -- Content readback ---------------------------------------------------
 
@@ -106,20 +81,13 @@ class BasePolicy:
                 return items[0].get('post_id')
         return None
 
-    def _load_skill_template(self, flow_name):
-        """Load backend/prompts/skills/{flow_name}.md."""
-        path = self._SKILL_DIR / f'{flow_name}.md'
-        if path.exists():
-            return path.read_text(encoding='utf-8')
-        return None
-
     # -- Persistence helpers ------------------------------------------------
 
     def _resolve_source_ids(self, flow, state, tools):
         """Extract (post_id, sec_id) from entity slot. Syncs state.active_post
         as a side-effect so downstream turns can rely on the dialogue state."""
         grounding = flow.slots[flow.entity_slot]
-        if grounding.slot_type == 'topic' or not grounding.filled:
+        if grounding.slot_type not in ('source', 'target', 'removal', 'channel') or not grounding.filled:
             return None, None
         vals = grounding.values[0]
         post_id = self.resolve_post_id(vals['post'], tools)
@@ -154,44 +122,6 @@ class BasePolicy:
 
     def _persist_outline(self, post_id, text, tools):
         """Extract ## sections from text and save as outline."""
-        outline_md = self._extract_outline_markdown(text)
+        outline_md = self.engineer.apply_guardrails(text, format='markdown', shape='outline')
         if post_id and outline_md:
             tools('generate_outline', {'post_id': post_id, 'content': outline_md})
-
-    @staticmethod
-    def _extract_outline_markdown(text:str) -> str:
-        """Extract ## sections from LLM output to save as outline content."""
-        import re
-        lines = text.split('\n')
-        outline_lines = []
-        in_outline = False
-        for line in lines:
-            if line.startswith('## '):
-                in_outline = True
-            if in_outline:
-                outline_lines.append(line)
-        if outline_lines:
-            return '\n'.join(outline_lines)
-        # Fallback: look for numbered sections and convert to ## headings
-        sections = []
-        for line in lines:
-            stripped = line.strip()
-            if stripped and stripped[0].isdigit() and '**' in stripped:
-                match = re.search(r'\*\*(.+?)\*\*', stripped)
-                if match:
-                    title = match.group(1).strip().lstrip('#').strip()
-                    desc = stripped.split('**')[-1].strip(' —-–:')
-                    sections.append(f'## {title}')
-                    if desc:
-                        sections.append(f'\n- {desc}')
-                    sections.append('')
-        return '\n'.join(sections) if sections else ''
-
-    # -- Slot helpers -------------------------------------------------------
-
-    def _parse_value(self, text):
-        """Extract a simple value from LLM text output."""
-        if not text:
-            return None
-        cleaned = text.strip().strip('"').strip("'")
-        return cleaned if cleaned else None

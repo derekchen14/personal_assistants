@@ -56,6 +56,11 @@ class BaseSlot(object):
     self.value = ''
     self.filled = False
 
+  def json_schema(self):
+    """JSON Schema fragment for structured-output slot values.
+    Subclasses override to narrow the shape. Default is nullable string."""
+    return {'type': ['string', 'null']}
+
 
 class GroupSlot(BaseSlot):
   """Slot values are multiple items in a list rather than a single string."""
@@ -87,6 +92,17 @@ class GroupSlot(BaseSlot):
 
 class SourceSlot(GroupSlot):
   """References existing entities. Each entity is {post, sec, snip, chl, ver}."""
+  _ENTITY_SCHEMA = {
+    'type': 'object',
+    'properties': {
+      'post': {'type': ['string', 'null']},
+      'sec':  {'type': ['string', 'null']},
+      'snip': {'type': ['string', 'null']},
+      'chl':  {'type': ['string', 'null']},
+    },
+    'additionalProperties': False,
+  }
+
   def __init__(self, min_size=1, entity_part='', priority='required'):
     super().__init__(min_size, priority)
     self.slot_type = 'source'
@@ -97,6 +113,9 @@ class SourceSlot(GroupSlot):
       self.purpose = f"at least {min_size} {entity_part}" if min_size == 1 else f"at least {min_size} {entity_part}s"
     else:
       self.purpose = f"at least {min_size} grounding reference" if min_size == 1 else f"at least {min_size} grounding references"
+
+  def json_schema(self):
+    return {'type': ['array', 'null'], 'items': self._ENTITY_SCHEMA}
 
   def add_one(self, post, sec='', snip='', chl='', ver=False):
     key = f"{post}-{sec}"
@@ -186,10 +205,23 @@ class FreeTextSlot(GroupSlot):
       for operation in labels['operations']:
         self.add_one(operation)
 
+  def json_schema(self):
+    return {'type': ['array', 'null'], 'items': {'type': 'string'}}
+
 
 class ChecklistSlot(GroupSlot):
   """Ordered steps where each must be checked off.
   Each step: {'name': <dact>, 'description': <detail>, 'checked': bool}."""
+  _STEP_SCHEMA = {
+    'type': 'object',
+    'properties': {
+      'name': {'type': 'string'},
+      'description': {'type': ['string', 'null']},
+    },
+    'required': ['name', 'description'],
+    'additionalProperties': False,
+  }
+
   def __init__(self, steps=None, priority='required'):
     super().__init__(1, priority)
     self.slot_type = 'checklist'
@@ -197,9 +229,19 @@ class ChecklistSlot(GroupSlot):
     self.steps = steps or []
     self.approved = False
 
+  def json_schema(self):
+    return {'type': ['array', 'null'], 'items': self._STEP_SCHEMA}
+
   def check_if_filled(self):
     self.filled = self.size > 0 and len(self.steps) >= self.size
     return self.filled
+
+  def add_one(self, name, description='', checked=False):
+    step = {'name': name, 'description': description, 'checked': checked}
+    current_names = [s['name'] for s in self.steps]
+    if name not in current_names:
+      self.steps.append(step)
+      self.check_if_filled()
 
   def is_verified(self):
     return self.filled and all(step['checked'] for step in self.steps)
@@ -234,6 +276,10 @@ class ProposalSlot(GroupSlot):
       self.values.append(option)
     self.check_if_filled()
 
+  def json_schema(self):
+    item = {'type': 'string', 'enum': list(self.options)} if self.options else {'type': 'string'}
+    return {'type': ['array', 'null'], 'items': item}
+
 
 # ── Level Slots ───────────────────────────────────────────────────────────
 
@@ -254,6 +300,9 @@ class LevelSlot(BaseSlot):
   def reset(self, level=0.0):
     self.level = level
     self.filled = False
+
+  def json_schema(self):
+    return {'type': ['number', 'null']}
 
 
 class PositionSlot(LevelSlot):
@@ -332,6 +381,9 @@ class CategorySlot(BaseSlot):
       self.value = option
     return self.check_if_filled()
 
+  def json_schema(self):
+    return {'anyOf': [{'type': 'string', 'enum': list(self.options)}, {'type': 'null'}]}
+
 
 class ExactSlot(BaseSlot):
   """A specific term or phrase, likely user-provided."""
@@ -366,6 +418,25 @@ class DictionarySlot(BaseSlot):
         not (isinstance(v, str) and len(v) == 0) for v in self.value.values()
       )
     return self.filled
+
+  def json_schema(self):
+    if self.value:
+      keys = list(self.value.keys())
+      return {
+        'type': ['object', 'null'],
+        'properties': {key: {'type': ['string', 'null']} for key in keys},
+        'required': keys,
+        'additionalProperties': False,
+      }
+    return {
+      'type': ['object', 'null'],
+      'properties': {
+        'key':   {'type': ['string', 'null']},
+        'value': {'type': ['string', 'null']},
+      },
+      'required': ['key', 'value'],
+      'additionalProperties': False,
+    }
 
 
 class RangeSlot(BaseSlot):
@@ -414,6 +485,20 @@ class RangeSlot(BaseSlot):
       'recurrence': self.recurrence,
     }
 
+  def json_schema(self):
+    return {
+      'type': ['object', 'null'],
+      'properties': {
+        'start':      {'type': ['string', 'null']},
+        'stop':       {'type': ['string', 'null']},
+        'time_len':   {'type': ['integer', 'null']},
+        'unit':       {'anyOf': [{'type': 'string', 'enum': list(self.options)}, {'type': 'null'}]} if self.options else {'type': ['string', 'null']},
+        'recurrence': {'type': ['boolean', 'null']},
+      },
+      'required': ['start', 'stop', 'time_len', 'unit', 'recurrence'],
+      'additionalProperties': False,
+    }
+
 
 # ── Domain-Specific Slots (Hugo) ─────────────────────────────────────────
 
@@ -440,3 +525,16 @@ class ImageSlot(BaseSlot):
     if position >= 0:
       self.position = position
     self.check_if_filled()
+
+  def json_schema(self):
+    return {
+      'type': ['object', 'null'],
+      'properties': {
+        'image_type': {'type': 'string'},
+        'src':        {'type': ['string', 'null']},
+        'alt':        {'type': ['string', 'null']},
+        'position':   {'type': ['integer', 'null']},
+      },
+      'required': ['image_type', 'src', 'alt', 'position'],
+      'additionalProperties': False,
+    }

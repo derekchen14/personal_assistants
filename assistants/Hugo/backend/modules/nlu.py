@@ -12,6 +12,10 @@ from backend.components.dialogue_state import DialogueState
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.flow_stack import flow_classes
+from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt as _build_flow_prompt_text
+from backend.prompts.for_nlu import build_slot_filling_prompt, ENTITY_SLOT_TYPES
+from backend.prompts.for_contemplate import build_contemplate_prompt as _build_contemplate_prompt_text
+from backend.utilities.services import PostService
 from schemas.ontology import FLOW_CATALOG, Intent
 from utils.helper import _DAX_LOOKUP, edge_flows_for, dax2flow
 
@@ -34,6 +38,78 @@ _ENSEMBLE_VOTERS = [
 ]
 
 
+def _slots_desc(cls) -> str:
+    if not cls:
+        return ''
+    inst = cls()
+    return ', '.join(f'{name} ({slot.priority})' for name, slot in inst.slots.items())
+
+
+def _get_edge_flows_for_intent(intent:str) -> set[str]:
+    edge = set()
+    for name, cat in FLOW_CATALOG.items():
+        if cat['intent'] == intent:
+            for ef in cat.get('edge_flows', []):
+                edge.add(ef)
+    return edge
+
+
+_VALID_INTENTS = ('Research', 'Draft', 'Revise', 'Publish', 'Converse', 'Plan')
+
+
+def _intent_schema() -> dict:
+    return {
+        'type': 'object',
+        'properties': {
+            'reasoning': {'type': 'string'},
+            'intent': {'type': 'string', 'enum': list(_VALID_INTENTS)},
+        },
+        'required': ['reasoning', 'intent'],
+        'additionalProperties': False,
+    }
+
+
+def _flow_detection_schema(candidate_flow_names:list[str]) -> dict:
+    return {
+        'type': 'object',
+        'properties': {
+            'reasoning': {'type': 'string'},
+            'flow_name': {'type': 'string', 'enum': list(candidate_flow_names)},
+            'confidence': {'type': 'number'},
+        },
+        'required': ['reasoning', 'flow_name', 'confidence'],
+        'additionalProperties': False,
+    }
+
+
+def _fill_slots_schema(flow) -> dict:
+    slot_names = list(flow.slots.keys())
+    return {
+        'type': 'object',
+        'properties': {
+            'reasoning': {'type': 'string'},
+            'slots': {
+                'type': 'object',
+                'properties': {name: slot.json_schema() for name, slot in flow.slots.items()},
+                'required': slot_names,
+                'additionalProperties': False,
+            },
+        },
+        'required': ['reasoning', 'slots'],
+        'additionalProperties': False,
+    }
+
+
+def _strip_nulls(obj):
+    """Recursively drop None values before handing slots to fill_slot_values.
+    Models now emit `null` (schema-enforced) rather than a string sentinel."""
+    if isinstance(obj, dict):
+        return {k: _strip_nulls(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [_strip_nulls(x) for x in obj if x is not None]
+    return obj
+
+
 class NLU:
 
     def __init__(self, config:MappingProxyType, ambiguity:AmbiguityHandler,
@@ -43,8 +119,7 @@ class NLU:
         self.engineer = engineer
         self.world = world
         self.flow_stack = world.flow_stack
-
-    # ── Entry point ───────────────────────────────────────────────────
+        self._posts = PostService()
 
     def understand(self, user_text:str, context, dax:str|None=None, payload:dict|None=None) -> DialogueState:
         gold_dax = dax or self.prepare(user_text)
@@ -187,17 +262,16 @@ class NLU:
     def _llm_repair_slot(self, value:str, candidates:list[str],
                          slot_name:str, max_attempts:int=3) -> str | None:
         for attempt in range(max_attempts):
-            system = (
+            prompt = (
                 f'The user said "{value}" for the slot "{slot_name}". '
-                f'Valid options are: {candidates}. '
-                f'Reply with ONLY the best matching valid option, '
-                f'or "NONE" if no match is reasonable.'
+                f'Valid options are: {candidates}.'
             )
             try:
-                text = self.engineer.call(value, system=system, task='repair_slot', max_tokens=64).strip()
-                if text in candidates:
-                    return text
-                if text == 'NONE':
+                raw_output = self.engineer(prompt, 'repair_slot', max_tokens=32)
+                repaired = raw_output.strip()
+                if repaired in candidates:
+                    return repaired
+                if repaired == 'NONE':
                     return None
             except Exception:
                 continue
@@ -230,32 +304,115 @@ class NLU:
             'pred_flows': detection.get('pred_flows', []),
         }
 
+    def _detect_flow_prompt(self, user_text:str, intent:str|None, convo_history:str) -> str:
+        if intent is None:
+            groups: dict[str, list[str]] = {}
+            for name, cat in FLOW_CATALOG.items():
+                fi = cat['intent']
+                if fi == Intent.INTERNAL:
+                    continue
+                cls = flow_classes.get(name)
+                slots_desc = _slots_desc(cls)
+                line = (
+                    f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
+                    + (f' [slots: {slots_desc}]' if slots_desc else '')
+                )
+                groups.setdefault(fi, []).append(line)
+            parts = []
+            for gi in sorted(groups):
+                parts.append(f'### {gi}')
+                parts.extend(groups[gi])
+                parts.append('')
+            candidates = '\n'.join(parts)
+        else:
+            candidate_lines = []
+            edge_flows = _get_edge_flows_for_intent(intent)
+            for name, cat in FLOW_CATALOG.items():
+                fi = cat['intent']
+                if fi == intent or name in edge_flows:
+                    cls = flow_classes.get(name)
+                    slots_desc = _slots_desc(cls)
+                    candidate_lines.append(
+                        f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
+                        + (f' [slots: {slots_desc}]' if slots_desc else '')
+                    )
+            candidates = '\n'.join(candidate_lines)
+
+        return _build_flow_prompt_text(user_text, intent, convo_history, candidates)
+
+    def _fill_slot_prompt(self, flow, convo_history:str,
+                          ent_needs_filling:set|None=None) -> str:
+        state = self.world.current_state()
+        active_post = None
+        if state and state.active_post:
+            title = self._posts.get_title(state.active_post)
+            if title:
+                active_post = {'id': state.active_post, 'title': title}
+        return build_slot_filling_prompt(
+            flow.name(), flow, convo_history,
+            active_post=active_post, ent_needs_filling=ent_needs_filling,
+        )
+
+    def grounding_entity_history(self, flow, prev) -> set[str]:
+        """Entity slots still open for the LLM to fill. Drops entity slots
+        already grounded deterministically against the prior-turn active_post
+        — no new information for the LLM to contribute on those."""
+        prev_post = prev.active_post if prev else None
+        needs = set()
+        for name, slot in flow.slots.items():
+            if slot.slot_type not in ENTITY_SLOT_TYPES:
+                continue
+            if not slot.filled:
+                needs.add(name)
+                continue
+            current_post = slot.values[0].get('post') if slot.values else ''
+            if not prev_post or current_post != prev_post:
+                needs.add(name)
+        return needs
+
+    def _contemplate_prompt(self, user_text:str, failed_flow:str, failure_reason:str,
+                             candidates:list[str], convo_history:str) -> str:
+        candidate_lines = []
+        for name in candidates:
+            cat = FLOW_CATALOG.get(name, {})
+            candidate_lines.append(f'- {name}: {cat.get("description", "")}')
+        candidates_text = '\n'.join(candidate_lines)
+        return _build_contemplate_prompt_text(
+            user_text, failed_flow, failure_reason, candidates_text, convo_history,
+        )
+
+    def _raise_if_debug(self, ecp:Exception):
+        if self.config.get('debug', False):
+            raise ecp
+
     def _classify_intent(self, user_text:str) -> str:
         convo_history = self.world.context.compile_history()
-        system, messages = self.engineer.build_nlu_prompt(user_text, convo_history)
-        text = self.engineer.call(messages, system=system, task='classify_intent', max_tokens=256)
-        parsed = self.engineer.apply_guardrails(text)
-        if parsed and parsed.get('intent'):
+        prompt = build_intent_prompt(user_text, convo_history)
+        try:
+            parsed = self.engineer(prompt, 'classify_intent', max_tokens=512,
+                                   schema=_intent_schema())
             return parsed['intent']
-        return 'Converse'
+        except Exception as ecp:
+            log.warning('intent classification failed: %s', ecp)
+            self._raise_if_debug(ecp)
+            return 'Converse'
 
     def _detect_flow(self, user_text:str, intent:str|None=None) -> dict:
         convo_history = self.world.context.compile_history()
-        system, messages = self.engineer.build_flow_prompt(user_text, intent, convo_history)
+        prompt = self._detect_flow_prompt(user_text, intent, convo_history)
+        candidate_names = self._flow_candidate_names(intent)
+        schema = _flow_detection_schema(candidate_names)
 
         def _call_voter(voter:dict) -> dict | None:
             try:
-                text = self.engineer.call(
-                    messages, system=system, task='detect_flow',
-                    model=voter['model'], max_tokens=512,
-                )
-                parsed = self.engineer.apply_guardrails(text)
-                if parsed:
-                    parsed['_model'] = voter['label']
-                    parsed['_weight'] = voter['weight']
+                parsed = self.engineer(prompt, 'detect_flow', model=voter['model'],
+                                       max_tokens=512, schema=schema)
+                parsed['_model'] = voter['label']
+                parsed['_weight'] = voter['weight']
                 return parsed
             except Exception as ecp:
-                print(f'NLU vote error ({voter["label"]}): {ecp}')
+                log.warning('NLU vote error (%s): %s', voter['label'], ecp)
+                self._raise_if_debug(ecp)
                 return None
 
         votes: list[dict] = []
@@ -270,19 +427,25 @@ class NLU:
 
         if not votes:
             return {
-                'flow_name': 'chat', 'confidence': 0.3, 'slots': {},
+                'flow_name': 'chat', 'confidence': 0.3,
                 'pred_flows': [{'flow_name': 'chat', 'confidence': 0.3}],
             }
 
         return self._tally_votes(votes)
 
+    def _flow_candidate_names(self, intent:str|None) -> list[str]:
+        if intent is None:
+            return [name for name, cat in FLOW_CATALOG.items() if cat['intent'] != Intent.INTERNAL]
+        edges = _get_edge_flows_for_intent(intent)
+        return [name for name, cat in FLOW_CATALOG.items() if cat['intent'] == intent or name in edges]
+
     def _fill_slots(self, flow, payload:dict={}):
         if flow.is_filled(): return
 
-        # Phase 1: map payload keys to slot values
+        # Phase 1: Fill entity slots from user actions
         source_fields = {'highlight': 'snip', 'post': 'post', 'section': 'sec', 'channel': 'chl'}
         for slot_name, slot in flow.slots.items():
-            if slot.slot_type in ('source', 'target', 'removal'):
+            if slot.slot_type in ('source', 'target', 'removal', 'channel'):
                 source_values = {'post': ''}
                 for key, value in payload.items():
                     if key in source_fields:
@@ -290,46 +453,56 @@ class NLU:
                 if any(source_values.values()):
                     slot.add_one(**source_values)
 
-        # Phase 1b: map payload keys that directly match non-entity slot names
-        direct = {k: v for k, v in payload.items() if k not in source_fields and k in flow.slots}
-        if direct:
-            flow.fill_slot_values(direct)
-
-        # Phase 1c: pre-fill unfilled entity slots from active_post
+        # Phase 1b: Otherwise try to ground based on the active post
         prev = self.world.current_state()
         if prev and prev.active_post:
             for slot_name, slot in flow.slots.items():
                 if slot.slot_type in ('source', 'target') and not slot.filled:
                     slot.add_one(post=prev.active_post)
+        ent_needs_filling = self.grounding_entity_history(flow, prev)
 
-        # Phase 2: LLM fill for required/elective slots still unfilled after payload
+        # Phase 1c: Attempt to fill remaining slots from payload if keys match slot names
+        direct = {k: v for k, v in payload.items() if k not in source_fields and k in flow.slots}
+        if direct:
+            flow.fill_slot_values(direct)
+
+        # Phase 2: Slot-filling for any slots still remaining after payload
         if not flow.is_filled():
             convo_history = self.world.context.compile_history()
-            system, messages = self.engineer.build_slot_fill_prompt(flow, convo_history)
-            output = self.engineer.call(messages, system=system, task='fill_slots', max_tokens=512)
-            pred_slots = self.engineer.apply_guardrails(output)
-            if pred_slots and isinstance(pred_slots.get('slots'), dict):
-                flow.fill_slot_values(pred_slots['slots'])
+            before = {sn: slot.filled for sn, slot in flow.slots.items()}
+            log.info('  fill_slots pre: flow=%s filled=%s', flow.name(), before)
+            prompt = self._fill_slot_prompt(flow, convo_history, ent_needs_filling)
+            try:
+                pred_slots = self.engineer(prompt, 'fill_slots', schema=_fill_slots_schema(flow))
+                log.info('  fill_slots parsed: %s', pred_slots)
+                cleaned = _strip_nulls(pred_slots['slots'])
+                flow.fill_slot_values(cleaned)
+            except Exception as ecp:
+                log.warning('  fill_slots failed: %s', ecp)
+                self._raise_if_debug(ecp)
+            after = {sn: {'filled': slot.filled, 'preview': self._slot_preview(slot)}
+                     for sn, slot in flow.slots.items()}
+            log.info('  fill_slots post: %s', after)
 
     def _check_routing(self, user_text:str, failed_flow:str|None,
                        failure_reason:str) -> dict:
         candidates = self._get_contemplate_candidates(failed_flow)
         if not candidates:
-            return {'flow_name': 'chat', 'confidence': 0.5, 'slots': {}}
+            return {'flow_name': 'chat', 'confidence': 0.5}
 
         convo_history = self.world.context.compile_history()
-        system, messages = self.engineer.build_contemplate_prompt(
+        prompt = self._contemplate_prompt(
             user_text, failed_flow or 'unknown', failure_reason, candidates, convo_history,
         )
-        text = self.engineer.call(messages, system=system, task='contemplate', max_tokens=512)
-        parsed = self.engineer.apply_guardrails(text)
-        if parsed and parsed.get('flow_name') in FLOW_CATALOG:
-            return {
-                'flow_name': parsed['flow_name'],
-                'confidence': float(parsed.get('confidence', 0.5)),
-                'slots': parsed.get('slots', {}),
-            }
-        return {'flow_name': 'chat', 'confidence': 0.5, 'slots': {}}
+        try:
+            parsed = self.engineer(prompt, 'contemplate', max_tokens=512,
+                                   schema=_flow_detection_schema(candidates))
+            if parsed['flow_name'] in FLOW_CATALOG:
+                return {'flow_name': parsed['flow_name'], 'confidence': float(parsed['confidence'])}
+        except Exception as ecp:
+            log.warning('contemplate routing failed: %s', ecp)
+            self._raise_if_debug(ecp)
+        return {'flow_name': 'chat', 'confidence': 0.5}
 
     def _get_contemplate_candidates(self, failed_flow:str|None) -> list[str]:
         candidates = set()
@@ -344,7 +517,7 @@ class NLU:
         return sorted(candidates)
 
     def requires_contemplation(self) -> bool:
-        if self.flow_stack.depth == 0:
+        if len(self.flow_stack._stack) == 0:
             return False
         prev = self.world.current_state()
         if not prev:
@@ -353,13 +526,22 @@ class NLU:
 
     # ── Support (private) ─────────────────────────────────────────────
 
+    @staticmethod
+    def _slot_preview(slot):
+        """Short preview of a slot's payload — handles both value-style and steps-style slots."""
+        if hasattr(slot, 'steps') and slot.steps:
+            return [step.get('name', '?') for step in slot.steps]
+        if hasattr(slot, 'values') and slot.values:
+            return [str(v)[:80] for v in slot.values]
+        return None
+
     def _push_or_get(self, flow_name:str):
         """Push a new flow or return existing one on the stack."""
         existing = self.flow_stack.find_by_name(flow_name)
         if existing:
             return existing
         try:
-            return self.flow_stack.push(flow_name)
+            return self.flow_stack.stackon(flow_name)
         except (ValueError, RuntimeError):
             return None
 
@@ -379,12 +561,10 @@ class NLU:
 
     def _tally_votes(self, votes:list[dict]) -> dict:
         flow_weights: dict[str, float] = {}
-        flow_votes: dict[str, list[dict]] = {}
         for vote in votes:
             name = vote['flow_name']
             weight = vote.get('_weight', 1.0 / len(votes))
             flow_weights[name] = flow_weights.get(name, 0.0) + weight
-            flow_votes.setdefault(name, []).append(vote)
 
         total_weight = sum(flow_weights.values())
         best_flow = max(flow_weights, key=flow_weights.get)
@@ -396,15 +576,8 @@ class NLU:
             for name, weight in ranked
         ]
 
-        best_vote = max(
-            flow_votes[best_flow],
-            key=lambda vote: vote.get('_weight', 0),
-        )
-        slots = best_vote.get('slots', {})
-
         return {
             'flow_name': best_flow,
             'confidence': final_confidence,
-            'slots': slots,
             'pred_flows': pred_flows,
         }

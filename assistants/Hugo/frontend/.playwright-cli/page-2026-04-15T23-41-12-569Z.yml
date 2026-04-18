@@ -1,0 +1,65 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e31]: Hey derek! What are we writing today?
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e38]:
+      - button "Your Drafts" [ref=e302] [cursor=pointer]
+      - generic [ref=e41]:
+        - generic [ref=e43]:
+          - button "Collapse On Ambiguity" [active] [ref=e303] [cursor=pointer]:
+            - img [ref=e305]
+            - generic [ref=e45]: Collapse On Ambiguity
+          - generic [ref=e404]:
+            - button "+ tag" [ref=e406] [cursor=pointer]
+            - paragraph [ref=e407]: "Imagine a user says: *\"Can you check on that last post?\"*"
+            - generic [ref=e408]:
+              - button "View Full Draft →" [ref=e409] [cursor=pointer]
+              - button "Delete" [ref=e410] [cursor=pointer]:
+                - img [ref=e411]
+        - button "Color Post" [ref=e312] [cursor=pointer]:
+          - img [ref=e314]
+          - generic [ref=e50]: Color Post
+        - button "Components of Dialogue Systems" [ref=e321] [cursor=pointer]:
+          - img [ref=e323]
+          - generic [ref=e55]: Components of Dialogue Systems
+        - button "Expectation Maximization" [ref=e330] [cursor=pointer]:
+          - img [ref=e332]
+          - generic [ref=e60]: Expectation Maximization
+        - button "Feature images" [ref=e339] [cursor=pointer]:
+          - img [ref=e341]
+          - generic [ref=e65]: Feature images
+        - button "History of Seq2Seq" [ref=e348] [cursor=pointer]:
+          - img [ref=e350]
+          - generic [ref=e70]: History of Seq2Seq
+        - button "Insights around Attention Mechanism" [ref=e357] [cursor=pointer]:
+          - img [ref=e359]
+          - generic [ref=e75]: Insights around Attention Mechanism
+        - button "Markdown and HTML" [ref=e366] [cursor=pointer]:
+          - img [ref=e368]
+          - generic [ref=e80]: Markdown and HTML
+        - 'button "Markup: Syntax Highlighting" [ref=e375] [cursor=pointer]':
+          - img [ref=e377]
+          - generic [ref=e85]: "Markup: Syntax Highlighting"
+        - button "ML as Software 2.0" [ref=e384] [cursor=pointer]:
+          - img [ref=e386]
+          - generic [ref=e90]: ML as Software 2.0
+        - button "Using Multi-modal Models to Improve AI Agents" [ref=e393] [cursor=pointer]:
+          - img [ref=e395]
+          - generic [ref=e95]: Using Multi-modal Models to Improve AI Agents
+      - button "+ New Draft" [ref=e403] [cursor=pointer]

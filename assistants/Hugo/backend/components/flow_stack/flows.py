@@ -132,10 +132,10 @@ class OutlineFlow(DraftParentFlow):
     self.goal = 'generate an outline including section headings, key bullet points, estimated word counts, and suggested reading order'
     self.slots = {
       'source': SourceSlot(1, priority='required'),
+      'sections': ChecklistSlot(priority='elective'),
       'topic': ExactSlot(priority='elective'),
       'depth': LevelSlot(priority='optional', threshold=1),
-      'sections': ChecklistSlot(priority='elective'),
-      'proposals': ProposalSlot(priority='optional'),
+      'proposals': ProposalSlot(priority='optional'),  # used internally, rather than filled by NLU
     }
     self.tools = ['find_posts', 'brainstorm_ideas', 'generate_outline']
 
@@ -147,8 +147,8 @@ class RefineFlow(DraftParentFlow):
     self.goal = 'refine the bullet points in the outline; adjust headings, reorder points, add or remove subsections, and incorporate feedback'
     self.slots = {
       'source': SourceSlot(1),
-      'feedback': FreeTextSlot(priority='elective'),
-      'steps': ChecklistSlot(priority='elective'),
+      'steps': ChecklistSlot(priority='elective'),  # structured list of specific changes requested by the user
+      'feedback': FreeTextSlot(priority='elective'),  # open-ended feedback on how to improve the outline
     }
     self.tools = ['find_posts', 'read_metadata', 'read_section', 'generate_outline', 'write_text']
 
@@ -182,12 +182,13 @@ class AddFlow(DraftParentFlow):
     super().__init__()
     self.flow_type = 'add'
     self.dax = '{005}'
-    self.goal = 'add a new section to the post; creates an empty section placeholder with a heading, inserted at a specific position in the post structure'
+    self.goal = 'add more in depth content, such as sub-sections or an image to an existing section; inserted at a specific position'
+    # 'Add' is about drilling down into more depth within a section, whereas 'Refine' is about shuffling sections around or even removing sections.
     self.slots = {
       'source': SourceSlot(1),
-      'steps': ChecklistSlot(priority='elective'),
-      'instructions': FreeTextSlot(priority='elective'),
-      'image': ChecklistSlot(priority='elective'),
+      'points': ChecklistSlot(priority='elective'),
+      'instructions': DictionarySlot(priority='elective'),  # key is the section name, value is the bulletpoint to add
+      'image': ImageSlot(priority='elective'),
       'position': PositionSlot(priority='optional'),
     }
     self.tools = ['read_metadata', 'read_section', 'insert_section', 'insert_content', 'insert_media']

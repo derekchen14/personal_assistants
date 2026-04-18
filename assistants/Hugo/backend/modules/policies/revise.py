@@ -21,14 +21,14 @@ class RevisePolicy(BasePolicy):
             case 'remove': return self.remove_policy(flow, state, context, tools)
             case 'tidy': return self.tidy_policy(flow, state, context, tools)
             case _:
-                return self.build_frame()
+                return DisplayFrame()
 
     def _require_source(self, flow, state, context):
         """Check entity slot is filled. Returns frame if missing."""
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return self.build_frame()
+            return DisplayFrame()
         return None
 
     def rework_policy(self, flow, state, context, tools):
@@ -39,7 +39,7 @@ class RevisePolicy(BasePolicy):
         post_id, _ = self._resolve_source_ids(flow, state, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = self.build_frame(origin='rework', thoughts=text)
+        frame = DisplayFrame(origin='rework', thoughts=text)
         if post_id:
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
@@ -56,14 +56,14 @@ class RevisePolicy(BasePolicy):
             self._persist_section(post_id, sec_id, text, tools)
 
         # Check for structural issues via tool results
-        result = self.extract_tool_result(tool_log, 'inspect_post')
+        result = self.engineer.extract_tool_result(tool_log, 'inspect_post')
         if result.get('structural_issues'):
             self.flow_stack.fallback('rework')
             state.keep_going = True
-            return self.build_frame()
+            return DisplayFrame()
 
         flow.status = 'Completed'
-        frame = self.build_frame(origin='polish', thoughts=text)
+        frame = DisplayFrame(origin='polish', thoughts=text)
         if post_id:
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
@@ -80,7 +80,7 @@ class RevisePolicy(BasePolicy):
 
         post_id, _ = self._resolve_source_ids(flow, state, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools)
-        frame = self.build_frame(origin='tone', thoughts=text)
+        frame = DisplayFrame(origin='tone', thoughts=text)
         if post_id:
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
@@ -103,7 +103,7 @@ class RevisePolicy(BasePolicy):
         threshold = float(thresh_slot.to_dict()) if thresh_slot.filled else 0.2
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
-        result = self.extract_tool_result(tool_log, 'audit_post')
+        result = self.engineer.extract_tool_result(tool_log, 'audit_post')
 
         # Format audit results into a structured report
         report = self._format_audit_report(result, text)
@@ -118,11 +118,11 @@ class RevisePolicy(BasePolicy):
                 'pct': round(pct, 2),
                 'threshold': threshold,
             })
-            return self.build_frame()
+            return DisplayFrame()
 
         flow.status = 'Completed'
         post_id, _ = self._resolve_source_ids(flow, state, tools)
-        frame = self.build_frame(origin='audit', thoughts=report or text)
+        frame = DisplayFrame(origin='audit', thoughts=report or text)
         if post_id:
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
@@ -155,7 +155,7 @@ class RevisePolicy(BasePolicy):
     def simplify_policy(self, flow, state, context, tools):
         if not flow.slots['source'].check_if_filled() and not flow.slots['image'].check_if_filled():
             self.ambiguity.declare('partial', metadata={'missing_slot': 'source_or_image'})
-            return self.build_frame()
+            return DisplayFrame()
 
         post_id, sec_id = self._resolve_source_ids(flow, state, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools)
@@ -164,7 +164,7 @@ class RevisePolicy(BasePolicy):
             self._persist_section(post_id, sec_id, text, tools)
 
         flow.status = 'Completed'
-        frame = self.build_frame(origin='simplify', thoughts=text)
+        frame = DisplayFrame(origin='simplify', thoughts=text)
         if post_id:
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
@@ -176,12 +176,12 @@ class RevisePolicy(BasePolicy):
 
         if not flow.slots['type'].check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing_slot': 'type'})
-            return self.build_frame()
+            return DisplayFrame()
 
         post_id, _ = self._resolve_source_ids(flow, state, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = self.build_frame(origin='remove', thoughts=text)
+        frame = DisplayFrame(origin='remove', thoughts=text)
         if post_id:
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
@@ -210,12 +210,10 @@ class RevisePolicy(BasePolicy):
                 f"[Settings] {settings if settings else 'default normalization'}"
             )
 
-            skill_prompt = self._load_skill_template(flow.name())
-            messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
-            text = self.engineer.call(messages, max_tokens=4096)
+            text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad(), max_tokens=4096)
 
             flow.status = 'Completed'
-            frame = self.build_frame(origin='tidy', thoughts=text)
+            frame = DisplayFrame(origin='tidy', thoughts=text)
             frame.add_block({'type': 'card', 'data': {
                 'post_id': post_id,
                 'title': result.get('title', ''),
@@ -224,4 +222,4 @@ class RevisePolicy(BasePolicy):
             return frame
         else:
             flow.status = 'Completed'
-            return self.build_frame(thoughts='Could not find the specified post.')
+            return DisplayFrame(thoughts='Could not find the specified post.')

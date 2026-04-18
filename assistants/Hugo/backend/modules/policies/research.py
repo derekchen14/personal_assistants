@@ -27,7 +27,7 @@ class ResearchPolicy(BasePolicy):
             case 'compare': return self.compare_policy(flow, state, context, tools)
             case 'diff': return self.diff_policy(flow, state, context, tools)
             case _:
-                return self.build_frame()
+                return DisplayFrame()
 
     def browse_policy(self, flow, state, context, tools):
         cat_slot = flow.slots['category']
@@ -49,11 +49,9 @@ class ResearchPolicy(BasePolicy):
         convo_history = context.compile_history()
         history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
 
-        skill_prompt = self._load_skill_template(flow.name())
-        messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
-        text = self.engineer.call(messages)
+        text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad())
         flow.status = 'Completed'
-        frame = self.build_frame(origin='browse', thoughts=text)
+        frame = DisplayFrame(origin='browse', thoughts=text)
         frame.add_block({'type': 'list', 'data': {'items': items}})
         return frame
 
@@ -62,11 +60,11 @@ class ResearchPolicy(BasePolicy):
 
         if not post_id:
             self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return self.build_frame()
+            return DisplayFrame()
 
         meta = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         if not meta.get('_success'):
-            return self.build_frame(thoughts='Could not find the specified post.')
+            return DisplayFrame(thoughts='Could not find the specified post.')
 
         length_slot = flow.slots['length']
         length_hint = f" Aim for {length_slot.to_dict()} words." if length_slot.filled else ''
@@ -76,14 +74,13 @@ class ResearchPolicy(BasePolicy):
             f"{convo_history}\n\n[Post content]\nTitle: {meta.get('title', '')}\n"
             f"Content: {meta.get('outline', '')}"
         )
-        skill_prompt = self._load_skill_template(flow.name())
-        messages = self.engineer.build_skill_prompt(
+        skill_prompt = self.engineer.load_skill_template(flow.name()) + length_hint
+        text = self.engineer.skill_call(
             flow, history_with_data, self.memory.read_scratchpad(),
-            skill_prompt + length_hint,
+            skill_prompt=skill_prompt,
         )
-        text = self.engineer.call(messages)
         flow.status = 'Completed'
-        frame = self.build_frame(origin='summarize')
+        frame = DisplayFrame(origin='summarize')
         frame.add_block({'type': 'card', 'data': {
             'post_id': post_id,
             'title': meta.get('title', ''),
@@ -113,25 +110,23 @@ class ResearchPolicy(BasePolicy):
         convo_history = context.compile_history()
         history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
 
-        skill_prompt = self._load_skill_template(flow.name())
-        messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
-        text = self.engineer.call(messages)
+        text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad())
         flow.status = 'Completed'
-        return self.build_frame(origin='check', thoughts=text)
+        return DisplayFrame(origin='check', thoughts=text)
 
     def inspect_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return self.build_frame()
+            return DisplayFrame()
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
-        result = self.extract_tool_result(tool_log, 'inspect_post')
+        result = self.engineer.extract_tool_result(tool_log, 'inspect_post')
 
         # Build a clean metrics summary from tool results
         metrics = self._format_inspect_metrics(result)
         flow.status = 'Completed'
-        return self.build_frame(origin='inspect', thoughts=metrics or text)
+        return DisplayFrame(origin='inspect', thoughts=metrics or text)
 
     @staticmethod
     def _format_inspect_metrics(result:dict) -> str|None:
@@ -191,19 +186,17 @@ class ResearchPolicy(BasePolicy):
 
         convo_history = context.compile_history()
         history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
-        skill_prompt = self._load_skill_template(flow.name())
-        messages = self.engineer.build_skill_prompt(flow, history_with_data, self.memory.read_scratchpad(), skill_prompt)
-        text = self.engineer.call(messages)
+        text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad())
         flow.status = 'Completed'
 
         if n == 0:
-            return self.build_frame(origin='find', thoughts=text)
+            return DisplayFrame(origin='find', thoughts=text)
 
         if n == 1:
             post_id = items[0]['post_id']
             result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
             if result.get('_success'):
-                frame = self.build_frame(origin='find')
+                frame = DisplayFrame(origin='find')
                 frame.add_block({'type': 'card', 'data': {
                     'post_id': post_id,
                     'title': result.get('title', ''),
@@ -215,7 +208,7 @@ class ResearchPolicy(BasePolicy):
         post_count = sum(1 for it in items if it.get('status') == 'published')
         draft_count = sum(1 for it in items if it.get('status') == 'draft')
         page = 'posts' if post_count >= draft_count else 'drafts'
-        frame = self.build_frame(origin='find', thoughts=text)
+        frame = DisplayFrame(origin='find', thoughts=text)
         list_data = {'items': items, 'page': page}
         if n <= 8:
             list_data['expanded_ids'] = [it['post_id'] for it in items]
@@ -225,14 +218,14 @@ class ResearchPolicy(BasePolicy):
     def _expand_query(self, query: str) -> list[str]:
         """Use LLM to generate semantically similar search terms."""
         import json
-        system = (
+        prompt = (
             f'Return 3-4 short search terms that are semantically similar or related to "{query}". '
             'Include the original term. Reply with ONLY a JSON array of strings, no explanation.'
         )
         try:
-            text = self.engineer.call(query, system=system, max_tokens=128).strip()
-            text = text.strip('`').removeprefix('json').strip()
-            terms = json.loads(text)
+            raw_output = self.engineer(prompt, max_tokens=128)
+            cleaned = raw_output.strip().strip('`').removeprefix('json').strip()
+            terms = json.loads(cleaned)
             if isinstance(terms, list) and terms:
                 return [str(t) for t in terms[:4]]
         except Exception:
@@ -243,7 +236,7 @@ class ResearchPolicy(BasePolicy):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return self.build_frame()
+            return DisplayFrame()
 
         posts = []
         for entry in grounding.values[:2]:
@@ -259,7 +252,7 @@ class ResearchPolicy(BasePolicy):
 
         left = posts[0] if len(posts) > 0 else {}
         right = posts[1] if len(posts) > 1 else {}
-        frame = self.build_frame(origin='compare', thoughts=text)
+        frame = DisplayFrame(origin='compare', thoughts=text)
         frame.add_block({'type': 'compare', 'data': {'left': left, 'right': right}})
         return frame
 
@@ -267,8 +260,8 @@ class ResearchPolicy(BasePolicy):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return self.build_frame()
+            return DisplayFrame()
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        return self.build_frame(origin='diff', thoughts=text)
+        return DisplayFrame(origin='diff', thoughts=text)

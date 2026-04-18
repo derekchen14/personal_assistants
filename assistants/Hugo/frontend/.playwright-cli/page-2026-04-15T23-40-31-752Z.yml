@@ -1,0 +1,6 @@
+- generic [ref=e5]:
+  - heading "Hugo" [level=1] [ref=e6]
+  - paragraph [ref=e7]: Enter your name to get started
+  - generic [ref=e8]:
+    - textbox "Your name" [ref=e9]
+    - button "Start" [ref=e10]

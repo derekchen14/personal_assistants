@@ -447,14 +447,10 @@ def _check_level3(utterance, rubric, result, tool_log, agent):
     )
 
     try:
-        judge_response = agent.engineer.call(
-            judge_prompt,
-            system=judge_system,
-            model='opus',
-            max_tokens=256,
-        )
+        judge_prompt_with_system = f'{judge_system}\n\n{judge_prompt}'
+        raw_output = agent.engineer(judge_prompt_with_system, model='opus', max_tokens=512)
 
-        for line in judge_response.strip().split('\n'):
+        for line in raw_output.strip().split('\n'):
             line = line.strip().lower()
             # Match "fail" as verdict, not as substring (e.g. "failure modes")
             if line.startswith('useful:'):

@@ -1,0 +1,58 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e31]: Hey derek! What are we writing today?
+        - generic [ref=e445]: Make an outline with 4 sections
+        - generic [ref=e448]:
+          - generic [ref=e449]: .
+          - generic [ref=e450]: .
+          - generic [ref=e451]: .
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [active] [ref=e35]
+    - generic [ref=e410]:
+      - generic [ref=e411]:
+        - button "Edit" [ref=e412] [cursor=pointer]:
+          - img [ref=e413]
+        - button "Collapse" [ref=e415] [cursor=pointer]:
+          - img [ref=e416]
+      - heading "Collapse On Ambiguity" [level=3] [ref=e418]
+      - generic [ref=e419]:
+        - heading "What Is Ambiguity, Really?" [level=2] [ref=e420]
+        - list [ref=e421]:
+          - listitem [ref=e422]: Define ambiguity in the context of dialogue systems and AI assistants
+          - listitem [ref=e423]: Distinguish between lexical, syntactic, and pragmatic ambiguity
+          - listitem [ref=e424]: Explain why ambiguity is unavoidable in natural language
+          - listitem [ref=e425]: "Set up the central tension: user intent vs. system interpretation"
+        - heading "How Ambiguity Breaks Conversations" [level=2] [ref=e426]
+        - list [ref=e427]:
+          - listitem [ref=e428]: Walk through real dialogue examples where ambiguity causes failure
+          - listitem [ref=e429]: Show how a flat, single-pass system collapses silently on ambiguous input
+          - listitem [ref=e430]: "Illustrate the downstream cost: wrong outputs, user frustration, lost trust"
+          - listitem [ref=e431]: Introduce the idea of "collapse" — committing to one interpretation without signaling uncertainty
+        - 'heading "Catching Ambiguity Early: The Pipeline Approach" [level=2] [ref=e432]'
+        - list [ref=e433]:
+          - listitem [ref=e434]: Present a multi-stage pipeline as an alternative architecture
+          - listitem [ref=e435]: Explain how ambiguity can be detected before generation begins
+          - listitem [ref=e436]: "Cover strategies: confidence scoring, intent classification, clarification triggers"
+          - listitem [ref=e437]: Show how early detection preserves user trust and conversation quality
+        - heading "Designing for Uncertainty" [level=2] [ref=e438]
+        - list [ref=e439]:
+          - listitem [ref=e440]: Argue that good systems should surface — not suppress — uncertainty
+          - listitem [ref=e441]: "Cover UX patterns: graceful clarification prompts, hedged responses, fallback flows"
+          - listitem [ref=e442]: Discuss trade-offs between asking for clarification and making a best guess
+          - listitem [ref=e443]: Close with principles for building ambiguity-resilient dialogue systems

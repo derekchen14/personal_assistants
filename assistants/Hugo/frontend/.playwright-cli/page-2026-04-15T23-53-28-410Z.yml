@@ -1,0 +1,97 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [active] [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+    - generic [ref=e674]:
+      - button "Research" [ref=e676]:
+        - generic [ref=e677]: Research
+        - img [ref=e679]
+      - button "Draft" [ref=e682]:
+        - generic [ref=e683]: Draft
+        - img [ref=e685]
+      - button "Revise" [ref=e688]:
+        - generic [ref=e689]: Revise
+        - img [ref=e691]
+      - button "Publish" [ref=e694]:
+        - generic [ref=e695]: Publish
+        - img [ref=e697]
+      - separator [ref=e699]
+      - button "Dark Mode" [ref=e700]:
+        - img [ref=e701]
+        - generic [ref=e703]: Dark Mode
+      - button "Reset Chat" [ref=e704]:
+        - img [ref=e705]
+        - generic [ref=e707]: Reset Chat
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e31]: Hey derek! What are we writing today?
+        - generic [ref=e448]: Make an outline with 4 sections
+        - generic [ref=e456]: Saved the outline.
+        - generic [ref=e666]: Please outline this with 5 sections
+        - generic [ref=e669]:
+          - generic [ref=e670]: .
+          - generic [ref=e671]: .
+          - generic [ref=e672]: .
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e410]:
+      - generic [ref=e411]:
+        - button "Edit" [ref=e412] [cursor=pointer]:
+          - img [ref=e413]
+        - button "Collapse" [ref=e620] [cursor=pointer]:
+          - img [ref=e621]
+      - heading "Expectation Maximization" [level=3] [ref=e623]
+      - generic [ref=e419]:
+        - paragraph [ref=e624]: "Expectation maximization is often used to fill in blanks when there is missing data by imputing those values by considering what makes the most sense. Use cases include anomaly detection, market segmentation, speech recognition and basic clustering. The algorithm operates by iteratively alternating between two steps until convergence: the E-step for expectation and the M-step for maximization."
+        - heading "Results" [level=2] [ref=e625]
+        - table [ref=e626]:
+          - rowgroup [ref=e627]:
+            - row "E-step M-step" [ref=e628]:
+              - columnheader [ref=e629]
+              - columnheader "E-step" [ref=e630]
+              - columnheader "M-step" [ref=e631]
+          - rowgroup [ref=e632]:
+            - row "K-means right-aligned $1600" [ref=e633]:
+              - cell "K-means" [ref=e634]
+              - cell "right-aligned" [ref=e635]
+              - cell "$1600" [ref=e636]
+            - row "Gaussian Mixture Model centered $12" [ref=e637]:
+              - cell "Gaussian Mixture Model" [ref=e638]
+              - cell "centered" [ref=e639]
+              - cell "$12" [ref=e640]
+            - row "zebra stripes are neat $1" [ref=e641]:
+              - cell "zebra stripes" [ref=e642]
+              - cell "are neat" [ref=e643]
+              - cell "$1" [ref=e644]
+        - heading "Table View" [level=2] [ref=e645]
+        - table [ref=e646]:
+          - rowgroup [ref=e647]:
+            - row "Row 1, cell 1 Row 1, cell 2 Row 1, cell 3" [ref=e648]:
+              - cell "Row 1, cell 1" [ref=e649]
+              - cell "Row 1, cell 2" [ref=e650]
+              - cell "Row 1, cell 3" [ref=e651]
+            - row "Row 2, cell 1 Row 2, cell 2 Row 2, cell 3" [ref=e652]:
+              - cell "Row 2, cell 1" [ref=e653]
+              - cell "Row 2, cell 2" [ref=e654]
+              - cell "Row 2, cell 3" [ref=e655]
+            - row "Row 3, cell 1 Row 3, cell 2 Row 3, cell 3" [ref=e656]:
+              - cell "Row 3, cell 1" [ref=e657]
+              - cell "Row 3, cell 2" [ref=e658]
+              - cell "Row 3, cell 3" [ref=e659]
+            - row "Row 4, cell 1 Row 4, cell 2 Row 4, cell 3" [ref=e660]:
+              - cell "Row 4, cell 1" [ref=e661]
+              - cell "Row 4, cell 2" [ref=e662]
+              - cell "Row 4, cell 3" [ref=e663]
+        - paragraph [ref=e664]: The E-step typically consists of assigning weights to data based on parameters (calculate p(y|x, )).

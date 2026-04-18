@@ -1,0 +1,81 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e31]: Hey alice! What are we writing today?
+        - generic [ref=e454]: outline this please
+        - generic [ref=e457]:
+          - generic [ref=e458]: .
+          - generic [ref=e459]: .
+          - generic [ref=e460]: .
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [active] [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e411]:
+      - generic [ref=e412]:
+        - button "Edit" [ref=e413] [cursor=pointer]:
+          - img [ref=e414]
+        - button "Collapse" [ref=e416] [cursor=pointer]:
+          - img [ref=e417]
+      - heading "Insights around Attention Mechanism" [level=3] [ref=e419]
+      - generic [ref=e420]:
+        - heading "Introduction" [level=2] [ref=e421]
+        - list [ref=e422]:
+          - listitem [ref=e423]: Attention mechanisms transformed deep learning by giving models the ability to selectively focus on relevant parts of the input, rather than compressing everything into a single vector
+          - listitem [ref=e424]:
+            - text: "Most prominent application:"
+            - strong [ref=e425]: Neural Machine Translation (NMT)
+            - text: ", where attention lets the decoder \"look back\" at specific encoder states during each prediction step"
+          - listitem [ref=e426]: This post unpacks three non-obvious insights about how attention actually works under the hood
+          - listitem [ref=e427]: "Scope: readers should come away understanding (1) what the attention vector replaces, (2) why that design choice makes sense intuitively and mechanically, and (3) where the real \"magic\" of attention lives"
+        - heading "Attention Vector Replaces the Input Vector" [level=2] [ref=e428]
+        - list [ref=e429]:
+          - listitem [ref=e430]: "In an LSTM decoder cell, inputs are: (a) input vector, (b) hidden state vector, (c) cell state"
+          - listitem [ref=e431]:
+            - text: The attention vector replaces the
+            - strong [ref=e432]: input vector
+            - text: ", not the hidden state vector"
+          - listitem [ref=e433]:
+            - strong [ref=e434]: "Intuitive reason:"
+            - text: the current input word (e.g.,
+            - code [ref=e435]: <SOS>
+            - text: or "to") carries minimal information on its own; substituting it with a rich context vector is a net gain
+          - listitem [ref=e436]:
+            - strong [ref=e437]: "Mechanical reason:"
+            - text: LSTM tracks information over time via both hidden state and cell state; replacing only the input keeps the time-based memory intact
+          - listitem [ref=e438]:
+            - strong [ref=e439]: "Diagrammatic evidence:"
+            - text: confirmed by the architecture diagram in the original paper (Bahdanau et al., 2015 —
+            - link "https://arxiv.org/abs/1409.0473" [ref=e440] [cursor=pointer]:
+              - /url: https://arxiv.org/abs/1409.0473
+            - text: )
+        - heading "Importance of Attention Weights" [level=2] [ref=e441]
+        - list [ref=e442]:
+          - listitem [ref=e443]:
+            - text: Attention weights are a
+            - strong [ref=e444]: linear weighting
+            - text: over encoder outputs, one weight per input token (e.g., 9 weights for a 9-word sentence), not a large matrix multiply
+          - listitem [ref=e445]:
+            - text: The size of the weight vector equals the input length, not
+            - code [ref=e446]: input_length × embedding_dim
+        - heading "Where the Magic Really Lives" [level=2] [ref=e447]
+        - list [ref=e448]:
+          - listitem [ref=e449]:
+            - text: The power of attention is in
+            - strong [ref=e450]: how the weights are generated
+            - text: ", not how they are applied"
+          - listitem [ref=e451]: Weights emerge from the interaction between the decoder hidden state and the encoder outputs
+          - listitem [ref=e452]: The application of those weights to produce the context vector is simple; the learned alignment function is where the model's intelligence concentrates

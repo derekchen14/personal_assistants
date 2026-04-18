@@ -1,0 +1,64 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e31]: Hey alice! What are we writing today?
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e38]:
+      - button "Your Drafts" [ref=e307] [cursor=pointer]
+      - generic [ref=e41]:
+        - button "Collapse On Ambiguity" [ref=e308] [cursor=pointer]:
+          - img [ref=e310]
+          - generic [ref=e45]: Collapse On Ambiguity
+        - button "Color Post" [ref=e317] [cursor=pointer]:
+          - img [ref=e319]
+          - generic [ref=e50]: Color Post
+        - button "Components of Dialogue Systems" [ref=e326] [cursor=pointer]:
+          - img [ref=e328]
+          - generic [ref=e55]: Components of Dialogue Systems
+        - button "Expectation Maximization" [ref=e335] [cursor=pointer]:
+          - img [ref=e337]
+          - generic [ref=e60]: Expectation Maximization
+        - button "Feature images" [ref=e344] [cursor=pointer]:
+          - img [ref=e346]
+          - generic [ref=e65]: Feature images
+        - button "History of Seq2Seq" [ref=e353] [cursor=pointer]:
+          - img [ref=e355]
+          - generic [ref=e70]: History of Seq2Seq
+        - generic [ref=e73]:
+          - button "Insights around Attention Mechanism" [active] [ref=e362] [cursor=pointer]:
+            - img [ref=e364]
+            - generic [ref=e75]: Insights around Attention Mechanism
+          - generic [ref=e400]:
+            - generic [ref=e401]:
+              - button "machine_learning" [ref=e402] [cursor=pointer]
+              - button "+ tag" [ref=e403] [cursor=pointer]
+            - paragraph [ref=e404]: "- Attention mechanisms transformed deep learning by giving models the ability to selectively focus on relevant parts of the input, rather than compressing everything into a single vector - Most prominent application: **Neural Machine Translation (NMT)**, where attention lets the decoder \"look back\"..."
+            - generic [ref=e405]:
+              - button "View Full Draft →" [ref=e406] [cursor=pointer]
+              - button "Delete" [ref=e407] [cursor=pointer]:
+                - img [ref=e408]
+        - button "Markdown and HTML" [ref=e371] [cursor=pointer]:
+          - img [ref=e373]
+          - generic [ref=e80]: Markdown and HTML
+        - 'button "Markup: Syntax Highlighting" [ref=e380] [cursor=pointer]':
+          - img [ref=e382]
+          - generic [ref=e85]: "Markup: Syntax Highlighting"
+        - button "ML as Software 2.0" [ref=e389] [cursor=pointer]:
+          - img [ref=e391]
+          - generic [ref=e90]: ML as Software 2.0
+      - button "+ New Draft" [ref=e399] [cursor=pointer]

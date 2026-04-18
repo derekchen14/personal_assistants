@@ -1,0 +1,22 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e28]:
+    - generic [ref=e29]:
+      - generic [ref=e709]: Hey derek! What are we writing today?
+      - generic [ref=e879]: create an outline for this with 3 sections
+      - generic [ref=e887]: Saved the outline with 3 sections.
+    - generic [ref=e33]:
+      - textbox "Message Hugo..." [active] [ref=e34]
+      - button "Send" [ref=e35]

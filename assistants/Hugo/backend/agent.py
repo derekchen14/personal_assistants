@@ -13,11 +13,8 @@ from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.memory_manager import MemoryManager
 from backend.components.world import World
 
-
 log = logging.getLogger(__name__)
-
 _MAX_KEEP_GOING = 5
-
 
 class Agent:
 
@@ -44,7 +41,6 @@ class Agent:
             self.ambiguity.resolve()
 
         state = self.nlu.understand(text, self.world.context, dax, payload)
-
         flow = self.world.flow_stack.get_flow()
         log.info('pred = %s {%s}  score=%.2f   slots=%s',
                  flow.name(True), flow.dax, state.confidence, flow.slot_values_dict())
@@ -85,8 +81,8 @@ class Agent:
             turn_data = {'turn_count': state.turn_count}
             self.world.context.save_checkpoint('auto_summarize', data=turn_data)
 
-        log.info(f'AGENT: {agent_utt[:200]}')
-        log.info(f'  frame={frame.block_type()}  origin={frame.origin}')
+        log.info(f'AGENT: {agent_utt[:256]}')
+        log.info(frame.to_dict())
         return self._build_payload(agent_utt, frame)
 
     def _self_check(self, state: DialogueState) -> bool:
@@ -101,11 +97,16 @@ class Agent:
         payload = {'message': message, 'actions': [], 'frame': None, 'block': 'default'}
         return payload
 
-    def _build_payload(self, utterance: str, frame: DisplayFrame) -> dict:
-        frame_data = self.res.build_payload_frame(frame, utterance)
-        block_type = frame.block_type()
+    def _build_payload(self, utterance: str, frame: DisplayFrame) -> dict:       
+        frame_data = frame.to_dict()
+        payload = {'message': utterance, 'actions': [], 'frame': frame_data}
 
-        payload = {'message': utterance, 'actions': [], 'frame': frame_data, 'block': block_type}
+        # Add a panel key when we aren't just using a 'default' block type
+        if len(frame_data['blocks']) > 0:
+            block_type = frame_data['blocks'][-1]['type']
+            panel = 'top' if block_type in ('form', 'confirmation', 'toast') else 'bottom'
+            payload['panel'] = panel   # top / bottom / split
+
         return payload
 
     # ── Session management ────────────────────────────────────────────

@@ -1,0 +1,42 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [active] [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+    - generic [ref=e889]:
+      - button "Research" [ref=e891]:
+        - generic [ref=e892]: Research
+        - img [ref=e894]
+      - button "Draft" [ref=e897]:
+        - generic [ref=e898]: Draft
+        - img [ref=e900]
+      - button "Revise" [ref=e903]:
+        - generic [ref=e904]: Revise
+        - img [ref=e906]
+      - button "Publish" [ref=e909]:
+        - generic [ref=e910]: Publish
+        - img [ref=e912]
+      - separator [ref=e914]
+      - button "Dark Mode" [ref=e915]:
+        - img [ref=e916]
+        - generic [ref=e918]: Dark Mode
+      - button "Reset Chat" [ref=e919]:
+        - img [ref=e920]
+        - generic [ref=e922]: Reset Chat
+  - generic [ref=e28]:
+    - generic [ref=e29]:
+      - generic [ref=e709]: Hey derek! What are we writing today?
+      - generic [ref=e879]: create an outline for this with 3 sections
+      - generic [ref=e887]: Saved the outline with 3 sections.
+    - generic [ref=e33]:
+      - textbox "Message Hugo..." [ref=e34]
+      - button "Send" [ref=e35]

@@ -11,9 +11,11 @@ log = logging.getLogger(__name__)
 from backend.components.flow_stack.parents import BaseFlow
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
+from backend.prompts.for_res import get_naturalize_prompt, build_clarification
 from schemas.ontology import Intent
 from utils.helper import output_for_flow
 from backend.modules.templates import *
+from backend.modules.templates import get_template as _get_template
 
 if TYPE_CHECKING:
     from backend.components.world import World
@@ -45,30 +47,18 @@ class RES(object):
             return '', frame
 
         agent_utt = self.generate(frame, state, flow)
-        frame = self.display(frame, flow)
 
         self.finish(agent_utt, frame, flow)
         return agent_utt, frame
 
     # ── Helpers ──────────────────────────────────────────────────────
 
-    def build_payload_frame(self, frame:DisplayFrame, text:str) -> dict:
-        data = frame.to_dict()
-        has_text = bool(text and text.strip())
-        has_blocks = bool(frame.blocks)
-        if has_text and has_blocks:  data['panel'] = 'split'
-        elif has_blocks:             data['panel'] = 'bottom'
-        else:                        data['panel'] = 'top'
-        return data
-
     def _clarify(self) -> str:
         level = self.ambiguity.level or 'general'
         metadata = self.ambiguity.metadata or {}
         observation = self.ambiguity.observation
 
-        clarification_text = self.engineer.build_clarification_prompt(
-            level, metadata, observation,
-        )
+        clarification_text = build_clarification(level, metadata, observation)
 
         self.world.context.add_turn(
             'Agent', clarification_text, turn_type='clarification',
@@ -76,7 +66,7 @@ class RES(object):
         return clarification_text
 
     def generate(self, frame:DisplayFrame, state:DialogueState, flow:BaseFlow) -> str:
-        template_info = self.engineer.get_template(flow.name(), flow.intent)
+        template_info = _get_template(flow.name(), flow.intent)
         template = template_info.get('template', '{message}')
 
         match flow.intent:
@@ -87,14 +77,10 @@ class RES(object):
             case 'Converse': filled = fill_converse_template(template, flow, frame)
             case 'Plan': filled = fill_plan_template(template, flow, frame)
 
-        if template_info.get('skip_naturalize'):
-            response = filled
-        else:
-            block_type = frame.block_type() if frame.blocks else None
-            response = self._naturalize(filled, block_type)
+        response = filled if template_info.get('skip_naturalize') else self.naturalize(filled, frame)
         return response
 
-    def _naturalize(self, raw_text:str, block_type:str|None) -> str:
+    def naturalize(self, raw_text:str, frame:DisplayFrame) -> str:
         if self.config.get('debug', False):
             return raw_text
         if not raw_text.strip():
@@ -102,34 +88,21 @@ class RES(object):
         if len(raw_text) < 80:
             return raw_text
 
+        block_desc = ', '.join([block.block_type for block in frame.blocks])
         convo_history = self.world.context.compile_history(look_back=3)
-        system, messages = self.engineer.build_naturalize_prompt(raw_text, convo_history, block_type)
+        prompt = get_naturalize_prompt(raw_text, convo_history, block_desc)
 
         try:
-            text = self.engineer.call(messages, system=system,
-                task='naturalize', max_tokens=2048,
-            )
-            return text.strip() if text.strip() else raw_text
+            raw_output = self.engineer(prompt, 'naturalize', max_tokens=2048)
+            return raw_output.strip() if raw_output.strip() else raw_text
         except Exception as ecp:
             print(f'RES naturalization error: {ecp}')
             return raw_text
 
-    def display(self, frame:DisplayFrame, flow:BaseFlow) -> DisplayFrame:
-        """Append any RES-driven blocks (e.g. proposals selection) to the frame."""
-        if hasattr(flow, 'stage') and flow.stage == 'propose':
-            proposal_slot = flow.slots['proposals']
-            if len(proposal_slot.options) > 0:                
-                block_data = {
-                    'type': 'selection',
-                    'data': {'candidates': proposal_slot.options},
-                }
-                frame.add_block(block_data)
-        return frame
-
     # ── Hooks ─────────────────────────────────────────────────────
 
     def start(self) -> list[BaseFlow]:
-        popped = self.flow_stack.pop_completed_and_invalid()
+        popped = self.flow_stack.pop_completed()
 
         completed = [flow for flow in popped if flow.status == 'Completed']
         for flow in completed:

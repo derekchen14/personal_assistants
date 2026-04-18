@@ -20,6 +20,7 @@
     let content = $derived((data.content as string) || '');
     let fields = $derived((data.fields as Record<string, unknown>) || {});
     let linkedPost = $derived((data.linked_post as Record<string, unknown>) || null);
+    let pending = $derived(Boolean(data.pending));
 
     // Edit mode: notes and newly created drafts start editable
     let editingEnabled = $state(false);
@@ -317,6 +318,11 @@
                 class="prose-content text-sm leading-relaxed flex-1 overflow-y-auto {status !== 'published' ? 'cursor-text' : ''}"
             >{@html md(content)}</div>
         {/if}
+    {/if}
+    {#if pending}
+        <div class="text-sm italic text-[var(--muted)] mt-3 shrink-0">
+            Outline being generated. Please wait …
+        </div>
     {/if}
 </div>
 

@@ -18,7 +18,8 @@ Refine an existing outline by adjusting headings, reordering sections, or incorp
 
 ## Slots
 - `source` (required): The post whose outline to refine
-- `feedback` (optional): Specific guidance for the refinement
+- `steps` (optional): A structured list of specific changes requested by the user
+- `feedback` (optional): Open-ended guidance on how to improve the outline
 
 ## Output
 The refined outline saved via `generate_outline`. Format the markdown content as `## Heading` per section with `- bullet` lines underneath.

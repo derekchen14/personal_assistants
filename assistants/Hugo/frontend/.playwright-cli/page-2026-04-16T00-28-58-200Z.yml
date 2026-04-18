@@ -1,0 +1,99 @@
+- generic [ref=e12]:
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - button "📖" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]: Hugo
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - textbox "Search" [ref=e21]
+      - navigation [ref=e22]:
+        - button "Posts" [ref=e23] [cursor=pointer]
+        - button "Drafts" [ref=e24] [cursor=pointer]
+        - button "Notes" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e31]: Hey alice! What are we writing today?
+        - generic [ref=e454]: outline this please
+        - generic [ref=e462]: I drafted 3 outline options — click one to continue, or tell me what to adjust.
+      - generic [ref=e33]:
+        - textbox "Message Hugo..." [active] [ref=e34]
+        - button "Send" [ref=e35]
+    - generic [ref=e463]:
+      - heading "Outline options" [level=3] [ref=e464]
+      - generic [ref=e465]:
+        - generic [ref=e466]:
+          - generic [ref=e467]:
+            - generic [ref=e468]: Option 1
+            - button "Pick" [ref=e469] [cursor=pointer]
+          - generic [ref=e470]:
+            - paragraph [ref=e471]:
+              - strong [ref=e472]: What Is the Attention Mechanism?
+            - paragraph [ref=e473]: A concise, accessible introduction to what attention does in neural networks and why it was a breakthrough over earlier approaches like fixed-context vectors.
+            - paragraph [ref=e474]:
+              - strong [ref=e475]: The Problem Attention Was Built to Solve
+            - paragraph [ref=e476]: Walks through the bottleneck flaw in vanilla encoder-decoder models and why simply compressing a sequence into one vector loses critical information.
+            - paragraph [ref=e477]:
+              - strong [ref=e478]: How Attention Weights Are Computed
+            - paragraph [ref=e479]: Explains the scoring function, softmax normalization, and how the model learns which tokens to focus on during each decoding step.
+            - paragraph [ref=e480]:
+              - strong [ref=e481]: "The Attention Vector: Replacing the Input Vector"
+            - paragraph [ref=e482]: Details how the weighted sum of encoder hidden states forms a dynamic context vector that feeds into the decoder at every step.
+            - paragraph [ref=e483]:
+              - strong [ref=e484]: Why Attention Weights Are More Than a Tool — They're Insight
+            - paragraph [ref=e485]: Explores how attention weights double as interpretability windows, letting us visualize and understand model behavior.
+            - paragraph [ref=e486]:
+              - strong [ref=e487]: Where the Magic Really Lives
+            - paragraph [ref=e488]: "Synthesizes the key intuition: attention doesn't just help models perform better — it fundamentally changes how information flows through a network."
+            - separator [ref=e489]
+        - generic [ref=e490]:
+          - generic [ref=e491]:
+            - generic [ref=e492]: Option 2
+            - button "Pick" [ref=e493] [cursor=pointer]
+          - generic [ref=e494]:
+            - paragraph [ref=e495]:
+              - strong [ref=e496]: "From RNNs to Attention: A Quick History"
+            - paragraph [ref=e497]: A narrative arc tracing the limitations of recurrent models and the moment attention changed everything — framed as a story of problem and solution.
+            - paragraph [ref=e498]:
+              - strong [ref=e499]: Three Things Attention Mechanisms Actually Do
+            - paragraph [ref=e500]: "A tight listicle unpacking the three core functions: dynamic context selection, soft alignment, and gradient flow improvement."
+            - paragraph [ref=e501]:
+              - strong [ref=e502]: Attention Is All You Need — But What Does That Mean?
+            - paragraph [ref=e503]: Unpacks the famous paper's central claim and explains why self-attention was powerful enough to replace recurrence entirely in Transformers.
+            - paragraph [ref=e504]:
+              - strong [ref=e505]: "Visualizing Attention: What the Weights Tell Us"
+            - paragraph [ref=e506]: A visual-first section showing how attention heatmaps reveal alignment patterns between input and output tokens.
+            - paragraph [ref=e507]:
+              - strong [ref=e508]: Common Misconceptions About Attention
+            - paragraph [ref=e509]: Addresses frequent confusions — e.g., attention ≠ interpretability by default, and weighted sum ≠ "looking at" one token.
+            - paragraph [ref=e510]:
+              - strong [ref=e511]: Key Takeaways for Practitioners
+            - paragraph [ref=e512]: Actionable summary of when and why to use attention, with pointers to modern variants (multi-head, cross-attention, self-attention).
+            - separator [ref=e513]
+        - generic [ref=e514]:
+          - generic [ref=e515]:
+            - generic [ref=e516]: Option 3
+            - button "Pick" [ref=e517] [cursor=pointer]
+          - generic [ref=e518]:
+            - paragraph [ref=e519]:
+              - strong [ref=e520]: The Core Intuition in One Paragraph
+            - paragraph [ref=e521]: Opens with a single crisp analogy that captures what attention does, designed to be the "aha moment" for readers new to the concept.
+            - paragraph [ref=e522]:
+              - strong [ref=e523]: A Teardown of the Attention Formula
+            - paragraph [ref=e524]: Step-by-step deconstruction of the attention equation — query, key, value — with plain-English explanations of each component.
+            - paragraph [ref=e525]:
+              - strong [ref=e526]: "Attention Weights: Why They Matter Beyond Accuracy"
+            - paragraph [ref=e527]: Digs into the significance of the weight distribution itself, covering both what the model learns and what researchers can infer from it.
+            - paragraph [ref=e528]:
+              - strong [ref=e529]: "Replacing the Input Vector: The Attention Vector Explained"
+            - paragraph [ref=e530]: Technical deep-dive into how the attention vector is constructed and why swapping it in for a static input vector is such a powerful design choice.
+            - paragraph [ref=e531]:
+              - strong [ref=e532]: "Self-Attention vs. Cross-Attention: Knowing the Difference"
+            - paragraph [ref=e533]: Contrasts the two dominant flavors of attention with concrete examples from translation and language modeling tasks.
+            - paragraph [ref=e534]:
+              - strong [ref=e535]: "The Bigger Picture: Attention as an Architectural Philosophy"
+            - paragraph [ref=e536]: Closes by zooming out — arguing that attention isn't just a technique but a design philosophy that prioritizes dynamic, context-sensitive computation.
+            - separator [ref=e537]
+            - paragraph [ref=e538]: Pick the option that best fits your angle and I'll build out the full outline with bullet points and word count estimates! 🎯
