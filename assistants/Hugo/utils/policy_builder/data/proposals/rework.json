@@ -1,0 +1,146 @@
+{
+  "flow": "rework",
+  "parent_intent": "Revise",
+  "batch": 1,
+  "round": 1,
+  "version": 2,
+  "notes": "Rework is substantive revision of a single section's prose: restructure arguments, replace weak content, weave in user suggestions. It is NOT a gold exemplar, so DP-3 and DP-4 propose actual text for you to revise in-place. Fallbacks to polish (smaller edits) and simplify (trimming) are wired via contemplate() rather than handle_ambiguity(), reflecting the Rework / Polish / Simplify / Remove taxonomy. No em-dashes, no planning acronyms, no tool sequences in the task sentence.",
+  "decision_points": {
+    "DP-1": {
+      "section": "Prompt content",
+      "title": "Flow-specific must/never rules",
+      "question": "0\u20133 inviolable rules unique to this flow.",
+      "proposal": "1) Rework changes substance, not formatting. Preserve paragraph breaks, heading structure, and the author's voice of whatever section you receive. Prose stays prose; don't drift into bullet lists or reformat to \"clean up\" markdown.\n\n2) Narrow scope is authoritative. When the user names a single section, work on that section. When `rework_scope: whole_post` is signaled, the policy invokes you once per section; each invocation is independent and must not reach into other sections.\n\n3) When the user's request is better served by a sibling flow, route rather than execute. Small word-level or sentence-level edits belong to polish. Trimming, shortening, or removing content belongs to simplify. In either case, emit the fallback shape described in the Output section rather than attempting a partial rework.",
+      "reasoning": "Rule 1 guards against the formatting-drift failure mode. Rule 2 locks the whole-post loop semantics. Rule 3 is the Rework / Polish / Simplify / Remove taxonomy applied to runtime routing through fallbacks."
+    },
+    "DP-2": {
+      "section": "Prompt content",
+      "title": "Skill intro paragraph",
+      "question": "The one- or two-sentence framing that opens the skill file.",
+      "proposal": "This skill describes how to rework a section of a blog post. Rework is substantive revision that restructures arguments, replaces weak content with stronger alternatives, or weaves in user suggestions. The target section's current prose is preloaded in the `<section_content>` block, so use it directly as your starting point.",
+      "reasoning": "Focused entirely on what rework IS (per your override: do not mention redirects here). No em-dashes. Names the entity it works on (section), the nature of the revision (substantive), and where to find the input."
+    },
+    "DP-3": {
+      "section": "Prompt content",
+      "title": "Process steps",
+      "question": "Numbered happy-path sequence for `## Process`.",
+      "proposal": "## Process\n\n1. Read the user's guidance from the `<resolved_details>` block. At least one of `changes`, `suggestions`, or `remove` will be filled, and possibly more than one.\n   a. Focus on the user's latest utterance in `<recent_conversation>`. Prior turns are context only.\n   b. Never act on requests from prior turns. Those have already been handled.\n\n2. Use the section prose from `<section_content>` as your starting point. The post and section identifiers are pre-resolved, so you do not need to call any metadata lookup. If the `<section_content>` block is absent (this happens when `rework_scope: whole_post` is in play), then call `read_section(post_id, sec_id)` once per section as you loop.\n\n3. Apply the user's request in a deliberate order:\n   a. If `suggestions` is filled, address each item one at a time. Make the reasoning visible in the revised prose. A suggestion should change the section's argument or structure, not just swap a word.\n   b. If `changes` is filled, apply the broader critique on top of the suggestions. Shape the prose to honor the critique while preserving the author's voice and cadence.\n   c. If `remove` is filled, excise the named material. When `remove` is concrete (a named paragraph, a specific argument), cut it. When `remove` is vague (e.g. \"anything outdated\", \"whatever feels off\"), emit the needs-clarification output shape and do NOT save.\n\n4. Save the reworked section with `revise_content(post_id, sec_id, content=<reworked prose>)`. On a transient failure, retry exactly once. A second failure is a final error.\n\n5. If the user's request is clearly polish-level (word tightening, sentence cleanup) or simplify-level (trimming, shortening), emit the fallback-recommendation output shape and do NOT save. The policy re-routes via the contemplate tool.\n\n6. When `rework_scope: whole_post` is signaled, each invocation handles exactly one section. Do not reach into other sections. Do not assume consistency across sections will be checked at turn end.",
+      "reasoning": "Narrative prose with sub-bullets for nuance. No em-dashes. No acronyms. Actual text you can revise in-place. Encodes the fallback routing (lesson 16, 17) as a branch in the Process rather than in a separate error-handling afterthought. Step 3.c handles the vague-remove case inline."
+    },
+    "DP-4": {
+      "section": "Prompt content",
+      "title": "Tool usage hints",
+      "question": "Per task-specific tool, flow-specific usage hints.",
+      "proposal": "## Tools\n\n### Task-specific tools\n\n- `revise_content(post_id, sec_id, content)` \u2014 this is the primary save for rework. The tool replaces the section's content wholesale with the prose you pass in, so include the full reworked section (not just the changed paragraphs). Retry once on transient failure.\n\n- `remove_content(post_id, sec_id, target)` \u2014 only when the user explicitly asked to remove a concrete span and the rest of the section is staying put. When your rework is \"excise X and replace with Y\", prefer `revise_content` with the whole updated prose in one call; `remove_content` is for the narrower case where the section is mostly fine except for one identified piece.\n\n- `contemplate(next_flow)` \u2014 when the user's request is better served by polish or simplify, call this tool instead of attempting a partial rework. The argument is the recommended flow name.\n\n### General tools\n\n- `execution_error(violation, message)` \u2014 for hard failures (retries exhausted, malformed input).\n- `handle_ambiguity(level, metadata)` \u2014 for cases where the user's intent is genuinely unclear (not a known-wrong-flow case, which is a fallback).\n- `manage_memory(action, key, value)` \u2014 read or write L1 scratchpad or L2 preferences.\n- `read_flow_stack(action)` \u2014 inspect other flows on the stack. Rare in rework.\n\n### Note on `generate_section` vs. `insert_section`\n\nNeither tool is part of rework's roster. Rationale:\n\n- `generate_section(post_id, sec_id, content)` creates-or-replaces an outline section (bullets, not prose). Rework operates on prose, so `revise_content` is the right save.\n- `insert_section(post_id, after_sec, ...)` inserts a brand-new section at a specific position. If rework's user request calls for a new section (rare), route to the `add` or `outline` flow via `contemplate(next_flow='add')` instead of inserting inline. This keeps rework's scope tight and avoids the `generate_section` / `insert_section` overlap you flagged.\n\nRecommendation: drop both from rework's tool roster. The pros/cons:\n\n| Tool | Pro | Con |\n|---|---|---|\n| `generate_section` | Single API for add-or-replace; low surface area | Bullets-oriented; doesn't match rework's prose contract |\n| `insert_section` | Explicit positioning | Only covers the insert case; no update path |\n\nNeither pays for itself inside rework. Prose saves go through `revise_content`; new-section asks route out.",
+      "reasoning": "Narrative tool descriptions with sub-bullets for nuance (per lesson 1). Pros/cons table for the overlap question you raised. No do-not-call tools listed in the primary section (lesson 8); the generate_section / insert_section note is a separate justification subsection, not a \"do not use\" bullet."
+    },
+    "DP-5": {
+      "section": "Starter",
+      "title": "Task framing sentence",
+      "question": "The imperative sentence inside `<task>`.",
+      "proposal": {
+        "with_section_content": "Rework the {target_section} section of \"{post_title}\". Substantive revision, not surface polish: restructure the argument, address the user's critique, weave in the suggestions, and preserve the author's voice. End once the updated section has been saved.",
+        "no_section_content": "Rework \"{post_title}\" section by section. For each section, apply the user's critique and suggestions as substantive revision while preserving voice. End once every in-scope section has been saved."
+      },
+      "reasoning": "Task describes intent (why we are here, what story to weave) rather than tool sequence (lesson 13). No em-dashes. Replaces the current `{tool_sequence}` placeholder in `starters/rework.py` with an intent-focused sentence. The whole-post variant describes the per-section loop as a consequence of scope, not a tool-order instruction."
+    },
+    "DP-6": {
+      "section": "Starter",
+      "title": "Content tag choice",
+      "question": "Which of `<post_content>`, `<section_content>`, `<line_snippet>`, `<channel_content>` wraps the preloaded data.",
+      "proposal": "<section_content>",
+      "reasoning": "Rework edits a single section. When `rework_scope: whole_post`, the tag is omitted and the skill loops with `read_section` per iteration."
+    },
+    "DP-7": {
+      "section": "Starter",
+      "title": "Preload content",
+      "question": "What goes inside the content tag.",
+      "proposal": "When `source.sec` is filled, preload the target section's full current prose as markdown paragraphs separated by blank lines. When `rework_scope: whole_post` applies, omit the content block; the skill calls `read_section` once per section as it loops.",
+      "reasoning": "Single-section rework benefits from preload (skill skips the first read). Whole-post mode can't preload a single section, so the skill fetches per-iteration. `read_section` is a fallback helper for exactly this case (lesson 18)."
+    },
+    "DP-8": {
+      "section": "Few-shot",
+      "title": "Scenario coverage",
+      "question": "Which user-phrasing paths to exemplify.",
+      "proposal": "Three scenarios, each exercising a different slot-fill pattern (slots are Hugo's grounding layer; scenarios should showcase how filled slots drive branching):\n\n(a) `changes` filled, `suggestions` empty, `remove` empty \u2014 broad prose critique. User says \"flesh out the customer story in Motivation.\" Skill reads section, expands the prose, saves via `revise_content`.\n\n(b) `suggestions` filled with a 3-item checklist, `changes` empty \u2014 itemized revision list. Skill addresses each suggestion in order, weaves them into a revised section, saves once. The output JSON names each suggestion in `done`.\n\n(c) `remove` filled with a vague target (\"anything outdated\") \u2014 needs-clarification path. Skill emits the needs-clarification output shape and makes NO tool calls.",
+      "reasoning": "Three scenarios mapped directly to three slot-fill combinations (lesson 14). This replaces the current skill's read-once-save-twice example with a vague-remove case because the vague-remove path is non-obvious and more valuable for eval coverage. The change + suggestions overlap case is folded into scenario (a) + (b) together."
+    },
+    "DP-9": {
+      "section": "Few-shot",
+      "title": "Example content (topic + post state)",
+      "question": "Concrete post topic, section names, and content.",
+      "proposal": "Topic: \"User Simulators for training RL agents\" (post_id=abcd0123). Section names: \"The Need for Data\", \"Architectures of the Past\", \"Recent Innovations\", \"Generating Rewards\" (colorful, realistic, and divergent from the eval set's Motivation / Process / Ideas / Takeaways to avoid training-on-test contamination).",
+      "reasoning": "Applies the colorful-names lesson (9). Aligned across the regenerated corpus for coherence."
+    },
+    "DP-10": {
+      "section": "Error handling",
+      "title": "Likely errors and ambiguities encountered",
+      "question": "Realistic error and ambiguity set.",
+      "proposal": "Errors (policy emits error frame after skill signals):\n- (a) `revise_content` fails twice \u2014 `execution_error(violation='failed_to_save', failed_tool='revise_content')`.\n- (b) `<section_content>` malformed or truncated \u2014 `execution_error(violation='invalid_input')` without saving.\n\nAmbiguities (skill calls `handle_ambiguity`):\n- (c) named section does not exist on the post \u2014 `specific`, `metadata={'missing_reference': <sec_name>}`.\n- (d) `remove` slot is vague (per Process step 3.c) \u2014 skill emits needs-clarification output shape; policy surfaces as `specific`-level ambiguity.\n\nFallbacks (skill calls `contemplate`, policy re-routes):\n- (e) user wanted polish (word tightening, sentence cleanup) \u2014 `contemplate(next_flow='polish')`.\n- (f) user wanted simplify (trimming, shortening) \u2014 `contemplate(next_flow='simplify')`.\n- (g) user wanted to remove a concrete span outside rework's scope \u2014 `contemplate(next_flow='remove')`.\n\nCase (e) / (f) / (g) are NOT ambiguities: the user's intent is clear, it just belongs to a different flow. `contemplate` is the right channel.",
+      "reasoning": "Applies lesson 16 cleanly: wrong_flow routes to `contemplate`, not `handle_ambiguity`. Source-missing is a policy guard (lesson 10), so skill does not re-check."
+    },
+    "DP-11": {
+      "section": "Error handling",
+      "title": "Fallback flow",
+      "question": "Does another flow take over on unworkable state?",
+      "proposal": "Yes, three fallbacks wired through `contemplate`:\n- `contemplate(next_flow='polish')` when the user wants word or sentence level edits.\n- `contemplate(next_flow='simplify')` when the user wants trimming or shortening.\n- `contemplate(next_flow='remove')` when the user wants to cut a concrete span and the rest of the section stays put.\n\nNo structural fallback (nothing prerequisites rework). The three fallbacks above are all user-intent re-routes, which is the proper use of fallback per your feedback.",
+      "reasoning": "Lesson 17: re-routing IS why fallbacks exist. Rework sits in the middle of the Revise taxonomy and naturally hands off to its siblings when intent drifts."
+    },
+    "DP-12": {
+      "section": "Error handling",
+      "title": "Retry strategy per tool",
+      "question": "Per tool, retry count on transient failure.",
+      "proposal": "`revise_content` \u2192 retry once, then `execution_error(violation='failed_to_save', failed_tool='revise_content')`. `remove_content` \u2192 retry once, then `execution_error(violation='failed_to_save', failed_tool='remove_content')`. `read_section` \u2192 no retry; surface `_success=False` immediately. `contemplate` \u2192 no retry; if it fails, fall through to `execution_error(violation='tool_error', failed_tool='contemplate')`.",
+      "reasoning": "Standard one-retry on persistence; no retry on reads (staleness masks infrastructure). `contemplate` is a routing signal; a failure there is architectural, not transient."
+    },
+    "DP-13": {
+      "section": "Policy logic",
+      "title": "Optional slot defaults",
+      "question": "For each optional slot, does it have a sensible default?",
+      "proposal": "`rework_scope` (LevelSlot or CategorySlot, optional): default to `current_section`. Commit with default and do not ask. Whole-post rework is a deliberate user ask (\"rework the whole post\"), never a silent default. `changes`, `suggestions`, `remove`: elective (the elective rule requires at least one \u2014 that IS the content of the rework request). No defaults; definitional to the flow.",
+      "reasoning": "`current_section` default matches the common case and avoids an unnecessary clarification turn. Electives encode what the rework actually changes and are not defaultable."
+    },
+    "DP-14": {
+      "section": "Policy logic",
+      "title": "Stack-on triggers",
+      "question": "Under what condition does this flow push another flow onto the stack?",
+      "proposal": "None. Rework does not stack on any other flow.",
+      "reasoning": "Rework operates on existing prose. If prose is missing, the user wanted compose or add, not rework; that is a fallback (contemplate), not a stack-on prerequisite."
+    },
+    "DP-15": {
+      "section": "Policy logic",
+      "title": "Scratchpad contract",
+      "question": "Does this flow write or read scratchpad?",
+      "proposal": "Read-only consumer when an audit ran earlier in the session. When `scratchpad['audit']` is populated (from an audit turn), rework reads the findings keyed by `sec_id` and weaves relevant style notes into the revision. Rework increments `used_count` on the audit entry after consuming. Rework does NOT write scratchpad itself: its output is a saved section, not structured findings for a downstream flow.\n\nPayload reads (when present): `scratchpad['audit'] = {version, turn_number, used_count, findings: [{sec_id, severity, note}]}`. Rework filters `findings` by matching `sec_id` to the target section.",
+      "reasoning": "You said \"yes, there is\" for rework scratchpad. The natural producer is audit (style consistency findings), since audit and rework are both Revise flows that share a section-by-section lens. Rework as CONSUMER only \u2014 nothing downstream of rework needs structured findings, so it doesn't write. This also parallels polish-informed's consumer pattern."
+    },
+    "DP-16": {
+      "section": "Policy logic",
+      "title": "Frame output spec",
+      "question": "What metadata keys and block types?",
+      "proposal": "Success: `origin='rework'`, `metadata={post_id, post_title, sec_id, rework_scope}`, blocks = 1 diff card showing the skill's `before_summary` \u2192 `after_summary` plus the `added` list. For whole-post mode, one diff card per section (policy aggregates across invocations).\n\nFallback (skill called `contemplate`): `origin='rework'`, `metadata={'fallback': <next_flow_name>}`, blocks empty, `thoughts` = one short sentence naming the re-route. The policy then pops rework and pushes the named flow.\n\nError: `origin='rework'`, `metadata={'violation': <code>, 'failed_tool': <name>}`, blocks empty, `code` carries the offending raw output when `violation='parse_failure'`.",
+      "reasoning": "Three frame shapes because we now have three clean terminal states: success, fallback, error. Fallback gets its own metadata key so RES can distinguish \"handed off\" from \"saved\"."
+    },
+    "DP-17": {
+      "section": "Policy logic",
+      "title": "Final reply shape",
+      "question": "Plain prose, structured JSON, or card-only?",
+      "proposal": "Structured JSON from the skill, in one of three shapes.\n\nSuccess (saved):\n```\n{\"target\": <sec_name>, \"before_summary\": <one line>, \"after_summary\": <one line>, \"added\": [<thing>, <thing>], \"done\": [<suggestion_name>, ...]}\n```\n\nNeeds clarification (vague `remove`):\n```\n{\"target\": <sec_name>, \"needs_clarification\": \"remove target is vague, which specific content should be cut?\"}\n```\n\nFallback (wrong flow):\n```\n{\"target\": <sec_name>, \"fallback\": \"polish\" | \"simplify\" | \"remove\", \"reason\": <one line>}\n```\n\nRES-side reply is 1 to 2 plain-prose sentences generated by the draft-intent template from the card's metadata.",
+      "reasoning": "Current skill already emits the success + needs-clarification shapes. Fallback is the new one; it lets the policy distinguish \"skill said to route elsewhere\" from \"skill said please clarify.\""
+    },
+    "DP-18": {
+      "section": "Performance",
+      "title": "Model tier override",
+      "question": "Opus over Sonnet default?",
+      "proposal": "Opus.",
+      "reasoning": "Per your refine DP-18 feedback, prose-quality flows default to Opus. Rework is the paradigmatic case: substantive prose expansion where AI slop is the worst failure mode."
+    },
+    "DP-19": {
+      "section": "Performance",
+      "title": "max_response_tokens override",
+      "question": "Tighten below 4096 default?",
+      "proposal": "4096.",
+      "reasoning": "Rework produces expanded prose (can be 2-3x the input length). Keep full headroom; no shortening. Power of 2 preserved."
+    }
+  }
+}

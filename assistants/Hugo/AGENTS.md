@@ -62,6 +62,31 @@ One line per component. Full method inventory in `utils/helper_ref.md`.
 - `raw_output` — the direct string returned by `self.engineer(...)`. Always this name, regardless of flow, unless the call is inlined.
 - After parsing / post-processing, give the result a meaningful name that reflects its shape: `parsed` (generic dict from `apply_guardrails`), `pred_slots` (slot-extraction JSON), `pred_flow` (flow-detection JSON), `verdict` (quality-check string), `cleaned` (stripped/normalized raw_output), `repaired` (slot-repair candidate). Never keep a generic `text` / `result` / `output` past the parsing step.
 
+## Terminology discipline
+
+NLU does NOT "fire" anything. The action verbs by layer:
+
+- **NLU** — *classifies* an intent, *detects* a flow, *fills* a slot. Never "fires", "triggers", or "activates".
+- **Policies** — *call* tools, *declare* ambiguity, *write* scratchpad, *push* / *fallback* on the flow stack.
+- **Skills** — *produce* output, *call* tools via the agentic loop.
+- **Flows** — *complete*, *stack on*, *fallback*. They have **stages**, not *modes*.
+
+Breaking the convention confuses code review and pattern matching. Use "stages" when describing in-flow control flow, never "modes". (Previously AD-5; moved here because it's a convention, not a code-shaping decision.)
+
+## Outline constants
+
+There are **exactly 4 outline levels** (+ Level 0 for the post title):
+
+| Level | Markdown | Meaning |
+|---|---|---|
+| 0 | `# Title` | Post title |
+| 1 | `## Heading` | Section header |
+| 2 | `### Sub-heading` | Sub-section |
+| 3 | ` - bullet` | Bullet point |
+| 4 | `   * sub-bullet` | Sub-bullet |
+
+Codified as the `OUTLINE_LEVELS` module-level dict in `backend/components/flow_stack/flows.py`. Reuse; do not re-define in a policy. The `depth` slot on `OutlineFlow` maps to these levels; the mapping also applies to `refine`, `compose`, `add`, and anything that talks about outline structure. (Previously AD-4; moved here because it's a reference, not a code-shaping decision.)
+
 ## Authoring a flow — 5 edit points
 
 Every flow touches five files:
@@ -125,6 +150,9 @@ assistants/Hugo/
 
 - `CLAUDE.md` (repo root) — authoritative code style, Bash rules, defensive-coding rules.
 - `_specs/architecture.md` — POMDP framing, cross-assistant module/component split.
+- `_specs/components/flow_stack.md` — full flow/slot architecture: class hierarchy, 12+4 slot types, grounding rules, lifecycle states, fallback, failure recovery.
+- `utils/flow_recipe.md` — authoring a Hugo flow end-to-end; **canonical definition of slot priorities** (`required` / `elective` / `optional`) in § 1.
+- `utils/helper_ref.md` — component method inventory. Read before adding a helper so you don't reinvent an existing one.
 - `~/.claude/projects/-Users-derekchen-Documents-repos-personal-assistants/memory/MEMORY.md` — persistent cross-session feedback.
 
 ## Known e2e quality gaps (as of 2026-04)

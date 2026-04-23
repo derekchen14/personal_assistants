@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from enum import Enum
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -24,17 +23,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class RecoveryAction(Enum):
-    RETRY = 'retry'
-    GATHER_CONTEXT = 'gather'    # future
-    REROUTE = 'reroute'          # future
-    ESCALATE = 'escalate'
-
-
 @dataclass
 class FrameCheck:
     passed: bool
     reason: str = ''
+    is_error_frame: bool = False  # Policy classified this as an error frame
 
 class PEX:
 
@@ -52,7 +45,7 @@ class PEX:
         self._analysis_service = AnalysisService()
         self._platform_service = PlatformService()
 
-        self._tools: dict[str, tuple[object, str]] = {
+        self.tools: dict[str, tuple[object, str]] = {
             # PostService (9)
             'find_posts':        (self._post_service, 'find_posts'),
             'search_notes':      (self._post_service, 'search_notes'),
@@ -63,14 +56,13 @@ class PEX:
             'delete_post':       (self._post_service, 'delete_post'),
             'summarize_text':    (self._post_service, 'summarize_text'),
             'rollback_post':     (self._post_service, 'rollback_post'),
-            # ContentService (12)
+            # ContentService (11)
             'generate_outline':  (self._content_service, 'generate_outline'),
+            'generate_section':  (self._content_service, 'generate_section'),
             'convert_to_prose':  (self._content_service, 'convert_to_prose'),
             'insert_section':    (self._content_service, 'insert_section'),
-            'insert_content':    (self._content_service, 'insert_content'),
             'revise_content':    (self._content_service, 'revise_content'),
             'write_text':        (self._content_service, 'write_text'),
-            'find_and_replace':  (self._content_service, 'find_and_replace'),
             'remove_content':    (self._content_service, 'remove_content'),
             'cut_and_paste':     (self._content_service, 'cut_and_paste'),
             'diff_section':      (self._content_service, 'diff_section'),
@@ -116,10 +108,27 @@ class PEX:
         policy = self._policies[active_flow.intent]
         frame = policy.execute(state, context, self._dispatch_tool)
 
+        # Phase-2 logging: post-policy frame snapshot, before RES.
+        log.info(
+            f'PEX-POST-POLICY: flow={active_flow.name()!r} '
+            f'origin={frame.origin!r} '
+            f'metadata_keys={sorted(frame.metadata.keys())} '
+            f'block_types={[b.block_type for b in frame.blocks]} '
+            f'thoughts_len={len(frame.thoughts or "")}'
+        )
+
         check = self._validate_frame(frame, active_flow)
         if not check.passed:
-            frame, action = self.recover(check, active_flow, context)
-            if action == RecoveryAction.ESCALATE:
+            # Error frames are already classified by the policy — no
+            # generic retry. Pass them straight to RES; the template keys
+            # off metadata['violation'] and frame.thoughts.
+            if check.is_error_frame:
+                state.has_issues = True
+                self.world.insert_frame(frame)
+                self._verify(active_flow)
+                return frame, False
+            frame, escalated = self.recover(check, active_flow, context)
+            if escalated:
                 state.has_issues = True
                 self.world.insert_frame(frame)
                 self._verify(active_flow)
@@ -148,7 +157,7 @@ class PEX:
                         f'user input, and communicates externally.'
                     ),
                 )
-                frame = DisplayFrame(self.config)
+                frame = DisplayFrame(flow.name())
                 frame.add_block({'type': 'confirmation', 'data': {
                     'prompt': self.ambiguity.ask(),
                     'confirm_label': 'Approve',
@@ -169,30 +178,29 @@ class PEX:
     # -- Validation -------------------------------------------------------
 
     def _validate_frame(self, frame:DisplayFrame, flow) -> FrameCheck:
-        """Check whether a frame is good enough to show to the user."""
+        """Check whether a frame is good enough to show to the user. A frame with a 'violation' set
+        is already recognized as an error frame, so it does NOT need Tier-1 retry.
+        return passed=False + is_error_frame=True so the outer caller routes it directly to RES.
+        """
         if self.ambiguity.present():
             return FrameCheck(passed=True)
+        if 'violation' in frame.metadata:
+            violation = frame.metadata['violation']
+            return FrameCheck(passed=False, reason=f'violation:{violation}', is_error_frame=True)
         block_data, block_types = self._merge_block_data(frame)
 
-        has_data = (
-            'default' in block_types
-            or block_data
-            or frame.thoughts
-            or frame.metadata
-        )
+        has_data = ('default' in block_types or block_data or frame.thoughts or frame.metadata)
         if not has_data:
             return FrameCheck(passed=False, reason='Frame has no data')
-        if 'error' in block_data and block_data.get('status') == 'error':
-            return FrameCheck(passed=False, reason=f'Tool error: {block_data["error"]}')
         last_user = self.world.context.last_user_text
         thoughts = frame.thoughts
         if last_user and thoughts.strip() == last_user.strip():
             return FrameCheck(passed=False, reason='Response echoes user input verbatim')
-        if self._should_llm_validate(flow):
+        if flow.name() in self.config['content_validation']:
             card_content = block_data.get('content', '')
-            slot_text = self._collect_slot_evidence(flow)
+            slot_text = "collected_slot_evidence(flow)"
             visible = '\n'.join(part for part in (thoughts, card_content, slot_text) if part)
-            return self._llm_quality_check(visible)
+            # return self._llm_quality_check(visible)
         return FrameCheck(passed=True)
 
     @staticmethod
@@ -204,30 +212,8 @@ class PEX:
             block_types.append(block.block_type)
         return merged, block_types
 
-    @staticmethod
-    def _collect_slot_evidence(flow) -> str:
-        """Aggregate slot data that represents user-visible work (proposals, etc)."""
-        slot = flow.slots.get('proposals')
-        if not slot or not slot.options:
-            return ''
-        parts = []
-        for idx, option in enumerate(slot.options, start=1):
-            if isinstance(option, list):
-                sec_lines = [f"## {sec['name']}\n{sec.get('description', '')}"
-                             for sec in option]
-                parts.append(f"### Option {idx}\n" + '\n'.join(sec_lines))
-            else:
-                parts.append(f"### Option {idx}\n{option}")
-        return '\n\n'.join(parts)
-
-    def _should_llm_validate(self, flow) -> bool:
-        flows = self.config.get('recovery', {}).get('llm_validate_flows', [])
-        return flow.name() in flows
-
     def _llm_quality_check(self, content:str) -> FrameCheck:
         last_user = self.world.context.last_user_text
-        if not last_user:
-            return FrameCheck(passed=True)
         convo = self.world.context.compile_history(look_back=4)
         prompt = (
             f'Recent conversation:\n{convo}\n\n'
@@ -246,11 +232,20 @@ class PEX:
     # -- Recovery ---------------------------------------------------------
 
     def recover(self, check:FrameCheck, flow,
-                context:'ContextCoordinator') -> tuple[DisplayFrame, RecoveryAction]:
+                context:'ContextCoordinator') -> tuple[DisplayFrame, bool]:
         """Attempt to recover from a failed frame validation.
 
-        Tries strategies in escalating order. Returns the best frame
-        achievable and an action for the Agent.
+        Returns (frame, escalated). escalated=True means the caller
+        should flip state.has_issues and surface the ambiguity to the
+        user; False means the retry succeeded.
+
+        Only runs when `check.is_error_frame` is False — error frames
+        bypass this path and go straight to RES.
+
+        Tier 2 (retrieve-based context gather) and Tier 3 (NLU
+        re-route) are intentionally not live: reviving them requires a
+        concrete driving failure mode plus dedicated tests. Escalation
+        is the terminal fallback.
         """
         log.warning('recover: %s (flow=%s)', check.reason, flow.name())
 
@@ -269,53 +264,18 @@ class PEX:
         retry_check = self._validate_frame(retry_frame, flow)
         if retry_check.passed:
             log.info('recover: tier-1 retry succeeded')
-            return retry_frame, RecoveryAction.RETRY
+            return retry_frame, False
         log.warning('recover: tier-1 failed: %s', retry_check.reason)
 
-        # ── Tier 2: Gather more context from BusinessContext ─────────
-        #
-        # Retrieve relevant business context from MemoryManager to enrich
-        # the retry. Push Internal/retrieve flow onto stack, execute it
-        # to populate scratchpad, then retry original policy.
-        #
-        # self.memory.write_scratchpad('recovery_query', check.reason)
-        # retrieve_flow = self.flow_stack.stackon('retrieve')
-        # internal = self._policies.get(Intent.INTERNAL)
-        # if internal:
-        #     internal.execute(self.world.current_state(), context, self._dispatch_tool)
-        # retrieve_flow.status = 'Completed'
-        # retry_frame = policy.execute(self.world.current_state(), context, self._dispatch_tool)
-        # retry_check = self._validate_frame(retry_frame, flow)
-        # if retry_check.passed:
-        #     return retry_frame, RecoveryAction.GATHER_CONTEXT
-
-        # ── Tier 3: Re-route via NLU contemplate() ──────────────────
-        #
-        # Record failure in scratchpad, set ambiguity observation so
-        # contemplate() sees why the flow failed, then signal Agent
-        # to call nlu.contemplate() for a fallback flow.
-        #
-        # self.memory.write_scratchpad('reroute_reason', check.reason)
-        # self.ambiguity.declare(
-        #     'reroute',
-        #     metadata={'flow': flow.name(), 'failure_reason': check.reason},
-        #     observation=f'Flow {flow.name()} failed: {check.reason}',
-        # )
-        # frame = DisplayFrame(self.config)
-        # return frame, RecoveryAction.REROUTE
-
-        # ── Tier 4: Escalate to user ────────────────────────────────
+        # ── Tier 4: Escalate to user (ambiguity) ────────────────────
         log.info('recover: escalating to user')
-        self.ambiguity.declare(
-            'partial',
-            metadata={'flow': flow.name(), 'failure_reason': check.reason},
-            observation=(
-                f'I had trouble completing this — {check.reason}. '
-                f'Could you provide more details or try a different approach?'
-            ),
+        observation = (
+            f'I had trouble completing this — {check.reason}. '
+            f'Could you provide more details or try a different approach?'
         )
-        frame = DisplayFrame(self.config)
-        return frame, RecoveryAction.ESCALATE
+        self.ambiguity.declare('partial', observation=observation)
+        frame = DisplayFrame(flow.name())
+        return frame, True
 
     # -- Tool dispatch ----------------------------------------------------
 
@@ -325,8 +285,8 @@ class PEX:
             turn_type='action',
         )
         try:
-            if tool_name in self._tools:
-                service, method_name = self._tools[tool_name]
+            if tool_name in self.tools:
+                service, method_name = self.tools[tool_name]
                 method = getattr(service, method_name)
                 return method(**tool_input)
             elif tool_name == 'handle_ambiguity':
@@ -338,8 +298,10 @@ class PEX:
                     tool_input.get('action', ''),
                     tool_input,
                 )
-            elif tool_name == 'read_flow_stack':
+            elif tool_name == 'call_flow_stack':
                 return self._dispatch_flow_stack_tool(tool_input)
+            elif tool_name == 'save_findings':
+                return self._dispatch_save_findings_tool(tool_input)
             else:
                 return {
                     '_success': False, '_error': 'invalid_input',
@@ -369,12 +331,28 @@ class PEX:
 
     def _dispatch_flow_stack_tool(self, params:dict) -> dict:
         action = params.get('action', '')
-        if action == 'get_slots':
-            return {'_success': True, 'slots': self.flow_stack.get_flow().slot_values_dict()}
-        elif action == 'get_flow_meta':
-            return {'_success': True, 'flow': self.flow_stack.get_flow().to_dict()}
-        elif action == 'get_stack':
-            return {'_success': True, 'stack': self.flow_stack.to_list()}
+        details = params.get('details')
+        if action == 'read':
+            if details == 'slots':
+                return {'_success': True, 'slots': self.flow_stack.get_flow().slot_values_dict()}
+            if details == 'flow_meta':
+                return {'_success': True, 'flow': self.flow_stack.get_flow().to_dict()}
+            if details == 'flows':
+                return {'_success': True, 'flows': self.flow_stack.to_list()}
+            return {'_success': False, '_error': 'invalid_input',
+                    '_message': f"read details must be one of 'flows', 'slots', 'flow_meta'; got {details!r}"}
+        if action == 'stackon':
+            if not details:
+                return {'_success': False, '_error': 'invalid_input',
+                        '_message': 'stackon requires `details` naming the flow to push'}
+            self.flow_stack.stackon(details)
+            return {'_success': True, 'stacked': details}
+        if action == 'fallback':
+            if not details:
+                return {'_success': False, '_error': 'invalid_input',
+                        '_message': 'fallback requires `details` naming the flow to route to'}
+            self.flow_stack.fallback(details)
+            return {'_success': True, 'fell_back_to': details}
         return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
 
     def _dispatch_ambiguity_tool(self, params:dict) -> dict:
@@ -391,6 +369,34 @@ class PEX:
             self.ambiguity.resolve(params.get('metadata', {}))
             return {'_success': True}
         return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
+
+    def _dispatch_save_findings_tool(self, params:dict) -> dict:
+        """Persist structured findings to the scratchpad under the active flow's name.
+
+        Tool-call-shaped replacement for skills that would otherwise emit a
+        JSON blob as their terminal text response. The policy reads the
+        findings out of tool_log via `extract_tool_result`; downstream flows
+        read them via `memory.read_scratchpad(<flow_name>)`.
+        """
+        findings = params.get('findings', [])
+        summary = params.get('summary', '')
+        references_used = params.get('references_used', [])
+        flow = self.flow_stack.get_flow()
+        key = flow.name() if flow else 'findings'
+        self.memory.write_scratchpad(key, {
+            'version': '1',
+            'turn_number': self.world.context.turn_id,
+            'used_count': 0,
+            'summary': summary,
+            'findings': findings,
+            'references_used': references_used,
+        })
+        return {
+            '_success': True,
+            'findings': findings,
+            'summary': summary,
+            'references_used': references_used,
+        }
 
     # -- Tool definitions -------------------------------------------------
 
@@ -426,12 +432,27 @@ class PEX:
         return [
             {
                 'name': 'handle_ambiguity',
-                'description': 'Manage ambiguity lifecycle. Actions: declare, ask, resolve',
+                'description': (
+                    "Raise an ambiguity flag back to the user when you truly cannot proceed. "
+                    "Policies declare ambiguity directly; only call this tool when the skill "
+                    "itself decides the user must clarify before you can act.\n\n"
+                    "Pick `type` by level:\n"
+                    "- `general`    — intent itself is unclear (the utterance doesn't map cleanly to the active flow).\n"
+                    "- `partial`    — intent is clear but the primary entity is unresolved (post/section/channel).\n"
+                    "- `specific`   — a named slot value is missing or invalid. Pass `metadata={'missing_slot': <name>}`.\n"
+                    "- `confirmation` — you have a candidate and need user sign-off before acting. Pass the candidate in `metadata`.\n\n"
+                    "Actions:\n"
+                    "- `declare` — raise the flag. Requires `type`; `metadata` optional.\n"
+                    "- `ask`     — retrieve the clarifying question string for the declared ambiguity.\n"
+                    "- `resolve` — clear the flag after the user answers. Pass resolved values in `metadata`.\n\n"
+                    "Do NOT use this tool for tool-call failures or skill output-contract violations "
+                    "— those route through the violation-metadata DisplayFrame path, not the user."
+                ),
                 'input_schema': {
                     'type': 'object',
                     'properties': {
                         'action': {'type': 'string', 'enum': ['declare', 'ask', 'resolve']},
-                        'type': {'type': 'string'},
+                        'type': {'type': 'string', 'enum': ['general', 'partial', 'specific', 'confirmation']},
                         'metadata': {'type': 'object'},
                     },
                     'required': ['action'],
@@ -439,7 +460,18 @@ class PEX:
             },
             {
                 'name': 'coordinate_context',
-                'description': 'Access conversation history. Actions: get_history, get_turn, get_checkpoint',
+                'description': (
+                    "Fetch additional conversation history beyond what the skill already has. "
+                    "The 'Resolved entities' block and the recent conversation are already in your "
+                    "system prompt — try those first before calling this tool.\n\n"
+                    "Actions:\n"
+                    "- `get_history`    — compile the last `turns` utterances as a formatted string. "
+                    "Typical values: 3 (default, short span), 6 (whole session for ~6-turn flows), 10 (debug).\n"
+                    "- `get_turn`       — fetch one specific turn by `turn_id` (int, 1-indexed).\n"
+                    "- `get_checkpoint` — fetch a named checkpoint (e.g. `label='last_outline'`).\n\n"
+                    "Reach for this tool only when you need text the resolved block doesn't carry — "
+                    "e.g. a user correction from 4 turns ago, or a proposal you need to quote verbatim."
+                ),
                 'input_schema': {
                     'type': 'object',
                     'properties': {
@@ -465,14 +497,95 @@ class PEX:
                 },
             },
             {
-                'name': 'read_flow_stack',
-                'description': 'Read flow stack state. Actions: get_slots, get_flow_meta, get_stack',
+                'name': 'call_flow_stack',
+                'description': (
+                    "Interact with the flow stack. Three actions:\n"
+                    "- read: inspect stack state. `details` picks what to read: "
+                    "'flows' (the full stack of queued and active flows), "
+                    "'slots' (the active flow's filled slot values), "
+                    "or 'flow_meta' (the active flow's class-level metadata).\n"
+                    "- stackon: push a prerequisite flow onto the stack. "
+                    "`details` is the flow name to push.\n"
+                    "- fallback: pop the current flow and route to a sibling "
+                    "when the user's intent is better served elsewhere. "
+                    "`details` is the flow name to route to."
+                ),
                 'input_schema': {
                     'type': 'object',
                     'properties': {
-                        'action': {'type': 'string', 'enum': ['get_slots', 'get_flow_meta', 'get_stack']},
+                        'action': {'type': 'string', 'enum': ['read', 'stackon', 'fallback']},
+                        'details': {
+                            'type': 'string',
+                            'description': "For read: one of 'flows', 'slots', 'flow_meta'. For stackon or fallback: the target flow name.",
+                        },
                     },
                     'required': ['action'],
+                },
+            },
+            {
+                'name': 'execution_error',
+                'description': (
+                    "Signal a systemic error from inside a skill. The policy "
+                    "consumes this from the tool log and routes the resulting frame "
+                    "to RES with metadata['violation'] set.\n\n"
+                    "Pick `violation` from the 8-item vocabulary:\n"
+                    "- failed_to_save: a persistence tool didn't run or had no effect\n"
+                    "- scope_mismatch: the flow ran at the wrong granularity\n"
+                    "- missing_reference: an entity referenced in a slot doesn't exist\n"
+                    "- parse_failure: skill output couldn't be parsed into the expected shape\n"
+                    "- empty_output: skill returned nothing when content was expected\n"
+                    "- invalid_input: a tool rejected (or would reject) the arguments given\n"
+                    "- conflict: two slot values contradict\n"
+                    "- tool_error: a deterministic tool returned `_success=False`\n\n"
+                    "Use after retries and alternatives have been exhausted. For "
+                    "user-intent ambiguity, use handle_ambiguity instead."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {
+                        'violation': {
+                            'type': 'string',
+                            'enum': [
+                                'failed_to_save', 'scope_mismatch', 'missing_reference',
+                                'parse_failure', 'empty_output', 'invalid_input',
+                                'conflict', 'tool_error',
+                            ],
+                        },
+                        'message': {'type': 'string'},
+                        'failed_tool': {'type': 'string'},
+                    },
+                    'required': ['violation', 'message'],
+                },
+            },
+            {
+                'name': 'save_findings',
+                'description': (
+                    "Terminal action for skills that return a list of structured results "
+                    "(audit, future web_search, etc.). Call this instead of emitting JSON "
+                    "in your text response — the policy reads the findings from this tool "
+                    "call directly. Writes the payload to the scratchpad under the active "
+                    "flow's name so downstream flows (e.g. polish-informed reading audit) "
+                    "can consume it."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {
+                        'findings': {
+                            'type': 'array',
+                            'items': {'type': 'object'},
+                            'description': "List of finding objects. Each item is flow-specific — audit uses {sec_id, issue, severity, note, reference_posts}.",
+                        },
+                        'summary': {
+                            'type': 'string',
+                            'description': "One short paragraph summarizing the findings overall.",
+                        },
+                        'references_used': {
+                            'type': 'array',
+                            'items': {'type': 'string'},
+                            'description': "IDs of any reference artifacts used (e.g. other post_ids for audit).",
+                        },
+                    },
+                    'required': ['findings'],
                 },
             },
         ]

@@ -1,0 +1,136 @@
+{
+  "flow": "inspect",
+  "parent_intent": "Research",
+  "batch": 3,
+  "round": 1,
+  "version": 1,
+  "notes": "Inspect is DETERMINISTIC per Theme 1 + Phase 2: the skill was deleted, and the policy calls `inspect_post` inline. Skill-authoring DPs surface as N/A with short rationale. The policy also writes `scratchpad['inspect']` so polish-informed can consume structural metrics later; DP-15 spells out the payload.",
+  "decision_points": {
+    "DP-1": {
+      "section": "Prompt content",
+      "title": "Flow-specific must/never rules",
+      "question": "0\u20133 inviolable rules unique to this flow.",
+      "proposal": "N/A. Inspect has no skill, so there is no template to pin rules into. The single contract is enforced in code: `inspect_post` must be called exactly once, and its result must land in the scratchpad before the frame is built.",
+      "reasoning": "Deterministic flow. The one invariant is a policy-level contract, not a prompt rule."
+    },
+    "DP-2": {
+      "section": "Prompt content",
+      "title": "Skill intro paragraph",
+      "question": "The framing that opens the skill file.",
+      "proposal": "N/A. No skill file.",
+      "reasoning": "Skill deleted in Theme 1."
+    },
+    "DP-3": {
+      "section": "Prompt content",
+      "title": "Process steps",
+      "question": "Numbered happy-path sequence for `## Process`.",
+      "proposal": "N/A at the skill level. Policy sequence: (1) guard that the post reference is filled, (2) call `inspect_post(post_id, aspect, threshold)`, (3) format metrics via `_format_inspect_metrics`, (4) write `scratchpad['inspect']`, (5) build the frame.",
+      "reasoning": "Deterministic code path; no LLM reasoning to scaffold."
+    },
+    "DP-4": {
+      "section": "Prompt content",
+      "title": "Tool usage hints",
+      "question": "Per task-specific tool, flow-specific usage hints.",
+      "proposal": "N/A. Tools invoked directly by policy: `inspect_post` for all flows, `check_readability` and `check_links` only when the `aspect` value narrows to readability or links specifically.",
+      "reasoning": "No skill selects tools; policy dispatches based on the aspect value."
+    },
+    "DP-5": {
+      "section": "Starter",
+      "title": "Task framing sentence",
+      "question": "The imperative sentence inside `<task>`.",
+      "proposal": "N/A. No starter because no skill turn runs.",
+      "reasoning": "Deterministic flows skip the prompt layer."
+    },
+    "DP-6": {
+      "section": "Starter",
+      "title": "Content tag choice",
+      "question": "Which content tag wraps the preloaded data.",
+      "proposal": "N/A.",
+      "reasoning": "No starter, no preload."
+    },
+    "DP-7": {
+      "section": "Starter",
+      "title": "Preload content",
+      "question": "What goes inside the content tag.",
+      "proposal": "N/A.",
+      "reasoning": "No starter."
+    },
+    "DP-8": {
+      "section": "Few-shot",
+      "title": "Scenario coverage",
+      "question": "Which user-phrasing paths to exemplify.",
+      "proposal": "N/A. No skill few-shot. NLU handles the utterance-to-slot translation for inspect (e.g., \"word count for Motivation\" fills `aspect=word_count`), and those exemplars live in the NLU prompts, not here.",
+      "reasoning": "Few-shot is a skill concern."
+    },
+    "DP-9": {
+      "section": "Few-shot",
+      "title": "Example content (topic + post state)",
+      "question": "Concrete post topic, section names, and content.",
+      "proposal": "N/A.",
+      "reasoning": "No skill examples."
+    },
+    "DP-10": {
+      "section": "Error handling",
+      "title": "Likely errors and ambiguities.",
+      "question": "Realistic error and ambiguity set for this flow.",
+      "proposal": "Errors: `inspect_post` returns `_success=False` with no partial data, which emits `execution_error(violation='tool_error', failed_tool='inspect_post')`. Ambiguities: none from the policy layer beyond the source-missing guard (handled uniformly upstream).",
+      "reasoning": "Inspect reads metadata; the post is already persisted, so malformed-input errors are vanishingly rare. Keep the error list to the one realistic case."
+    },
+    "DP-12": {
+      "section": "Error handling",
+      "title": "Retry strategy per tool.",
+      "question": "Per tool, retry count on transient failure.",
+      "proposal": "`inspect_post`: retry once, then `execution_error(violation='tool_error', failed_tool='inspect_post')`. `check_readability` and `check_links`: no retry; treat as optional enrichment, note the gap in the formatted output and proceed.",
+      "reasoning": "One retry on the load-bearing call. The optional tools fail soft so the primary metric set still lands."
+    },
+    "DP-13": {
+      "section": "Policy logic",
+      "title": "Optional slot defaults.",
+      "question": "For each optional slot, does it have a sensible default?",
+      "proposal": "`aspect` (CategorySlot, optional): no default; when unfilled, inspect returns the full metric set rather than a narrowed one. `threshold` (ScoreSlot, optional): no default; when unfilled, no reference comparison runs and the response reports absolute values only.",
+      "reasoning": "Both absences have a clean behavioral fallback (return-everything, skip-comparison), so no default-with-commit is needed."
+    },
+    "DP-14": {
+      "section": "Policy logic",
+      "title": "Flow transitions (stack-on and fallback).",
+      "question": "When does this flow hand off to another flow?",
+      "proposal": "None. Inspect produces metrics for later consumption and does not transition.",
+      "reasoning": "Inspect is a producer flow. Whatever comes next is a separate user turn, not a policy transition."
+    },
+    "DP-15": {
+      "section": "Policy logic",
+      "title": "Scratchpad contract.",
+      "question": "Does this flow write or read scratchpad?",
+      "proposal": "Write-only producer. Policy writes `scratchpad['inspect'] = {version: 1, turn_number: <turn>, used_count: 0, metrics: {word_count, num_sections, time_to_read, image_count, num_links, post_size}, per_section: [{sec_id, word_count, paragraph_density, ...}], aspect, threshold}` after the tool call lands. Downstream consumer is polish-informed (filters by `sec_id` to notice length outliers) and occasionally rework (structural decisions). Each consumer increments `used_count`.",
+      "reasoning": "Inspect is the primary metrics producer. Schema spelled out so consumers have a predictable shape."
+    },
+    "DP-16": {
+      "section": "Policy logic",
+      "title": "Frame output spec.",
+      "question": "Metadata keys and block types.",
+      "proposal": "Success: `origin='inspect'`, `metadata={post_id, post_title, aspect, metric_count}`, blocks = 1 `report` card listing the metrics grouped by scope (whole-post metrics first, then per-section). The current implementation returns metrics as `thoughts` text with no block; the structured `report` card replaces that so RES can render a clean visualization. Error: `origin='inspect'`, `metadata={'violation': 'tool_error', 'failed_tool': 'inspect_post'}`, blocks empty.",
+      "reasoning": "Current text-only output has no RES template affinity. Structuring into a `report` card matches the pattern used by audit (DP-16 in its proposal) so RES has a consistent research-card shape."
+    },
+    "DP-17": {
+      "section": "Policy logic",
+      "title": "Final reply shape.",
+      "question": "Plain prose, structured JSON, or card-only?",
+      "proposal": "Plain prose, one sentence that names the top line metric or the aspect requested (\"The post runs 2,340 words across 5 sections, about 11 minutes to read.\"). The card carries the full metric table.",
+      "reasoning": "Matches persona. One-sentence reply with card behind it."
+    },
+    "DP-18": {
+      "section": "Performance",
+      "title": "Model tier override.",
+      "question": "Opus over Sonnet default?",
+      "proposal": "N/A. No LLM turn.",
+      "reasoning": "Deterministic tool call."
+    },
+    "DP-19": {
+      "section": "Performance",
+      "title": "max_response_tokens override.",
+      "question": "Tighten below 4096 default?",
+      "proposal": "N/A.",
+      "reasoning": "No generation turn."
+    }
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "flow": "release",
+  "parent_intent": "Publish",
+  "batch": 3,
+  "round": 1,
+  "version": 1,
+  "notes": "Release publishes a post to one or more channels. Agentic with a current skill at `backend/prompts/pex/skills/release.md`. The skill handles per-channel orchestration (status check then publish) and returns structured JSON. The policy flips the post status to `published` after a successful release. Flow transitions follow the conservative rule: only `syndicate` and `promote` are wired as fallbacks because they are the two common-confusion flows among Publish-intent siblings.",
+  "decision_points": {
+    "DP-1": {
+      "section": "Prompt content",
+      "title": "Flow-specific must/never rules",
+      "question": "0\u20133 inviolable rules unique to this flow.",
+      "proposal": "1) Always check `channel_status` before calling `release_post`. A channel that is unavailable or unauthenticated fails the publish; gating the call avoids burning a retry on a predictable failure.\n\n2) Multi-channel release is per-channel. When the channel list has more than one entry, process each independently. If one channel fails, surface the failure in the output and continue with the remaining channels rather than aborting.\n\n3) Never call `update_post` from the skill. The policy flips the post status to `published` after the skill returns; doing it in the skill creates a double-write.",
+      "reasoning": "Rules 1 and 2 encode the current error-handling behavior. Rule 3 is a hard separation-of-concerns point that the current skill already states under \"not your concern in the skill\" but deserves to be elevated to a Rule."
+    },
+    "DP-2": {
+      "section": "Prompt content",
+      "title": "Skill intro paragraph",
+      "question": "The framing that opens the skill file.",
+      "proposal": "This skill publishes a post to one or more channels. For each channel, check availability first, then release. Results are collected in a structured JSON response that names the status and URL per channel. The policy flips the post status after the skill returns, so focus the skill on the channel orchestration and the output shape.",
+      "reasoning": "Preserves the current intro's key points (per-channel, policy handles status flip) while dropping the inline error-preview sentence that properly belongs in Error Handling."
+    },
+    "DP-3": {
+      "section": "Prompt content",
+      "title": "Process steps",
+      "question": "Numbered happy-path sequence for `## Process`.",
+      "proposal": "## Process\n\n1. Read the post identifier and channel list from `<resolved_details>`. The channel list is an array of channel names such as `['Substack']` or `['Substack', 'LinkedIn']`.\n\n2. For each channel in the list, in order:\n   a. Call `channel_status(channel=<name>)` to verify the channel is authenticated and reachable. If the status call returns `_success=False`, record the channel as failed with the returned error note and move on to the next channel without calling `release_post`.\n   b. When the status call succeeds, call `release_post(post_id, channel=<name>)` to publish. Record the returned URL and status.\n\n3. After every channel has been attempted, emit the JSON output. When the list had exactly one channel, use the single-channel shape. When the list had more than one, use the `releases` array shape.\n\n4. Do not retry `release_post` on failure unless the user explicitly asked for a retry. Surface the failure and let the user decide whether to re-run the release.",
+      "reasoning": "Keeps the chronological order. Folds the output-shape branching into step 3 so the skill knows when to pick which JSON shape without flipping back to the Output section mid-loop."
+    },
+    "DP-4": {
+      "section": "Prompt content",
+      "title": "Tool usage hints",
+      "question": "Per task-specific tool, flow-specific usage hints.",
+      "proposal": "## Tools\n\n### Task-specific tools\n\n- `channel_status(channel)` is the gate before every `release_post` call. It verifies authentication and reachability. Treat a `_success=False` return as a terminal state for that channel; do not retry.\n\n- `release_post(post_id, channel)` performs the publish. Call once per channel after the status gate succeeds. No automatic retry; user confirmation is required for retry.\n\n- `read_metadata(post_id)` is a fallback helper when `<resolved_details>` is missing post fields, which is rare. Skip it in the common case.\n\n### General tools\n\n- `execution_error(violation, message)` when a tool fails in a way that should surface as a policy-layer error frame rather than a per-channel failure row.\n- `handle_ambiguity(level, metadata)` when the channel list resolves to empty and no default channel is configured. The policy guards the source reference before the skill runs.\n- `manage_memory(action, key, value)` to read a per-channel token when the user has stored authentication preferences there.\n- `read_flow_stack(action)` to check whether a `syndicate` or `promote` flow is already queued behind this release. When one is, trim the release output to the primary channel so the downstream flow handles amplification.",
+      "reasoning": "Gives `read_flow_stack` a real use case per the audit-DP-4 feedback (don't say \"rarely used\" by default). For release, the flow stack matters because syndicate and promote are common follow-ons."
+    },
+    "DP-5": {
+      "section": "Starter",
+      "title": "Task framing sentence",
+      "question": "The imperative sentence inside `<task>`.",
+      "proposal": "Publish \"{post_title}\" to the target channels. Gate each channel with a status check before publishing, collect per-channel results, and return the structured JSON response. End the turn once every channel has been attempted.",
+      "reasoning": "Intent-focused, no tool sequence in the task sentence, channel-list reasoning is implicit in \"every channel has been attempted.\""
+    },
+    "DP-6": {
+      "section": "Starter",
+      "title": "Content tag choice",
+      "question": "Which content tag wraps the preloaded data.",
+      "proposal": "<channel_content>",
+      "reasoning": "Release targets channels as its primary entity, matching the `{post, sec, snip, chl}` entity-to-tag convention. The tag carries the per-channel status data the skill uses in step 2."
+    },
+    "DP-7": {
+      "section": "Starter",
+      "title": "Preload content",
+      "question": "What goes inside the content tag.",
+      "proposal": "A list of channel entries, one per target channel: `{name, connected, auth_status, default}`. The skill reads this to plan the order of `channel_status` and `release_post` calls. The `<resolved_details>` carries the post identifier, post title, and the channel list itself.",
+      "reasoning": "Preloading the known channel state means the skill can pick the right order (e.g., try the default channel first). `channel_status` is still called for the authoritative gate because preloaded state can be stale."
+    },
+    "DP-8": {
+      "section": "Few-shot",
+      "title": "Scenario coverage",
+      "question": "Which user-phrasing paths to exemplify.",
+      "proposal": "Three scenarios, each exercising a different channel-list and failure pattern:\n\n(a) Single-channel publish. Channel list is `['blog']`, status check succeeds, publish succeeds, single-channel JSON shape.\n\n(b) Multi-channel with one failure. Channel list is `['Substack', 'LinkedIn']`, Substack succeeds, LinkedIn status returns auth_expired, skill skips the LinkedIn publish and emits the `releases` array with both rows.\n\n(c) Single-channel with default. The channel list was empty in `<resolved_details>`; the policy already defaulted to the primary blog, and the skill sees `['blog']` without needing to ask.",
+      "reasoning": "Covers the two channel-count variants and the partial-failure case. Scenario (c) confirms the default-channel behavior is invisible to the skill, which keeps the few-shot examples free of policy-layer concerns."
+    },
+    "DP-9": {
+      "section": "Few-shot",
+      "title": "Example content.",
+      "question": "Concrete post topic, section names, and content.",
+      "proposal": "Topic: \"User Simulators for training RL agents\" (post_id=abcd0123). Channels: `blog` (the primary), `Substack`, `LinkedIn`. Publication URLs follow the pattern `https://<channel>.example.com/<slug>` where the slug is derived from the post title. Section names are not relevant to release and do not appear in the examples.",
+      "reasoning": "Keeps the topic consistent with the rest of the corpus. Section names are omitted because release does not interact with sections."
+    },
+    "DP-10": {
+      "section": "Error handling",
+      "title": "Likely errors and ambiguities.",
+      "question": "Realistic error and ambiguity set.",
+      "proposal": "Errors (policy emits error frame after skill signals):\n- `release_post` fails with a non-retryable error (auth expired, rate limited, channel unavailable) \u2014 record the failure per-channel in the JSON; policy translates to `execution_error(violation='tool_error', failed_tool='release_post')` only when every channel failed.\n\nAmbiguities (skill calls `handle_ambiguity`):\n- The resolved channel list is empty and no default channel is configured \u2014 `specific`, `metadata={'missing_slot': 'channel'}`.\n\nFallbacks: none from the skill. Flow transitions are listed under DP-14.",
+      "reasoning": "Two realistic cases. Dropped the malformed-input row because the policy has already resolved the post by the time release runs."
+    },
+    "DP-12": {
+      "section": "Error handling",
+      "title": "Retry strategy per tool.",
+      "question": "Per tool, retry count on transient failure.",
+      "proposal": "`channel_status`: retry once. On a second failure, treat that channel as unavailable and skip it. `release_post`: no automatic retry. Surface failure in the per-channel output and let the user decide. `update_post` (called by policy, not skill): retry once via `BasePolicy.retry_tool`, then `execution_error(violation='failed_to_save', failed_tool='update_post')`.",
+      "reasoning": "Publish is a user-visible side effect. One invisible retry on the status gate is fine; a silent retry on the publish itself risks double-posting."
+    },
+    "DP-13": {
+      "section": "Policy logic",
+      "title": "Optional slot defaults.",
+      "question": "For each optional slot, does it have a sensible default?",
+      "proposal": "`channel` (ChannelSlot, required by schema): when unfilled, the policy defaults it to `'mt1t'` (the primary blog) and commits with that default. This is the current behavior in `release_policy`. The skill sees a one-element channel list rather than empty, which keeps the skill branching simpler.\n\n`source` (required): no default; policy guards before the skill runs.",
+      "reasoning": "Current behavior: channel is nominally required but falls back to the primary blog as a convenience. Keep this default so users can say \"publish this post\" without naming a channel."
+    },
+    "DP-14": {
+      "section": "Policy logic",
+      "title": "Flow transitions (stack-on and fallback).",
+      "question": "When does this flow hand off to another flow, and through which channel?",
+      "proposal": "Two fallbacks, no stack-on:\n\n- `flow_stack('fallback', 'syndicate')` when the user's request is really about cross-posting an already-published post. Common confusion: users say \"publish to Substack\" after the primary blog publish has already landed.\n\n- `flow_stack('fallback', 'promote')` when the user's request is about amplifying reach on a published post (newsletter blast, social post) rather than the initial publish.\n\nNo stack-on. Release operates on an existing post; if the post does not yet exist, that is a routing error the user should see, not a prerequisite to resolve silently.",
+      "reasoning": "Applies the conservative flow-transition rule: syndicate and promote are the common-confusion siblings within Publish intent. Other Publish flows (cancel, schedule) are far enough that flow detection handles them upstream."
+    },
+    "DP-15": {
+      "section": "Policy logic",
+      "title": "Scratchpad contract.",
+      "question": "Does this flow write or read scratchpad?",
+      "proposal": "No scratchpad interaction. Release's side effect is the publish itself; there are no structured findings for downstream flows to consume.",
+      "reasoning": "Publish is a terminal side effect, not a research finding."
+    },
+    "DP-16": {
+      "section": "Policy logic",
+      "title": "Frame output spec.",
+      "question": "Metadata keys and block types.",
+      "proposal": "Success: `origin='release'`, `metadata={post_id, post_title, channels_released: [<name>], channels_failed: [<name>]}`, blocks = 1 `toast` block with the user-facing confirmation sentence. Partial success (some channels failed): same shape with both lists populated; the toast text names the partial-success outcome. Error (every channel failed): `origin='release'`, `metadata={'violation': 'tool_error', 'failed_tool': 'release_post'}`, blocks empty.",
+      "reasoning": "Toast block matches the current policy. Adding `channels_released` and `channels_failed` to metadata lets RES render per-channel URLs in the toast detail without parsing the skill JSON."
+    },
+    "DP-17": {
+      "section": "Policy logic",
+      "title": "Final reply shape.",
+      "question": "Plain prose, structured JSON, or card-only?",
+      "proposal": "Structured JSON from the skill (single-channel or `releases` array shape). The policy consumes the JSON, sets `channels_released` and `channels_failed`, and RES renders a one-sentence toast (\"Published 'User Simulators for Training RL Agents' to Substack; LinkedIn failed, authentication expired.\"). The toast is the primary user-facing surface; no separate prose reply is needed.",
+      "reasoning": "Toast is compact and matches the publish side-effect feel. The JSON provides the structured data RES needs without a separate prose summary."
+    },
+    "DP-18": {
+      "section": "Performance",
+      "title": "Model tier override.",
+      "question": "Opus over Sonnet default?",
+      "proposal": "Sonnet (default).",
+      "reasoning": "Release is a structured tool-call loop with no prose generation. Sonnet is the right tier."
+    },
+    "DP-19": {
+      "section": "Performance",
+      "title": "max_response_tokens override.",
+      "question": "Tighten below 4096 default?",
+      "proposal": "1024.",
+      "reasoning": "Release output is a small JSON object even for multi-channel cases. Ten channels at ~50 tokens each plus envelope fits under 1024. Power of 2 preserved."
+    }
+  }
+}

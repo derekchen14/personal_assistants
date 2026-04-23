@@ -12,7 +12,7 @@ from backend.components.dialogue_state import DialogueState
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.flow_stack import flow_classes
-from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt as _build_flow_prompt_text
+from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt, render_flow_catalog
 from backend.prompts.for_nlu import build_slot_filling_prompt, ENTITY_SLOT_TYPES
 from backend.prompts.for_contemplate import build_contemplate_prompt as _build_contemplate_prompt_text
 from backend.utilities.services import PostService
@@ -36,13 +36,6 @@ _ENSEMBLE_VOTERS = [
     {'model': 'sonnet', 'label': 'sonnet', 'weight': 0.45},
     {'model': 'flash', 'label': 'gemini_flash', 'weight': 0.35},
 ]
-
-
-def _slots_desc(cls) -> str:
-    if not cls:
-        return ''
-    inst = cls()
-    return ', '.join(f'{name} ({slot.priority})' for name, slot in inst.slots.items())
 
 
 def _get_edge_flows_for_intent(intent:str) -> set[str]:
@@ -73,7 +66,10 @@ def _flow_detection_schema(candidate_flow_names:list[str]) -> dict:
     return {
         'type': 'object',
         'properties': {
-            'reasoning': {'type': 'string'},
+            'reasoning': {
+                'type': 'string',
+                'description': 'Terse rationale (<100 tokens) naming the key signals that separate the top candidates.',
+            },
             'flow_name': {'type': 'string', 'enum': list(candidate_flow_names)},
             'confidence': {'type': 'number'},
         },
@@ -304,53 +300,28 @@ class NLU:
             'pred_flows': detection.get('pred_flows', []),
         }
 
-    def _detect_flow_prompt(self, user_text:str, intent:str|None, convo_history:str) -> str:
-        if intent is None:
-            groups: dict[str, list[str]] = {}
-            for name, cat in FLOW_CATALOG.items():
-                fi = cat['intent']
-                if fi == Intent.INTERNAL:
-                    continue
-                cls = flow_classes.get(name)
-                slots_desc = _slots_desc(cls)
-                line = (
-                    f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
-                    + (f' [slots: {slots_desc}]' if slots_desc else '')
-                )
-                groups.setdefault(fi, []).append(line)
-            parts = []
-            for gi in sorted(groups):
-                parts.append(f'### {gi}')
-                parts.extend(groups[gi])
-                parts.append('')
-            candidates = '\n'.join(parts)
-        else:
-            candidate_lines = []
-            edge_flows = _get_edge_flows_for_intent(intent)
-            for name, cat in FLOW_CATALOG.items():
-                fi = cat['intent']
-                if fi == intent or name in edge_flows:
-                    cls = flow_classes.get(name)
-                    slots_desc = _slots_desc(cls)
-                    candidate_lines.append(
-                        f'- {name} (dax={cat["dax"]}): {cat.get("description", "")}'
-                        + (f' [slots: {slots_desc}]' if slots_desc else '')
-                    )
-            candidates = '\n'.join(candidate_lines)
+    def _detect_flow_prompt(self, user_text:str, intent:str, convo_history:str) -> str:
+        candidate_names = self._flow_candidate_names(intent)
+        catalog = render_flow_catalog(candidate_names, FLOW_CATALOG, flow_classes)
+        active_post = self._active_post_dict()
+        return build_flow_prompt(user_text, intent, convo_history,
+                                 catalog, active_post=active_post)
 
-        return _build_flow_prompt_text(user_text, intent, convo_history, candidates)
+    def _active_post_dict(self) -> dict | None:
+        state = self.world.current_state()
+        if not state.active_post:
+            return None
+        title = self._posts.get_title(state.active_post)
+        if not title:
+            return None
+        return {'id': state.active_post, 'title': title}
 
     def _fill_slot_prompt(self, flow, convo_history:str,
                           ent_needs_filling:set|None=None) -> str:
-        state = self.world.current_state()
-        active_post = None
-        if state and state.active_post:
-            title = self._posts.get_title(state.active_post)
-            if title:
-                active_post = {'id': state.active_post, 'title': title}
         return build_slot_filling_prompt(
             flow.name(), flow, convo_history,
-            active_post=active_post, ent_needs_filling=ent_needs_filling,
+            active_post=self._active_post_dict(),
+            ent_needs_filling=ent_needs_filling,
         )
 
     def grounding_entity_history(self, flow, prev) -> set[str]:
@@ -365,7 +336,8 @@ class NLU:
             if not slot.filled:
                 needs.add(name)
                 continue
-            current_post = slot.values[0].get('post') if slot.values else ''
+            first = slot.values[0] if slot.values else ''
+            current_post = first.get('post') if isinstance(first, dict) else ''
             if not prev_post or current_post != prev_post:
                 needs.add(name)
         return needs
@@ -387,7 +359,8 @@ class NLU:
 
     def _classify_intent(self, user_text:str) -> str:
         convo_history = self.world.context.compile_history()
-        prompt = build_intent_prompt(user_text, convo_history)
+        prompt = build_intent_prompt(user_text, convo_history,
+                                     active_post=self._active_post_dict())
         try:
             parsed = self.engineer(prompt, 'classify_intent', max_tokens=512,
                                    schema=_intent_schema())
@@ -406,7 +379,7 @@ class NLU:
         def _call_voter(voter:dict) -> dict | None:
             try:
                 parsed = self.engineer(prompt, 'detect_flow', model=voter['model'],
-                                       max_tokens=512, schema=schema)
+                                       max_tokens=1024, schema=schema)
                 parsed['_model'] = voter['label']
                 parsed['_weight'] = voter['weight']
                 return parsed

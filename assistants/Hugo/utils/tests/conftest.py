@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -11,6 +12,10 @@ if str(_HUGO_ROOT) not in sys.path:
     sys.path.insert(0, str(_HUGO_ROOT))
 
 load_dotenv(_HUGO_ROOT / '.env')
+
+# Marker for downstream services (e.g. MT1TPublisher) to tag artifacts
+# produced during evals so they are trivially cleanable with `rm _eval_*`.
+os.environ['HUGO_EVAL_MODE'] = '1'
 
 
 def pytest_configure(config):

@@ -1,11 +1,12 @@
 """Rebuild metadata.json from disk content.
 
 Recomputes preview, word_count, and section_ids for every entry.
-Discovers new files not in the index and adds them.
+With --apply, the index is synced to disk: new files are added and
+entries for missing files are removed.
 
 Usage:
     python utils/rebuild_metadata.py          # dry-run (shows changes)
-    python utils/rebuild_metadata.py --apply  # write changes to disk
+    python utils/rebuild_metadata.py --apply  # sync index to disk
 """
 
 import sys
@@ -28,10 +29,19 @@ def rebuild(apply=False):
             print(f'  Added: {item["filename"]}')
     if sync['missing']:
         for item in sync['missing']:
-            print(f'  Missing (in index but no file): {item["filename"]}')
+            fname = item["filename"]
+            if apply:
+                print(f'  Removed from index: {fname}')
+            else:
+                print(f'  Missing from index: {fname}, would be removed')
 
     entries = svc._load_metadata()
     changes = 0
+
+    if sync['missing']:
+        missing_names = {item['filename'] for item in sync['missing']}
+        entries = [ent for ent in entries if ent['filename'] not in missing_names]
+        changes += len(missing_names)
 
     for ent in entries:
         content = svc._read_content(ent['filename'])

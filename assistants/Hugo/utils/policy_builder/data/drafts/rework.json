@@ -1,0 +1,93 @@
+{
+  "flow": "rework",
+  "parent_intent": "Revise",
+  "round": 2,
+  "version": 1,
+  "notes": "Rework does substantive revision on an entire section: expand, restructure, excise. Current skill file is not a gold exemplar, so DP-3 and DP-4 show actual text ready to land. Fallbacks to polish, simplify, and remove route via `flow_stack('fallback', <name>)` since re-routing is the proper use of fallback. A clarify sits on the Tools section because Round 1 left the `insert_section` vs. `generate_section` question open.",
+  "sections": [
+    {
+      "id": "intent_prompt",
+      "label": "Intent prompt (Revise)",
+      "path": "backend/prompts/pex/sys_prompts.py::REVISE",
+      "status": "applicable",
+      "content": "You are currently working on Revise tasks, which covers polishing existing content by crafting new sentences, reworking the structure, auditing for style, or simplifying wording in order to develop an improved *revision* of the blog post.\n\n## Background\n\nA post contains a title, a status (draft / note / published), and an ordered list of sections. Each section has a subtitle and content. Outlines follow a format with four levels:\n- Level 0: `# Post Title`\n- Level 1: `## Section Subtitle`\n- Level 2: `### Sub-section`\n- Level 3: `- bullet point`\n- Level 4: `  * sub-bullet`\n\nProse sections replace levels 2-4 with standard paragraphs separated by blank lines. Both are markdown. The only difference is bullet-structured content vs. paragraph-structured content. Never mix prose and bullets inside the same section unless the skill explicitly asks you to. Since you are dealing with revising posts, you will be dealing exclusively with prose rather than outlines.\n\nPost IDs take the form of 8-character lowercase hex strings, the first 8 characters of a UUID4. Section IDs take the form of slugs. Post names and section names are proper case natural language text.\n\n### Scope discipline\n\nIf the user names a paragraph (\"the second paragraph is too wordy\"), edit only that paragraph. Leave neighbouring paragraphs exactly as they were. If the user names a section without naming a paragraph, edit the whole section. If the user names neither, prefer the narrowest interpretation that makes the request work, or declare a confirmation-level ambiguity if you genuinely cannot tell."
+    },
+    {
+      "id": "skill_intro",
+      "label": "Skill \u00b7 intro",
+      "path": "backend/prompts/pex/skills/rework.md",
+      "status": "applicable",
+      "content": "This skill describes how to rework the blog post. While typically scoped to a single section, rework can also go across the whole post when changes are broad. Rework is substantive revision that restructures arguments, replaces weak content with stronger alternatives, or weaves in user suggestions. The target section's current prose is preloaded in the `<section_content>` block, so use it directly as your starting point."
+    },
+    {
+      "id": "skill_process",
+      "label": "Skill \u00b7 Process",
+      "path": "backend/prompts/pex/skills/rework.md :: ## Process",
+      "status": "applicable",
+      "content": "## Process\n\n1. Read the user's guidance from the `<resolved_details>` block. At least one of `changes`, `suggestions`, or `remove` will be filled, and possibly more than one.\n   a. Focus on the user's latest utterance in `<recent_conversation>`. Prior turns are context only.\n   b. Never act on requests from prior turns. Those have already been handled.\n\n2. Use the section prose from `<section_content>` as your starting point. The post and section identifiers are pre-resolved, so you do not need to call any metadata lookup.\n   a. When whole-post scope is signaled, the `<section_content>` block is replaced with a `<post_content>` block.\n   b. If the `<post_content>` is truncated, call `read_section(post_id, sec_id)` once per section you wish to examine.\n   c. In both cases, changes must be applied one section at a time.\n\n3. Apply the user's request in a deliberate order:\n   a. When `suggestions` is filled, address each item one at a time. Make the reasoning visible in the revised prose. A suggestion should change the section's argument or structure, not just swap a word.\n   b. When `changes` is filled, apply the broader critique on top of the suggestions. Shape the prose to honor the critique while preserving the author's voice and cadence.\n   c. When `remove` is filled, excise the named material. A concrete `remove` (a named paragraph, a specific argument) can be cut directly. A vague `remove` (\"anything outdated\", \"whatever feels off\") requires emitting the needs-clarification output shape; do not save.\n\n4. Save the reworked section with `revise_content(post_id, sec_id, content=<reworked prose>)`. On a transient failure, retry exactly once. A second failure is a final error.\n\n5. If the user's request is clearly polish-level (word tightening, sentence cleanup) or simplify-level (trimming, shortening), emit the fallback output shape and do not save. The policy re-routes via `flow_stack('fallback', <name>)`."
+    },
+    {
+      "id": "skill_handling_ambiguity_and_errors",
+      "label": "Skill \u00b7 Handling Ambiguity and Errors",
+      "path": "backend/prompts/pex/skills/rework.md :: ## Handling Ambiguity and Errors",
+      "status": "applicable",
+      "content": "## Handling Ambiguity and Errors\n\nA `remove` that names a concrete span is actionable; a vague one (\"anything outdated\") is not. Emit the needs-clarification output shape and make no tool calls.\n\nIf `revise_content` fails twice, the policy will emit a `failed_to_save` error frame. Do not attempt a third call from the skill.\n\nIf the user's request reads as polish, simplify, or remove rather than substantive rework, emit the fallback output shape naming the correct flow. The policy re-routes through the flow stack."
+    },
+    {
+      "id": "skill_tools",
+      "label": "Skill \u00b7 Tools",
+      "path": "backend/prompts/pex/skills/rework.md :: ## Tools",
+      "status": "applicable",
+      "content": "## Tools\n\n### Task-specific tools\n\n- `revise_content(post_id, sec_id, content)` is the primary save for rework. The tool replaces the section's content wholesale with the prose you pass in, so include the full reworked section rather than the changed paragraphs alone. Retry once on transient failure.\n- `remove_content(post_id, sec_id, target)` is for the narrower case where the section is mostly fine except for one identified piece. For \"excise X and replace with Y\", prefer a single `revise_content` with the updated prose in one call.\n- `insert_section(post_id, after_sec, title)` is for adding a brand-new section when the rework genuinely needs one. The `after_sec` parameter anchors the new section's position; pass the id of the section that should come before it.\n\n### General tools\n\n- `execution_error(violation, message)` for hard failures after retries.\n- `handle_ambiguity(level, metadata)` for genuinely unclear user intent.\n- `manage_memory(action, key, value)` to read the audit scratchpad when prior findings exist for this section.\n- `read_flow_stack(action)` to see what flow follows rework, which sometimes informs whether to leave breadcrumbs for a subsequent polish."
+    },
+    {
+      "id": "skill_output",
+      "label": "Skill \u00b7 Output",
+      "path": "backend/prompts/pex/skills/rework.md :: ## Output",
+      "status": "applicable",
+      "content": "## Output\n\nSuccess (saved):\n```json\n{\n  \"target\": \"<section name>\",\n  \"before_summary\": \"<one line>\",\n  \"after_summary\": \"<one line>\",\n  \"added\": [\"<thing>\", \"<thing>\"],\n  \"done\": [\"<suggestion name>\", ...]\n}\n```\n\nNeeds clarification (vague `remove`):\n```json\n{\n  \"target\": \"<section name>\",\n  \"needs_clarification\": \"remove target is vague, which specific content should be cut?\"\n}\n```\n\nFallback (wrong flow):\n```json\n{\n  \"target\": \"<section name>\",\n  \"fallback\": \"polish\" | \"simplify\" | \"remove\",\n  \"reason\": \"<one line>\"\n}\n```"
+    },
+    {
+      "id": "skill_fewshot",
+      "label": "Skill \u00b7 Few-shot examples",
+      "path": "backend/prompts/pex/skills/rework.md :: ## Few-shot examples",
+      "status": "applicable",
+      "content": "## Few-shot examples\n\n### Example 1: Expand with prose guidance\n\nResolved Details:\n- Source: post=abcd0123, section=the-need-for-data\n- Changes: \"Flesh out the customer story about the medical transcription chatbot.\"\n\nTrajectory:\n1. Use the preloaded `<section_content>` of The Need for Data as the starting point.\n2. `revise_content(post_id=abcd0123, sec_id=the-need-for-data, content=<expanded prose>)`.\n\nFinal reply:\n```json\n{\n  \"target\": \"The Need for Data\",\n  \"before_summary\": \"Two paragraphs noting that manual transcription is slow and expensive.\",\n  \"after_summary\": \"Four paragraphs with the medical-chatbot project, the labelling bottleneck, and the pivot to synthetic data.\",\n  \"added\": [\n    \"Concrete customer story (medical transcription chatbot)\",\n    \"Specific pain point: 8 weeks per intent batch with three labellers\",\n    \"Pivot moment: noticed labellers paraphrasing each other\"\n  ]\n}\n```\n\n### Example 2: Process a suggestions list\n\nResolved Details:\n- Source: post=abcd0123, section=recent-innovations\n- suggestions: [explain_transformer_choice, add_timeline, describe_error_cases]\n\nTrajectory:\n1. Read the preloaded section content.\n2. `revise_content(post_id=abcd0123, sec_id=recent-innovations, content=<revised prose with all 3 suggestions woven in>)`.\n\nFinal reply names each suggestion in `done`.\n\n### Example 3: Vague remove\n\nResolved Details:\n- Source: post=abcd0123, section=architectures-of-the-past\n- remove: \"anything that feels outdated\"\n\nTrajectory: no tool calls.\n\nFinal reply:\n```json\n{\n  \"target\": \"Architectures of the Past\",\n  \"needs_clarification\": \"remove target is vague, which specific content should be cut?\"\n}\n```"
+    },
+    {
+      "id": "starter_task",
+      "label": "Starter \u00b7 <task>",
+      "path": "backend/prompts/pex/starters/rework.py (TEMPLATE)",
+      "status": "applicable",
+      "content": "# single-section scope\n\"Rework the {target_section} section of \\\"{post_title}\\\". Substantive revision, not surface polish: restructure the argument, address the user's critique, weave in the suggestions, and preserve the author's voice. End once the updated section has been saved.\"\n\n# whole-post scope\n\"Rework \\\"{post_title}\\\" section by section. For each section, apply the user's critique and suggestions as substantive revision while preserving voice. End once every in-scope section has been saved.\""
+    },
+    {
+      "id": "starter_content",
+      "label": "Starter \u00b7 <section_content>",
+      "path": "backend/prompts/pex/starters/rework.py (content block)",
+      "status": "applicable",
+      "content": "# single-section scope\n<section_content>\n{section_markdown}\n</section_content>\n\n# whole-post scope: show first section, skill calls read_section for others\n<section_content>\n{first_section_markdown}\n</section_content>"
+    },
+    {
+      "id": "starter_resolved",
+      "label": "Starter \u00b7 <resolved_details>",
+      "path": "backend/prompts/pex/starters/rework.py (resolved block)",
+      "status": "applicable",
+      "content": "<resolved_details>\nSource: post=abcd0123, section=the-need-for-data\nScope: current_section\nChanges: \"Flesh out the customer story.\"\nSuggestions: []\nRemove: (unfilled)\n</resolved_details>"
+    },
+    {
+      "id": "policy",
+      "label": "Policy function",
+      "path": "backend/modules/policies/revise.py :: rework_policy",
+      "status": "applicable",
+      "content": "def rework_policy(self, flow, state, context, tools):\n    if not flow.slots['source'].check_if_filled():\n        self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})\n        return DisplayFrame(flow.name())\n\n    post_id, sec_id = self._resolve_source_ids(flow, state, tools)\n\n    text, tool_log = self.llm_execute(flow, state, context, tools)\n    parsed = self.engineer.apply_guardrails(text) or {}\n\n    if parsed.get('fallback'):\n        next_flow = parsed['fallback']\n        self.flow_stack.fallback(next_flow)\n        state.keep_going = True\n        return DisplayFrame(flow.name(),\n            thoughts=parsed.get('reason', ''),\n            metadata={'fallback': next_flow})\n\n    if parsed.get('needs_clarification'):\n        self.ambiguity.declare('confirmation',\n            observation=parsed['needs_clarification'])\n        return DisplayFrame(flow.name())\n\n    saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')\n    if not saved:\n        return self.error_frame(flow, 'failed_to_save',\n            thoughts='revise_content did not land.',\n            code=text,\n            failed_tool='revise_content')\n\n    flow.status = 'Completed'\n    frame = DisplayFrame(flow.name(),\n        thoughts=parsed.get('after_summary', ''),\n        metadata={'post_id': post_id, 'sec_id': sec_id})\n    frame.add_block({'type': 'diff', 'data': parsed})\n    return frame"
+    },
+    {
+      "id": "flow_config",
+      "label": "Flow class config",
+      "path": "backend/components/flow_stack/flows.py :: ReworkFlow",
+      "status": "applicable",
+      "content": "class ReworkFlow(ReviseParentFlow):\n  def __init__(self):\n    super().__init__()\n    self.flow_type = 'rework'\n    self.dax = '{006}'\n    self.goal = 'major revision of draft content; restructures arguments, replaces weak sections, addresses reviewer comments. Scope can go across the whole post, or an entire section. For smaller changes, use polish'\n    self.slots = {\n      'source': SourceSlot(1, 'sec'),\n      'remove': RemovalSlot(priority='optional'),\n      'changes': FreeTextSlot(priority='elective'),\n      'suggestions': ChecklistSlot(priority='elective'),\n    }\n    self.tools = ['read_metadata', 'read_section', 'revise_content', 'insert_section', 'remove_content']"
+    }
+  ]
+}

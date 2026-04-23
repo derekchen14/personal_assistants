@@ -6,8 +6,8 @@ The per-flow content (instructions/rules/slots/examples) lives in backend/prompt
 
   <role>...</role>
   <task>
-    ## Background      — shared constant + optional ### Active Post sub-section
-    ## Instructions    — per-flow
+    ## Background      — shared constant
+    ## Instructions    — per-flow (first paragraph is the per-flow intro)
     ## Rules           — per-flow
   </task>
   <slot_schema>
@@ -17,12 +17,13 @@ The per-flow content (instructions/rules/slots/examples) lives in backend/prompt
       ### Slot Types   — filtered to slot types the flow uses
   </slot_schema>
   <example_scenarios>
-    ...per-flow <positive_example>/<edge_case> blocks...
+    ...per-flow <positive_example>/<edge_case> blocks. Each carries
+    `## Conversation History`, `## Input` (active post), and `## Output`.
   </example_scenarios>
   Reminder: reply with JSON only.
   <current_scenario>
     ## Conversation History
-    ## Input or Other Context
+    ## Input            — `Active post: <title>` or `Active post: None`
   </current_scenario>
 
 Output shape is `{"reasoning": "...", "slots": {name: value}}`, enforced by a JSON schema
@@ -34,23 +35,32 @@ from backend.prompts.nlu import get_prompt
 
 
 ROLE = (
-    'You are the slot-filling component of a blog-writing assistant. Extract slot values from the current '
-    'user utterance and conversation context for the flow named in `## {Flow} Slots`.'
+    'You are operating as the slot-filling component of a blog-writing assistant (named Hugo). Extract slot values '
+    'from the current user utterance as part of the fuller conversation history for the flow described below.'
 )
 
 BACKGROUND_STATIC = (
     '## Background\n\n'
-    'Hugo is a blog-writing assistant. Each user turn is routed to a flow (`outline`, `refine`, `create`,'
-    ' `compose`, `inspect`, `publish`, ...) and every flow declares a schema of named slots. Your job on '
-    'this turn is to populate those slots from the current utterance plus recent conversation history.\n\n'
-    'Hugo entities are domain-specific: **post** (a blog article), **sec** (a section within a post), '
-    '**snip** (a shorter snippet — tweet, comment), and **chl** (a publishing channel: Substack, Medium, '
-    'Twitter/X, LinkedIn, blog).\n\n**Unfilled slots**\n'
-    'Use `null` whenever a slot value is not present or not deducible. Inside entity dicts (`source`, '
-    '`target`, `removal`, `channel`), set individual entity-keys to `null` rather than omitting them.\n\n'
-    '**Precedence**\n'
-    'Flow-specific content in `## Instructions`, `## Rules`, and `## {Flow} Slots` overrides anything'
-    ' in `## Slot Reference`. When guidance conflicts, trust the flow-specific side.'
+    'An upstream component decided to route the current user turn to one of Hugo\'s **flows** — '
+    'units of work that share a goal (drafting a post, releasing it, browsing notes, etc.). '
+    'Every flow declares a schema of named **slots** that capture what the agent needs to act.\n'
+    'Given the recent conversation history, slot-filling is responsible for finding values for each '
+    'slot in the active flow. The shape of a value is set by the slot\'s type — e.g. `SourceSlot` '
+    'returns `{post, sec, snip, chl}`; `CategorySlot` is choosing a single option from a finite set; '
+    '`ChecklistSlot` returns a list of items.\n'
+    'The purpose of slot-filling is to ground the conversation to the artifacts and ideas in the user\'s '
+    'mind. Populated slots allow the policy to decide whether to act immediately, gather more info, or ask '
+    'for clarification. Missing slots trigger clarification; missing electives may prompt defaults; filled '
+    'slots feed into tool calls and response wording. Thus, a wrong fill is worse than a null — fabricating '
+    'values you cannot justify causes downstream actions on the wrong data. NEVER make up values.\n\n'
+    'Additional notes:\n'
+    '  - **Key entities** are domain-specific: `post` (a blog article), `sec` (a section within a post), '
+    '`snip` (a shorter snippet — tweet, comment), and `chl` (a publishing channel: Substack, Medium, '
+    'Twitter/X, LinkedIn, blog); often used to for the "source" slot. \n'
+    '  - **Unfilled slots**: Use `null` whenever a slot value is not present or not deducible. Inside '
+    'entity dicts, set individual entity-values to `null` rather than omitting them when missing.\n'
+    '  - **Precedence**: Flow-specific content in `## Instructions`, `## Rules`, and `## {Flow} Slots` '
+    'overrides anything in `## Slot Reference`. When guidance conflicts, trust the flow-specific side.'
 )
 
 PRIORITIES_DOC = (
@@ -144,8 +154,11 @@ SLOT_TYPE_GUIDES = {
     ),
     'ChannelSlot': (
         '#### ChannelSlot\n'
-        'A publishing destination. Return the channel name as a dict with `chl` set to the channel '
-        '(e.g. `{"chl": "Substack"}`). Common values: Substack, Medium, Twitter/X, LinkedIn, blog.'
+        'A publishing destination. Always returns a list of channel name strings: `["Substack", ...]`. '
+        'A single channel returns a one-item list (`["Substack"]`); multiple channels return multiple '
+        'items; no channel mentioned returns an empty list `[]`. Common values: Substack, Medium, '
+        'Twitter/X, LinkedIn, blog (the user\'s primary, MoreThanOneTurn). Map misspellings and '
+        'implied references to the canonical channel name.'
     ),
     'ImageSlot': (
         '#### ImageSlot\n'
@@ -195,14 +208,10 @@ def _filter_slot_sections(slots_md:str, skip_names:set) -> str:
     return '\n'.join(out_lines).strip()
 
 
-def _render_active_post(active_post:dict) -> str:
-    return (
-        '### Active Post\n\n'
-        f"Title: **{active_post['title']}**  \n"
-        f"ID: `{active_post['id']}`\n\n"
-        'Treat this as the default `source` for any grounding-seeking slot in this flow. Only override '
-        "when the user's utterance explicitly references a different post."
-    )
+def _render_input(active_post:dict|None) -> str:
+    if active_post:
+        return f"## Input\n\nActive post: **{active_post['title']}** (id: `{active_post['id']}`)"
+    return '## Input\n\nActive post: None'
 
 
 def build_slot_filling_prompt(flow_name:str, flow, convo_history:str,
@@ -226,20 +235,16 @@ def build_slot_filling_prompt(flow_name:str, flow, convo_history:str,
     else:
         slots_md = _procedural_slots_md(flow, skip_names)
 
-    background_parts = [BACKGROUND_STATIC]
-    if active_post:
-        background_parts.append(_render_active_post(active_post))
-    background = '\n\n'.join(background_parts)
-
     flow_heading = f'{flow_name.title()} Slots'
-    task_body = f'{background}\n\n## Instructions\n\n{instructions}\n\n## Rules\n\n{rules}'
+    task_body = f'{BACKGROUND_STATIC}\n\n## Instructions\n\n{instructions}\n\n## Rules\n\n{rules}'
     slot_schema_body = (
         f'## {flow_heading}\n\n{slots_md}\n\n'
         f'## Slot Reference\n\n{PRIORITIES_DOC}\n\n### Slot Types\n\n{type_guides}'
     )
 
     convo_block = convo_history.strip() if convo_history else '(empty)'
-    current_scenario = f'## Conversation History\n\n{convo_block}'
+    input_block = _render_input(active_post)
+    current_scenario = f'## Conversation History\n\n{convo_block}\n\n{input_block}'
 
     parts = [
         f'<role>{ROLE}</role>',

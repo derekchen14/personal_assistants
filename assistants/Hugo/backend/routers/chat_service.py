@@ -325,6 +325,16 @@ async def chat(websocket:WebSocket):
                 try:
                     result = await asyncio.to_thread(agent.take_turn, user_text, dax, payload)
                     frame = result.get('frame') or {}
+                    # Phase-2 logging: WS handoff snapshot — what we're about
+                    # to put on the wire to the frontend.
+                    print(
+                        f'WS-HANDOFF: msg_len={len(result.get("message", ""))} '
+                        f'panel={result.get("panel")!r} '
+                        f'frame_origin={frame.get("origin")!r} '
+                        f'frame_blocks={[b.get("type") for b in (frame.get("blocks") or [])]} '
+                        f'frame_metadata_keys={sorted((frame.get("metadata") or {}).keys())}',
+                        flush=True,
+                    )
                     if frame.get('origin') == 'create' and (frame.get('data') or {}).get('status') == 'note':
                         all_items = PostService().list_preview().get('items', [])
                         if all_items:

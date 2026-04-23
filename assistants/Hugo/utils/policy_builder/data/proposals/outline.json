@@ -1,0 +1,166 @@
+{
+  "flow": "outline",
+  "parent_intent": "Draft",
+  "batch": 1,
+  "round": 1,
+  "version": 2,
+  "notes": "Outline exercises TWO policy paths \u2014 `propose` mode (3 candidate outlines, selection block) and `direct` mode (save a chosen outline). DPs whose answer cleanly splits by mode use a structured `proposal` object: `{\"propose\": \"...\", \"direct\": \"...\"}`. DPs whose content mixes mode-specific + shared (DP-4, DP-10) stay as plain strings so the cross-mode commentary stays in one place. The app renders `typeof proposal === 'object'` as two stacked textareas labelled per mode; strings render as one textarea.",
+  "schema": {
+    "proposal_type": "string | object",
+    "object_keys": ["propose", "direct"],
+    "applies_when": "the flow has multiple policy modes whose answers diverge cleanly"
+  },
+  "decision_points": {
+    "DP-1": {
+      "section": "Prompt content",
+      "title": "Flow-specific must/never rules",
+      "question": "0\u20133 inviolable rules unique to this flow, pinned in the skill template.",
+      "proposal": "1) In propose mode, MUST NOT call `generate_outline` (user hasn't chosen yet); emit exactly 3 options as markdown text. 2) In direct mode, MUST call `generate_outline` exactly once after composing the outline. 3) Vary the angles across propose-mode options (e.g., listicle vs. narrative vs. how-to) \u2014 three near-identical outlines defeat the purpose of propose.",
+      "reasoning": "The propose/direct tool split is the bug hot spot: policy has a detection fallback (lines 86\u201390) but the skill must enforce. Varying angles is the quality gate on propose."
+    },
+    "DP-2": {
+      "section": "Prompt content",
+      "title": "Skill intro paragraph",
+      "question": "The one- or two-sentence framing that opens the skill file.",
+      "proposal": "This skill describes how to generate a fresh outline for a post. You operate in one of two modes, signaled by the `stage` field in `<resolved_details>`: `propose` means produce 3 candidate outlines as text for the user to pick from; `direct` means save the chosen outline via `generate_outline`.",
+      "reasoning": "Opening must make the bimodal nature unmissable since the mode gates the tool call. The `stage` field is the unambiguous signal."
+    },
+    "DP-3": {
+      "section": "Prompt content",
+      "title": "Process steps",
+      "question": "Numbered happy-path sequence for `## Process`.",
+      "proposal": {
+        "propose": "1. Read `stage='propose'` from `<resolved_details>`.\n2. Optionally call `find_posts(query=<topic>)` ONCE to scan for existing posts on the topic (vary angles against what's already been written).\n3. Emit exactly 3 outline options as markdown. Use the strict format `### Option N` + `## <section title>` + 1\u20132 sentence description per section. 4\u20137 sections per option. No trailing commentary.\n4. DO NOT call `generate_outline`. End the turn with text.",
+        "direct": "1. Read `stage='direct'` from `<resolved_details>`.\n2. Read the section list from `<resolved_details>` (either user-named sections or the chosen option's sections).\n3. Draft bullets per section honoring the `depth` slot: depth=1 \u2192 flat bullets; depth=2 \u2192 `### Sub-section` + bullets; depth=3 \u2192 `### Sub-section` + `- bullet` + `  * sub-bullet` (per UA-4).\n4. Call `generate_outline(post_id, content=<markdown outline>)` to save. End the turn."
+      },
+      "reasoning": "Branch-on-stage is the clearest workflow for a bimodal flow. Each mode has independent steps; the direct branch wires the `depth` slot which inventory flagged as unused (gap #2)."
+    },
+    "DP-4": {
+      "section": "Prompt content",
+      "title": "Tool usage hints",
+      "question": "Per task-specific tool, 1\u20132 flow-specific usage hints.",
+      "proposal": "- `find_posts(query)` \u2014 optional in BOTH modes, but AT MOST ONCE. Use to vary angles (propose) or to ground against prior work (direct). If it returns nothing, proceed without it.\n- `generate_outline(post_id, content)` \u2014 direct mode only, exactly once at the end of the turn. Pass the full markdown outline; the tool replaces any existing outline.\n- `read_metadata(post_id)` \u2014 do not call; post context is pre-resolved in `<resolved_details>`.",
+      "reasoning": "String-shaped because the at-most-once cap on `find_posts` spans both modes; splitting would duplicate that cross-mode invariant. Explicit `read_metadata` ban prevents the redundant call pattern."
+    },
+    "DP-5": {
+      "section": "Starter",
+      "title": "Task framing sentence",
+      "question": "The imperative sentence inside `<task>`.",
+      "proposal": {
+        "propose": "Propose 3 outline options for \"{title}\" on the topic \"{topic}\". Vary the angle across options. Emit each as markdown per the format; do not save. End once all 3 options have been emitted.",
+        "direct": "Generate an outline for \"{title}\" using the section list below. Compose bullets per section honoring the requested depth, then call `generate_outline` to save. End once the outline has been saved."
+      },
+      "reasoning": "Two task strings, one per mode, selected by the starter module based on `flow.stage`. Both include the termination clause per UA convention."
+    },
+    "DP-6": {
+      "section": "Starter",
+      "title": "Content tag choice",
+      "question": "Which of `<post_content>`, `<section_content>`, `<line_snippet>`, `<channel_content>`.",
+      "proposal": "<post_content>",
+      "reasoning": "Outline targets the post entity in both modes. In propose mode the tag wraps the topic + any existing outline (empty is fine). In direct mode it wraps the chosen section list."
+    },
+    "DP-7": {
+      "section": "Starter",
+      "title": "Preload content",
+      "question": "What goes inside the content tag.",
+      "proposal": {
+        "propose": "Topic, post title, and an empty or placeholder outline structure. Format: `<topic: User Simulators for RL training>\\n<existing_sections: none>`.",
+        "direct": "Section list as markdown headings without bullets (the skill fills them), plus the `depth` slot value. Format: `<depth: 1>\\n## Motivation\\n## Architecture\\n## Evaluation`."
+      },
+      "reasoning": "Propose needs topic context for angle variation; direct needs section names + depth hint. Keeping payloads small (under 500 tokens) avoids burning budget on an empty post."
+    },
+    "DP-8": {
+      "section": "Few-shot",
+      "title": "Scenario coverage",
+      "question": "Which user-phrasing paths to exemplify (typically 3 per skill).",
+      "proposal": "(a) propose-mode on a fresh post with a topic and no existing outline \u2014 3 options with distinct angles; (b) direct-mode with user-named sections (Motivation / Architecture / Evaluation) and depth=1; (c) direct-mode via propose-then-pick: `proposals` slot filled with user's choice, depth=2 with sub-sections.",
+      "reasoning": "Covers both eval substeps (02a propose, 02b direct-via-pick) plus the standalone direct path (step 2). The depth=2 case exercises the UA-4 scheme that DP-3 encoded. Scenarios are a portfolio, not a per-mode choice \u2014 one list is appropriate."
+    },
+    "DP-9": {
+      "section": "Few-shot",
+      "title": "Example content (topic + post state)",
+      "question": "Concrete post topic, section names, and content.",
+      "proposal": "Topic: \"User Simulators for training RL agents\" (post_id=abcd0123). Example sections: Motivation / Architecture / Evaluation. Eval uses the same topic but different sections (Motivation / Process / Ideas / Takeaways) \u2014 keep divergence to avoid contamination. Propose-mode example shows 3 distinct angle presentations: (1) academic survey, (2) engineering walkthrough, (3) practitioner checklist.",
+      "reasoning": "Consistent with the Batch-1 corpus. Distinct angles are the whole point of propose mode \u2014 the example must demonstrate variance, not just three outlines with the same headings."
+    },
+    "DP-10": {
+      "section": "Error handling",
+      "title": "Likely errors and ambiguities encountered",
+      "question": "Realistic (violation \u00d7 recovery) and (ambiguity level \u00d7 trigger) set.",
+      "proposal": "Errors: (a) LLM called `generate_outline` in propose mode \u2192 policy catches (line 86) and reclassifies as direct success, no user-visible error. (b) LLM emitted fewer than 3 options or malformed markdown in propose \u2192 `parse_failure` error frame (candidate parsing fails in policy line 92). (c) `generate_outline` fails in direct mode after 1 retry \u2192 `tool_error` frame. Ambiguities: (d) `source` slot not filled \u2192 `partial` (shared across modes). (e) `topic` not extractable from conversation AND no `sections` \u2192 `specific`, `missing_slot='topic'` (propose path only; direct needs sections already).",
+      "reasoning": "String-shaped because ambiguity (d) is shared across modes and (e) straddles mode-entry logic \u2014 splitting would obscure which errors are mode-specific vs. flow-wide. Mirrors current behavior in outline_policy plus the AD-6 error-frame contract."
+    },
+    "DP-11": {
+      "section": "Error handling",
+      "title": "Fallback flow",
+      "question": "Does another flow take over on unworkable state?",
+      "proposal": "No fallback. Outline may NOT stack on itself (AD-3). On unrecoverable state, emit an error frame and let the user retry with clearer input.",
+      "reasoning": "Outline is already the base outline-producing flow; nothing more fundamental to stack on."
+    },
+    "DP-12": {
+      "section": "Error handling",
+      "title": "Retry strategy per tool",
+      "question": "Per tool, retry count on transient failure.",
+      "proposal": "`generate_outline` \u2192 retry once via `BasePolicy.retry_tool`, then `execution_error('tool_error', failed_tool='generate_outline')`. `find_posts` \u2192 no retry (optional tool; proceed without results on failure).",
+      "reasoning": "Standard 1-retry on the save path. `find_posts` is best-effort; a flake shouldn't stall the turn."
+    },
+    "DP-13": {
+      "section": "Policy logic",
+      "title": "Optional slot defaults (AD-8)",
+      "question": "For each optional slot, does it have a sensible default?",
+      "proposal": "`depth` (LevelSlot, optional, threshold=1): default to 1 (flat bullets). Per AD-8, commit with default and don't ask. `topic`, `sections`, `proposals`: elective (not optional) \u2014 the elective rule requires at least one and determines propose vs. direct mode, so no default applies.",
+      "reasoning": "depth=1 is the canonical starting outline shape; asking about depth is friction. Elective slots are definitional (flow mode switch), not defaultable."
+    },
+    "DP-14": {
+      "section": "Policy logic",
+      "title": "Stack-on triggers",
+      "question": "Under what condition does this flow push another flow onto the stack?",
+      "proposal": "None. Outline is the producer of outlines; nothing prerequisites it. Per AD-3, outline MUST NOT stack on itself.",
+      "reasoning": "Self-recursion is gated by the `sections`-filled branch, not `stackon`. This is a documented invariant (AD-3)."
+    },
+    "DP-15": {
+      "section": "Policy logic",
+      "title": "Scratchpad contract",
+      "question": "Does this flow write or read scratchpad?",
+      "proposal": "No scratchpad interaction. Propose mode writes candidates to `flow.slots['proposals'].options` (in-flow state, not scratchpad); the recursion picks them up on the same turn or the next selection turn.",
+      "reasoning": "Propose-to-direct handoff is a same-flow thing; the scratchpad is for cross-flow findings (per AD-1). ProposalSlot is the right channel."
+    },
+    "DP-16": {
+      "section": "Policy logic",
+      "title": "Frame output spec (metadata keys + block types)",
+      "question": "What metadata keys does the `DisplayFrame` carry, and what block types?",
+      "proposal": {
+        "propose": "Success: `origin='outline'`; `metadata={stage: 'propose', option_count: 3}`; blocks = 1 `selection` block listing the 3 options. Error: `origin='outline'`; `metadata={violation: 'parse_failure'}`; blocks empty; `code` = the raw LLM markdown that failed to parse.",
+        "direct": "Success: `origin='outline'`; `metadata={stage: 'direct', post_id, post_title, section_ids}`; blocks = 1 `card` block with full post content. Error: `origin='outline'`; `metadata={violation: 'tool_error', failed_tool: 'generate_outline'}`; blocks empty."
+      },
+      "reasoning": "Structured per mode because success block types differ (`selection` vs. `card`) and error violations differ (`parse_failure` on propose parsing vs. `tool_error` on direct save). `stage` in metadata tells RES which template path to render."
+    },
+    "DP-17": {
+      "section": "Policy logic",
+      "title": "Final reply shape",
+      "question": "Plain prose, structured JSON, or card-only?",
+      "proposal": {
+        "propose": "Plain prose, 1 sentence pointing the user at the options (\"Here are three ways to approach this \u2014 pick one.\"). The selection block does the work.",
+        "direct": "Plain prose, 1\u20132 sentences noting what was saved (\"Saved a 4-section outline for <title>.\"). Card block carries the structured data."
+      },
+      "reasoning": "Persona compliance (1\u20132 sentence max) applies to both; the text content is mode-specific because the blocks differ."
+    },
+    "DP-18": {
+      "section": "Performance",
+      "title": "Model tier override",
+      "question": "Opus over Sonnet default?",
+      "proposal": "Sonnet (default) for both modes. Propose-mode quality is about angle diversity, not prose polish \u2014 Sonnet handles angle selection well enough. Direct mode is a structured save, also Sonnet-appropriate.",
+      "reasoning": "Neither mode is prose-quality-gated. Opus reserved for polish/rework per DP-18 precedent. Single answer because both modes land on the same tier."
+    },
+    "DP-19": {
+      "section": "Performance",
+      "title": "max_response_tokens override",
+      "question": "Tighten below 4096 default?",
+      "proposal": {
+        "propose": "3072 \u2014 3 options \u00d7 ~7 sections \u00d7 2 sentences \u2248 2000 tokens of markdown; headroom for longer angle descriptions.",
+        "direct": "2048 \u2014 matches refine; outline size is bounded by ~20 sections."
+      },
+      "reasoning": "Propose is the only flow in Batch 1 that generates 3x the content of direct flows. Different caps per mode avoid over-paying for the cheaper path."
+    }
+  }
+}

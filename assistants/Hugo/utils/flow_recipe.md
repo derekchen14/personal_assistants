@@ -164,6 +164,21 @@ def fill_draft_template(template, flow, frame):
 
 `skip_naturalize: True` when the text is already human-phrased (brainstorm output, outline proposals). Leave it False when the template is a template literal — RES will rewrite through `engineer.call` with the naturalize prompt.
 
+## Coding conventions
+
+These rules apply to every flow touchpoint — NLU slot defs, policy methods, skill files, RES templates. They were distilled while writing the six exemplar policies; the full policy-layer list is in `utils/policy_builder/policy_spec.md § Policy-writing conventions`. The subset below is universal enough to bake in before you write any new flow code.
+
+1. **Don't defend deterministic code.** Internal tools have known contracts. Access keys directly (`flow_metadata['outline']`, `slots['source'].values[0]`); let missing keys or `_success=False` crash so tests catch the bug. See `CLAUDE.md § "Don't defensively access known-present values"` for the canonical list of where this applies.
+2. **No defaults that hide errors.** `text or ''`, `parsed or {}`, `isinstance(parsed, dict)` mask upstream bugs. If a call can legitimately return empty, branch on the value — don't coerce.
+3. **Slot priorities are definitional.** Required = must be filled. Elective = exactly one of ≥2 options must be filled. Optional = nice-to-have. `flow.is_filled()` encodes both the required check and the at-least-one-elective check; don't re-derive them in policies or NLU prompts. A single elective is a flow-design bug — promote it to required or make it optional.
+4. **`DisplayFrame` conventions.** `origin` is always `flow.name()` for frames a policy builds (or `'system'` for the `Agent.take_turn` crash path). Error-ness lives in `metadata['violation']`, not in `origin`. `code` holds raw payloads (tool response, failing JSON); `thoughts` holds descriptive prose. No em-dashes in `thoughts` — it's user-facing.
+5. **`ambiguity.declare` uses `observation`.** `declare(level, observation=..., metadata=...)` — human-readable text goes in `observation`; metadata is classification only (`missing_entity`, `missing_slot`, `missing_reference`, `duplicate_title`). Don't stuff questions into metadata.
+6. **Never invent new keys without approval.** Hard rule across metadata, `extra_resolved`, `frame.blocks[i].data`, scratchpad payloads, tool schema args. If what you want to pass doesn't fit an existing key, surface the design question first. See `CLAUDE.md § "New components or concepts"`.
+7. **Standard variable names.** `flow_metadata` for `tools('read_metadata', ...)`, `text, tool_log` for `llm_execute`, `parsed` for `apply_guardrails`, `saved, _` for `tool_succeeded`. Matches `CLAUDE.md § Variable naming`.
+8. **Single return at the end of a policy.** Early returns only for major errors (`partial` / `general` ambiguity — top-level grounding failures). Every other outcome assigns to `frame` and falls through to one `return frame`.
+
+The violation vocabulary (8 categories: `failed_to_save`, `scope_mismatch`, `missing_reference`, `parse_failure`, `empty_output`, `invalid_input`, `conflict`, `tool_error`) is enumerated in `policy_spec.md § Violation vocabulary`. Use those exact strings when setting `metadata['violation']` — don't coin new ones.
+
 ## Verification checklist
 
 When the flow is wired up:

@@ -2,11 +2,16 @@
 
 Each `<intent>_slots.py` exports a module-level `PROMPTS: dict[str, dict[str, str]]`
 keyed by flow_name. Each entry has four authored fields:
-  - 'instructions'  markdown body for `## Instructions`
+  - 'instructions'  markdown body for `## Instructions`. By convention the first
+                     paragraph is a per-flow intro (e.g. "The Brainstorm Flow is
+                     called when…"); the rest is per-slot extraction guidance.
   - 'rules'         markdown body for `## Rules`
   - 'slots'         markdown body for `## {Flow} Slots` (per-slot `### name (priority)`
                      blocks; empty string triggers procedural rendering from `flow.slots`)
   - 'examples'      XML-tagged `<positive_example>` / `<edge_case>` blocks
+
+The `## Background` section is shared across all flows (see
+`backend/prompts/for_nlu.py:BACKGROUND_STATIC`) — flows do not author background.
 """
 
 from __future__ import annotations

@@ -8,7 +8,7 @@ Hierarchy:
   BaseSlot
   ├── GroupSlot            (multiple values in a list)
   │   ├── SourceSlot       (existing entities: post, section, snippet)
-  │   │   ├── TargetSlot   (new entities being created)
+  │   │   ├── TargetSlot   (new entities being created or found)
   │   │   ├── RemovalSlot  (entities being removed)
   │   │   └── ChannelSlot  (publishing destination)       [domain-specific]
   │   ├── FreeTextSlot     (open-ended text values)
@@ -117,7 +117,7 @@ class SourceSlot(GroupSlot):
   def json_schema(self):
     return {'type': ['array', 'null'], 'items': self._ENTITY_SCHEMA}
 
-  def add_one(self, post, sec='', snip='', chl='', ver=False):
+  def add_one(self, post='', sec='', snip='', chl='', ver=False):
     key = f"{post}-{sec}"
     alt_key = f"{self.active_post}-{sec}"
     if key in self._keys:
@@ -171,10 +171,16 @@ class SourceSlot(GroupSlot):
 
 
 class TargetSlot(SourceSlot):
-  """New entities being created (new post title, new section)."""
+  """New entities being created (new post title, new section, or new snippet citation target)."""
   def __init__(self, min_size, entity_part, priority='required'):
     super().__init__(min_size, entity_part, priority)
     self.slot_type = 'target'
+
+  def check_if_filled(self):
+    """A target is considered filled if any entity part (post/sec/snip/chl) is present."""
+    valid = [e for e in self.values if any(e.get(k) for k in ('post', 'sec', 'snip', 'chl'))]
+    self.filled = len(valid) >= self.size
+    return self.filled
 
 
 class RemovalSlot(SourceSlot):
@@ -503,11 +509,23 @@ class RangeSlot(BaseSlot):
 # ── Domain-Specific Slots (Hugo) ─────────────────────────────────────────
 
 class ChannelSlot(SourceSlot):
-  """Identifies a publishing channel destination."""
+  """Identifies a publishing channel destination. Stores values as plain channel strings."""
   def __init__(self, priority='required'):
     super().__init__(min_size=1, entity_part='chl', priority=priority)
     self.slot_type = 'channel'
     self.purpose = 'a publishing channel'
+
+  def json_schema(self):
+    return {'type': ['array', 'null'], 'items': {'type': 'string'}}
+
+  def add_one(self, chl='', **_ignored):
+    if chl and chl not in self.values:
+      self.values.append(chl)
+    self.check_if_filled()
+
+  def check_if_filled(self):
+    self.filled = len(self.values) >= self.size
+    return self.filled
 
 
 class ImageSlot(BaseSlot):

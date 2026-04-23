@@ -1,0 +1,93 @@
+{
+  "flow": "add",
+  "parent_intent": "Draft",
+  "round": 2,
+  "version": 1,
+  "notes": "Add inserts detail into existing sections. No rules in DP-1 per Round 1. Tool roster drops `insert_content` in favor of `revise_content`. Fallbacks are refine (outline-edit intent) and rework (prose-expansion intent); no fallback to outline.",
+  "sections": [
+    {
+      "id": "intent_prompt",
+      "label": "Intent prompt (Draft)",
+      "path": "backend/prompts/pex/sys_prompts.py::DRAFT",
+      "status": "applicable",
+      "content": "You are currently working on Draft tasks, which encompasses generating outlines, refining them, and composing prose from those outlines in order to create a *draft* of new blog posts.\n\n## Background\n\nA post outline contains a title, a status (draft / note / published), and an ordered list of sections. Each section has a subtitle and content, either outline bullets or prose paragraphs.\n\nOutlines follow markdown down to depth of four levels:\n- Level 0: `# Post Title`  (not editable)\n- Level 1: `## Section Subtitle`\n- Level 2: `### Sub-section`\n- Level 3: `- bullet point`\n- Level 4: `  * sub-bullet`\n\nMost outlines have Level 1 + Level 3. Add Level 2 only when the section needs explicit sub-structure; use Level 4 only when a bullet genuinely needs supporting detail underneath.\n\nOutline sections follow the depth scheme above. Prose sections replace levels 2-4 with standard paragraphs separated by blank lines. Both are markdown. The only difference is bullet-structured content vs. paragraph-structured content. Never mix prose and bullets inside the same section unless the skill explicitly asks you to.\n\nPost IDs take the form of 8-character lowercase hex strings. Section IDs take the form of slugs. Post names and section names are proper case natural language text."
+    },
+    {
+      "id": "skill_intro",
+      "label": "Skill \u00b7 intro",
+      "path": "backend/prompts/pex/skills/add.md",
+      "status": "applicable",
+      "content": "This skill adds in-depth content to existing sections of a blog post. When the content is in outline form, the additional content is sub-sections or sub-bullets that drill deeper into a section or bullet point. When the content is in prose, the additional content could be more in-depth analysis, additional examples to illustrate a point, or an image placed at a specific position within a section."
+    },
+    {
+      "id": "skill_process",
+      "label": "Skill \u00b7 Process",
+      "path": "backend/prompts/pex/skills/add.md :: ## Process",
+      "status": "applicable",
+      "content": "## Process\n\n1. Read the user's guidance from the `<resolved_details>` block. Refer to `<recent_conversation>` for context. Only act on the latest utterance; prior turns have been addressed, so NEVER act on them.\n\n2. Decide the shape of the addition from what is filled:\n   a. When `points` is filled, add a list of bullet notes to a single section.\n   b. When `additions` is filled, apply the targeted changes it describes. The difference between `points` and `additions` is that `additions` provides more targeted guidance, so prefer `additions` over `points`. The changes from `additions` do not have to span multiple sections; if every entry targets one section, only that section needs editing.\n   c. When `image` is filled, insert an image into a section.\n\n3. For each target section, call `read_section(post_id, sec_id)` before editing. You cannot place content sensibly without knowing what surrounds it.\n\n4. Carry out the changes:\n   a. Use `revise_content(post_id, sec_id, content)` for bullet notes and prose additions. Pass the section's existing content plus the new material; the tool replaces content wholesale.\n   b. Use `insert_media(post_id, sec_id, image_type, description, position)` for images.\n   c. When the position is unfilled, default to the end of the section.\n\n5. Follow the Draft intent's depth scheme for bullet content. Top-level bullets use `- bullet` at Level 3. Sub-bullets use `  * sub-bullet` at Level 4."
+    },
+    {
+      "id": "skill_handling_ambiguity_and_errors",
+      "label": "Skill \u00b7 Handling Ambiguity and Errors",
+      "path": "backend/prompts/pex/skills/add.md :: ## Handling Ambiguity and Errors",
+      "status": "applicable",
+      "content": "## Handling Ambiguity and Errors\n\nIf a named section does not exist on the post, call `handle_ambiguity(level='specific', metadata={'missing_reference': <section_name>})`.\n\nIf any requested change is vague enough that placing the addition would be a guess (for instance, a request to \"add something about timing\" without specifying what), call `handle_ambiguity(level='confirmation')`. Vagueness is a confirmation-level ambiguity regardless of which value it came from.\n\nIf the user's request is really for a brand-new top-level section, emit a fallback to `refine` so the outline flow can take over. Inserting a new top-level section is an outline-phase concern."
+    },
+    {
+      "id": "skill_tools",
+      "label": "Skill \u00b7 Tools",
+      "path": "backend/prompts/pex/skills/add.md :: ## Tools",
+      "status": "applicable",
+      "content": "## Tools\n\n### Task-specific tools\n\n- `read_section(post_id, sec_id)` required before every edit. The skill should call this once per target section and use the returned content to decide placement of the new material. It is a fallback helper here, not a primary tool; the primary work is the save.\n- `revise_content(post_id, sec_id, content)` is the primary save. Pass the section's full content with the additions woven in; the tool replaces the section content wholesale.\n- `insert_media(post_id, sec_id, image_type, description, position)` adds an image. `image_type` is typically `hero` or `figure`. `description` is what the image shows and also serves as alt text.\n\n### General tools\n\n- `execution_error(violation, message)` for hard failures after retries are exhausted or for malformed input.\n- `handle_ambiguity(level, metadata)` for cases where a requested change is genuinely vague.\n- `manage_memory(action, key, value)` to read or write session scratchpad and user preferences.\n- `read_flow_stack(action)` to see what other edits have been made earlier in the session so the additions land consistently with them."
+    },
+    {
+      "id": "skill_output",
+      "label": "Skill \u00b7 Output",
+      "path": "backend/prompts/pex/skills/add.md :: ## Output",
+      "status": "applicable",
+      "content": "## Output\n\nA short JSON object summarizing what was added. When the additions touched multiple sections, group them under `sections`:\n\n```json\n{\n  \"post_id\": \"...\",\n  \"sections\": [\n    {\"sec_id\": \"architectures-of-the-past\", \"added\": [\"bullet on RNN world models\", \"bullet on memory-augmented networks\"]},\n    {\"sec_id\": \"recent-innovations\", \"added\": [\"hero image showing the architecture lineage\"]}\n  ]\n}\n```"
+    },
+    {
+      "id": "skill_fewshot",
+      "label": "Skill \u00b7 Few-shot examples",
+      "path": "backend/prompts/pex/skills/add.md :: ## Few-shot examples",
+      "status": "applicable",
+      "content": "## Few-shot examples\n\n### Example 1: Bullets into one section via `points`\n\nResolved Details:\n- Source: post=abcd0123, section=architectures-of-the-past\n- points: [\"RNN-based world models carried early memory\", \"Memory-augmented networks extended the horizon\"]\n\nTrajectory:\n1. `read_section(post_id=abcd0123, sec_id=architectures-of-the-past)` \u2192 current bullets.\n2. `revise_content(post_id=abcd0123, sec_id=architectures-of-the-past, content=<existing bullets plus two new ones>)`.\n\n### Example 2: Targeted additions via `additions`\n\nResolved Details:\n- Source: post=abcd0123\n- additions: {\"recent-innovations\": \"Mention the self-play breakthrough from DeepMind\"}\n\nTrajectory:\n1. `read_section(post_id=abcd0123, sec_id=recent-innovations)` \u2192 current bullets.\n2. `revise_content(post_id=abcd0123, sec_id=recent-innovations, content=<bullets with the self-play mention woven in>)`.\n\n### Example 3: Image into a section\n\nResolved Details:\n- Source: post=abcd0123, section=recent-innovations\n- image: {type: hero, description: \"lineage diagram from RNNs to transformers\"}\n- position: top of section\n\nTrajectory:\n1. `read_section(post_id=abcd0123, sec_id=recent-innovations)` \u2192 current content.\n2. `insert_media(post_id=abcd0123, sec_id=recent-innovations, image_type='hero', description='lineage diagram from RNNs to transformers', position='top')`."
+    },
+    {
+      "id": "starter_task",
+      "label": "Starter \u00b7 <task>",
+      "path": "backend/prompts/pex/starters/add.py (TEMPLATE)",
+      "status": "applicable",
+      "content": "Add content to \"{post_title}\". The resolved details below describe what the user wants, where it should land, and what existing sections look like. Insert the new material so it reads naturally within the existing section, and end the turn once every addition has been saved."
+    },
+    {
+      "id": "starter_content",
+      "label": "Starter \u00b7 <post_content>",
+      "path": "backend/prompts/pex/starters/add.py (content block)",
+      "status": "applicable",
+      "content": "<post_content>\n{section_previews}\n</post_content>\n\nPer-section previews as a list of `{sec_id, title, preview}` triples. The `preview` is the first one or two sentences (prose) or the first few bullets (outline). Full section content is fetched on demand."
+    },
+    {
+      "id": "starter_resolved",
+      "label": "Starter \u00b7 <resolved_details>",
+      "path": "backend/prompts/pex/starters/add.py (resolved block)",
+      "status": "applicable",
+      "content": "<resolved_details>\nSource: post=abcd0123 \u2014 \"User Simulators for Training RL Agents\"\nSections: [the-need-for-data, architectures-of-the-past, recent-innovations, generating-rewards]\nPoints: [\"RNN world models carried early memory\", \"Memory-augmented networks extended the horizon\"]\nPosition: end of section\n</resolved_details>"
+    },
+    {
+      "id": "policy",
+      "label": "Policy function",
+      "path": "backend/modules/policies/draft.py :: add_policy",
+      "status": "applicable",
+      "content": "def add_policy(self, flow, state, context, tools):\n    if not flow.slots['source'].check_if_filled():\n        self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})\n        return DisplayFrame(flow.name())\n\n    post_id, _ = self._resolve_source_ids(flow, state, tools)\n\n    text, tool_log = self.llm_execute(flow, state, context, tools)\n    parsed = self.engineer.apply_guardrails(text) or {}\n\n    if parsed.get('fallback'):\n        self.flow_stack.fallback(parsed['fallback'])\n        state.keep_going = True\n        return DisplayFrame(flow.name(),\n            thoughts=parsed.get('reason', ''),\n            metadata={'fallback': parsed['fallback']})\n\n    saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')\n    saved_media, _ = self.engineer.tool_succeeded(tool_log, 'insert_media')\n    if not (saved or saved_media):\n        return self.error_frame(flow, 'failed_to_save',\n            thoughts='Neither revise_content nor insert_media landed.',\n            code=text,\n            failed_tool='revise_content')\n\n    flow.status = 'Completed'\n    frame = DisplayFrame(flow.name(),\n        thoughts=text,\n        metadata={\n            'post_id': post_id,\n            'sections_touched': [s['sec_id'] for s in parsed.get('sections', [])],\n            'insertions_count': sum(len(s.get('added', [])) for s in parsed.get('sections', [])),\n        })\n    frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})\n    return frame"
+    },
+    {
+      "id": "flow_config",
+      "label": "Flow class config",
+      "path": "backend/components/flow_stack/flows.py :: AddFlow",
+      "status": "applicable",
+      "content": "class AddFlow(DraftParentFlow):\n  def __init__(self):\n    super().__init__()\n    self.flow_type = 'add'\n    self.dax = '{005}'\n    self.goal = 'add more in depth content, such as sub-sections or an image to an existing section; inserted at a specific position'\n    self.slots = {\n      'source': SourceSlot(1),\n      'points': ChecklistSlot(priority='elective'),\n      'additions': DictionarySlot(priority='elective'),\n      'image': ImageSlot(priority='elective'),\n      'position': PositionSlot(priority='optional'),\n    }\n    self.tools = ['read_metadata', 'read_section', 'insert_section', 'revise_content', 'insert_media']"
+    }
+  ]
+}

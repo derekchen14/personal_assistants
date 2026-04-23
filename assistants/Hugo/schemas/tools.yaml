@@ -54,13 +54,11 @@ guardrails:
     enabled: true
     sensitivity: medium
 
-recovery:
-  llm_validate_flows:
-    - refine
-    - compose
-    - rework
-    - polish
-    - simplify
+content_validation:
+  - compose
+  - rework
+  - polish
+  - simplify
 
 key_entities: [post, section, note, platform]
 
@@ -106,7 +104,7 @@ tools:
   read_metadata:
     tool_id: read_metadata
     name: "Read metadata"
-    description: "Read a post's metadata including title, status, tags, and optionally outline or preview"
+    description: "Read a post's metadata including title, status, tags, and per-section summaries. Each section in the response carries a sentence_count so callers can pick valid snip_id values before a subsequent read_section, revise_content, or remove_content call. Pass include_outline for the full bullet structure or include_preview for short per-section previews."
     input_schema:
       type: object
       properties:
@@ -122,13 +120,18 @@ tools:
   read_section:
     tool_id: read_section
     name: "Read section"
-    description: "Read a specific section of a post by section ID"
+    description: "Read a specific section of a post by section ID. Section content is modelled as an ordered list of sentences; use snip_id to return a single sentence or a slice, and include_sentence_ids to prepend each sentence with its index so the caller can locate spans for later edits."
     input_schema:
       type: object
       properties:
         post_id: {type: string, description: "The post ID"}
         sec_id: {type: string, description: "The section ID to read"}
-        include_lines: {type: boolean, default: true, description: "Include line numbers in the output"}
+        snip_id:
+          description: "Optional snippet selector. Integer returns one sentence (-1 is the last). Two-element array [start, end] returns a Python-style end-exclusive slice of sentences. Both endpoints must be non-negative integers within 0 <= start <= end <= sentence_count; -1 is not valid as a range endpoint."
+          oneOf:
+            - {type: integer}
+            - {type: array, items: {type: integer, minimum: 0}, minItems: 2, maxItems: 2}
+        include_sentence_ids: {type: boolean, default: false, description: "When true, prepends each returned sentence with its 0-based index so the caller can name spans by id rather than substring match."}
       required: [post_id, sec_id]
       additionalProperties: false
     idempotent: true
@@ -217,7 +220,7 @@ tools:
   generate_outline:
     tool_id: generate_outline
     name: "Generate outline"
-    description: "Save an outline to a post using markdown with ## headings and bullet points"
+    description: "Save an outline to a post as a FULL overwrite. Used when starting from scratch (the `outline` flow) and when removing sections during refinement — the new outline replaces the old one wholesale. For targeted edits to a single section, use `generate_section` instead."
     input_schema:
       type: object
       properties:
@@ -225,6 +228,22 @@ tools:
         content: {type: string, description: "Outline content as markdown (## Section headings with bullet points)"}
         sec_id: {type: string, description: "Optional section ID to scope the outline to"}
       required: [post_id, content]
+      additionalProperties: false
+    idempotent: false
+    timeout_ms: 10000
+    capabilities: {accesses_private_data: true, receives_untrusted_input: true, communicates_externally: false}
+
+  generate_section:
+    tool_id: generate_section
+    name: "Generate section"
+    description: "Save a single outline section. Used by the `refine` flow for targeted edits. If `sec_id` matches an existing section, its content is replaced (and renamed if the incoming ## heading differs); if not, the content is appended as a new section at the tail of the outline. Cannot remove sections — use `generate_outline` for removals."
+    input_schema:
+      type: object
+      properties:
+        post_id: {type: string, description: "The post ID whose outline to edit"}
+        sec_id: {type: string, description: "The section id (slug) to target. Pass the old slug when renaming — the tool rederives the slug from the new heading."}
+        content: {type: string, description: "Full section markdown starting with a `## Heading` line, followed by bullets"}
+      required: [post_id, sec_id, content]
       additionalProperties: false
     idempotent: false
     timeout_ms: 10000
@@ -248,14 +267,18 @@ tools:
   revise_content:
     tool_id: revise_content
     name: "Revise content"
-    description: "Replace the content of a specific section with revised text"
+    description: "Revise a section's prose. Without snip_id, replaces the whole section. With an integer snip_id, inserts the new content at that sentence index (-1 appends to the end). With a two-element [start, end] snip_id, replaces the slice of sentences (end-exclusive) with the new content. Not appropriate for outline-shaped sections; use generate_section for those."
     input_schema:
       type: object
       properties:
         post_id: {type: string, description: "The post ID"}
         sec_id: {type: string, description: "The section ID to revise"}
         content: {type: string, description: "The new content for the section"}
-        lines: {type: array, items: {type: integer}, description: "Optional line range [start, end] to replace instead of entire section"}
+        snip_id:
+          description: "Optional snippet target. Integer means insert-at-index (-1 appends). Two-element [start, end] array means replace the end-exclusive slice of sentences. Both range endpoints must be non-negative integers; -1 is never valid as a range endpoint."
+          oneOf:
+            - {type: integer}
+            - {type: array, items: {type: integer, minimum: 0}, minItems: 2, maxItems: 2}
       required: [post_id, sec_id, content]
       additionalProperties: false
     idempotent: false
@@ -278,34 +301,20 @@ tools:
     timeout_ms: 10000
     capabilities: {accesses_private_data: false, receives_untrusted_input: true, communicates_externally: false}
 
-  find_and_replace:
-    tool_id: find_and_replace
-    name: "Find and replace"
-    description: "Find and replace text within a post or specific section"
-    input_schema:
-      type: object
-      properties:
-        post_id: {type: string, description: "The post ID"}
-        find: {type: string, description: "Text to find"}
-        replace: {type: string, description: "Replacement text"}
-        sec_id: {type: string, description: "Optional section ID to scope the replacement"}
-        lines: {type: array, items: {type: integer}, description: "Optional line range [start, end] to scope the replacement"}
-      required: [post_id, find, replace]
-      additionalProperties: false
-    idempotent: false
-    timeout_ms: 5000
-    capabilities: {accesses_private_data: true, receives_untrusted_input: true, communicates_externally: false}
-
   remove_content:
     tool_id: remove_content
     name: "Remove content"
-    description: "Remove a section or specific lines from a post"
+    description: "Remove a section or a range of sentences from a post. Without snip_id, deletes the whole section. With an integer snip_id, deletes that single sentence (-1 is the last). With a two-element [start, end] snip_id, deletes the end-exclusive slice of sentences."
     input_schema:
       type: object
       properties:
         post_id: {type: string, description: "The post ID"}
         sec_id: {type: string, description: "The section ID to remove"}
-        lines: {type: array, items: {type: integer}, description: "Optional line range [start, end] to remove instead of entire section"}
+        snip_id:
+          description: "Optional snippet target. Integer deletes one sentence (-1 is the last). Two-element [start, end] array deletes the end-exclusive slice. Range endpoints must be non-negative integers; -1 is never valid as a range endpoint."
+          oneOf:
+            - {type: integer}
+            - {type: array, items: {type: integer, minimum: 0}, minItems: 2, maxItems: 2}
       required: [post_id, sec_id]
       additionalProperties: false
     idempotent: false
@@ -329,35 +338,22 @@ tools:
     timeout_ms: 5000
     capabilities: {accesses_private_data: true, receives_untrusted_input: true, communicates_externally: false}
 
-  insert_content:
-    tool_id: insert_content
-    name: "Insert content"
-    description: "Insert content at a specific line within a section"
-    input_schema:
-      type: object
-      properties:
-        post_id: {type: string, description: "The post ID"}
-        sec_id: {type: string, description: "The section ID to insert into"}
-        content: {type: string, description: "The content to insert"}
-        line_number: {type: integer, description: "Line number to insert at (omit to append)"}
-      required: [post_id, sec_id, content]
-      additionalProperties: false
-    idempotent: false
-    timeout_ms: 5000
-    capabilities: {accesses_private_data: true, receives_untrusted_input: true, communicates_externally: false}
-
   cut_and_paste:
     tool_id: cut_and_paste
     name: "Cut and paste"
-    description: "Move content between sections within a post"
+    description: "Move content between sections within a post. Without source_snip_id, the entire source section is moved. Without target_snip_id, the moved content appends at the end of the target section."
     input_schema:
       type: object
       properties:
         post_id: {type: string, description: "The post ID"}
         source_section: {type: string, description: "Section ID to move content from"}
         target_section: {type: string, description: "Section ID to move content to"}
-        source_lines: {type: array, items: {type: integer}, description: "Line range [start, end] to move (omit for entire section)"}
-        target_line: {type: integer, description: "Line number in target section to insert at"}
+        source_snip_id:
+          description: "Optional sentence selector in the source section. Integer picks one sentence (-1 is the last). Two-element [start, end] array picks an end-exclusive slice. Omit to move the whole source section."
+          oneOf:
+            - {type: integer}
+            - {type: array, items: {type: integer, minimum: 0}, minItems: 2, maxItems: 2}
+        target_snip_id: {type: integer, description: "Sentence index in the target section to insert at. -1 appends. Omit for append."}
       required: [post_id, source_section, target_section]
       additionalProperties: false
     idempotent: false

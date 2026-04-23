@@ -31,11 +31,11 @@ class InternalPolicy:
             if val:
                 self.memory.write_scratchpad(f'recap:{key}', val)
         flow.status = 'Completed'
-        return DisplayFrame(self.config)
+        return DisplayFrame(flow.name())
 
     def remember_policy(self, flow, tools):
         flow.status = 'Completed'
-        return DisplayFrame(self.config)
+        return DisplayFrame(flow.name())
 
     def recall_policy(self, flow, tools):
         slot = flow.slots['key']
@@ -45,7 +45,7 @@ class InternalPolicy:
             if val:
                 self.memory.write_scratchpad(f'recall:{key}', str(val))
         flow.status = 'Completed'
-        return DisplayFrame(self.config)
+        return DisplayFrame(flow.name())
 
     def store_policy(self, flow, tools):
         key_slot = flow.slots.get('key')
@@ -55,7 +55,7 @@ class InternalPolicy:
         if key and value:
             self.memory.write_scratchpad(key, value)
         flow.status = 'Completed'
-        return DisplayFrame(self.config)
+        return DisplayFrame(flow.name())
 
     def retrieve_policy(self, flow, tools):
         result = tools('manage_memory', {'action': 'read_scratchpad'})
@@ -63,7 +63,7 @@ class InternalPolicy:
             payload = result.get('scratchpad', result.get('result', ''))
             self.memory.write_scratchpad('retrieve:last', str(payload))
         flow.status = 'Completed'
-        return DisplayFrame(self.config)
+        return DisplayFrame(flow.name())
 
     def search_policy(self, flow, tools):
         query_slot = flow.slots['query']
@@ -74,11 +74,11 @@ class InternalPolicy:
                 items = result.get('items', [])
                 self.memory.write_scratchpad(f'search:{query}', str(items))
         flow.status = 'Completed'
-        return DisplayFrame(self.config)
+        return DisplayFrame(flow.name())
 
     def reference_policy(self, flow, tools):
         flow.status = 'Completed'
-        return DisplayFrame(self.config)
+        return DisplayFrame(flow.name())
 
     def study_policy(self, flow, tools):
         grounding = flow.slots[flow.entity_slot]
@@ -90,4 +90,4 @@ class InternalPolicy:
                 f'{result.get("title", "")}: {result.get("outline", "")[:500]}',
             )
         flow.status = 'Completed'
-        return DisplayFrame(self.config)
+        return DisplayFrame(flow.name())

@@ -1,0 +1,97 @@
+{
+  "flow": "find",
+  "decision_points": {
+    "DP-13": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-14": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-15": {
+      "accepted": true,
+      "override": null,
+      "rationale": "Does not need to write to scratchpad by default."
+    },
+    "DP-16": {
+      "accepted": true,
+      "override": null,
+      "rationale": "Always a list block. Keeps the frame output simple"
+    },
+    "DP-17": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-1": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-2": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-3": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-4": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-5": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-6": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-7": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-8": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-9": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-10": {
+      "accepted": false,
+      "override": "",
+      "rationale": "There doesn't need to be special error handling"
+    },
+    "DP-12": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-18": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-19": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    }
+  },
+  "batch": 3,
+  "round": 1
+}

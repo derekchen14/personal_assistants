@@ -46,7 +46,7 @@ class ContextCoordinator:
         self._history: list[Turn] = []
         self._checkpoints: list[dict] = []
         self.recent: list[Turn] = []
-        self.look_back: int = 7
+        self.lookback_count: int = 7
         self.num_utterances: int = 0
         self.bookmark:int|None = None
         self.completed_flows: list[str] = []
@@ -59,13 +59,13 @@ class ContextCoordinator:
             self.num_utterances += 1
         if speaker != 'System' and turn_type == 'utterance':
             self.recent.append(turn)
-            if len(self.recent) > self.look_back:
+            if len(self.recent) > self.lookback_count:
                 self.recent.pop(0)
         return turn
 
-    def compile_history(self, look_back:int=5, keep_system:bool=True) -> str:
+    def compile_history(self, look_back:int=5, keep_system:bool=False) -> str:
         """Return recent conversation as a formatted string for prompt context."""
-        if look_back <= self.look_back and not keep_system:
+        if look_back > self.lookback_count and not keep_system:
             turns = self.recent[-look_back:]
         else:
             turns = self.full_conversation(keep_system=keep_system, as_turns=True)
@@ -118,6 +118,12 @@ class ContextCoordinator:
     @property
     def turn_count(self) -> int:
         return len(self._history)
+
+    @property
+    def turn_id(self) -> int:
+        """Official turn counter across the conversation — the next utterance's
+        turn_id. Used by scratchpad writes so findings can be dated precisely."""
+        return self.num_utterances
 
     @property
     def last_user_text(self) -> str | None:
@@ -205,5 +211,5 @@ class ContextCoordinator:
         for turn in self._history:
             if turn.speaker != 'System' and turn.turn_type == 'utterance':
                 self.recent.append(turn)
-        if len(self.recent) > self.look_back:
-            self.recent = self.recent[-self.look_back:]
+        if len(self.recent) > self.lookback_count:
+            self.recent = self.recent[-self.lookback_count:]

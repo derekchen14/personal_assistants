@@ -7,6 +7,42 @@ from pathlib import Path
 
 _DB_DIR = Path(__file__).resolve().parents[2] / 'database'
 
+_SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
+
+
+def split_sentences(text:str) -> list[str]:
+    """Split a section's text into an ordered list of sentences.
+
+    Paragraphs (separated by blank lines) are processed independently; within
+    each paragraph, sentences split on `.`, `!`, or `?` followed by whitespace.
+    Empty strings are dropped. The resulting list is the unit that `snip_id`
+    indexes into.
+    """
+    text = text.strip()
+    if not text:
+        return []
+    paragraphs = re.split(r'\n\s*\n', text)
+    sentences:list[str] = []
+    for para in paragraphs:
+        para = re.sub(r'\s+', ' ', para.strip())
+        if not para:
+            continue
+        for part in _SENTENCE_END.split(para):
+            part = part.strip()
+            if part:
+                sentences.append(part)
+    return sentences
+
+
+def join_sentences(sentences:list[str]) -> str:
+    """Rejoin sentences with single spaces. Used when writing back after edits."""
+    return ' '.join(sentences)
+
+
+def resolve_snip_index(snip_id:int, length:int) -> int:
+    """Map a single-int snip_id to a concrete 0-based index. -1 means the last."""
+    return length - 1 if snip_id == -1 else snip_id
+
 
 class ToolService:
 

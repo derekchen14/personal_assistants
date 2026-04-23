@@ -1,0 +1,136 @@
+{
+  "flow": "audit",
+  "parent_intent": "Revise",
+  "batch": 2,
+  "round": 1,
+  "version": 1,
+  "notes": "Audit checks a post's voice and style against the user's prior published work. Read-only: never edits the post. Produces structured findings that polish (informed) consumes from the scratchpad later. Known quality gap to fix in this round: the current policy surfaces a card block containing the full post content instead of a structured style report. This proposal's DP-16 replaces that with a structured `report` card keyed by finding severity. Also: audit has a confirmation-level threshold check when too many sections are affected.",
+  "decision_points": {
+    "DP-1": {
+      "section": "Prompt content",
+      "title": "Flow-specific must/never rules",
+      "question": "0\u20133 inviolable rules unique to this flow.",
+      "proposal": "1) Audit is read-only. Never call a tool that writes to the post. Never propose edits; only surface findings. When the user asks for fixes, that is a polish or rework turn, not an audit turn.\n\n2) Every finding must be grounded in a comparison against either a reference post returned by `find_posts` or the editorial rules surfaced by `editor_review`. Do not fabricate style drift from nothing. When no reference posts are available, return an empty findings list and a short summary that explains why.\n\n3) Each finding carries a severity of low, medium, or high. Low means cosmetic drift that does not block publication. Medium means readers will notice a shift in voice. High means the post clearly contradicts a prior convention or reads as generated rather than authored.",
+      "reasoning": "Rule 1 protects the audit contract (read-only producer). Rule 2 guards against hallucinated findings. Rule 3 formalizes the severity taxonomy so the downstream consumer (polish-informed) can filter findings."
+    },
+    "DP-2": {
+      "section": "Prompt content",
+      "title": "Skill intro paragraph",
+      "question": "The one- or two-sentence framing that opens the skill file.",
+      "proposal": "This skill audits a blog post for voice and style consistency against the user's prior published writing. Audit is read-only: it compares the target post to a few reference posts, runs editorial-style checks, and returns structured findings keyed by severity. The policy uses the severity mix to decide whether to present findings directly or escalate to a confirmation turn.",
+      "reasoning": "Current intro covers the read-only point but says nothing about severity or the policy's role. This version sets up DP-14 (confirmation escalation) by naming the severity-driven policy behavior."
+    },
+    "DP-3": {
+      "section": "Prompt content",
+      "title": "Process steps",
+      "question": "Numbered happy-path sequence for `## Process`.",
+      "proposal": "## Process\n\n1. Read `<resolved_details>` for the target post's identifier, the `reference_count` (defaults to 5 when not filled), and the `threshold` (defaults to 0.2 when not filled). The threshold is used by the policy after your findings are returned; you do not need to apply it yourself.\n\n2. Call `find_posts(status='published', count=reference_count)` to locate reference posts. Only published posts count as reference material; drafts and notes do not represent the user's established voice.\n\n3. Call `compare_style(post_id, references=<list_of_ref_ids>)` to compare the target post's sentence-length distribution, vocabulary density, and paragraph rhythm against the references. This is the primary voice-comparison tool.\n\n4. Call `editor_review(post_id)` for editorial-style-guide checks (headline casing, terminology consistency, image caption conventions). Run this regardless of whether references were available, because it checks against fixed rules.\n\n5. Call `inspect_post(post_id)` for structural metrics (heading hierarchy, section word counts, paragraph density). Use these to flag sections that read as structurally off compared to the rest of the post.\n\n6. Synthesize findings. Each finding names a specific section (or identifies a whole-post pattern), names the type of drift (voice, terminology, formatting, structure), and carries a severity:\n   a. low, when the drift is cosmetic and does not block publication.\n   b. medium, when readers will notice a shift in voice or rhythm.\n   c. high, when the post clearly contradicts a prior convention or reads as AI-generated rather than authored.\n\n7. When no reference posts were available, return `findings: []` and a `summary` suggesting the user add older published posts for comparison. Never fabricate findings from editorial rules alone.",
+      "reasoning": "Rewrites the current Process in full-sentence narrative form. Elevates the threshold note to step 1 so the skill knows the policy will apply it. Expands the severity taxonomy inline rather than in a separate rule list."
+    },
+    "DP-4": {
+      "section": "Prompt content",
+      "title": "Tool usage hints",
+      "question": "Per task-specific tool, flow-specific usage hints.",
+      "proposal": "## Tools\n\n### Task-specific tools\n\n- `find_posts(status, count)` \u2014 always call once, early, with `status='published'`. Limit `count` to the `reference_count` from `<resolved_details>`. References are the comparison baseline; without them, the audit cannot produce voice-comparison findings.\n\n- `compare_style(post_id, references)` \u2014 the primary voice-comparison tool. Pass the target post's id and the list of reference post ids from the prior call. Returns a structured report on sentence-length, vocabulary, and paragraph metrics.\n\n- `editor_review(post_id)` \u2014 applies the fixed editorial style guide (casing, terminology, caption conventions). Run regardless of reference availability because the rules are absolute, not relative.\n\n- `inspect_post(post_id)` \u2014 structural metrics. Use the section-level word counts and paragraph-density numbers to flag sections that read as structurally off compared to the rest of the post.\n\n### General tools\n\n- `execution_error(violation, message)` \u2014 for hard failures. Note that audit tolerates partial tool failures (see Error Handling); only full loss of metrics triggers this.\n- `handle_ambiguity(level, metadata)` \u2014 rare in audit because the entity is the post and is guaranteed by the policy guard.\n- `manage_memory(action, key, value)` \u2014 the policy writes the findings to the scratchpad after the skill returns; the skill itself does not touch memory.\n- `read_flow_stack(action)` \u2014 rarely used in audit.",
+      "reasoning": "Expands the current one-liners into narrative bullets that say *when* to use each tool. Notes the partial-failure tolerance in the `execution_error` bullet to preempt over-eager errors."
+    },
+    "DP-5": {
+      "section": "Starter",
+      "title": "Task framing sentence",
+      "question": "The imperative sentence inside `<task>`.",
+      "proposal": "Audit \"{post_title}\" for voice and style consistency against the user's prior published posts. Produce structured findings keyed by severity so the policy can decide whether to present them directly or escalate for confirmation. End the turn once the findings have been returned; do not attempt edits.",
+      "reasoning": "Intent-focused. Names the read-only contract (\"do not attempt edits\") and the severity-keyed output shape so the skill knows what it is producing."
+    },
+    "DP-6": {
+      "section": "Starter",
+      "title": "Content tag choice",
+      "question": "Which of `<post_content>`, `<section_content>`, `<line_snippet>`, `<channel_content>` wraps the preloaded data.",
+      "proposal": "<post_content>",
+      "reasoning": "Audit operates on the whole post; references are also posts. Per-section content is not relevant to audit's scope."
+    },
+    "DP-7": {
+      "section": "Starter",
+      "title": "Preload content",
+      "question": "What goes inside the content tag.",
+      "proposal": "Per-section previews of the target post as a list of `{sec_id, title, preview, word_count}` entries. The `preview` is the first one or two sentences of each section; the `word_count` helps flag length outliers without requiring a full section read. Reference posts are NOT preloaded (they come from `find_posts` at runtime); the `<resolved_details>` includes the `reference_count` and `threshold` slot values.",
+      "reasoning": "Small preload that gives the skill post-wide visibility for the structural-metric analysis step without spending tokens on full content. References deliberately come from the tool call to let the skill control fetch scope."
+    },
+    "DP-8": {
+      "section": "Few-shot",
+      "title": "Scenario coverage",
+      "question": "Which user-phrasing paths to exemplify.",
+      "proposal": "Three scenarios, each exercising a different slot-fill and outcome pattern:\n\n(a) `reference_count` unfilled (defaults to 5), `threshold` unfilled (defaults to 0.2), reference posts available \u2014 standard audit. Returns findings of mixed severity; threshold check does not trip, policy presents the report directly.\n\n(b) `reference_count` filled to a smaller number (e.g., 2) because the user has only two published posts \u2014 audit runs with limited references and notes the limitation in the summary. Shows how the skill adapts to scarce references.\n\n(c) `reference_count` defaults to 5 but no reference posts exist (user has no published posts yet) \u2014 skill returns `findings: []` with a summary explaining the gap. Demonstrates the no-references path.",
+      "reasoning": "Three slot-fill patterns that cover the main variation axes (reference count, reference availability). Avoids exemplifying the threshold-exceeded case inside the few-shot because that is a policy-layer behavior, not a skill behavior."
+    },
+    "DP-9": {
+      "section": "Few-shot",
+      "title": "Example content (topic + post state)",
+      "question": "Concrete post topic, section names, and content.",
+      "proposal": "Topic: \"User Simulators for training RL agents\" (post_id=abcd0123). Section names aligned with the rest of Batch 2: \"The Need for Data\", \"Architectures of the Past\", \"Recent Innovations\", \"Generating Rewards\". Reference posts: three earlier published posts by the same author on related topics (for example: a post on reward modeling, a post on off-policy evaluation, a post on sim-to-real transfer). Sample findings: the target post uses passive voice more often than any of the three references (medium severity, voice drift); the target post capitalizes \"AI\" inconsistently (low severity, terminology drift); the Generating Rewards section is 3x longer than the equivalent section in the reference posts (high severity, structural drift).",
+      "reasoning": "Colorful names, concrete reference posts, and three findings of different severity to demonstrate the severity taxonomy in action."
+    },
+    "DP-10": {
+      "section": "Error handling",
+      "title": "Likely errors and ambiguities encountered",
+      "question": "Realistic error and ambiguity set.",
+      "proposal": "Errors (policy emits error frame after skill signals):\n- (a) `inspect_post` fails outright so no metrics are available \u2014 `execution_error(violation='tool_error', failed_tool='inspect_post')`. This is the only hard-error case; the other tools fail soft.\n- (b) `find_posts` returns malformed data (not a list) \u2014 `execution_error(violation='parse_failure')`.\n\nPartial failures (handled in-skill, no error frame):\n- (c) `compare_style` fails but `editor_review` succeeds \u2014 proceed with editorial findings only, note the gap in `summary`.\n- (d) `editor_review` fails but `compare_style` succeeds \u2014 mirror case (c) with editorial findings missing.\n\nAmbiguities (skill calls `handle_ambiguity`):\n- (e) Any filled slot value is vague enough to destabilize the audit (rare; mainly applies to an unusual `threshold` like \"most of it\") \u2014 `confirmation`, `metadata={'vague_slot': <slot_name>}`.\n\nNo fallbacks from the skill. The policy may declare a confirmation ambiguity after the skill returns if the fraction of affected sections exceeds `threshold`, but that is a policy-layer decision, not a skill-layer one.",
+      "reasoning": "Preserves the current skill's partial-failure tolerance. Applies the vagueness-at-confirmation lesson. Separates skill-layer errors from the policy-layer threshold confirmation to reflect where each check lives."
+    },
+    "DP-12": {
+      "section": "Error handling",
+      "title": "Retry strategy per tool",
+      "question": "Per tool, retry count on transient failure.",
+      "proposal": "`find_posts` \u2014 retry once. If it still fails, proceed with the editor_review and inspect_post outputs alone and note the gap in `summary`. `compare_style` \u2014 retry once, then treat as partial failure (case (c) in DP-10). `editor_review` \u2014 retry once, then treat as partial failure (case (d)). `inspect_post` \u2014 retry once, then `execution_error(violation='tool_error', failed_tool='inspect_post')` (this one is load-bearing; without it there are no structural findings).",
+      "reasoning": "Standard one-retry across the board. Structural metrics are the only hard dependency; the other tools fail soft to keep the audit usable even with partial data."
+    },
+    "DP-13": {
+      "section": "Policy logic",
+      "title": "Optional slot defaults",
+      "question": "For each optional slot, does it have a sensible default?",
+      "proposal": "`reference_count` (LevelSlot, optional): default to 5. Five is a good balance between signal and latency; the user can override to 2 or 10 if they have reason. Policy commits with the default and does not ask.\n\n`threshold` (ProbabilitySlot, optional): default to 0.2. Twenty percent of sections being flagged is the trip point for the confirmation-level escalation. Policy commits with the default and does not ask.\n\n`source` (required): no default; policy guards this before the skill runs.",
+      "reasoning": "Preserves the existing audit policy defaults. Both are textbook AD-8 default-with-commit cases; neither value is controversial enough to warrant a clarification turn."
+    },
+    "DP-14": {
+      "section": "Policy logic",
+      "title": "Flow transitions (stack-on and fallback)",
+      "question": "When does this flow hand off to another flow, and through which channel?",
+      "proposal": "No stack-on and no fallback. Audit is a terminal read-only flow: it either completes with findings or escalates to the user via a confirmation-level ambiguity when the threshold is exceeded.\n\nThe confirmation escalation is a policy-level action, not a flow transition: the policy declares `handle_ambiguity(level='confirmation', metadata={'reason': 'audit_threshold_exceeded', 'pct': <fraction>, 'threshold': <threshold>})` and returns an empty frame, awaiting user sign-off before any downstream edits happen. Downstream flows (polish informed, rework) are separate user turns, not transitions the audit flow drives.",
+      "reasoning": "Audit produces findings for LATER consumption; the transition is user-mediated, not flow-stack-mediated. Merged DP-11/DP-14 shape; no flow_stack calls involved."
+    },
+    "DP-15": {
+      "section": "Policy logic",
+      "title": "Scratchpad contract",
+      "question": "Does this flow write or read scratchpad?",
+      "proposal": "Write-only producer. Policy writes `scratchpad['audit'] = {version: 1, turn_number: <turn>, used_count: 0, findings: [...], summary: <short text>, thresholds_applied: {reference_count, threshold}}` after the skill returns.\n\nEach finding in `findings` has shape `{sec_id: <id_or_null_for_whole_post>, type: 'voice' | 'terminology' | 'formatting' | 'structure', severity: 'low' | 'medium' | 'high', note: <one-sentence description>, reference_posts: [<ref_post_ids>]}`.\n\nDownstream consumers (polish-informed, occasionally rework) filter findings by `sec_id` and `severity`. Each consumer increments `used_count` after reading, so the producer-consumer ledger stays visible.\n\nAudit does NOT read scratchpad.",
+      "reasoning": "Audit is the canonical scratchpad producer in the Revise family. The payload schema is spelled out so polish-informed can filter reliably; without a fixed schema, the consumer either over-matches or drops findings silently."
+    },
+    "DP-16": {
+      "section": "Policy logic",
+      "title": "Frame output spec",
+      "question": "What metadata keys and block types?",
+      "proposal": "Success (threshold not exceeded): `origin='audit'`, `metadata={post_id, post_title, reference_count, finding_counts: {low, medium, high}}`, blocks = 1 `report` card structured by severity (high first, then medium, then low). Each row shows sec_id (or \"whole post\"), type, and the one-sentence note. The card is NOT a full-post content dump (that was the known quality gap); it is a style report.\n\nConfirmation (threshold exceeded): `origin='audit'`, `metadata={'reason': 'audit_threshold_exceeded', pct, threshold, finding_counts}`, blocks = 1 `confirmation` block asking whether to proceed despite the high share of affected sections.\n\nError: `origin='audit'`, `metadata={'violation': <code>, 'failed_tool': <name>}`, blocks empty.",
+      "reasoning": "Fixes the known quality gap (current frame returns full post content instead of a style report). The new `report` block type surfaces findings in a structured way; RES can then render it with severity grouping and let users click-through to the named sections."
+    },
+    "DP-17": {
+      "section": "Policy logic",
+      "title": "Final reply shape",
+      "question": "Plain prose, structured JSON, or card-only?",
+      "proposal": "Structured JSON from the skill: `{findings: [...], summary: <short text>, references_used: [<ref_ids>]}`. The policy consumes this, writes the scratchpad, builds the report card, and produces a one-sentence prose reply through the RES template (\"Found 2 medium and 1 high severity style issues across Architectures of the Past and Generating Rewards.\"). For the confirmation case, the reply is a question (\"Three of five sections show medium-or-high severity style drift. Do you want to see the details?\").",
+      "reasoning": "JSON preserved from the current skill. Prose reply is template-generated; it reads differently for the success and confirmation paths because the user's next action is different in each case."
+    },
+    "DP-18": {
+      "section": "Performance",
+      "title": "Model tier override",
+      "question": "Opus over Sonnet default?",
+      "proposal": "Sonnet (default).",
+      "reasoning": "Audit's job is structured comparison and classification: it calls four deterministic tools and synthesizes their outputs into a typed finding schema. The synthesis step is not open-ended prose generation, so Sonnet is appropriate. This is one of the few agentic flows where Sonnet beats Opus on cost-latency without sacrificing quality."
+    },
+    "DP-19": {
+      "section": "Performance",
+      "title": "max_response_tokens override",
+      "question": "Tighten below 4096 default?",
+      "proposal": "2048.",
+      "reasoning": "Audit output is a list of findings plus a short summary; even a verbose audit fits comfortably under 2048 tokens. The tool outputs that feed synthesis are structured data, not prose, so the response does not need large prose headroom. Power of 2 preserved."
+    }
+  }
+}

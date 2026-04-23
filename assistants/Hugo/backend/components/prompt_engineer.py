@@ -10,6 +10,7 @@ from typing import Any
 
 import logging
 import anthropic
+import yaml
 from pydantic import BaseModel
 
 from backend.prompts.general import build_system
@@ -24,7 +25,7 @@ _TASK_SUFFIXES = {
     'contemplate': 'You are re-evaluating a failed flow detection. Respond with only valid JSON.',
     'repair_slot': 'Reply with ONLY the best matching valid option, or "NONE" if no match is reasonable.',
     'skill': '',
-    'naturalize': 'Rewrite the given response to sound natural. Keep the same information. Do not add information. Respond with ONLY the rewritten text.',
+    'naturalize': 'Rewrite the given templated response to sound more natural. Keep the same information. Do not add information. Respond with ONLY the rewritten text.',
     'quality_check': (
         'You are a quality checker. Given recent conversation history, '
         'the user\'s latest request, and the agent\'s output (which may '
@@ -58,7 +59,10 @@ _GPT_MODELS    = {'mini', 'gpt'}
 class PromptEngineer:
 
     VERSION = 'v1'
-    _SKILL_DIR = Path(__file__).resolve().parents[1] / 'prompts' / 'skills'
+    _SKILL_DIRS = (
+        Path(__file__).resolve().parents[1] / 'prompts' / 'pex' / 'skills',
+        Path(__file__).resolve().parents[1] / 'prompts' / 'skills',
+    )
 
     _CLIENT_ENVARS = {
         'anthropic': 'ANTHROPIC_API_KEY',
@@ -172,15 +176,14 @@ class PromptEngineer:
 
     def skill_call(self, flow, convo_history:str, scratchpad:dict,
                    skill_name:str|None=None, skill_prompt:str|None=None,
-                   resolved:dict|None=None, max_tokens:int=1024) -> str:
-        """Skill execution WITHOUT tool use. Sibling of tool_call.
-        Loads the skill template (or uses skill_prompt override), builds
-        [system, user], returns LLM text."""
+                   resolved:dict|None=None, max_tokens:int=1024,
+                   user_text:str|None=None) -> str:
+        """Skill execution WITHOUT tool use. Sibling of tool_call."""
         if skill_prompt is None:
             skill_prompt = self.load_skill_template(skill_name or flow.name())
         base_system = build_system(self.persona)
-        system = build_skill_system(base_system, flow, skill_prompt, scratchpad, resolved)
-        messages = list(build_skill_messages(flow.name(), convo_history))
+        system = build_skill_system(base_system, flow, skill_prompt)
+        messages = list(build_skill_messages(flow, convo_history, user_text, resolved))
         model_id = self._resolve_model('sonnet')
         response = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
         return ''.join(block.text for block in response.content if block.type == 'text')
@@ -188,14 +191,14 @@ class PromptEngineer:
     def tool_call(self, flow, convo_history:str, scratchpad:dict,
                   tool_defs:list[dict], tool_dispatcher,
                   skill_name:str|None=None, skill_prompt:str|None=None,
-                  resolved:dict|None=None, max_tokens:int=4096) -> tuple[str, list[dict]]:
-        """Skill execution WITH tool use. Sibling of skill_call.
-        Loads skill template, assembles [system, user], runs agentic tool loop."""
+                  resolved:dict|None=None, max_tokens:int=4096,
+                  user_text:str|None=None) -> tuple[str, list[dict]]:
+        """Skill execution WITH tool use. Sibling of skill_call."""
         if skill_prompt is None:
             skill_prompt = self.load_skill_template(skill_name or flow.name())
         base_system = build_system(self.persona)
-        system = build_skill_system(base_system, flow, skill_prompt, scratchpad, resolved)
-        msgs = list(build_skill_messages(flow.name(), convo_history))
+        system = build_skill_system(base_system, flow, skill_prompt)
+        msgs = list(build_skill_messages(flow, convo_history, user_text, resolved))
         model_id = self._resolve_model('sonnet')
         tool_log: list[dict] = []
 
@@ -267,18 +270,31 @@ class PromptEngineer:
         raise last_error
 
     def _call_claude(self, system, messages, model_id, *, tools=None, max_tokens=4096, schema_dict=None):
+        # Prompt caching: put a breakpoint at the end of the system prompt
+        # and at the end of tool definitions. These are the stable prefix
+        # shared across turns within a flow; per-turn content in `messages`
+        # sits after the cache boundary and is not cached.
+        system_blocks = [{
+            'type': 'text',
+            'text': system,
+            'cache_control': {'type': 'ephemeral'},
+        }] if system else []
         kwargs: dict[str, Any] = {
             'model': model_id, 'max_tokens': max_tokens,
-            'system': system, 'messages': messages,
+            'system': system_blocks, 'messages': messages,
         }
         temp = self._get_temperature()
         if temp > 0:
             kwargs['temperature'] = temp
         if tools:
-            kwargs['tools'] = [
+            tool_defs = [
                 {key: val for key, val in tool.items() if key in ('name', 'description', 'input_schema')}
                 for tool in tools
             ]
+            if tool_defs:
+                # Cache breakpoint on the last tool definition.
+                tool_defs[-1] = {**tool_defs[-1], 'cache_control': {'type': 'ephemeral'}}
+            kwargs['tools'] = tool_defs
         if schema_dict is not None:
             kwargs['output_config'] = {'format': {'type': 'json_schema', 'schema': schema_dict}}
         client = self._get_client('anthropic')
@@ -298,6 +314,7 @@ class PromptEngineer:
         ]
         config = types.GenerateContentConfig(
             system_instruction=system, max_output_tokens=max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
         if temp > 0:
             config.temperature = temp
@@ -455,9 +472,39 @@ class PromptEngineer:
         return '\n'.join(sections) if sections else ''
 
     @classmethod
+    def _resolve_skill_path(cls, flow_name:str) -> Path | None:
+        for base in cls._SKILL_DIRS:
+            path = base / f'{flow_name}.md'
+            if path.exists():
+                return path
+        return None
+
+    @classmethod
     def load_skill_template(cls, flow_name:str) -> str | None:
-        path = cls._SKILL_DIR / f'{flow_name}.md'
-        return path.read_text(encoding='utf-8') if path.exists() else None
+        path = cls._resolve_skill_path(flow_name)
+        if path is None:
+            return None
+        _, body = cls._split_frontmatter(path.read_text(encoding='utf-8'))
+        return body
+
+    @classmethod
+    def load_skill_meta(cls, flow_name:str) -> dict:
+        path = cls._resolve_skill_path(flow_name)
+        if path is None:
+            return {}
+        meta, _ = cls._split_frontmatter(path.read_text(encoding='utf-8'))
+        return meta
+
+    @staticmethod
+    def _split_frontmatter(text:str) -> tuple[dict, str]:
+        if not text.startswith('---\n'):
+            return {}, text
+        end = text.find('\n---\n', 4)
+        if end == -1:
+            return {}, text
+        meta = yaml.safe_load(text[4:end]) or {}
+        body = text[end + 5:]
+        return meta, body
 
     @staticmethod
     def extract_tool_result(tool_log:list, tool_name:str) -> dict:
@@ -468,4 +515,20 @@ class PromptEngineer:
             if result.get('_success'):
                 return {k: v for k, v in result.items() if not k.startswith('_')}
         return {}
+
+    @staticmethod
+    def tool_succeeded(tool_log:list, tool_name:str) -> tuple[bool, dict]:
+        """Check whether a named tool was called AND every call succeeded.
+
+        Returns (True, last_result_dict) when the tool appears at least once in
+        the log and every matching entry has _success=True; returns (False, {})
+        otherwise. The result dict strips underscore-prefixed control keys.
+        """
+        calls = [tc for tc in tool_log if tc.get('tool') == tool_name]
+        if not calls:
+            return False, {}
+        last = calls[-1].get('result', {})
+        if not all(tc.get('result', {}).get('_success') for tc in calls):
+            return False, {}
+        return True, {k: v for k, v in last.items() if not k.startswith('_')}
 

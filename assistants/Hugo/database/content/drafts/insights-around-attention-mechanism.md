@@ -1,25 +1,31 @@
 ---
 title: "Insights around Attention Mechanism"
+tags: [machine_learning]
 ---
 
 ## Introduction
-- Attention mechanisms transformed deep learning by giving models the ability to selectively focus on relevant parts of the input, rather than compressing everything into a single vector
-- Most prominent application: **Neural Machine Translation (NMT)**, where attention lets the decoder "look back" at specific encoder states during each prediction step
-- This post unpacks three non-obvious insights about how attention actually works under the hood
-- Scope: readers should come away understanding (1) what the attention vector replaces, (2) why that design choice makes sense intuitively and mechanically, and (3) where the real "magic" of attention lives
+- Brief history of sequence models before attention (RNNs, LSTMs)
+- The core problem: information bottleneck in encoder-decoder architectures
+- What attention promises: dynamic, context-aware focus
+- Thesis: attention doesn't just help models — it fundamentally changes how they "think"
 
 ## Attention Vector Replaces the Input Vector
-- In an LSTM decoder cell, inputs are: (a) input vector, (b) hidden state vector, (c) cell state
-- The attention vector replaces the **input vector**, not the hidden state vector
-- **Intuitive reason:** the current input word (e.g., `<SOS>` or "to") carries minimal information on its own; substituting it with a rich context vector is a net gain
-- **Mechanical reason:** LSTM tracks information over time via both hidden state and cell state; replacing only the input keeps the time-based memory intact
-- **Diagrammatic evidence:** confirmed by the architecture diagram in the original paper (Bahdanau et al., 2015 — https://arxiv.org/abs/1409.0473)
+- What the input vector represents in a standard model
+- How the attention vector is computed as a weighted sum of encoder hidden states
+- Side-by-side comparison: static input vector vs. dynamic attention vector
+- Why this substitution is the key architectural shift
+- Intuition: the model "chooses" what to read at each step
 
 ## Importance of Attention Weights
-- Attention weights are a **linear weighting** over encoder outputs, one weight per input token (e.g., 9 weights for a 9-word sentence), not a large matrix multiply
-- The size of the weight vector equals the input length, not `input_length × embedding_dim`
+- What attention weights are and how they are calculated (softmax over scores)
+- How weights distribute focus across different parts of the input
+- Visualizing attention weights: what the heatmaps tell us
+- The role of alignment: matching decoder queries to encoder keys
+- Why "soft" attention weights are differentiable and trainable end-to-end
 
 ## Where the Magic Really Lives
-- The power of attention is in **how the weights are generated**, not how they are applied
-- Weights emerge from the interaction between the decoder hidden state and the encoder outputs
-- The application of those weights to produce the context vector is simple; the learned alignment function is where the model's intelligence concentrates
+- Stacking attention layers: multi-head attention in Transformers
+- Self-attention vs. cross-attention — different roles, same mechanism
+- How attention enables parallelization (unlike RNNs)
+- Emergent capabilities: long-range dependencies, coreference resolution
+- Why attention became the backbone of modern LLMs (BERT, GPT, etc.)

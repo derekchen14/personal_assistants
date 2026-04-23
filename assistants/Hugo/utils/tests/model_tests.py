@@ -30,7 +30,7 @@ def _user_turns(convo):
 
 
 def _detect_flow(agent, utterance):
-    agent.world.context.add_turn('User', utterance)
+    agent.world.context.add_turn('User', utterance, 'utterance')
     state = agent.nlu.understand(utterance, agent.world.context)
     agent.world.insert_state(state)
     return state

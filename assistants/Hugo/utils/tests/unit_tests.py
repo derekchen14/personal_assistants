@@ -139,17 +139,6 @@ class TestEnsembleVoting:
         assert result['flow_name'] == 'brainstorm'
         assert result['confidence'] == pytest.approx(0.80)
 
-    def test_slots_from_heaviest_voter(self, nlu):
-        votes = [
-            {'flow_name': 'outline', '_model': 'haiku', '_weight': 0.20,
-             'slots': {'topic': 'haiku_topic'}},
-            {'flow_name': 'outline', '_model': 'sonnet', '_weight': 0.45,
-             'slots': {'topic': 'sonnet_topic'}},
-        ]
-        result = nlu._tally_votes(votes)
-        assert result['flow_name'] == 'outline'
-        assert result['slots'] == {'topic': 'sonnet_topic'}
-
     def test_graceful_two_voter_degradation(self, nlu):
         votes = [
             {'flow_name': 'chat', '_model': 'haiku', '_weight': 0.20},
@@ -162,44 +151,44 @@ class TestEnsembleVoting:
     # -- _detect_flow (mocked LLM) -----------------------------------------
 
     def test_one_voter_fails(self, nlu):
-        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024):
+        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024, schema=None):
             if model == 'flash':
                 raise RuntimeError('Gemini down')
-            return '{"flow_name": "chat", "confidence": 0.8}'
+            return {'flow_name': 'chat', 'confidence': 0.8}
 
         real_engineer = nlu.engineer
         stub = MagicMock(side_effect=mock_call)
         stub.apply_guardrails = real_engineer.apply_guardrails
         nlu.engineer = stub
-        result = nlu._detect_flow('hello')
+        result = nlu._detect_flow('hello', intent='Converse')
 
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == pytest.approx(1.0)
 
     def test_all_voters_fail(self, nlu):
-        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024):
+        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024, schema=None):
             raise RuntimeError('All down')
 
         real_engineer = nlu.engineer
         stub = MagicMock(side_effect=mock_call)
         stub.apply_guardrails = real_engineer.apply_guardrails
         nlu.engineer = stub
-        result = nlu._detect_flow('hello')
+        result = nlu._detect_flow('hello', intent='Converse')
 
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == 0.3
 
     def test_disagreement_weighted(self, nlu):
-        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024):
+        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024, schema=None):
             if model == 'haiku':
-                return '{"flow_name": "chat"}'
-            return '{"flow_name": "brainstorm"}'
+                return {'flow_name': 'chat'}
+            return {'flow_name': 'brainstorm'}
 
         real_engineer = nlu.engineer
         stub = MagicMock(side_effect=mock_call)
         stub.apply_guardrails = real_engineer.apply_guardrails
         nlu.engineer = stub
-        result = nlu._detect_flow('give me ideas')
+        result = nlu._detect_flow('give me ideas', intent='Draft')
 
         assert result['flow_name'] == 'brainstorm'
         assert result['confidence'] == pytest.approx(0.80)
@@ -446,7 +435,25 @@ class TestPostService:
         svc = PostService()
         result = svc.read_section(post_id, 'intro')
         assert result['_success'] is True
-        assert 'lines' in result
+        assert 'sentence_count' in result
+        assert 'content' in result
+
+    def test_read_section_with_sentence_ids(self, tmp_db):
+        body = '## Intro\n\nFirst sentence. Second sentence. Third sentence.\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Sentence IDs', body=body)
+        svc = PostService()
+        result = svc.read_section(post_id, 'intro', include_sentence_ids=True)
+        assert result['_success'] is True
+        assert '[0]' in result['content']
+        assert '[1]' in result['content']
+
+    def test_read_section_single_snippet(self, tmp_db):
+        body = '## Intro\n\nFirst sentence. Second sentence. Third sentence.\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Snip Single', body=body)
+        svc = PostService()
+        result = svc.read_section(post_id, 'intro', snip_id=1)
+        assert result['_success'] is True
+        assert result['content'].startswith('Second')
 
     def test_read_section_not_found(self, tmp_db):
         post_id, _ = _seed_test_post(tmp_db)
@@ -571,6 +578,44 @@ class TestContentService:
         assert result['_success'] is False
         assert 'Duplicate' in result['_message']
 
+    def test_generate_section_replaces_existing_section(self, tmp_db):
+        body = '## Process\n\n- gather data\n- train model\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Section Replace', body=body)
+        svc = ContentService()
+        revised = '## Process\n\n- gather data\n- train model\n- evaluate model\n'
+        result = svc.generate_section(post_id, 'process', revised)
+        assert result['_success'] is True
+        assert result['appended'] is False
+        assert result['renamed'] is False
+
+    def test_generate_section_appends_new_section(self, tmp_db):
+        body = '## Motivation\n\n- pain point\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Section Append', body=body)
+        svc = ContentService()
+        new_sec = '## Takeaways\n\n- key insight\n'
+        result = svc.generate_section(post_id, 'takeaways', new_sec)
+        assert result['_success'] is True
+        assert result['appended'] is True
+
+    def test_generate_section_renames_via_old_slug(self, tmp_db):
+        body = '## Ideas\n\n- early thoughts\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Section Rename', body=body)
+        svc = ContentService()
+        # Pass old slug 'ideas'; heading changes to 'Breakthrough Ideas'.
+        renamed = '## Breakthrough Ideas\n\n- early thoughts\n'
+        result = svc.generate_section(post_id, 'ideas', renamed)
+        assert result['_success'] is True
+        assert result['renamed'] is True
+        assert result['section_id'] == 'breakthrough-ideas'
+
+    def test_generate_section_rejects_without_heading(self, tmp_db):
+        post_id, _ = _seed_test_post(tmp_db, title='Section No Heading')
+        svc = ContentService()
+        bad = '- orphan bullet\n- another orphan\n'
+        result = svc.generate_section(post_id, 'process', bad)
+        assert result['_success'] is False
+        assert result['_error'] == 'validation'
+
     def test_convert_to_prose(self, tmp_db):
         body = '## Method\n\n- step one\n- step two\n- step three\n'
         post_id, _ = _seed_test_post(tmp_db, title='Prose Test', body=body)
@@ -585,11 +630,11 @@ class TestContentService:
         result = svc.insert_section(post_id, 'alpha', 'Gamma', 'New content')
         assert result['_success'] is True
 
-    def test_insert_content_at_line(self, tmp_db):
-        body = '## Intro\n\nLine one.\nLine two.\nLine three.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Insert Line', body=body)
+    def test_revise_content_insert_at_index(self, tmp_db):
+        body = '## Intro\n\nFirst sentence. Second sentence. Third sentence.\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Insert Sentence', body=body)
         svc = ContentService()
-        result = svc.insert_content(post_id, 'intro', 'Inserted line.', line_number=2)
+        result = svc.revise_content(post_id, 'intro', 'Inserted sentence.', snip_id=1)
         assert result['_success'] is True
 
     def test_revise_content_takes_snapshot(self, tmp_db):
@@ -602,11 +647,11 @@ class TestContentService:
         snapshot = ToolService()._read_snapshot(post_id, 'intro', 1)
         assert snapshot is not None
 
-    def test_revise_content_by_line_range(self, tmp_db):
-        body = '## Intro\n\nLine A.\nLine B.\nLine C.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Line Range', body=body)
+    def test_revise_content_replace_snippet_range(self, tmp_db):
+        body = '## Intro\n\nSentence A. Sentence B. Sentence C.\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Sentence Range', body=body)
         svc = ContentService()
-        result = svc.revise_content(post_id, 'intro', 'Replaced.', lines=(2, 3))
+        result = svc.revise_content(post_id, 'intro', 'Replaced.', snip_id=(1, 3))
         assert result['_success'] is True
 
     def test_write_text_rejects_long_content(self, tmp_db):
@@ -624,27 +669,11 @@ class TestContentService:
         assert result['_success'] is True
         assert 'Be concise' in result['writing_guide']
 
-    def test_find_and_replace_count(self, tmp_db):
-        body = '## Intro\n\nThe cat sat on the cat mat.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='FAR Test', body=body)
+    def test_remove_content_snippet_range(self, tmp_db):
+        body = '## Intro\n\nSentence A. Sentence B. Sentence C.\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Remove Range', body=body)
         svc = ContentService()
-        result = svc.find_and_replace(post_id, 'cat', 'dog')
-        assert result['_success'] is True
-        assert result['count'] == 2
-
-    def test_find_and_replace_no_match(self, tmp_db):
-        body = '## Intro\n\nHello world.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='No Match', body=body)
-        svc = ContentService()
-        result = svc.find_and_replace(post_id, 'xyz123', 'replacement')
-        assert result['_success'] is False
-        assert result['_error'] == 'not_found'
-
-    def test_remove_content_lines(self, tmp_db):
-        body = '## Intro\n\nLine 1.\nLine 2.\nLine 3.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Remove Lines', body=body)
-        svc = ContentService()
-        result = svc.remove_content(post_id, 'intro', lines=(2, 3))
+        result = svc.remove_content(post_id, 'intro', snip_id=(1, 2))
         assert result['_success'] is True
 
     def test_remove_content_section(self, tmp_db):
@@ -655,10 +684,10 @@ class TestContentService:
         assert result['_success'] is True
 
     def test_cut_and_paste_moves_lines(self, tmp_db):
-        body = '## Source\n\nLine A.\nLine B.\n\n## Target\n\nLine C.\n'
+        body = '## Source\n\nSentence A. Sentence B.\n\n## Target\n\nSentence C.\n'
         post_id, _ = _seed_test_post(tmp_db, title='CnP Test', body=body)
         svc = ContentService()
-        result = svc.cut_and_paste(post_id, 'source', 'target', source_lines=(1, 2))
+        result = svc.cut_and_paste(post_id, 'source', 'target', source_snip_id=(0, 1))
         assert result['_success'] is True
 
     def test_cut_and_paste_self_error(self, tmp_db):

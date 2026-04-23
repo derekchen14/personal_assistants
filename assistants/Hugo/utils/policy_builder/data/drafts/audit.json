@@ -1,0 +1,93 @@
+{
+  "flow": "audit",
+  "parent_intent": "Revise",
+  "round": 2,
+  "version": 1,
+  "notes": "Audit is read-only. It compares the target post against the user's prior published posts and returns structured findings keyed by severity. The policy writes `scratchpad['audit']` so polish-informed and rework can consume findings later. `reference_count` defaults to 3. Frame uses a structured `report` card (replaces the previous full-post dump).",
+  "sections": [
+    {
+      "id": "intent_prompt",
+      "label": "Intent prompt (Revise)",
+      "path": "backend/prompts/pex/sys_prompts.py::REVISE",
+      "status": "applicable",
+      "content": "You are currently working on Revise tasks, which covers polishing existing content by crafting new sentences, reworking the structure, auditing for style, or simplifying wording in order to develop an improved *revision* of the blog post.\n\n## Background\n\nA post contains a title, a status (draft / note / published), and an ordered list of sections. Each section has a subtitle and content. Outlines follow a format with four levels:\n- Level 0: `# Post Title`\n- Level 1: `## Section Subtitle`\n- Level 2: `### Sub-section`\n- Level 3: `- bullet point`\n- Level 4: `  * sub-bullet`\n\nProse sections replace levels 2-4 with standard paragraphs separated by blank lines. Both are markdown. The only difference is bullet-structured content vs. paragraph-structured content. Never mix prose and bullets inside the same section unless the skill explicitly asks you to. Since you are dealing with revising posts, you will be dealing exclusively with prose rather than outlines.\n\nPost IDs take the form of 8-character lowercase hex strings. Section IDs take the form of slugs. Post names and section names are proper case natural language text.\n\n### Scope discipline\n\nIf the user names a paragraph, edit only that paragraph. Leave neighbouring paragraphs exactly as they were. If the user names a section without naming a paragraph, edit the whole section. If the user names neither, prefer the narrowest interpretation that makes the request work, or declare a confirmation-level ambiguity if you genuinely cannot tell."
+    },
+    {
+      "id": "skill_intro",
+      "label": "Skill \u00b7 intro",
+      "path": "backend/prompts/pex/skills/audit.md",
+      "status": "applicable",
+      "content": "This skill audits a blog post for voice and style consistency against the user's prior published writing. Audit is read-only: it compares the target post to a few reference posts, runs editorial-style checks, and returns structured findings keyed by severity. The policy uses the severity mix to decide whether to present findings directly or escalate to a confirmation turn."
+    },
+    {
+      "id": "skill_process",
+      "label": "Skill \u00b7 Process",
+      "path": "backend/prompts/pex/skills/audit.md :: ## Process",
+      "status": "applicable",
+      "content": "## Process\n\n1. Read `<resolved_details>` for the target post's identifier, the reference count (defaults to 3 when not filled), and the threshold (defaults to 0.2 when not filled). The threshold is applied by the policy after your findings are returned; you do not apply it yourself.\n\n2. Call `find_posts(status='published', count=<reference_count>)` to locate reference posts. Only published posts count as reference material; drafts and notes do not represent the user's established voice.\n   a. When no reference posts are available, return `findings: []` and a `summary` suggesting the user add older published posts for comparison. Do not fabricate findings from editorial rules alone.\n\n3. Gather metric inputs with the three read-only inspection tools:\n   a. `compare_style(post_id, references=<ref_ids>)` compares sentence-length distribution, vocabulary density, and paragraph rhythm against the references. This is the primary voice-comparison tool.\n   b. `editor_review(post_id)` runs editorial-style-guide checks (headline casing, terminology consistency, image caption conventions). Run regardless of reference availability because the rules are absolute.\n   c. `inspect_post(post_id)` returns structural metrics (heading hierarchy, section word counts, paragraph density). Use these to flag sections that read as structurally off compared to the rest of the post.\n\n4. Synthesize findings. Each finding names a specific section (or identifies a whole-post pattern), names the type of drift (voice, terminology, formatting, structure), and carries a severity: low (cosmetic drift), medium (readers will notice), high (clearly off-brand or reads as generated)."
+    },
+    {
+      "id": "skill_handling_ambiguity_and_errors",
+      "label": "Skill \u00b7 Handling Ambiguity and Errors",
+      "path": "backend/prompts/pex/skills/audit.md :: ## Handling Ambiguity and Errors",
+      "status": "applicable",
+      "content": "## Handling Ambiguity and Errors\n\nWhen `compare_style` fails but `editor_review` succeeds, proceed with editorial findings only and note the gap in `summary`.\n\nWhen `editor_review` fails but `compare_style` succeeds, mirror the above: report voice findings only and note the gap in `summary`.\n\nOther tool failures are handled by the policy's retry logic and surface as error frames rather than skill-level choices."
+    },
+    {
+      "id": "skill_tools",
+      "label": "Skill \u00b7 Tools",
+      "path": "backend/prompts/pex/skills/audit.md :: ## Tools",
+      "status": "applicable",
+      "content": "## Tools\n\n### Task-specific tools\n\n- `find_posts(status, count)` call once, early, with `status='published'`. Limit `count` to the reference_count from the resolved details. References are the comparison baseline; without them, no voice-comparison findings are possible.\n- `compare_style(post_id, references)` the primary voice-comparison tool. Returns a structured report on sentence-length, vocabulary, and paragraph metrics.\n- `editor_review(post_id)` applies the fixed editorial style guide. Run regardless of reference availability.\n- `inspect_post(post_id)` structural metrics. Use to flag sections that are disproportionately long or have unusual paragraph density.\n- `read_section(post_id, sec_id)` read a section in more detail when a structural or style finding needs grounding in the actual prose.\n\n### General tools\n\n- `execution_error(violation, message)` for hard failures. Audit tolerates partial tool failures; only total loss of metrics triggers this.\n- `handle_ambiguity(level, metadata)` rare in audit because the entity is the post and is guaranteed by the policy guard.\n- `manage_memory(action, key, value)` the policy writes findings to the scratchpad after the skill returns; the skill does not touch memory.\n- `read_flow_stack(action)` to see what flow follows audit. When polish-informed or rework is queued, tag findings with explicit section references so the consumer can filter."
+    },
+    {
+      "id": "skill_output",
+      "label": "Skill \u00b7 Output",
+      "path": "backend/prompts/pex/skills/audit.md :: ## Output",
+      "status": "applicable",
+      "content": "## Output\n\n```json\n{\n  \"findings\": [\n    {\n      \"sec_id\": \"<section id or null for whole-post>\",\n      \"type\": \"voice\" | \"terminology\" | \"formatting\" | \"structure\",\n      \"severity\": \"low\" | \"medium\" | \"high\",\n      \"note\": \"<one sentence>\",\n      \"reference_posts\": [\"<ref_post_id>\", ...]\n    }\n  ],\n  \"summary\": \"<short text>\",\n  \"references_used\": [\"<ref_id>\", ...]\n}\n```"
+    },
+    {
+      "id": "skill_fewshot",
+      "label": "Skill \u00b7 Few-shot examples",
+      "path": "backend/prompts/pex/skills/audit.md :: ## Few-shot examples",
+      "status": "applicable",
+      "content": "## Few-shot examples\n\n### Example 1: Content reads as repetitive\n\nReference posts: three earlier published posts on reward modeling, off-policy evaluation, and sim-to-real transfer.\n\nFinding: the post content in \"User Simulators for Training RL Agents\" is very similar to previous posts. It is sounding repetitive rather than being original and thought-provoking.\n\n```json\n{\n  \"findings\": [\n    {\"sec_id\": null, \"type\": \"voice\", \"severity\": \"high\", \"note\": \"The post retreads arguments from three earlier published pieces without adding a new angle.\", \"reference_posts\": [\"prev001\", \"prev002\", \"prev003\"]}\n  ],\n  \"summary\": \"High-severity voice drift: post reads as repetitive compared to prior work.\",\n  \"references_used\": [\"prev001\", \"prev002\", \"prev003\"]\n}\n```\n\n### Example 2: Tone sounds robotic\n\nFinding: the post uses passive voice twice as often as the references, and hedges (\"it could be argued\", \"one might note\") appear throughout.\n\n```json\n{\n  \"findings\": [\n    {\"sec_id\": \"the-need-for-data\", \"type\": \"voice\", \"severity\": \"medium\", \"note\": \"Passive voice and hedges dominate; references use active voice and direct claims.\", \"reference_posts\": [\"prev001\"]}\n  ],\n  \"summary\": \"Medium-severity voice drift in The Need for Data.\",\n  \"references_used\": [\"prev001\"]\n}\n```\n\n### Example 3: Post is too short compared to the past\n\nFinding: the post runs 900 words where the reference posts average 2,200.\n\n```json\n{\n  \"findings\": [\n    {\"sec_id\": null, \"type\": \"structure\", \"severity\": \"medium\", \"note\": \"Post is 900 words; the author's typical length is roughly 2,200.\", \"reference_posts\": [\"prev001\", \"prev002\"]}\n  ],\n  \"summary\": \"Medium-severity structural drift: post is shorter than the author's norm.\",\n  \"references_used\": [\"prev001\", \"prev002\"]\n}\n```"
+    },
+    {
+      "id": "starter_task",
+      "label": "Starter \u00b7 <task>",
+      "path": "backend/prompts/pex/starters/audit.py (TEMPLATE)",
+      "status": "applicable",
+      "content": "Audit \"{post_title}\" for voice and style consistency against the user's prior published posts. Produce structured findings keyed by severity so the policy can decide whether to present them directly or escalate for confirmation. End the turn once the findings have been returned; do not attempt edits."
+    },
+    {
+      "id": "starter_content",
+      "label": "Starter \u00b7 <post_content>",
+      "path": "backend/prompts/pex/starters/audit.py (content block)",
+      "status": "applicable",
+      "content": "<post_content>\n{section_previews}\n</post_content>\n\nPer-section previews as `{sec_id, title, preview, word_count}` entries. `preview` is the first one or two sentences of each section; `word_count` flags length outliers without requiring a full section read. Reference posts come from `find_posts` at runtime."
+    },
+    {
+      "id": "starter_resolved",
+      "label": "Starter \u00b7 <resolved_details>",
+      "path": "backend/prompts/pex/starters/audit.py (resolved block)",
+      "status": "applicable",
+      "content": "<resolved_details>\nPost: abcd0123 \u2014 \"User Simulators for Training RL Agents\"\nReference count: 3\nThreshold: 0.2\n</resolved_details>"
+    },
+    {
+      "id": "policy",
+      "label": "Policy function",
+      "path": "backend/modules/policies/revise.py :: audit_policy",
+      "status": "applicable",
+      "content": "def audit_policy(self, flow, state, context):\n    tools = self.engineer.tools\n    frame = DisplayFrame(flow.name())\n\n    if not flow.slots['source'].check_if_filled():\n        self.ambiguity.declare('specific',\n            metadata={'missing_slot': flow.entity_slot},\n            observation='Audit needs a post reference.')\n        return frame\n\n    if not flow.slots['reference_count'].check_if_filled():\n        flow.slots['reference_count'].add_one(3)\n    if not flow.slots['threshold'].check_if_filled():\n        flow.slots['threshold'].add_one(0.2)\n\n    post_id = self._resolve_source_ids(flow, state, tools)['post']\n    reference_count = int(flow.slots['reference_count'].values[0])\n    threshold = float(flow.slots['threshold'].values[0])\n\n    text, tool_log = self.engineer.llm_execute(\n        flow, state, context, tools,\n        model='sonnet', max_tokens=2048, quality_check=False,\n    )\n    parsed = self.engineer.apply_guardrails(text, format='json')\n    findings = parsed.get('findings', [])\n    summary = parsed.get('summary', '')\n    references_used = parsed.get('references_used', [])\n\n    self.memory.write_scratchpad('audit', {\n        'version': 1,\n        'turn_number': context.turn_id,\n        'used_count': 0,\n        'findings': findings,\n        'summary': summary,\n        'thresholds_applied': {'reference_count': reference_count, 'threshold': threshold},\n    })\n\n    total_sections = len(flow.resolved.get('section_previews', []))\n    affected = len({f['sec_id'] for f in findings if f.get('sec_id')})\n    pct = (affected / total_sections) if total_sections else 0\n\n    finding_counts = {\n        'low': sum(1 for f in findings if f.get('severity') == 'low'),\n        'medium': sum(1 for f in findings if f.get('severity') == 'medium'),\n        'high': sum(1 for f in findings if f.get('severity') == 'high'),\n    }\n\n    if pct > threshold:\n        self.ambiguity.declare('confirmation',\n            metadata={\n                'reason': 'audit_threshold_exceeded',\n                'pct': pct,\n                'threshold': threshold,\n                'finding_counts': finding_counts,\n            },\n            observation=f'{affected} of {total_sections} sections flagged. Review the findings?')\n        return frame\n\n    flow.status = 'Completed'\n    frame.metadata.update({\n        'post_id': post_id,\n        'post_title': flow.resolved.get('post_title'),\n        'reference_count': reference_count,\n        'finding_counts': finding_counts,\n        'references_used': references_used,\n    })\n    frame.blocks.append(Block(type='report', data={'findings': findings, 'summary': summary}))\n    frame.thoughts = summary\n    return frame"
+    },
+    {
+      "id": "flow_config",
+      "label": "Flow class config",
+      "path": "backend/components/flow_stack/flows.py :: AuditFlow",
+      "status": "applicable",
+      "content": "class AuditFlow(ReviseParentFlow):\n  def __init__(self):\n    super().__init__()\n    self.flow_type = 'audit'\n    self.dax = '{13A}'\n    self.goal = \"check that the post is written in the user's voice rather than sounding like AI; compares voice, terminology, formatting conventions, and stylistic patterns against previous posts\"\n    self.slots = {\n      'source': SourceSlot(1, 'post'),\n      'reference_count': LevelSlot(priority='optional', threshold=1),\n      'threshold': ProbabilitySlot(priority='optional'),\n    }\n    self.tools = ['find_posts', 'compare_style', 'editor_review', 'inspect_post']"
+    }
+  ]
+}

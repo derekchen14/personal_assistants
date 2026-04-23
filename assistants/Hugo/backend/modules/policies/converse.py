@@ -14,8 +14,6 @@ class ConversePolicy(BasePolicy):
 
         match flow.name():
             case 'chat': return self.chat_policy(flow, state, context, tools)
-            case 'next': return self.next_policy(flow, state, context, tools)
-            case 'feedback': return self.feedback_policy(flow, state, context, tools)
             case 'preference': return self.preference_policy(flow, state, context, tools)
             case 'suggest': return self.suggest_policy(flow, state, context, tools)
             case 'explain': return self.explain_policy(flow, state, context, tools)
@@ -31,18 +29,6 @@ class ConversePolicy(BasePolicy):
         flow.status = 'Completed'
         return DisplayFrame(origin='chat', thoughts=raw_output)
 
-    def next_policy(self, flow, state, context, tools):
-        convo_history = context.compile_history()
-        text = self.engineer.skill_call(flow, convo_history, self.memory.read_scratchpad(), skill_name='next')
-        flow.status = 'Completed'
-        return DisplayFrame(origin='next', thoughts=text)
-
-    def feedback_policy(self, flow, state, context, tools):
-        convo_history = context.compile_history()
-        text = self.engineer.skill_call(flow, convo_history, self.memory.read_scratchpad(), skill_name='feedback')
-        flow.status = 'Completed'
-        return DisplayFrame(origin='feedback', thoughts=text)
-
     def preference_policy(self, flow, state, context, tools):
         if not flow.slots['setting'].check_if_filled():
             convo_history = context.compile_history(look_back=3)
@@ -53,7 +39,7 @@ class ConversePolicy(BasePolicy):
                 flow.fill_slots_by_label({'setting': parsed})
             if not flow.slots['setting'].check_if_filled():
                 self.ambiguity.declare('specific', metadata={'missing_slot': 'setting'})
-                return DisplayFrame()
+                return DisplayFrame(flow.name())
 
         slots = flow.slot_values_dict()
         setting = slots.get('setting', {})
@@ -94,9 +80,19 @@ class ConversePolicy(BasePolicy):
         return DisplayFrame(origin='suggest', thoughts=text)
 
     def explain_policy(self, flow, state, context, tools):
-        text, tool_log = self.llm_execute(flow, state, context, tools)
+        params = {}
+        turn_slot = flow.slots['turn_id']
+        if turn_slot.check_if_filled():
+            params['turn_id'] = str(turn_slot.to_dict())
+        result = tools('explain_action', params)
         flow.status = 'Completed'
-        return DisplayFrame(origin='explain', thoughts=text)
+        if not result.get('_success'):
+            reason = result.get('_error', '') or 'unknown'
+            return self.error_frame(flow, 'tool_error',
+                thoughts=f'explain_action failed: {reason}.',
+                code=result.get('_message', ''),
+                failed_tool='explain_action')
+        return DisplayFrame(origin='explain', thoughts=result.get('explanation', ''))
 
     def endorse_policy(self, flow, state, context, tools):
         convo_history = context.compile_history()
@@ -111,6 +107,23 @@ class ConversePolicy(BasePolicy):
         return DisplayFrame(origin='dismiss', thoughts=text)
 
     def undo_policy(self, flow, state, context, tools):
-        text, tool_log = self.llm_execute(flow, state, context, tools)
+        if not state.active_post:
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(flow.name())
+        params = {'post_id': state.active_post}
+        turn_slot = flow.slots['turn']
+        if turn_slot.check_if_filled():
+            try:
+                params['version'] = int(turn_slot.level)
+            except (TypeError, ValueError):
+                pass
+        result = tools('rollback_post', params)
         flow.status = 'Completed'
-        return DisplayFrame(origin='undo', thoughts=text)
+        if not result.get('_success'):
+            reason = result.get('_error', '') or 'unknown'
+            return self.error_frame(flow, 'tool_error',
+                thoughts=f'rollback_post failed: {reason}.',
+                code=result.get('_message', ''),
+                failed_tool='rollback_post')
+        message = result.get('message') or f"Rolled back to version {params.get('version', 1)}."
+        return DisplayFrame(origin='undo', thoughts=message)

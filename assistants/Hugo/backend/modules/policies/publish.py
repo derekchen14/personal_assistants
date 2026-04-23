@@ -32,8 +32,10 @@ class PublishPolicy(BasePolicy):
         return steps, current
 
     def _clarify_with_steps(self, flow):
+        """Publish-specific clarifier: toast-block showing the step the user
+        needs to fill. Called when ambiguity is already declared."""
         steps, current = self._slot_steps(flow)
-        frame = DisplayFrame(origin=flow.name())
+        frame = DisplayFrame(flow.name())
         frame.add_block({'type': 'toast', 'data': {
             'message': self.ambiguity.ask(),
             'level': 'info',
@@ -45,54 +47,86 @@ class PublishPolicy(BasePolicy):
     def release_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return self._clarify_with_steps(flow)
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(flow.name())
+
+        # Default-commit: channel defaults to 'mt1t' when unset.
         if not flow.slots['channel'].filled:
             flow.fill_slot_values({'channel': 'mt1t'})
 
         post_id, _ = self._resolve_source_ids(flow, state, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools)
-        if post_id:
-            tools('update_post', {'post_id': post_id, 'updates': {'status': 'published'}})
+
+        failed = self._first_failed_platform_tool(tool_log)
         flow.status = 'Completed'
-        frame = DisplayFrame(origin='release', thoughts=text)
-        frame.add_block({'type': 'toast', 'data': {'message': text}})
+        frame = DisplayFrame(flow.name(), thoughts=text)
+        if failed:
+            failed_tool, result = failed
+            err_msg = result['_message'] if '_message' in result else result.get('_error', f'{failed_tool} failed')
+            toast = {'message': f'{failed_tool} failed: {err_msg}'}
+            if 'level' in result:
+                toast['level'] = result['level']
+            frame.add_block({'type': 'toast', 'data': toast})
+        else:
+            if post_id:
+                self.retry_tool(tools, 'update_post',
+                    {'post_id': post_id, 'updates': {'status': 'published'}})
+            title = tools('read_metadata', {'post_id': post_id}).get('title', 'the post') if post_id else 'the post'
+            channels = [v.get('chl') if isinstance(v, dict) else str(v) for v in flow.slots['channel'].values]
+            message = f'Published "{title}" to {", ".join(channels)}.' if channels else f'Published "{title}".'
+            frame.add_block({'type': 'toast', 'data': {'message': message, 'level': 'success'}})
         return frame
+
+    @staticmethod
+    def _first_failed_platform_tool(tool_log):
+        for entry in tool_log:
+            if entry['tool'] not in ('channel_status', 'release_post'):
+                continue
+            if not entry['result'].get('_success'):
+                return entry['tool'], entry['result']
+        return None
 
     def syndicate_policy(self, flow, state, context, tools):
         if not flow.slots['channel'].check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing_slot': 'channel'})
-            return self._clarify_with_steps(flow)
-
-        text, tool_log = self.llm_execute(flow, state, context, tools)
-        flow.status = 'Completed'
-        frame = DisplayFrame(origin='syndicate', thoughts=text)
-        frame.add_block({'type': 'toast', 'data': {'message': text}})
+            frame = self._clarify_with_steps(flow)
+        else:
+            text, tool_log = self.llm_execute(flow, state, context, tools)
+            flow.status = 'Completed'
+            frame = DisplayFrame(flow.name(), thoughts=text)
+            frame.add_block({'type': 'toast', 'data': {'message': text}})
         return frame
 
     def schedule_policy(self, flow, state, context, tools):
-        for slot_name in (flow.entity_slot, 'channel'):
-            slot = flow.slots[slot_name]
-            if slot.priority == 'required' and not slot.check_if_filled():
-                self.ambiguity.declare('specific', metadata={'missing_slot': slot_name})
-                return self._clarify_with_steps(flow)
-
-        text, tool_log = self.llm_execute(flow, state, context, tools)
-        flow.status = 'Completed'
-        frame = DisplayFrame(origin='schedule', thoughts=text)
-        frame.add_block({'type': 'toast', 'data': {'message': text}})
+        missing = self._first_missing_required(flow, (flow.entity_slot, 'channel'))
+        if missing:
+            self.ambiguity.declare('specific', metadata={'missing_slot': missing})
+            frame = self._clarify_with_steps(flow)
+        else:
+            text, tool_log = self.llm_execute(flow, state, context, tools)
+            flow.status = 'Completed'
+            frame = DisplayFrame(flow.name(), thoughts=text)
+            frame.add_block({'type': 'toast', 'data': {'message': text}})
         return frame
+
+    @staticmethod
+    def _first_missing_required(flow, slot_names):
+        for name in slot_names:
+            slot = flow.slots[name]
+            if slot.priority == 'required' and not slot.check_if_filled():
+                return name
+        return None
 
     def preview_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return self._clarify_with_steps(flow)
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(flow.name())
 
         post_id, _ = self._resolve_source_ids(flow, state, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = DisplayFrame(origin='preview', thoughts=text)
+        frame = DisplayFrame(flow.name(), thoughts=text)
         if post_id:
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
@@ -100,48 +134,47 @@ class PublishPolicy(BasePolicy):
     def promote_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return self._clarify_with_steps(flow)
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(flow.name())
 
         source_id, _ = self._resolve_source_ids(flow, state, tools)
-
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
-        source_meta = {}
-        if source_id:
-            get_result = tools('read_metadata', {'post_id': source_id})
-            if get_result.get('_success'):
-                source_meta = get_result
-
-        source_title = source_meta.get('title', 'Untitled')
-
         post_data = self._read_post_content(source_id, tools) if source_id else {}
+        if not post_data:
+            source_meta = tools('read_metadata', {'post_id': source_id}) if source_id else {}
+            source_title = source_meta.get('title', 'Untitled') if source_meta.get('_success') else 'Untitled'
+            post_data = {'post_id': source_id or '', 'title': source_title}
+
         flow.status = 'Completed'
-        frame = DisplayFrame(origin='promote', thoughts=text)
-        card_data = post_data if post_data else {'post_id': source_id or '', 'title': source_title}
-        frame.add_block({'type': 'card', 'data': card_data})
+        frame = DisplayFrame(flow.name(), thoughts=text)
+        frame.add_block({'type': 'card', 'data': post_data})
         return frame
 
     def cancel_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return self._clarify_with_steps(flow)
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(flow.name())
 
         post_id, _ = self._resolve_source_ids(flow, state, tools)
-
         result = tools('update_post', {
             'post_id': post_id or '',
             'updates': {'status': 'draft'},
         })
 
-        message = 'Publication cancelled.' if result.get('_success') else 'Could not cancel.'
-        flow.status = 'Completed'
-        frame = DisplayFrame(origin='cancel')
-        frame.add_block({'type': 'toast', 'data': {'message': message}})
+        if result.get('_success'):
+            flow.status = 'Completed'
+            frame = DisplayFrame(flow.name())
+            frame.add_block({'type': 'toast', 'data': {'message': 'Publication cancelled.'}})
+        else:
+            frame = self.error_frame(flow, 'tool_error',
+                thoughts='Could not cancel publication.',
+                code=result.get('_message', ''),
+                failed_tool='update_post')
         return frame
 
     def survey_policy(self, flow, state, context, tools):
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        return DisplayFrame(origin='survey', thoughts=text)
+        return DisplayFrame(flow.name(), thoughts=text)

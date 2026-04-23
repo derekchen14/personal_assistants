@@ -1,0 +1,94 @@
+{
+  "flow": "find",
+  "parent_intent": "Research",
+  "round": 2,
+  "version": 1,
+  "notes": "Find is deterministic: policy calls `find_posts` inline with query expansion. No scratchpad write by default; frame is always a list block. One small LLM call happens inside the query-expansion helper with model and max_tokens passed explicitly.",
+  "sections": [
+    {
+      "id": "intent_prompt",
+      "label": "Intent prompt (Research)",
+      "path": "backend/prompts/pex/sys_prompts.py::RESEARCH",
+      "status": "n/a",
+      "content": "N/A. Main find path is deterministic; the query-expansion helper makes its own small call with no shared system prompt."
+    },
+    {
+      "id": "skill_intro",
+      "label": "Skill \u00b7 intro",
+      "path": "backend/prompts/pex/skills/find.md",
+      "status": "n/a",
+      "content": "N/A. Find has no skill file."
+    },
+    {
+      "id": "skill_process",
+      "label": "Skill \u00b7 Process",
+      "path": "backend/prompts/pex/skills/find.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_handling_ambiguity_and_errors",
+      "label": "Skill \u00b7 Handling Ambiguity and Errors",
+      "path": "backend/prompts/pex/skills/find.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_tools",
+      "label": "Skill \u00b7 Tools",
+      "path": "backend/prompts/pex/skills/find.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_output",
+      "label": "Skill \u00b7 Output",
+      "path": "backend/prompts/pex/skills/find.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_fewshot",
+      "label": "Skill \u00b7 Few-shot examples",
+      "path": "backend/prompts/pex/skills/find.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "starter_task",
+      "label": "Starter \u00b7 <task>",
+      "path": "backend/prompts/pex/starters/find.py",
+      "status": "n/a",
+      "content": "N/A. Deterministic flow."
+    },
+    {
+      "id": "starter_content",
+      "label": "Starter \u00b7 content block",
+      "path": "backend/prompts/pex/starters/find.py",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "starter_resolved",
+      "label": "Starter \u00b7 <resolved_details>",
+      "path": "backend/prompts/pex/starters/find.py",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "policy",
+      "label": "Policy function",
+      "path": "backend/modules/policies/research.py :: find_policy",
+      "status": "applicable",
+      "note": "Query expansion is the only LLM touch-point; model and max_tokens are passed explicitly at the call. Frame is always a `list` block.",
+      "content": "def find_policy(self, flow, state, context, tools):\n    slots = flow.slot_values_dict()\n    query = slots.get('query', '')\n    limit = int(slots['count']) if 'count' in slots else 10\n\n    terms = self._expand_query(query)\n\n    seen = {}\n    any_ok = False\n    for term in terms:\n        result = tools('find_posts', {'query': term, 'count': limit})\n        if result.get('_success'):\n            any_ok = True\n            for post in result.get('posts', []):\n                seen.setdefault(post['post_id'], post)\n\n    results = list(seen.values())[:limit]\n\n    if not any_ok:\n        return self.error_frame(flow, 'tool_error',\n            thoughts='find_posts failed on every expanded query term.',\n            failed_tool='find_posts')\n\n    flow.status = 'Completed'\n    frame = DisplayFrame(flow.name(),\n        thoughts=f\"Found {len(results)} posts matching '{query}'.\",\n        metadata={\n            'query': query,\n            'hit_count': len(results),\n            'expanded_terms': terms,\n        })\n    frame.add_block({'type': 'list', 'data': {\n        'items': [{\n            'post_id': p['post_id'],\n            'title': p['title'],\n            'excerpt': p.get('preview', ''),\n            'publish_date': p.get('updated_at'),\n            'score': p.get('score'),\n        } for p in results],\n    }})\n    return frame"
+    },
+    {
+      "id": "flow_config",
+      "label": "Flow class config",
+      "path": "backend/components/flow_stack/flows.py :: FindFlow",
+      "status": "applicable",
+      "content": "class FindFlow(ResearchParentFlow):\n  def __init__(self):\n    super().__init__()\n    self.flow_type = 'find'\n    self.dax = '{001}'\n    self.entity_slot = 'query'\n    self.goal = 'search previous posts by keyword or topic; returns matching titles, excerpts, and publication dates sorted by relevance'\n    self.slots = {\n      'query': ExactSlot(),\n      'count': LevelSlot(priority='optional', threshold=1),\n    }\n    self.tools = ['find_posts']"
+    }
+  ]
+}

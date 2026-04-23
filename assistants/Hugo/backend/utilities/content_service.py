@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 from datetime import datetime
-from backend.utilities.services import ToolService
+from backend.utilities.services import ToolService, split_sentences, join_sentences, resolve_snip_index
 
 class ContentService(ToolService):
 
@@ -12,6 +12,9 @@ class ContentService(ToolService):
         self._images_dir = self._content_dir / 'images'
 
     def generate_outline(self, post_id:str, content:str, sec_id:str|None=None) -> dict:
+        """FULL overwrite of an outline. Used by the `outline` flow when
+        starting from scratch, and by `refine` when removing sections. For
+        targeted single-section edits, use `generate_section`."""
         errors = self._validate_outline(content)
         if errors:
             return self._error('validation', '; '.join(errors))
@@ -47,6 +50,53 @@ class ContentService(ToolService):
 
         self._save_metadata(entries)
         return self._success()
+
+    def generate_section(self, post_id:str, sec_id:str, content:str) -> dict:
+        """Save a single section. Used by the `refine` flow for targeted edits.
+
+        If `sec_id` matches an existing section, its content is replaced
+        wholesale (and the section renamed if the incoming `## Heading`
+        differs — `sec_id` is recomputed from the new title). If `sec_id`
+        does not match any existing section, the content is appended as
+        a new section at the tail of the outline.
+
+        The `content` argument must begin with a `## Heading` line so the
+        tool can detect rename intent; bullets follow.
+        """
+        errors = self._validate_outline(content)
+        if errors:
+            return self._error('validation', '; '.join(errors))
+
+        entries = self._load_metadata()
+        ent = self._find_entry(entries, post_id)
+        if not ent:
+            return self._error('not_found', f'Post not found: {post_id}')
+
+        incoming = self._extract_sections(content)
+        if not incoming:
+            return self._error('validation', 'Section content must include a ## heading')
+        inc = incoming[0]
+        new_slug = self._slugify(inc['title'])
+
+        file_content = self._read_content(ent['filename'])
+        sections = self._extract_sections(file_content)
+
+        renamed = False
+        found = False
+        for sec in sections:
+            if sec['sec_id'] == sec_id:
+                renamed = (sec['title'] != inc['title'])
+                sec['sec_id'] = new_slug
+                sec['title'] = inc['title']
+                sec['lines'] = inc['lines']
+                found = True
+                break
+        if not found:
+            sections.append({'sec_id': new_slug, 'title': inc['title'], 'lines': inc['lines']})
+
+        self._save_section_content(ent, sections)
+        self._save_metadata(entries)
+        return self._success(section_id=new_slug, renamed=renamed, appended=(not found))
 
     def _validate_outline(self, content:str) -> list[str]:
         errors = []
@@ -166,38 +216,8 @@ class ContentService(ToolService):
         self._save_metadata(entries)
         return self._success()
 
-    def insert_content(self, post_id:str, sec_id:str,
-                       content:str, line_number:int|None=None) -> dict:
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
-        file_content = self._read_content(ent['filename'])
-        sections = self._extract_sections(file_content)
-
-        found = False
-        for sec in sections:
-            if sec['sec_id'] == sec_id:
-                new_lines = content.split('\n')
-                if line_number is not None:
-                    idx = max(0, min(line_number - 1, len(sec['lines'])))
-                    for jdx, nl in enumerate(new_lines):
-                        sec['lines'].insert(idx + jdx, nl)
-                else:
-                    sec['lines'].extend(new_lines)
-                found = True
-                break
-
-        if not found:
-            return self._error('not_found', f'Section not found: {sec_id}')
-
-        self._save_section_content(ent, sections)
-        self._save_metadata(entries)
-        return self._success()
-
     def revise_content(self, post_id:str, sec_id:str,
-                       content:str, lines:tuple|list|None=None) -> dict:
+                       content:str, snip_id:int|tuple|list|None=None) -> dict:
         entries = self._load_metadata()
         ent = self._find_entry(entries, post_id)
         if not ent:
@@ -206,25 +226,29 @@ class ContentService(ToolService):
         file_content = self._read_content(ent['filename'])
         sections = self._extract_sections(file_content)
 
-        found = False
         for sec in sections:
             if sec['sec_id'] == sec_id:
                 self._take_snapshot(post_id, sec_id, sec['lines'])
-                new_lines = content.split('\n')
-                if lines:
-                    start, end = int(lines[0]) - 1, int(lines[1])
-                    sec['lines'][start:end] = new_lines
+
+                if snip_id is None:
+                    sec['lines'] = content.split('\n')
                 else:
-                    sec['lines'] = new_lines
-                found = True
-                break
+                    existing_text = '\n'.join(sec['lines'])
+                    sentences = split_sentences(existing_text)
+                    new_piece = content.strip()
+                    if isinstance(snip_id, int):
+                        idx = len(sentences) if snip_id == -1 else snip_id
+                        sentences.insert(idx, new_piece)
+                    else:
+                        start, end = int(snip_id[0]), int(snip_id[1])
+                        sentences[start:end] = [new_piece]
+                    sec['lines'] = join_sentences(sentences).split('\n')
 
-        if not found:
-            return self._error('not_found', f'Section not found: {sec_id}')
+                self._save_section_content(ent, sections)
+                self._save_metadata(entries)
+                return self._success()
 
-        self._save_section_content(ent, sections)
-        self._save_metadata(entries)
-        return self._success()
+        return self._error('not_found', f'Section not found: {sec_id}')
 
     def write_text(self, instructions:str, seed_content:str, location:str='append') -> dict:
         word_count = len(seed_content.split())
@@ -245,43 +269,8 @@ class ContentService(ToolService):
             _llm_task='write_text',
         )
 
-    def find_and_replace(self, post_id:str, find:str, replace:str,
-                         sec_id:str|None=None, lines:tuple|list|None=None) -> dict:
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
-        file_content = self._read_content(ent['filename'])
-        sections = self._extract_sections(file_content)
-        total_count = 0
-
-        for sec in sections:
-            if sec_id and sec['sec_id'] != sec_id:
-                continue
-            if lines:
-                start, end = int(lines[0]) - 1, int(lines[1])
-                for idx in range(start, min(end, len(sec['lines']))):
-                    count = sec['lines'][idx].count(find)
-                    if count:
-                        sec['lines'][idx] = sec['lines'][idx].replace(find, replace)
-                        total_count += count
-            else:
-                for idx, line in enumerate(sec['lines']):
-                    count = line.count(find)
-                    if count:
-                        sec['lines'][idx] = line.replace(find, replace)
-                        total_count += count
-
-        if total_count == 0:
-            return self._error('not_found', f'No matches found for "{find}"')
-
-        self._save_section_content(ent, sections)
-        self._save_metadata(entries)
-        return self._success(count=total_count)
-
     def remove_content(self, post_id:str, sec_id:str,
-                       lines:tuple|list|None=None) -> dict:
+                       snip_id:int|tuple|list|None=None) -> dict:
         entries = self._load_metadata()
         ent = self._find_entry(entries, post_id)
         if not ent:
@@ -290,34 +279,43 @@ class ContentService(ToolService):
         file_content = self._read_content(ent['filename'])
         sections = self._extract_sections(file_content)
 
-        if lines:
-            for sec in sections:
-                if sec['sec_id'] == sec_id:
-                    start, end = int(lines[0]) - 1, int(lines[1])
-                    self._take_snapshot(post_id, sec_id, sec['lines'])
-                    del sec['lines'][start:end]
-                    break
-            else:
-                return self._error('not_found', f'Section not found: {sec_id}')
-        else:
-            found = False
+        if snip_id is None:
             for idx, sec in enumerate(sections):
                 if sec['sec_id'] == sec_id:
                     self._take_snapshot(post_id, sec_id, sec['lines'])
                     sections.pop(idx)
-                    found = True
-                    break
-            if not found:
-                return self._error('not_found', f'Section not found: {sec_id}')
+                    self._save_section_content(ent, sections)
+                    self._save_metadata(entries)
+                    return self._success()
+            return self._error('not_found', f'Section not found: {sec_id}')
 
-        self._save_section_content(ent, sections)
-        self._save_metadata(entries)
-        return self._success()
+        for sec in sections:
+            if sec['sec_id'] == sec_id:
+                self._take_snapshot(post_id, sec_id, sec['lines'])
+                existing_text = '\n'.join(sec['lines'])
+                sentences = split_sentences(existing_text)
+
+                if isinstance(snip_id, int):
+                    idx = resolve_snip_index(snip_id, len(sentences))
+                    if 0 <= idx < len(sentences):
+                        sentences.pop(idx)
+                else:
+                    start, end = int(snip_id[0]), int(snip_id[1])
+                    del sentences[start:end]
+
+                new_text = join_sentences(sentences)
+                sec['lines'] = new_text.split('\n') if new_text else []
+                self._save_section_content(ent, sections)
+                self._save_metadata(entries)
+                return self._success()
+
+        return self._error('not_found', f'Section not found: {sec_id}')
 
     def cut_and_paste(self, post_id:str, source_section:str,
-                      target_section:str, source_lines:tuple|list|None=None,
-                      target_line:int|None=None) -> dict:
-        if source_section == target_section and not source_lines:
+                      target_section:str,
+                      source_snip_id:int|tuple|list|None=None,
+                      target_snip_id:int|None=None) -> dict:
+        if source_section == target_section and source_snip_id is None:
             return self._error('validation', 'Cannot move entire section to itself')
 
         entries = self._load_metadata()
@@ -341,20 +339,29 @@ class ContentService(ToolService):
         if not tgt:
             return self._error('not_found', f'Target section not found: {target_section}')
 
-        if source_lines:
-            start, end = int(source_lines[0]) - 1, int(source_lines[1])
-            moved = src['lines'][start:end]
-            del src['lines'][start:end]
-        else:
-            moved = src['lines'][:]
-            src['lines'] = []
+        src_sentences = split_sentences('\n'.join(src['lines']))
+        tgt_sentences = split_sentences('\n'.join(tgt['lines']))
 
-        if target_line is not None:
-            idx = max(0, min(target_line - 1, len(tgt['lines'])))
-            for jdx, line in enumerate(moved):
-                tgt['lines'].insert(idx + jdx, line)
+        if source_snip_id is None:
+            moved = src_sentences[:]
+            src_sentences = []
+        elif isinstance(source_snip_id, int):
+            idx = resolve_snip_index(source_snip_id, len(src_sentences))
+            moved = [src_sentences.pop(idx)] if 0 <= idx < len(src_sentences) else []
         else:
-            tgt['lines'].extend(moved)
+            start, end = int(source_snip_id[0]), int(source_snip_id[1])
+            moved = src_sentences[start:end]
+            del src_sentences[start:end]
+
+        if target_snip_id is None:
+            tgt_sentences.extend(moved)
+        else:
+            idx = len(tgt_sentences) if target_snip_id == -1 else int(target_snip_id)
+            for offset, sentence in enumerate(moved):
+                tgt_sentences.insert(idx + offset, sentence)
+
+        src['lines'] = join_sentences(src_sentences).split('\n') if src_sentences else []
+        tgt['lines'] = join_sentences(tgt_sentences).split('\n') if tgt_sentences else []
 
         self._save_section_content(ent, sections)
         self._save_metadata(entries)

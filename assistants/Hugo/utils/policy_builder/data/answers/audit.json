@@ -1,0 +1,97 @@
+{
+  "flow": "audit",
+  "decision_points": {
+    "DP-1": {
+      "accepted": true,
+      "override": null,
+      "rationale": "These ideas are all accurate good, but where does this go? There is no `## Rules` section in the System prompt. Overall, my concern is that these rule sound mostly like explanation of the flow. If that is the case, then we should be writing one paragraph, rather than 3 bullet points.\n\nAlso, \" Never propose edits; only surface findings.\" is a violation of Rule 7 in the `prompt_writing.md` guide"
+    },
+    "DP-2": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-3": {
+      "accepted": false,
+      "override": "3, 4, and 5 should be combined into a single Step, with sub-points to distinguish between the different tools.\n\n7. Should be a sub-point of Step 2.",
+      "rationale": "`## Process` should follow the chronological order. That's why 7 moves earlier in the process."
+    },
+    "DP-4": {
+      "accepted": false,
+      "override": "We really need a `read_section()` tool to look at a section in more detail.",
+      "rationale": "You have copied the template exactly to always say that 'read_flow_stack()` is rarely used. Instead, you should ask yourself for each flow, when might flow stack be used? Hint: for audit, there is definitely use cases for looking at the flow stack."
+    },
+    "DP-18": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-19": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-5": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-6": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-7": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-8": {
+      "accepted": false,
+      "override": "The scenarios should be different types of errors uncovered during an audit. Too repetitive, tone sounds robotic, and post is too short compared to the past.",
+      "rationale": "reference count should default to 3"
+    },
+    "DP-9": {
+      "accepted": false,
+      "override": "A good finding is that the content in \"User Simulators for training RL agents\" is really similar to previous posts. The posts are sounding repetitive rather than being original and thought-provoking.",
+      "rationale": ""
+    },
+    "DP-10": {
+      "accepted": false,
+      "override": "Errors (policy emits error frame after skill signals):\n- (c) `compare_style` fails but `editor_review` succeeds \u2014 proceed with editorial findings only, note the gap in `summary`.\n- (d) `editor_review` fails but `compare_style` succeeds \u2014 mirror case (c) with editorial findings missing.",
+      "rationale": "All the others are extra. Again, the Round 2 should show the actual prompt text. Thus, if something is rare or not needed (ie. \"No fallbacks from the skill\", just omit it within the proposal. If you have comments to make, write it *outside* the proposal box."
+    },
+    "DP-12": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-13": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-14": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-15": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-16": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-17": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    }
+  },
+  "batch": 2,
+  "round": 1
+}

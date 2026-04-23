@@ -1,0 +1,94 @@
+{
+  "flow": "outline",
+  "parent_intent": "Draft",
+  "round": 2,
+  "version": 1,
+  "notes": "Outline has two modes (propose and direct) signaled by `flow.stage`. The skill reads a `stage` field in `<resolved_details>` and branches; the policy selects the stage from slot state and runs the appropriate starter template. Process, starter task, and frame output differ per mode.",
+  "sections": [
+    {
+      "id": "intent_prompt",
+      "label": "Intent prompt (Draft)",
+      "path": "backend/prompts/pex/sys_prompts.py::DRAFT",
+      "status": "applicable",
+      "content": "You are currently working on Draft tasks, which encompasses generating outlines, refining them, and composing prose from those outlines in order to create a *draft* of new blog posts.\n\n## Background\n\nA post outline contains a title, a status (draft / note / published), and an ordered list of sections. Each section has a subtitle and content, either outline bullets or prose paragraphs.\n\nOutlines follow markdown down to depth of four levels:\n- Level 0: `# Post Title`  (not editable)\n- Level 1: `## Section Subtitle`\n- Level 2: `### Sub-section`\n- Level 3: `- bullet point`\n- Level 4: `  * sub-bullet`\n\nMost outlines have Level 1 + Level 3. Add Level 2 only when the section needs explicit sub-structure; use Level 4 only when a bullet genuinely needs supporting detail underneath.\n\nOutline sections follow the depth scheme above. Prose sections replace levels 2-4 with standard paragraphs separated by blank lines. Both are markdown. The only difference is bullet-structured content vs. paragraph-structured content. Never mix prose and bullets inside the same section unless the skill explicitly asks you to.\n\nPost IDs take the form of 8-character lowercase hex strings, the first 8 characters of a UUID4. Section IDs take the form of slugs. We convert a section name to a slug by lowercasing, stripping punctuation, collapsing spaces and underscores to dashes, and truncating to 80 chars. Post names and section names are proper case natural language text."
+    },
+    {
+      "id": "skill_intro",
+      "label": "Skill \u00b7 intro",
+      "path": "backend/prompts/pex/skills/outline.md",
+      "status": "applicable",
+      "content": "This skill describes how to generate a fresh outline for a post. You operate in one of two modes, signaled by the `stage` field in `<resolved_details>`: `propose` means produce 3 candidate outlines as text for the user to pick from; `direct` means save the chosen outline via `generate_outline`."
+    },
+    {
+      "id": "skill_process",
+      "label": "Skill \u00b7 Process",
+      "path": "backend/prompts/pex/skills/outline.md :: ## Process",
+      "status": "applicable",
+      "content": "## Process\n\n### Propose mode\n\n1. Read `stage='propose'` from `<resolved_details>`.\n   a. Use the `<resolved_details>` block to see the post metadata.\n   b. Do not call `read_metadata()` unless absolutely necessary.\n2. If the topic is filled and sounds generic, optionally call `find_posts(query=<topic>)` at most once to scan for existing posts on the topic so you can vary angles against what has already been written. Calling this tool is highly unlikely in most cases.\n3. Emit exactly 3 outline options as markdown. Use the strict format `### Option N` then `## <section title>` and a 1 to 2 sentence description per section. Each option has 4 to 7 sections. No trailing commentary.\n4. Do not call `generate_outline`. End the turn with text.\n\n### Direct mode\n\n1. Read `stage='direct'` from `<resolved_details>`.\n2. Read the section list from `<resolved_details>`. These are either user-named sections or the chosen option's sections.\n3. Draft bullets per section honoring the depth value. Depth 1 is flat bullets. Depth 2 adds `### Sub-section` headings with bullets under each. Depth 3 goes further to `### Sub-section` + `- bullet` + `  * sub-bullet`.\n4. Call `generate_outline(post_id, content=<markdown outline>)` to save. End the turn."
+    },
+    {
+      "id": "skill_handling_ambiguity_and_errors",
+      "label": "Skill \u00b7 Handling Ambiguity and Errors",
+      "path": "backend/prompts/pex/skills/outline.md :: ## Handling Ambiguity and Errors",
+      "status": "applicable",
+      "content": "## Handling Ambiguity and Errors\n\nIf in propose mode you find yourself wanting to call `generate_outline`, stop: the user has not yet chosen an option. Re-emit the three options as text instead.\n\nIf in direct mode `generate_outline` fails, the policy will retry once automatically. A second failure surfaces as a `tool_error` frame; do not attempt a third call from the skill.\n\nIf the topic cannot be extracted from the conversation and no sections were supplied, call `handle_ambiguity(level='specific', metadata={'missing_slot': 'topic'})`."
+    },
+    {
+      "id": "skill_tools",
+      "label": "Skill \u00b7 Tools",
+      "path": "backend/prompts/pex/skills/outline.md :: ## Tools",
+      "status": "applicable",
+      "content": "## Tools\n\n### Task-specific tools\n\n- `generate_outline(post_id, content)` is direct mode only, exactly once at the end of the turn. Pass the full markdown outline; the tool replaces any existing outline.\n- `find_posts(query)` is optional in both modes, but at most once. Use it to vary angles (propose) or to ground against prior work (direct). If it returns nothing, proceed without it.\n\n### General tools\n\n- `execution_error(violation, message)` for hard failures.\n- `handle_ambiguity(level, metadata)` for cases where the user's request is genuinely unclear.\n- `manage_memory(action, key, value)` to read or write session scratchpad and user preferences.\n- `read_flow_stack(action)` to check whether a compose or refine is queued behind this outline so the generated bullets match what the next flow will consume."
+    },
+    {
+      "id": "skill_output",
+      "label": "Skill \u00b7 Output",
+      "path": "backend/prompts/pex/skills/outline.md :: ## Output",
+      "status": "applicable",
+      "content": "## Output\n\n### Propose mode\n\nMarkdown text with three options in this strict format:\n\n```\n### Option 1\n## <section title>\nOne or two sentences describing what this section covers.\n\n## <section title>\n...\n\n### Option 2\n...\n\n### Option 3\n...\n```\n\n### Direct mode\n\nAfter `generate_outline` saves, the final reply is a one-sentence acknowledgement (\"Saved a 4-section outline for <title>.\"). The card block rendered by the policy carries the structured data."
+    },
+    {
+      "id": "skill_fewshot",
+      "label": "Skill \u00b7 Few-shot examples",
+      "path": "backend/prompts/pex/skills/outline.md :: ## Few-shot examples",
+      "status": "applicable",
+      "content": "## Few-shot examples\n\n### Example 1: Propose on a fresh post\n\nResolved Details:\n- stage: propose\n- topic: \"User Simulators for training RL agents\"\n- sections: []\n\nTrajectory:\n1. Emit three outline options with distinct angles (academic survey / engineering walkthrough / practitioner checklist). No tool calls.\n\n### Example 2: Direct mode with user-named sections (depth defaults to 2)\n\nResolved Details:\n- stage: direct\n- sections: [\"The Need for Data\", \"Architectures of the Past\", \"Recent Innovations\", \"Generating Rewards\"]\n- depth: (unfilled, defaults to 2)\n\nTrajectory:\n1. Draft sub-sections and bullets per section at depth 2.\n2. `generate_outline(post_id=abcd0123, content=<markdown with `## Section` and `### Sub-section` + bullets>)`.\n\n### Example 3: Direct mode via propose-then-pick with depth 2\n\nResolved Details:\n- stage: direct\n- proposals: (user picked Option 2)\n- depth: 2\n\nTrajectory:\n1. Take the sections from the chosen option.\n2. Draft sub-sections and bullets per section.\n3. `generate_outline(post_id=abcd0123, content=<markdown outline>)`."
+    },
+    {
+      "id": "starter_task",
+      "label": "Starter \u00b7 <task>",
+      "path": "backend/prompts/pex/starters/outline.py",
+      "status": "applicable",
+      "content": "# propose mode\n\"Propose 3 outline options for \\\"{post_title}\\\" on the topic \\\"{topic}\\\". Vary the angle across options. Emit each as markdown per the format; do not save. End once all 3 options have been emitted.\"\n\n# direct mode\n\"Generate an outline for \\\"{post_title}\\\" using the section list below. Compose bullets per section honoring the requested depth, then call `generate_outline` to save. End once the outline has been saved.\""
+    },
+    {
+      "id": "starter_content",
+      "label": "Starter \u00b7 <post_content>",
+      "path": "backend/prompts/pex/starters/outline.py (content block)",
+      "status": "applicable",
+      "content": "<post_content>\n{content_block}\n</post_content>\n\n# propose mode: topic and placeholder\n<topic: User Simulators for training RL agents>\n<existing_sections: none>\n\n# direct mode: section list + depth\n<depth: 2>\n## The Need for Data\n## Architectures of the Past\n## Recent Innovations\n## Generating Rewards"
+    },
+    {
+      "id": "starter_resolved",
+      "label": "Starter \u00b7 <resolved_details>",
+      "path": "backend/prompts/pex/starters/outline.py (resolved block)",
+      "status": "applicable",
+      "content": "<resolved_details>\nstage: direct\nPost: abcd0123\nTitle: \"User Simulators for Training RL Agents\"\nSections: [The Need for Data, Architectures of the Past, Recent Innovations, Generating Rewards]\nDepth: 2\n</resolved_details>"
+    },
+    {
+      "id": "policy",
+      "label": "Policy function",
+      "path": "backend/modules/policies/draft.py :: outline_policy",
+      "status": "applicable",
+      "note": "Depth defaults to 2 when not filled. Propose vs. direct branch drives both starter selection and frame shape. Self-recursion is safe: after sections are filled from a chosen proposal, the recursive call takes the sections-filled branch and does not self-recurse.",
+      "content": "def outline_policy(self, flow, state, context, tools):\n    if not flow.slots['source'].check_if_filled():\n        self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})\n        return DisplayFrame(flow.name())\n\n    depth_slot = flow.slots['depth']\n    depth = int(depth_slot.level) if depth_slot.check_if_filled() else 2\n\n    if flow.slots['sections'].check_if_filled():\n        flow.stage = 'direct'\n        post_id = state.active_post\n        text, tool_log = self.llm_execute(flow, state, context, tools,\n            extra_resolved={'depth': depth})\n        saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_outline')\n        if not text or not saved:\n            return self.error_frame(flow, 'failed_to_save',\n                thoughts='LLM failed to generate outline.',\n                failed_tool='generate_outline')\n        for step in flow.slots['sections'].steps:\n            flow.slots['sections'].mark_as_complete(step['name'])\n        flow.status = 'Completed'\n        frame = DisplayFrame(flow.name(), thoughts=text,\n            metadata={'stage': 'direct', 'post_id': post_id})\n        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})\n        return frame\n\n    if flow.slots['topic'].check_if_filled():\n        flow.stage = 'propose'\n        if flow.slots['proposals'].check_if_filled():\n            chosen = flow.slots['proposals'].values[0]\n            for sec in chosen:\n                flow.slots['sections'].add_one(sec)\n            return self.outline_policy(flow, state, context, tools)\n        return self._propose_outline(flow, state, context, tools, depth=depth)\n\n    convo_history = context.compile_history(look_back=3)\n    prompt = f'{convo_history}\\n\\nExtract the topic the user wants to outline. Reply with JSON: {{\"topic\": \"...\"}}.'\n    parsed = self.engineer.apply_guardrails(self.engineer(prompt, 'fill_slots'))\n    flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})\n\n    if flow.slots['topic'].filled:\n        flow.stage = 'propose'\n        return self._propose_outline(flow, state, context, tools, depth=depth)\n\n    flow.stage = 'error'\n    self.ambiguity.declare('specific', metadata={'missing_slot': 'topic'})\n    return DisplayFrame(flow.name())\n\ndef _propose_outline(self, flow, state, context, tools, depth:int=2):\n    # Strip outline-persistence tools from the skill's tool registry in propose\n    # mode; the skill must emit three options as text, not save.\n    raw, tool_log = self.llm_execute(flow, state, context, tools,\n        extra_resolved={'depth': depth},\n        exclude_tools=('generate_outline', 'generate_section'))\n    options = self.engineer.apply_guardrails(raw, format='outline_options')\n    if not options or len(options) != 3:\n        return self.error_frame(flow, 'parse_failure',\n            thoughts='Outline propose did not return 3 options.',\n            code=raw)\n    for opt in options:\n        flow.slots['proposals'].add_one(opt)\n    frame = DisplayFrame(flow.name(),\n        metadata={'stage': 'propose', 'option_count': len(options)})\n    frame.add_block({'type': 'selection', 'data': {'options': options}})\n    return frame"
+    },
+    {
+      "id": "flow_config",
+      "label": "Flow class config",
+      "path": "backend/components/flow_stack/flows.py :: OutlineFlow",
+      "status": "applicable",
+      "content": "class OutlineFlow(DraftParentFlow):\n  def __init__(self):\n    super().__init__()\n    self.flow_type = 'outline'\n    self.dax = '{002}'\n    self.goal = 'generate an outline including section headings, key bullet points, estimated word counts, and suggested reading order'\n    self.slots = {\n      'source': SourceSlot(1, priority='required'),\n      'sections': ChecklistSlot(priority='elective'),\n      'topic': ExactSlot(priority='elective'),\n      'depth': LevelSlot(priority='optional', threshold=1),\n      'proposals': ProposalSlot(priority='optional'),\n    }\n    self.tools = ['find_posts', 'brainstorm_ideas', 'generate_outline']"
+    }
+  ]
+}

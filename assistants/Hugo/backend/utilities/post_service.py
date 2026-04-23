@@ -5,7 +5,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from backend.utilities.services import ToolService
+from backend.utilities.services import ToolService, split_sentences, resolve_snip_index
 
 _PLACEHOLDER_SECTIONS = [
     ['Introduction', 'Body', 'Conclusion'],
@@ -108,7 +108,15 @@ class PostService(ToolService):
 
         content = self._read_content(ent['filename'])
         sections = self._extract_sections(content)
-        section_ids = [sec['sec_id'] for sec in sections]
+
+        section_summaries = [
+            {
+                'sec_id': sec['sec_id'],
+                'title': sec['title'],
+                'sentence_count': len(split_sentences('\n'.join(sec['lines']))),
+            }
+            for sec in sections
+        ]
 
         result = {
             'title': ent['title'],
@@ -118,7 +126,8 @@ class PostService(ToolService):
             'color': ent.get('color', ''),
             'created_at': ent.get('created_at'),
             'updated_at': ent.get('updated_at'),
-            'section_ids': section_ids,
+            'section_ids': [sec['sec_id'] for sec in sections],
+            'sections': section_summaries,
         }
 
         if include_outline:
@@ -126,18 +135,20 @@ class PostService(ToolService):
 
         if include_preview:
             preview = {}
-            for sec in sections:
+            for sec, summary in zip(sections, section_summaries):
                 body_lines = [line for line in sec['lines'] if line.strip()]
                 preview[sec['sec_id']] = {
                     'section_title': sec['title'],
                     'first_3_lines': body_lines[:3],
-                    'total_line_count': len(sec['lines']),
+                    'sentence_count': summary['sentence_count'],
                 }
             result['preview'] = preview
 
         return self._success(**result)
 
-    def read_section(self, post_id:str, sec_id:str, include_lines:bool=True) -> dict:
+    def read_section(self, post_id:str, sec_id:str,
+                     snip_id:int|tuple|list|None=None,
+                     include_sentence_ids:bool=False) -> dict:
         entries = self._load_metadata()
         entry = self._find_entry(entries, post_id)
         if not entry:
@@ -148,19 +159,33 @@ class PostService(ToolService):
         if not section:
             return self._error('not_found', f'Section not found: {sec_id}')
 
-        result = {
-            'sec_id': section['sec_id'],
-            'title': section['title'],
-            'content': '\n'.join(section['lines']),
-            'line_count': len(section['lines']),
-        }
-        if include_lines:
-            result['lines'] = [
-                {'line_number': idx + 1, 'text': line}
-                for idx, line in enumerate(section['lines'])
-            ]
+        sentences = split_sentences('\n'.join(section['lines']))
 
-        return self._success(**result)
+        if snip_id is None:
+            selected, start_idx = sentences, 0
+        elif isinstance(snip_id, int):
+            idx = resolve_snip_index(snip_id, len(sentences))
+            selected = [sentences[idx]] if 0 <= idx < len(sentences) else []
+            start_idx = idx if 0 <= idx < len(sentences) else 0
+        else:
+            start, end = int(snip_id[0]), int(snip_id[1])
+            selected = sentences[start:end]
+            start_idx = start
+
+        if include_sentence_ids:
+            rendered = '\n'.join(
+                f'[{start_idx + offset}] {text}'
+                for offset, text in enumerate(selected)
+            )
+        else:
+            rendered = ' '.join(selected)
+
+        return self._success(
+            sec_id=section['sec_id'],
+            title=section['title'],
+            content=rendered,
+            sentence_count=len(sentences),
+        )
 
     def create_post(self, title:str, type:str='draft',
                     topic:str|None=None, sections:list|None=None,

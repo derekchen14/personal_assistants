@@ -1,0 +1,94 @@
+{
+  "flow": "inspect",
+  "parent_intent": "Research",
+  "round": 2,
+  "version": 2,
+  "notes": "Inspect is deterministic: skill was deleted and the policy calls `inspect_post` inline. Most prompt-facing sections are N/A; the real artifacts are the policy function and the flow class config. The frame shape has a clarify attached because Round-1 left an unresolved tension between the structured `report` card (DP-16 accepted) and the user's note that there is no card (DP-17 override).",
+  "sections": [
+    {
+      "id": "intent_prompt",
+      "label": "Intent prompt (Research)",
+      "path": "backend/prompts/pex/sys_prompts.py::RESEARCH",
+      "status": "n/a",
+      "content": "N/A. Inspect is deterministic and runs no LLM turn, so no intent prompt is read."
+    },
+    {
+      "id": "skill_intro",
+      "label": "Skill \u00b7 intro",
+      "path": "backend/prompts/pex/skills/inspect.md",
+      "status": "n/a",
+      "content": "N/A. Inspect has no skill file."
+    },
+    {
+      "id": "skill_process",
+      "label": "Skill \u00b7 Process",
+      "path": "backend/prompts/pex/skills/inspect.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_handling_ambiguity_and_errors",
+      "label": "Skill \u00b7 Handling Ambiguity and Errors",
+      "path": "backend/prompts/pex/skills/inspect.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_tools",
+      "label": "Skill \u00b7 Tools",
+      "path": "backend/prompts/pex/skills/inspect.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_output",
+      "label": "Skill \u00b7 Output",
+      "path": "backend/prompts/pex/skills/inspect.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_fewshot",
+      "label": "Skill \u00b7 Few-shot examples",
+      "path": "backend/prompts/pex/skills/inspect.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "starter_task",
+      "label": "Starter \u00b7 <task>",
+      "path": "backend/prompts/pex/starters/inspect.py",
+      "status": "n/a",
+      "content": "N/A. Deterministic flows skip the starter layer."
+    },
+    {
+      "id": "starter_content",
+      "label": "Starter \u00b7 content block",
+      "path": "backend/prompts/pex/starters/inspect.py",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "starter_resolved",
+      "label": "Starter \u00b7 <resolved_details>",
+      "path": "backend/prompts/pex/starters/inspect.py",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "policy",
+      "label": "Policy function",
+      "path": "backend/modules/policies/research.py :: inspect_policy",
+      "status": "applicable",
+      "note": "Writes the producer scratchpad entry that polish-informed reads later. Frame carries a structured `report` card; `frame.thoughts` holds only the headline metric.",
+      "content": "def inspect_policy(self, flow, state, context, tools):\n    if not flow.slots['source'].check_if_filled():\n        self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})\n        return DisplayFrame(flow.name())\n\n    slots = flow.slot_values_dict()\n    post_id, _ = self._resolve_source_ids(flow, state, tools)\n    params = {'post_id': post_id}\n    if 'aspect' in slots:\n        params['aspect'] = slots['aspect']\n    if 'threshold' in slots:\n        params['threshold'] = slots['threshold']\n\n    result = tools('inspect_post', params)\n    if not result['_success']:\n        return self.error_frame(flow, 'tool_error',\n            thoughts='inspect_post failed.',\n            failed_tool='inspect_post')\n\n    self.memory.write_scratchpad('inspect', {\n        'version': 1,\n        'turn_number': context.turn_id,\n        'used_count': 0,\n        'metrics': result.get('metrics', {}),\n        'per_section': result.get('per_section', []),\n        'aspect': slots.get('aspect'),\n        'threshold': slots.get('threshold'),\n    })\n\n    metrics = result.get('metrics', {})\n    headline = f\"{metrics.get('word_count', 0)} words across {metrics.get('num_sections', 0)} sections, about {metrics.get('time_to_read', 0)} minutes to read.\"\n    flow.status = 'Completed'\n    frame = DisplayFrame(flow.name(), thoughts=headline, metadata={\n        'post_id': post_id,\n        'aspect': slots.get('aspect'),\n        'metric_count': len(metrics),\n    })\n    frame.add_block({'type': 'report', 'data': {\n        'post_id': post_id,\n        'metrics': metrics,\n        'per_section': result.get('per_section', []),\n    }})\n    return frame"
+    },
+    {
+      "id": "flow_config",
+      "label": "Flow class config",
+      "path": "backend/components/flow_stack/flows.py :: InspectFlow",
+      "status": "applicable",
+      "content": "class InspectFlow(ResearchParentFlow):\n  def __init__(self):\n    super().__init__()\n    self.flow_type = 'inspect'\n    self.dax = '{1BD}'\n    self.goal = 'report numeric content metrics; word count, section count, reading time, image count, post size (MB); optionally filtered to a single metric. Use check for post metadata'\n    self.slots = {\n      'source': SourceSlot(1),\n      'aspect': CategorySlot(['word_count', 'num_sections', 'time_to_read', 'image_count', 'num_links', 'post_size'], priority='required'),\n      'threshold': ScoreSlot(priority='optional'),\n    }\n    # Deterministic flow \u2014 the policy calls inspect_post directly; no skill delegation.\n    self.tools = ['inspect_post']"
+    }
+  ]
+}

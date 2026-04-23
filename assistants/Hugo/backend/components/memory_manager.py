@@ -11,7 +11,7 @@ class MemoryManager:
         memory_cfg = config.get('memory', {})
         scratchpad_cfg = memory_cfg.get('scratchpad', {})
         self._max_snippets: int = scratchpad_cfg.get('max_snippets', 64)
-        self._scratchpad: OrderedDict[str, str] = OrderedDict()
+        self._scratchpad: OrderedDict[str, str | dict] = OrderedDict()
         self._preferences: dict[str, str] = {}
 
         summarization = memory_cfg.get('summarization', {})
@@ -19,7 +19,7 @@ class MemoryManager:
 
     # ── Scratchpad (session-scoped, L1) ──────────────────────────────
 
-    def write_scratchpad(self, key:str, value:str):
+    def write_scratchpad(self, key:str, value:str|dict):
         if key in self._scratchpad:
             self._scratchpad.move_to_end(key)
         self._scratchpad[key] = value

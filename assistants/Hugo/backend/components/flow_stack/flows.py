@@ -1,6 +1,19 @@
 from backend.components.flow_stack.slots import *
 from backend.components.flow_stack.parents import *
 
+# ── Outline / markdown structure ────────────────────────────────────────────
+# Canonical 4-level outline scheme (plus Level 0 for the title). Shared by
+# outline, refine, compose, add, and any tool that writes outline markdown so
+# every producer uses the same heading/bullet conventions.
+
+OUTLINE_LEVELS = {
+    0: {'markdown': '# Title', 'meaning': 'Post title'},
+    1: {'markdown': '## Heading', 'meaning': 'Section header'},
+    2: {'markdown': '### Sub-heading', 'meaning': 'Sub-section'},
+    3: {'markdown': ' - bullet', 'meaning': 'Bullet point'},
+    4: {'markdown': '   * sub-bullet', 'meaning': 'Sub-bullet'},
+}
+
 # ── Research (7 flows) ──────────────────────────────────────────────────────
 
 class BrowseFlow(ResearchParentFlow):
@@ -8,11 +21,12 @@ class BrowseFlow(ResearchParentFlow):
     super().__init__()
     self.flow_type = 'browse'
     self.dax = '{012}'
-    self.entity_slot = 'category'
-    self.goal = 'browse available topics, notes, trending subjects, saved ideas, and content gaps filtered by category; excludes drafts and posts which use the "find" flow instead'
+    self.entity_slot = 'tags'
+    self.goal = 'browse the user\'s tagged content and saved notes for trending subjects, ideas, and content gaps; excludes drafts and posts which use the "find" flow instead'
 
     self.slots = {
-      'category': CategorySlot(['technology', 'business', 'lifestyle', 'tutorial', 'opinion', 'review', 'news'], priority='optional'),
+      'tags': FreeTextSlot(priority='required'),
+      'target': CategorySlot(['tag', 'note', 'both'], priority='required'),
     }
     self.tools = ['find_posts', 'brainstorm_ideas', 'search_notes']
 
@@ -49,10 +63,11 @@ class InspectFlow(ResearchParentFlow):
 
     self.slots = {
       'source': SourceSlot(1),
-      'aspect': CategorySlot(['word_count', 'num_sections', 'time_to_read', 'image_count', 'num_links', 'post_size'], priority='optional'),
+      'aspect': CategorySlot(['word_count', 'num_sections', 'time_to_read', 'image_count', 'num_links', 'post_size'], priority='required'),
       'threshold': ScoreSlot(priority='optional'),
     }
-    self.tools = ['read_metadata', 'read_section', 'inspect_post', 'check_readability', 'check_links']
+    # Deterministic flow — the policy calls inspect_post directly; no skill delegation.
+    self.tools = ['inspect_post']
 
 class FindFlow(ResearchParentFlow):
   def __init__(self):
@@ -108,7 +123,7 @@ class BrainstormFlow(DraftParentFlow):
       'topic': ExactSlot(priority='elective'),
       'ideas': ProposalSlot(priority='optional'),
     }
-    self.tools = ['brainstorm_ideas', 'find_posts', 'search_notes']
+    self.tools = ['brainstorm_ideas', 'find_posts', 'search_notes', 'read_section']
 
 class CreateFlow(DraftParentFlow):
   def __init__(self):
@@ -150,19 +165,20 @@ class RefineFlow(DraftParentFlow):
       'steps': ChecklistSlot(priority='elective'),  # structured list of specific changes requested by the user
       'feedback': FreeTextSlot(priority='elective'),  # open-ended feedback on how to improve the outline
     }
-    self.tools = ['find_posts', 'read_metadata', 'read_section', 'generate_outline', 'write_text']
+    self.tools = ['find_posts', 'read_metadata', 'read_section', 'generate_section', 'generate_outline', 'write_text']
 
 class CiteFlow(DraftParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'cite'
+    self.entity_slot = 'target'
     self.dax = '{15B}'
-    self.goal = 'add a citation to a note; if a URL is provided, attach it directly; if only a note is provided, search the web for a supporting source and propose it for user confirmation'
+    self.goal = 'add a citation to a sentence or phrase within a post; if a URL is provided, attach it directly; if only a target snippet is provided, search the web for a supporting source and propose it for user confirmation'
     self.slots = {
-      'source': SourceSlot(1, entity_part='snip', priority='elective'),
+      'target': TargetSlot(1, entity_part='snip', priority='elective'),
       'url': ExactSlot(priority='elective'),
     }
-    self.tools = ['read_metadata', 'read_section', 'insert_content', 'web_search']
+    self.tools = ['read_metadata', 'read_section', 'revise_content', 'web_search']
 
 class ComposeFlow(DraftParentFlow):
   def __init__(self):
@@ -173,7 +189,7 @@ class ComposeFlow(DraftParentFlow):
     self.slots = {
       'source': SourceSlot(1),
       'steps': ChecklistSlot(priority='elective'),
-      'instructions': FreeTextSlot(priority='elective')
+      'guidance': FreeTextSlot(priority='elective')
     }
     self.tools = ['read_metadata', 'read_section', 'convert_to_prose', 'write_text', 'revise_content']
 
@@ -187,11 +203,11 @@ class AddFlow(DraftParentFlow):
     self.slots = {
       'source': SourceSlot(1),
       'points': ChecklistSlot(priority='elective'),
-      'instructions': DictionarySlot(priority='elective'),  # key is the section name, value is the bulletpoint to add
+      'additions': DictionarySlot(priority='elective'),  # key is the section name, value is the bulletpoint to add
       'image': ImageSlot(priority='elective'),
       'position': PositionSlot(priority='optional'),
     }
-    self.tools = ['read_metadata', 'read_section', 'insert_section', 'insert_content', 'insert_media']
+    self.tools = ['read_metadata', 'read_section', 'insert_section', 'revise_content', 'insert_media']
 
 # ── Revise (7 flows) ────────────────────────────────────────────────────────
 
@@ -204,7 +220,8 @@ class ReworkFlow(ReviseParentFlow):
     self.slots = {
       'source': SourceSlot(1, 'sec'),
       'remove': RemovalSlot(priority='optional'),
-      'context': FreeTextSlot(priority='elective'),
+      'changes': FreeTextSlot(priority='elective'),
+      'suggestions': ChecklistSlot(priority='elective'),
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'insert_section', 'remove_content']
 
@@ -219,7 +236,7 @@ class PolishFlow(ReviseParentFlow):
       'style_notes': FreeTextSlot(priority='optional'),
       'image': ImageSlot(priority='optional'),
     }
-    self.tools = ['read_metadata', 'read_section', 'write_text', 'find_and_replace', 'revise_content']
+    self.tools = ['read_metadata', 'read_section', 'write_text', 'revise_content']
 
 class ToneFlow(ReviseParentFlow):
   def __init__(self):
@@ -252,9 +269,9 @@ class AuditFlow(ReviseParentFlow):
     self.slots = {
       'source': SourceSlot(1, 'post'),
       'reference_count': LevelSlot(priority='optional', threshold=1),
-      'threshold': ProbabilitySlot(priority='required'),
+      'threshold': ProbabilitySlot(priority='optional'),
     }
-    self.tools = ['find_posts', 'compare_style', 'editor_review', 'inspect_post']
+    self.tools = ['find_posts', 'compare_style', 'editor_review', 'inspect_post', 'read_section']
 
 class SimplifyFlow(ReviseParentFlow):
   def __init__(self):
@@ -265,6 +282,7 @@ class SimplifyFlow(ReviseParentFlow):
     self.slots = {
       'source': SourceSlot(1, 'sec', priority='elective'),
       'image': ImageSlot(priority='elective'),
+      'guidance': FreeTextSlot(priority='required'),
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'remove_content', 'write_text']
 
@@ -292,7 +310,7 @@ class TidyFlow(ReviseParentFlow):
       'settings': DictionarySlot(),
       'image': ImageSlot(priority='optional'),
     }
-    self.tools = ['read_metadata', 'read_section', 'find_and_replace', 'check_links']
+    self.tools = ['read_metadata', 'read_section', 'revise_content', 'check_links']
 
 # ── Publish (7 flows) ───────────────────────────────────────────────────────
 
@@ -304,21 +322,23 @@ class ReleaseFlow(PublishParentFlow):
     self.goal = 'publish the post to the primary blog; makes the post live immediately on the main channel. Use syndicate to cross-post, promote to amplify reach after publishing'
     self.slots = {
       'source': SourceSlot(1),
-      'channel': ChannelSlot(),
+      'channel': ChannelSlot(priority='required'),
     }
-    self.tools = ['read_metadata', 'channel_status', 'release_post', 'update_post']
+    # `update_post` is called by release_policy after the skill returns; the
+    # skill itself must not flip status, so it's not exposed to the LLM.
+    self.tools = ['read_metadata', 'channel_status', 'release_post']
 
 class SyndicateFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'syndicate'
     self.dax = '{04C}'
-    self.goal = 'cross-post to a secondary channel; adapts formatting for the target (Medium, Dev.to, LinkedIn, Substack) and publishes a tailored version'
+    self.goal = 'cross-post to one or more secondary channels; adapts formatting for each target (Medium, Dev.to, LinkedIn, Substack) and publishes a tailored version'
     self.slots = {
       'channel': ChannelSlot(),
-      'source': SourceSlot(1, priority='optional'),
+      'source': SourceSlot(1),
     }
-    self.tools = ['read_metadata', 'read_section', 'release_post']
+    self.tools = ['read_metadata', 'read_section', 'channel_status', 'release_post']
 
 class ScheduleFlow(PublishParentFlow):
   def __init__(self):
@@ -329,7 +349,7 @@ class ScheduleFlow(PublishParentFlow):
     self.slots = {
       'source': SourceSlot(1),
       'channel': ChannelSlot(),
-      'datetime': RangeSlot([]),
+      'datetime': RangeSlot(['minute', 'hour', 'day', 'week']),
     }
     self.tools = ['list_channels', 'channel_status', 'release_post', 'update_post']
 

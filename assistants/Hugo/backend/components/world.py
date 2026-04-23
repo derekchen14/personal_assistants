@@ -23,7 +23,7 @@ class World:
         system kickoff turn so the first user turn has turn_count = 1 and every
         downstream component can assume current_state() is non-None."""
         self.states.append(DialogueState(self.config))
-        self.frames.append(DisplayFrame(self.config))
+        self.frames.append(DisplayFrame())
         self.context.add_turn('System', 'Session started.', 'system')
 
     def current_state(self) -> DialogueState:

@@ -19,6 +19,7 @@ class BaseFlow(object):
     self.turn_ids: list[str] = []
     # Plan flows might create a Flow and keep it pending
     self.status = 'Pending'  # Pending, Active, Completed, Invalid
+    self.max_response_tokens = 4096
 
   @property
   def intent(self):
@@ -90,7 +91,11 @@ class BaseFlow(object):
       st = getattr(slot, 'slot_type', '')
       if isinstance(value, list) and st in ('source', 'target', 'removal'):
         for item in value:
+          if not item:
+            continue
           if isinstance(item, dict):
+            if not item.get('post'):
+              continue
             slot.add_one(**item)
           else:
             slot.add_one(post=str(item))

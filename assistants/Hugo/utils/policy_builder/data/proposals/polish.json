@@ -1,0 +1,136 @@
+{
+  "flow": "polish",
+  "parent_intent": "Revise",
+  "batch": 2,
+  "round": 1,
+  "version": 1,
+  "notes": "Polish improves prose at the word or sentence level without changing meaning or structure. It has two runtime contexts (basic vs. informed) but the SAME policy code path; the skill differentiates by reading the scratchpad when producers ran earlier. DP-15 is load-bearing here: polish is the canonical consumer of audit / inspect / find findings. The current skill at `backend/prompts/pex/skills/polish.md` is already well-structured; DP-2/3/4 propose in-place revisions, not a rewrite.",
+  "decision_points": {
+    "DP-1": {
+      "section": "Prompt content",
+      "title": "Flow-specific must/never rules",
+      "question": "0\u20133 inviolable rules unique to this flow.",
+      "proposal": "1) Polish preserves meaning and structure. Tighten sentences, improve word choice, fix transitions, and smooth rhythm, but do not rewrite arguments, re-order paragraphs, or change what the section is saying. When a user's request implies substantive change, route to rework through the flow stack.\n\n2) Scope is narrow by default. When the user names a span (opening paragraph, specific sentence, a transition), polish only that span and leave every other paragraph of the section exactly as it was. When the user names only the section, polish the whole section. When they name nothing, choose the narrowest interpretation that makes the request work.\n\n3) Prior findings are hints, not mandates. When the scratchpad carries audit / inspect / find entries, use them to direct attention, but if the user's utterance contradicts a finding, honor the user. Never fabricate a finding that isn't in the scratchpad.",
+      "reasoning": "Rule 1 protects the polish / rework boundary. Rule 2 is the scope discipline you've been emphasizing across Revise-family flows. Rule 3 guards the scratchpad-consumer pattern against hallucination."
+    },
+    "DP-2": {
+      "section": "Prompt content",
+      "title": "Skill intro paragraph",
+      "question": "The one- or two-sentence framing that opens the skill file.",
+      "proposal": "This skill polishes a paragraph, sentence, or named span of prose. Polish tightens word choice, fixes transitions, and smooths rhythm while preserving meaning and structure. When the scratchpad carries prior findings from audit, inspect, or find, polish reads those entries to direct attention; otherwise it polishes cold.",
+      "reasoning": "Adds one sentence about scratchpad consumption that the current intro omits, so the two runtime contexts (basic vs. informed) are explicit. Same narrative style you've asked for."
+    },
+    "DP-3": {
+      "section": "Prompt content",
+      "title": "Process steps",
+      "question": "Numbered happy-path sequence for `## Process`.",
+      "proposal": "## Process\n\n1. Find the target section. Look at the user's utterance and the `<resolved_details>` block for a section name such as \"Motivation\" or \"Process\". Match that name to the `section_ids` list. The matched identifier is your target; ignore every other section.\n\n2. Check the scratchpad for prior findings. When entries exist under the keys `audit`, `inspect`, or `find`, read them and filter to findings that reference the target section. When no entries exist, proceed cold.\n\n3. Read the target section with `read_section(post_id, sec_id=<matched>)`. Do not read any other section \u2014 polish scope is intentionally narrow and does not require surrounding context.\n\n4. Identify the exact span the user named (opening paragraph, specific sentence, a transition). When no span is named, polish the whole matched section.\n\n5. Polish the span. Tighten sentences, improve word choice, fix transitions, remove filler, preserve meaning and paragraph structure.\n   a. Use `find_and_replace` for targeted word or phrase swaps where the replacement is short and unambiguous.\n   b. Use `write_text` when a sentence needs a full rewrite and the new version depends on reasoning about the surrounding prose.\n   c. When the `style_notes` slot is filled, treat it as the priority signal over style inferred from the current prose \u2014 the user is saying the current style is not what they want.\n\n6. Save with `revise_content(post_id, sec_id=<matched>, content=<whole section with only your polished span changed>)`. The tool replaces section content wholesale, so include the full section body even when only one span changed.\n\n7. When you consumed scratchpad findings in step 2, list the keys you used in the output JSON's `used` array. When you consumed nothing, set `used` to an empty array. Never list a key you did not actually use.",
+      "reasoning": "Reworks the current Process into full-sentence narrative form, elevates the scratchpad check to step 2 so the informed context is not an afterthought, and names the `used` array contract as a step of its own. No em-dashes."
+    },
+    "DP-4": {
+      "section": "Prompt content",
+      "title": "Tool usage hints",
+      "question": "Per task-specific tool, flow-specific usage hints.",
+      "proposal": "## Tools\n\n### Task-specific tools\n\n- `read_section(post_id, sec_id)` \u2014 required once per turn on the matched section. This is polish's only read; never read other sections as context, since polish scope is intentionally narrow.\n\n- `find_and_replace(post_id, sec_id, find, replace)` \u2014 for targeted word or phrase swaps where the change is short and unambiguous. Use when the polish is a substitution, not a rewrite.\n\n- `write_text(prompt)` \u2014 for sentence rewrites where the new version depends on reasoning. The tool returns prose; the skill still saves through `revise_content`.\n\n- `revise_content(post_id, sec_id, content)` \u2014 the primary save. Pass the whole section with only your polished span changed; the tool replaces content wholesale.\n\n### General tools\n\n- `execution_error(violation, message)` \u2014 for hard failures after retries.\n- `handle_ambiguity(level, metadata)` \u2014 for unclear or vague user intent.\n- `manage_memory(action, key, value)` \u2014 read the scratchpad for prior findings in step 2 of Process; rarely used for writes in polish.\n- `read_flow_stack(action)` \u2014 seldom used in polish.",
+      "reasoning": "Current Tools block is a bit terse. This version expands each tool into a narrative bullet that says *when* to use it in polish specifically, not just what it does. Matches the detailed-not-punchy style lesson."
+    },
+    "DP-5": {
+      "section": "Starter",
+      "title": "Task framing sentence",
+      "question": "The imperative sentence inside `<task>`.",
+      "proposal": "Polish the named target in \"{post_title}\". Improve word choice, tighten sentences, fix transitions, and smooth rhythm without changing meaning or structure. When prior findings in the scratchpad name this section, use them as hints for where to focus. End the turn once the polished content has been saved.",
+      "reasoning": "Intent-focused sentence. Names the scratchpad role at the task level (not just inside Process) so the informed context is visible. No em-dashes."
+    },
+    "DP-6": {
+      "section": "Starter",
+      "title": "Content tag choice",
+      "question": "Which of `<post_content>`, `<section_content>`, `<line_snippet>`, `<channel_content>` wraps the preloaded data.",
+      "proposal": "<section_content>",
+      "reasoning": "Polish edits within a single section; preload is that section's prose."
+    },
+    "DP-7": {
+      "section": "Starter",
+      "title": "Preload content",
+      "question": "What goes inside the content tag.",
+      "proposal": "The full current prose of the target section, rendered as markdown paragraphs separated by blank lines. When `source.sec` is not filled, omit the content block and let the skill call `read_section` during Process step 3. The `<resolved_details>` always includes the `section_ids` list so the skill can match the named section to its identifier.",
+      "reasoning": "Preloading saves the first tool call in the common case. `read_section` is a fallback helper for the rarer case where the section is not preloaded."
+    },
+    "DP-8": {
+      "section": "Few-shot",
+      "title": "Scenario coverage",
+      "question": "Which user-phrasing paths to exemplify.",
+      "proposal": "Three scenarios, each exercising a different slot-fill and scratchpad pattern:\n\n(a) `source.sec` filled, `style_notes` empty, scratchpad empty (basic polish, step 9 in the eval lifecycle) \u2014 user says \"tighten the opening paragraph of the Motivation section.\" Skill reads section, polishes the first paragraph, saves. `used: []`.\n\n(b) `source.sec` filled, `style_notes` filled with a specific style signal (\"more formal\", \"punchier\") \u2014 shows how style_notes overrides the current prose style. Scratchpad still empty.\n\n(c) `source.sec` filled, scratchpad carries audit findings that flag style drift in this section (informed polish, step 13 in the eval lifecycle) \u2014 skill reads findings, applies relevant fixes, saves, and lists the consumed audit keys in `used`.",
+      "reasoning": "Three scenarios mapped to three slot-fill and scratchpad patterns (lesson 14). Covers both the basic and informed runtime contexts without making them look like separate flow modes."
+    },
+    "DP-9": {
+      "section": "Few-shot",
+      "title": "Example content (topic + post state)",
+      "question": "Concrete post topic, section names, and content.",
+      "proposal": "Topic: \"User Simulators for training RL agents\" (post_id=abcd0123). Section names aligned with the rest of the Batch 2 corpus: \"The Need for Data\", \"Architectures of the Past\", \"Recent Innovations\", \"Generating Rewards\". Example polish content: the \"Architectures of the Past\" section opens with a long sentence that lists four architectures in series; the polish tightens it to two shorter sentences. For the informed-polish scenario, the audit finding says the section has passive-voice constructions that depart from the user's active-voice style in earlier published posts.",
+      "reasoning": "Colorful realistic section names, concrete polish content, and a concrete audit finding to anchor scenario (c). Keeps section set consistent across Batch 2."
+    },
+    "DP-10": {
+      "section": "Error handling",
+      "title": "Likely errors and ambiguities encountered",
+      "question": "Realistic error and ambiguity set.",
+      "proposal": "Errors (policy emits error frame after skill signals):\n- (a) `revise_content` fails twice \u2014 `execution_error(violation='failed_to_save', failed_tool='revise_content')`.\n- (b) Preloaded `<section_content>` is malformed \u2014 `execution_error(violation='invalid_input')` without saving.\n\nAmbiguities (skill calls `handle_ambiguity`):\n- (c) The named section exists but the named span within it does not (\"second paragraph\" in a one-paragraph section) \u2014 `specific`, `metadata={'missing_reference': <span>}`.\n- (d) Any filled slot value is vague enough that the polish direction would be a guess \u2014 `confirmation`, `metadata={'vague_slot': <slot_name>}`. Vagueness is a confirmation-level issue for any slot, handled uniformly.\n\nFallbacks (skill calls `flow_stack('fallback', ...)`):\n- (e) The user's request implies substantive revision (expanding, restructuring, weaving in suggestions) \u2014 `flow_stack('fallback', 'rework')`. This is the documented polish-to-rework escalation when structural changes are needed.\n- (f) The user's request is really about trimming or removing content \u2014 `flow_stack('fallback', 'simplify')`.",
+      "reasoning": "Mirrors the current polish fallback to rework (already in the policy via `flow_stack.fallback('rework')`). Applies the vagueness-at-confirmation lesson. The named-section-missing case is handled by the policy guard; skill does not re-check."
+    },
+    "DP-12": {
+      "section": "Error handling",
+      "title": "Retry strategy per tool",
+      "question": "Per tool, retry count on transient failure.",
+      "proposal": "`revise_content` \u2014 retry once, then `execution_error(violation='failed_to_save', failed_tool='revise_content')`. `find_and_replace` \u2014 retry once, then same error shape (this is a persistence tool, not just a search). `write_text` \u2014 no retry; if the tool returns empty or fails, fall back to manual rewrite and retry `revise_content`. `read_section` \u2014 no retry; surface `_success=False` immediately.",
+      "reasoning": "Standard one-retry on persistence. `write_text` is a generation helper; its failure should not kill the polish."
+    },
+    "DP-13": {
+      "section": "Policy logic",
+      "title": "Optional slot defaults",
+      "question": "For each optional slot, does it have a sensible default?",
+      "proposal": "`style_notes` (FreeTextSlot, optional): no default; treated as a priority signal over inferred style when filled, ignored when absent. `image` (ImageSlot, optional): no default; filled only when the target is an image, otherwise irrelevant. `source`: required by schema; the policy guards this before the skill runs.",
+      "reasoning": "No optional slot has a meaningful default for polish. style_notes is a soft preference by nature; image is disjunctive with the prose target."
+    },
+    "DP-14": {
+      "section": "Policy logic",
+      "title": "Flow transitions (stack-on and fallback)",
+      "question": "When does this flow hand off to another flow, and through which channel?",
+      "proposal": "Two fallbacks, no stack-on:\n\n- `flow_stack('fallback', 'rework')` when the skill detects that the user's request is really substantive revision, or when inspect_post returns structural_issues that should be addressed by rework rather than polish. This fallback already exists in the current polish policy.\n\n- `flow_stack('fallback', 'simplify')` when the user's request is really about trimming or removing content rather than tightening.\n\nNo stack-on. Polish operates on existing prose; it has no prerequisite flow.",
+      "reasoning": "Preserves the existing rework fallback and adds the simplify fallback to complete the Revise-family routing triangle. Merged DP-11/DP-14 shape using flow_stack vocabulary."
+    },
+    "DP-15": {
+      "section": "Policy logic",
+      "title": "Scratchpad contract",
+      "question": "Does this flow write or read scratchpad?",
+      "proposal": "Read-only consumer of three producer keys:\n\n- `scratchpad['audit']` \u2014 style findings per section (severity, note). Polish filters by the target `sec_id` and uses medium or high severity findings as focus areas.\n- `scratchpad['inspect']` \u2014 structural metrics. Polish uses these to notice sections that are disproportionately long, verbose, or have unusual paragraph density.\n- `scratchpad['find']` \u2014 related posts surfaced by an earlier find turn. Polish only consults these when an audit finding explicitly names a reference post, so find acts as back-up context rather than a primary signal.\n\nAfter consuming, polish lists the keys it actually used in the output JSON `used` array. The policy increments `used_count` on each named entry so future turns can see which findings have been addressed.\n\nPolish does NOT write scratchpad. Its output is a saved polished section, not structured findings.",
+      "reasoning": "Polish is the canonical scratchpad consumer (per AD-1 and the polish-informed context). The three-producer contract is spelled out so the skill knows exactly which keys to look up."
+    },
+    "DP-16": {
+      "section": "Policy logic",
+      "title": "Frame output spec",
+      "question": "What metadata keys and block types?",
+      "proposal": "Success: `origin='polish'`, `metadata={post_id, post_title, sec_id, target_span, used_findings}`, blocks = 1 `diff` card showing before and after of the polished span. `used_findings` is the array from the skill's `used` output (empty for basic polish, non-empty for informed polish). Error: `origin='polish'`, `metadata={'violation': <code>, 'failed_tool': <name>}`, blocks empty, `code` carrying the offending raw output when useful. Fallback: `origin='polish'`, `metadata={'fallback': <next_flow>}`, blocks empty, `thoughts` naming the re-route in one plain sentence.",
+      "reasoning": "`target_span` names the granularity polished. `used_findings` lets RES show \"polished based on 2 audit findings\" vs. \"polished cold\" in the card header."
+    },
+    "DP-17": {
+      "section": "Policy logic",
+      "title": "Final reply shape",
+      "question": "Plain prose, structured JSON, or card-only?",
+      "proposal": "Structured JSON from the skill: `{target, before, after, summary, used}`. The policy consumes it and feeds the diff card; the RES-side prose reply is one or two sentences referencing the card (\"Tightened the opening paragraph of Architectures of the Past.\"). Informed polish's reply can mention the findings consumed (\"Applied two audit findings to Architectures of the Past.\").",
+      "reasoning": "Preserves JSON output shape (current polish skill already emits `used`). Prose reply is template-generated."
+    },
+    "DP-18": {
+      "section": "Performance",
+      "title": "Model tier override",
+      "question": "Opus over Sonnet default?",
+      "proposal": "Opus.",
+      "reasoning": "Polish is the paradigm of prose-quality-gated work: nuanced sentence rewrites where meaning must be preserved. Sonnet tends to over-edit or bland the voice. Per the refine DP-18 lesson."
+    },
+    "DP-19": {
+      "section": "Performance",
+      "title": "max_response_tokens override",
+      "question": "Tighten below 4096 default?",
+      "proposal": "2048.",
+      "reasoning": "Polish output is bounded by the section size; the polished version is always the same length as the input or shorter. 2048 is generous for one section's prose plus the JSON envelope. Power of 2 preserved."
+    }
+  }
+}

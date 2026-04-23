@@ -1,0 +1,78 @@
+{
+  "flow": "create",
+  "sections": {
+    "intent_prompt": {
+      "accepted": null,
+      "override": null,
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "skill_intro": {
+      "accepted": null,
+      "override": null,
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "skill_process": {
+      "accepted": null,
+      "override": null,
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "skill_handling_ambiguity_and_errors": {
+      "accepted": null,
+      "override": null,
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "skill_tools": {
+      "accepted": null,
+      "override": null,
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "skill_output": {
+      "accepted": null,
+      "override": null,
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "skill_fewshot": {
+      "accepted": null,
+      "override": null,
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "starter_task": {
+      "accepted": null,
+      "override": null,
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "starter_content": {
+      "accepted": null,
+      "override": null,
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "starter_resolved": {
+      "accepted": null,
+      "override": null,
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "policy": {
+      "accepted": false,
+      "override": "def create_policy(self, flow, state, context):\n    frame = DisplayFrame(flow.name())\n\n    if not flow.is_filled():\n        if not flow.slots['title'].check_if_filled():\n            self.ambiguity.declare('specific', metadata={'missing_slot': 'title'},\n                observation='Create needs a title for the new post.')\n        elif not flow.slots['type'].check_if_filled():\n            self.ambiguity.declare('specific', metadata={'missing_slot': 'type'},\n                observation='Create needs to know whether this is a draft or a note.')\n        return frame\n\n    params = {\n        'title': flow.slots['title'].values[0],\n        'type': flow.slots['type'].values[0],\n    }\n    if flow.slots['topic'].check_if_filled():\n        params['topic'] = flow.slots['topic'].values[0]\n    result = self.engineer.tools('create_post', params)\n\n    if result.get('_success'):\n        new_id = result['post_id']\n        state.active_post = new_id\n        flow.status = 'Completed'\n        frame.metadata.update({\n            'post_id': new_id,\n            'title': params['title'],\n            'type': params['type'],\n        })\n        frame.blocks.append(Block(type='card', data={\n            'post_id': new_id,\n            'title': params['title'],\n            'status': params['type'],\n        }))\n\n    elif result.get('_error') == 'duplicate':\n        self.ambiguity.declare('confirmation',\n            metadata={'duplicate_title': params['title']},\n            observation=f\"A post titled '{params['title']}' already exists. Create a new one anyway?\")\n    else:\n        frame.metadata['violation'] = 'tool_error'\n        frame.metadata['failed_tool'] = 'create_post'\n        frame.code = result.get('_message', '')\n\n    return frame",
+      "rationale": "",
+      "clarify_answer": null
+    },
+    "flow_config": {
+      "accepted": false,
+      "override": "class CreateFlow(DraftParentFlow):\n    dax = '05A'\n    entity_slot = 'title'\n    goal = (\n        \"start a new post from scratch; initializes a post record with title, \"\n        \"type, and empty sections\"\n    )\n    tools = ['create_post']\n\n    def __init__(self):\n        super().__init__()\n        self.slots = {\n            'title': ExactSlot(priority='required'),\n            'type': CategorySlot(options=['draft', 'note'], priority='required'),\n            'topic': ExactSlot(priority='optional'),\n        }",
+      "rationale": "`class CreateFlow(DraftParentFlow):`",
+      "clarify_answer": null
+    }
+  },
+  "round": 2
+}

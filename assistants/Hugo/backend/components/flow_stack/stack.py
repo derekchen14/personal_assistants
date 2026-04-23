@@ -18,9 +18,18 @@ class FlowStack:
     # ── Public API ──────────────────────────────────────────────────
 
     def stackon(self, flow_name:str, plan_id:str|None=None) -> BaseFlow:
-        """Push a flow on top of the stack. The current flow stays below
-        and resumes after the new flow completes."""
-        return self._push(flow_name, plan_id)
+        """Push a flow on top of the stack. The current flow stays below and resumes after the new flow completes.
+        Also carry over the grounding entity when parent flow and child flow share the same entity slot. """
+        curr_flow = self._stack[-1] if self._stack else None
+        new_flow = self._push(flow_name, plan_id)
+        if curr_flow and curr_flow.entity_slot == new_flow.entity_slot:
+            src = curr_flow.slots.get(curr_flow.entity_slot)
+            dst = new_flow.slots.get(new_flow.entity_slot)
+            for entity in src.values:
+                payload = entity.copy()
+                if payload.get('post'):
+                    dst.add_one(**payload)
+        return new_flow
 
     def fallback(self, flow_name:str) -> BaseFlow:
         """Replace the current flow. Marks it Invalid, transfers matching

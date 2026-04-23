@@ -30,65 +30,73 @@ class ResearchPolicy(BasePolicy):
                 return DisplayFrame()
 
     def browse_policy(self, flow, state, context, tools):
-        cat_slot = flow.slots['category']
-        category = str(cat_slot.to_dict()) if cat_slot.check_if_filled() else None
+        tags_slot = flow.slots['tags']
+        if not tags_slot.check_if_filled():
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'tags'})
+            return DisplayFrame(flow.name())
 
-        if category:
-            result = tools('find_posts', {'query': category})
-        else:
-            result = tools('find_posts', {'status': 'note'})
+        target_slot = flow.slots['target']
+        # Default-commit: target is elective; commit 'note' when unset.
+        target = str(target_slot.to_dict()) if target_slot.check_if_filled() else 'note'
+
+        tags = tags_slot.to_dict()
+        params = {'tags': tags}
+        if target == 'note':
+            params['status'] = 'note'
+        result = tools('find_posts', params)
         items = result.get('items', []) if result.get('_success') else []
 
-        summary = f"Found {len(items)} item(s)"
-        summary += f" in category '{category}'" if category else " (saved notes/ideas)"
-        summary += '.'
-        if items:
-            titles = [it.get('title', 'Untitled') for it in items[:10]]
+        titles = [it.get('title', 'Untitled') for it in items[:10]]
+        summary = f"Found {len(items)} item(s) tagged {', '.join(tags)} (target='{target}')."
+        if titles:
             summary += ' Titles: ' + ', '.join(titles)
 
         convo_history = context.compile_history()
         history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
-
         text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad())
+
         flow.status = 'Completed'
-        frame = DisplayFrame(origin='browse', thoughts=text)
+        frame = DisplayFrame(flow.name(), thoughts=text)
         frame.add_block({'type': 'list', 'data': {'items': items}})
         return frame
 
     def summarize_policy(self, flow, state, context, tools):
         post_id, _ = self._resolve_source_ids(flow, state, tools)
-
         if not post_id:
-            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return DisplayFrame()
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(flow.name())
 
-        meta = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
-        if not meta.get('_success'):
-            return DisplayFrame(thoughts='Could not find the specified post.')
+        flow_metadata = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
+        if not flow_metadata.get('_success'):
+            frame = self.error_frame(flow, 'missing_reference',
+                thoughts='Could not find the specified post.',
+                missing_entity='post')
+        else:
+            length_slot = flow.slots['length']
+            length_hint = f" Aim for {length_slot.to_dict()} words." if length_slot.filled else ''
 
-        length_slot = flow.slots['length']
-        length_hint = f" Aim for {length_slot.to_dict()} words." if length_slot.filled else ''
-
-        convo_history = context.compile_history()
-        history_with_data = (
-            f"{convo_history}\n\n[Post content]\nTitle: {meta.get('title', '')}\n"
-            f"Content: {meta.get('outline', '')}"
-        )
-        skill_prompt = self.engineer.load_skill_template(flow.name()) + length_hint
-        text = self.engineer.skill_call(
-            flow, history_with_data, self.memory.read_scratchpad(),
-            skill_prompt=skill_prompt,
-        )
-        flow.status = 'Completed'
-        frame = DisplayFrame(origin='summarize')
-        frame.add_block({'type': 'card', 'data': {
-            'post_id': post_id,
-            'title': meta.get('title', ''),
-            'content': text,
-        }})
+            convo_history = context.compile_history()
+            history_with_data = (
+                f"{convo_history}\n\n[Post content]\nTitle: {flow_metadata.get('title', '')}\n"
+                f"Content: {flow_metadata.get('outline', '')}"
+            )
+            skill_prompt = self.engineer.load_skill_template(flow.name()) + length_hint
+            text = self.engineer.skill_call(
+                flow, history_with_data, self.memory.read_scratchpad(),
+                skill_prompt=skill_prompt,
+            )
+            flow.status = 'Completed'
+            frame = DisplayFrame(flow.name())
+            frame.add_block({'type': 'card', 'data': {
+                'post_id': post_id,
+                'title': flow_metadata.get('title', ''),
+                'content': text,
+            }})
         return frame
 
     def check_policy(self, flow, state, context, tools):
+        # Check treats grounding as optional — a filled tab narrows the search.
+        # No entity guard fires; the flow is happy to list everything.
         grounding = flow.slots[flow.entity_slot]
         status = None
         if grounding.check_if_filled():
@@ -109,64 +117,63 @@ class ResearchPolicy(BasePolicy):
 
         convo_history = context.compile_history()
         history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
-
         text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad())
+
         flow.status = 'Completed'
-        return DisplayFrame(origin='check', thoughts=text)
+        # Check narrates the result in chat — no Display-Container update.
+        return DisplayFrame(flow.name(), thoughts=text)
 
     def inspect_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return DisplayFrame()
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(flow.name())
 
-        text, tool_log = self.llm_execute(flow, state, context, tools)
-        result = self.engineer.extract_tool_result(tool_log, 'inspect_post')
+        post_id, _ = self._resolve_source_ids(flow, state, tools)
+        if not post_id:
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(flow.name())
 
-        # Build a clean metrics summary from tool results
-        metrics = self._format_inspect_metrics(result)
-        flow.status = 'Completed'
-        return DisplayFrame(origin='inspect', thoughts=metrics or text)
+        # Elective-with-default: limit metrics when aspect is filled.
+        params = {'post_id': post_id}
+        aspect_slot = flow.slots['aspect']
+        if aspect_slot.filled:
+            params['metrics'] = [str(aspect_slot.to_dict())]
 
-    @staticmethod
-    def _format_inspect_metrics(result:dict) -> str|None:
-        """Format inspect tool results into a readable metrics summary."""
-        fields = {
-            'word_count': 'Word count',
-            'section_count': 'Sections',
-            'estimated_read_time': 'Read time (min)',
-            'image_count': 'Images',
-            'link_count': 'Links',
-            'avg_paragraph_length': 'Avg paragraph length',
-            'heading_depth': 'Heading depth',
-        }
-        lines = []
-        for key, label in fields.items():
-            if key in result:
-                lines.append(f'{label}: {result[key]}')
-        empty = result.get('empty_sections', [])
-        if empty:
-            lines.append(f'Empty sections: {", ".join(empty)}')
-        return '\n'.join(lines) if lines else None
+        result = tools('inspect_post', params)
+        if not result.get('_success'):
+            frame = self.error_frame(flow, 'tool_error',
+                thoughts=result.get('_message', 'Could not inspect the post.'),
+                failed_tool='inspect_post')
+        else:
+            metrics = {key: val for key, val in result.items() if key != '_success'}
+            # Scratchpad write for cross-turn findings consumption.
+            self.memory.write_scratchpad(flow.name(), {
+                'version': '1',
+                'turn_number': context.turn_id,
+                'used_count': 0,
+                'post_id': post_id,
+                'metrics': metrics,
+            })
+            flow.status = 'Completed'
+            # Inspect narrates in chat — the metrics stay in metadata for
+            # downstream policy consumers, but no block updates the UI.
+            frame = DisplayFrame(flow.name(), metadata={'metrics': metrics})
+        return frame
 
     def find_policy(self, flow, state, context, tools):
         query_slot = flow.slots['query']
         query = str(query_slot.to_dict()) if query_slot.check_if_filled() else ''
 
         count_slot = flow.slots['count']
-        limit = None
-        if count_slot.check_if_filled():
-            try:
-                limit = int(count_slot.to_dict())
-            except (ValueError, TypeError):
-                pass
+        limit = int(count_slot.to_dict()) if count_slot.check_if_filled() else None
 
-        seen_ids: set = set()
-        items: list = []
+        seen_ids:set = set()
+        items:list = []
         if query:
             for term in self._expand_query(query):
                 result = tools('find_posts', {'query': term})
-                for item in result.get('items', []) if result.get('_success') else []:
+                for item in (result.get('items', []) if result.get('_success') else []):
                     if item['post_id'] not in seen_ids:
                         seen_ids.add(item['post_id'])
                         items.append(item)
@@ -176,47 +183,38 @@ class ResearchPolicy(BasePolicy):
         if limit:
             items = items[:limit]
 
-        n = len(items)
-        summary = f"Found {n} item(s) matching '{query}'." if query else f"Found {n} item(s)."
-        for it in items[:10]:
-            line = f"  - {it.get('title', 'Untitled')}"
-            if it.get('preview_snippet'):
-                line += f": {it['preview_snippet']}"
-            summary += '\n' + line
-
-        convo_history = context.compile_history()
-        history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
-        text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad())
-        flow.status = 'Completed'
-
-        if n == 0:
-            return DisplayFrame(origin='find', thoughts=text)
-
-        if n == 1:
-            post_id = items[0]['post_id']
-            result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
-            if result.get('_success'):
-                frame = DisplayFrame(origin='find')
-                frame.add_block({'type': 'card', 'data': {
-                    'post_id': post_id,
-                    'title': result.get('title', ''),
-                    'status': result.get('status', ''),
-                    'content': result.get('outline', ''),
-                }})
-                return frame
-
         post_count = sum(1 for it in items if it.get('status') == 'published')
         draft_count = sum(1 for it in items if it.get('status') == 'draft')
         page = 'posts' if post_count >= draft_count else 'drafts'
-        frame = DisplayFrame(origin='find', thoughts=text)
+
         list_data = {'items': items, 'page': page}
-        if n <= 8:
+        if items and len(items) <= 8:
             list_data['expanded_ids'] = [it['post_id'] for it in items]
+
+        # Scratchpad write — downstream audit/polish can reference matches.
+        self.memory.write_scratchpad(flow.name(), {
+            'version': '1',
+            'turn_number': context.turn_id,
+            'used_count': 0,
+            'query': query,
+            'items': [
+                {
+                    'post_id': it.get('post_id'),
+                    'title': it.get('title', ''),
+                    'status': it.get('status', ''),
+                    'preview': it.get('preview', it.get('preview_snippet', '')),
+                }
+                for it in items
+            ],
+        })
+
+        flow.status = 'Completed'
+        frame = DisplayFrame(flow.name())
         frame.add_block({'type': 'list', 'data': list_data})
         return frame
 
-    def _expand_query(self, query: str) -> list[str]:
-        """Use LLM to generate semantically similar search terms."""
+    def _expand_query(self, query:str) -> list[str]:
+        """LLM-generate 3-4 semantically similar search terms."""
         import json
         prompt = (
             f'Return 3-4 short search terms that are semantically similar or related to "{query}". '
@@ -235,8 +233,8 @@ class ResearchPolicy(BasePolicy):
     def compare_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return DisplayFrame()
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(flow.name())
 
         posts = []
         for entry in grounding.values[:2]:
@@ -248,20 +246,33 @@ class ResearchPolicy(BasePolicy):
                     posts.append(result)
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
-        flow.status = 'Completed'
 
         left = posts[0] if len(posts) > 0 else {}
         right = posts[1] if len(posts) > 1 else {}
-        frame = DisplayFrame(origin='compare', thoughts=text)
+        flow.status = 'Completed'
+        frame = DisplayFrame(flow.name(), thoughts=text)
         frame.add_block({'type': 'compare', 'data': {'left': left, 'right': right}})
         return frame
 
     def diff_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
-            return DisplayFrame()
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(flow.name())
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        return DisplayFrame(origin='diff', thoughts=text)
+        frame = DisplayFrame(flow.name(), thoughts=text)
+        # Diff compares two code versions — users need to SEE the diff
+        # visually, not just hear it narrated. Surface the structured diff
+        # via a compare block so the frontend can render it.
+        diff_result = self.engineer.extract_tool_result(tool_log, 'diff_section')
+        if diff_result.get('_success'):
+            frame.add_block({'type': 'compare', 'data': {
+                'source': diff_result.get('source', ''),
+                'target': diff_result.get('target', ''),
+                'additions': diff_result.get('additions', 0),
+                'deletions': diff_result.get('deletions', 0),
+                'diff': diff_result.get('diff', []),
+            }})
+        return frame
