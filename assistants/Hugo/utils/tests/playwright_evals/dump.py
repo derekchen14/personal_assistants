@@ -203,7 +203,7 @@ def _self_test():
         'flow_status': 'Running',
     }
     state_snapshot = {
-        'active_post': 'TestPost',
+        'active_post': 'VisionPost',
         'keep_going': False,
         'has_issues': True,
         'scratchpad_keys': ['inspect', 'audit'],
@@ -213,7 +213,7 @@ def _self_test():
     rubric = 'did_action: Attempts publication; did_follow_instructions: Targets Substack.'
     network_log = [
         {'timestamp': '12:00:00', 'method': 'POST', 'url': '/api/chat', 'status': 200},
-        {'timestamp': '12:00:05', 'method': 'GET', 'url': '/api/posts/TestPost', 'status': 200},
+        {'timestamp': '12:00:05', 'method': 'GET', 'url': '/api/posts/VisionPost', 'status': 200},
     ]
 
     run_id = _new_run_id() + '_selftest'

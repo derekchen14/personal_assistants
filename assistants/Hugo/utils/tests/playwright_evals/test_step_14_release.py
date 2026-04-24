@@ -86,7 +86,7 @@ def _dump_on_fail(step_num, flow_name, rubric, page, network_log, reason):
         'flow_status': 'Unknown',
     }
     state_snapshot = {
-        'active_post': 'TestPost',
+        'active_post': 'VisionPost',
         'keep_going': False,
         'has_issues': True,
         'scratchpad_keys': ['inspect', 'audit'],

@@ -935,9 +935,9 @@
       "tags": [],
       "color": "",
       "created_at": "2026-03-14T17:31:04.652323+00:00",
-      "updated_at": "2026-04-15T23:51:24.893755+00:00",
-      "preview": "- Define ambiguity in the context of language, communication, and AI systems\n- Distinguish between lexical, syntactic, and pragmatic ambiguity with concrete examples\n- Explain why ambiguity is not a bug but an inherent feature of natural language\n- Set up the core tension: humans navigate ambiguity...",
-      "word_count": 223,
+      "updated_at": "2026-04-24T19:18:41.288736+00:00",
+      "preview": "Ambiguity, at its core, is the condition in which a word, sentence, or piece of communication can be understood in more than one way. In everyday language and in AI systems alike, it shows up in three distinct forms. Lexical ambiguity arises when a single word carries multiple meanings \u2014 the...",
+      "word_count": 888,
       "filename": "drafts/collapse-on-ambiguity.md"
     },
     {
@@ -987,6 +987,19 @@
       "preview": "",
       "word_count": 6,
       "filename": "drafts/the-wright-brothers-discovery-of-flight.md"
+    },
+    {
+      "post_id": "360fbf8f",
+      "title": "Observability for Long-Running AI Agents",
+      "status": "published",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-04-24T17:02:31.837121+00:00",
+      "updated_at": "2026-04-24T17:02:31.837121+00:00",
+      "preview": "Long-running agents can drift silently over hours \u2014 small prompt deviations compound into large behavioral shifts with no obvious signal. Without real-time observability, failures only surface at task completion, if they surface at all.",
+      "word_count": 934,
+      "filename": "posts/observability-for-long-running-ai-agents.md"
     }
   ]
 }

@@ -78,6 +78,9 @@ export function clearFrames() {
 }
 
 export function setFrame(frame: FrameData) {
+    // Blockless frame (e.g. inspect, clarification) carries chat-only content — metadata / thoughts but nothing 
+    // to render. Leave the display containers alone so the user's current view (card, list, grid) survives.
+    if (!firstBlock(frame) && !frame.block_type) return;
     const primary = firstBlock(frame) ?? { type: frame.block_type ?? 'default', data: frame.data ?? {}, location: 'bottom' };
     if (primary.type === 'card' && (primary.data as Record<string, unknown>)?.status === 'note') return;
     activeFrame.set(frame);

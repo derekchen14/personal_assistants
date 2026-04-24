@@ -22,6 +22,7 @@ Run:
 """
 
 import json
+import os
 import re
 import time
 from datetime import datetime
@@ -32,7 +33,7 @@ import pytest
 llm = pytest.mark.llm
 
 _COMPONENT_TOOLS = {'handle_ambiguity', 'coordinate_context', 'manage_memory', 'call_flow_stack', 'save_findings'}
-_TEST_POST_ID = 'TestPost'                # legacy / vision scenario
+_VISION_POST_ID = 'VisionPost'            # scenario 1
 _OBS_POST_ID = 'ObservabilityPost'        # scenario 2
 _VOICE_POST_ID = 'VoicePost'              # scenario 3
 _REPORT_DIR = Path(__file__).parent / 'reports'
@@ -1201,6 +1202,21 @@ class _BaseScenarioE2E:
         cls._consecutive_failures = 0
 
     @classmethod
+    def teardown_class(cls):
+        """Delete the scenario's synthetic post so fake fixtures don't pile up
+        in `database/content/` after the eval run. Set `HUGO_E2E_KEEP_POSTS=1`
+        to skip cleanup when you want to inspect the post after the run."""
+        if os.getenv('HUGO_E2E_KEEP_POSTS') == '1':
+            return
+        from backend.utilities.services import PostService
+        svc = PostService()
+        svc.delete_post(cls._test_post_id)
+        preview = svc.list_preview().get('items', [])
+        for ent in preview:
+            if ent.get('title', '').lower() == cls._post_title_default.lower():
+                svc.delete_post(ent['post_id'])
+
+    @classmethod
     def _get_agent(cls):
         """Lazy-init a module-level agent that persists across all steps."""
         if cls._agent is None:
@@ -1527,7 +1543,7 @@ class _BaseScenarioE2E:
 class TestVisionScenarioE2E(_BaseScenarioE2E):
     """Scenario 1 — Multi-modal agents (vision). 14-step lifecycle."""
     _steps = STEPS_VISION
-    _test_post_id = _TEST_POST_ID
+    _test_post_id = _VISION_POST_ID
     _post_title_default = 'Using Multi-modal Models to Improve AI Agents'
 
 
