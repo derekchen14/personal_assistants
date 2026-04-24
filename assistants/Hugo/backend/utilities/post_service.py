@@ -5,7 +5,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from backend.utilities.services import ToolService, split_sentences, resolve_snip_index
+from backend.utilities.services import ToolService, split_sentences, join_sentences, resolve_snip_index
 
 _PLACEHOLDER_SECTIONS = [
     ['Introduction', 'Body', 'Conclusion'],
@@ -159,8 +159,21 @@ class PostService(ToolService):
         if not section:
             return self._error('not_found', f'Section not found: {sec_id}')
 
-        sentences = split_sentences('\n'.join(section['lines']))
+        raw = '\n'.join(section['lines']).strip()
 
+        # Display path — no slicing needed, hand back the raw section body
+        # exactly as it sits on disk. Splitting + rejoining here would only
+        # shuffle newlines around without changing anything semantic.
+        if snip_id is None and not include_sentence_ids:
+            return self._success(
+                sec_id=section['sec_id'],
+                title=section['title'],
+                content=raw,
+                sentence_count=len(split_sentences(raw)),
+            )
+
+        # Snip-indexed path — split so the caller can slice by snip_id.
+        sentences = split_sentences(raw)
         if snip_id is None:
             selected, start_idx = sentences, 0
         elif isinstance(snip_id, int):
@@ -178,7 +191,7 @@ class PostService(ToolService):
                 for offset, text in enumerate(selected)
             )
         else:
-            rendered = ' '.join(selected)
+            rendered = join_sentences(selected)
 
         return self._success(
             sec_id=section['sec_id'],

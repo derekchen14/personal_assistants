@@ -335,7 +335,7 @@
     }
     .prose-content :global(h1) { font-size: 1.5rem; font-weight: 700; margin: 1.25rem 0 0.75rem; }
     .prose-content :global(h2) { font-size: 1.25rem; font-weight: 600; margin: 1rem 0 0.5rem; }
-    .prose-content :global(h3) { font-size: 1.1rem; font-weight: 600; margin: 0.75rem 0 0.5rem; }
+    .prose-content :global(h3) { font-size: 1rem; font-weight: 600; margin: 0.75rem 0 0.4rem; }
     .prose-content :global(p) { margin: 0.5rem 0; }
     .prose-content :global(strong) { font-weight: 600; }
     .prose-content :global(em) { font-style: italic; }
@@ -343,6 +343,9 @@
     .prose-content :global(ul) { list-style-type: disc; }
     .prose-content :global(ol) { list-style-type: decimal; }
     .prose-content :global(li) { margin: 0.25rem 0; }
+    /* Level 4 sub-bullets: hollow circle, tighter spacing than level-3 bullets. */
+    .prose-content :global(ul ul) { list-style-type: circle; margin: 0; }
+    .prose-content :global(ul ul li) { margin: 0; }
     .prose-content :global(blockquote) {
         border-left: 3px solid var(--border);
         padding-left: 1rem;

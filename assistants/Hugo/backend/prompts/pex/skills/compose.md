@@ -24,6 +24,7 @@ This skill describes how to convert an outline into prose. The current outline i
    a. `read_section(post_id, sec_id)` — get the full bullets.
    b. `convert_to_prose(content)` — get a rough prose draft; polish for flow.
    c. `revise_content(post_id, sec_id, content)` — save the prose back to the section.
+   d. When revising content, focus on transitions to make the content flow smoothly. Avoid using em-dashes or short, punchy fragments which are signs of AI slop. Write like an human expert. 
 4. Follow the Draft intent's output format — prose paragraphs separated by blank lines, no bullets inside a prose section.
    a. Honor the Guidance parameter as a soft preference (tone, length, hook) without displacing the primary goal.
    b. If Surrounding sections are already prose (visible in previews), match their tone and paragraph length.

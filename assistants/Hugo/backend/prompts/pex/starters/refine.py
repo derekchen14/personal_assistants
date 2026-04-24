@@ -9,7 +9,7 @@ from backend.prompts.for_pex import render_freetext, render_checklist
 
 
 TEMPLATE = """<task>
-Refine the outline of "{post_title}". Apply the changes from the user's final utterance to the outline below. Call `generate_section` for each targeted edit, or `generate_outline` when removing sections. End once you have successfully saved all your refinements.
+Refine the outline of "{post_title}". Apply the changes from the user's final utterance to the outline below. Call `generate_section` for each targeted edit, or `remove_content` when deleting a section. End once you have successfully saved all your refinements.
 </task>
 
 <post_content>

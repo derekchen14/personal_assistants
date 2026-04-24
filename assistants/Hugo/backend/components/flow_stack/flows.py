@@ -165,7 +165,7 @@ class RefineFlow(DraftParentFlow):
       'steps': ChecklistSlot(priority='elective'),  # structured list of specific changes requested by the user
       'feedback': FreeTextSlot(priority='elective'),  # open-ended feedback on how to improve the outline
     }
-    self.tools = ['find_posts', 'read_metadata', 'read_section', 'generate_section', 'generate_outline', 'write_text']
+    self.tools = ['find_posts', 'read_metadata', 'read_section', 'generate_section', 'remove_content', 'write_text']
 
 class CiteFlow(DraftParentFlow):
   def __init__(self):

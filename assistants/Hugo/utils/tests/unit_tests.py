@@ -29,7 +29,7 @@ from backend.components.context_coordinator import Turn
 from backend.components.flow_stack import flow_classes
 from backend.utilities.services import (
     ToolService, PostService, ContentService, AnalysisService, PlatformService,
-    _DB_DIR,
+    split_sentences, join_sentences, _DB_DIR,
 )
 from schemas.ontology import FLOW_CATALOG
 
@@ -462,6 +462,45 @@ class TestPostService:
         assert result['_success'] is False
         assert result['_error'] == 'not_found'
 
+    def test_read_section_preserves_bullet_newlines(self, tmp_db):
+        # Regression: read_section used to ' '.join sentences, producing
+        # '- a - b - c' for bulleted sections. The display card (frontend) renders
+        # that as a single line. Must keep bullets on separate lines.
+        body = '## Intro\n\n- alpha\n- beta\n- gamma\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Bullet Display', body=body)
+        svc = PostService()
+        result = svc.read_section(post_id, 'intro')
+        assert result['_success'] is True
+        assert result['content'] == '- alpha\n- beta\n- gamma'
+
+    def test_read_section_preserves_h3_subsections_with_bullets(self, tmp_db):
+        # Regression: H3 subsections + bullets in one section collapsed to
+        # '### Heading - bullet - bullet ### Other Heading - ...'. The display
+        # card rendered it as one very long H3. Display path hands back raw
+        # content verbatim — blank lines between H3 blocks preserved.
+        body = (
+            '## Dealing with Ambiguity\n\n'
+            '### Catching Ambiguity Early\n'
+            '- Introduce detection layer\n'
+            '- Outline pipeline\n\n'
+            '### Designing for Uncertainty\n'
+            '- Reframe the goal\n'
+            '- Introduce patterns\n'
+        )
+        post_id, _ = _seed_test_post(tmp_db, title='H3 Display', body=body)
+        svc = PostService()
+        result = svc.read_section(post_id, 'dealing-with-ambiguity')
+        assert result['_success'] is True
+        expected = (
+            '### Catching Ambiguity Early\n'
+            '- Introduce detection layer\n'
+            '- Outline pipeline\n\n'
+            '### Designing for Uncertainty\n'
+            '- Reframe the goal\n'
+            '- Introduce patterns'
+        )
+        assert result['content'] == expected
+
     def test_create_post_draft(self, tmp_db):
         svc = PostService()
         result = svc.create_post(title='My New Draft', type='draft')
@@ -596,6 +635,115 @@ class TestContentService:
         result = svc.generate_section(post_id, 'takeaways', new_sec)
         assert result['_success'] is True
         assert result['appended'] is True
+
+    def test_generate_section_append_preserves_blank_separator(self, tmp_db):
+        # Prior section's body has no trailing blank; regression guard for the
+        # case where the appended H2 collided with the previous bullet.
+        body = '## Motivation\n- pain point'
+        post_id, _ = _seed_test_post(tmp_db, title='Append Spacing', body=body)
+        svc = ContentService()
+        result = svc.generate_section(post_id, 'takeaways', '## Takeaways\n- key insight')
+        assert result['_success'] is True
+        entry = svc._find_entry(svc._load_metadata(), post_id)
+        saved = svc._read_content(entry['filename'])
+        assert '- pain point\n\n## Takeaways' in saved
+
+    def test_rebuild_content_inserts_blank_between_sections(self):
+        from backend.utilities.services import ToolService
+        sections = [
+            {'sec_id': 'a', 'title': 'A', 'lines': ['- one', '- two']},
+            {'sec_id': 'b', 'title': 'B', 'lines': ['- three']},
+        ]
+        out = ToolService._rebuild_content(sections)
+        assert out == '## A\n- one\n- two\n\n## B\n- three'
+
+    def test_rebuild_content_does_not_double_blank(self):
+        from backend.utilities.services import ToolService
+        sections = [
+            {'sec_id': 'a', 'title': 'A', 'lines': ['- one', '']},
+            {'sec_id': 'b', 'title': 'B', 'lines': ['- two']},
+        ]
+        out = ToolService._rebuild_content(sections)
+        assert out == '## A\n- one\n\n## B\n- two'
+
+    def test_split_sentences_bullets_stay_separate(self):
+        # Regression: bullets used to collapse into '- a - b - c' because
+        # split_sentences flattened newlines and join_sentences ' '-joined.
+        snips = split_sentences('- alpha\n- beta\n- gamma')
+        assert snips == ['- alpha', '- beta', '- gamma']
+
+    def test_split_sentences_prose_still_flattens(self):
+        snips = split_sentences('Sentence one.\nSentence two. Sentence three.')
+        assert snips == ['Sentence one.', 'Sentence two.', 'Sentence three.']
+
+    def test_split_sentences_mixed_paragraphs(self):
+        text = 'Opening sentence. Another sentence.\n\n- bullet one\n- bullet two\n\nClosing.'
+        snips = split_sentences(text)
+        assert snips == ['Opening sentence.', 'Another sentence.',
+                         '- bullet one', '- bullet two', 'Closing.']
+
+    def test_split_sentences_h3_with_bullets(self):
+        # Regression: H3 heading + bullets in one paragraph used to flatten to
+        # '### Heading - bullet1 - bullet2' because the paragraph wasn't all-bullet.
+        text = '### Catching Ambiguity Early\n- Introduce detection\n- Outline pipeline'
+        snips = split_sentences(text)
+        assert snips == ['### Catching Ambiguity Early',
+                         '- Introduce detection', '- Outline pipeline']
+
+    def test_split_join_h3_and_bullets_roundtrip(self):
+        original = '### Heading A\n- a1\n- a2\n\n### Heading B\n- b1\n- b2'
+        assert join_sentences(split_sentences(original)) == original
+
+    def test_split_sentences_sub_bullets_stay_separate(self):
+        # Per OUTLINE_LEVELS (flows.py): Level 3 is `- bullet`, Level 4 is
+        # `   * sub-bullet`. Both should be treated as structural.
+        text = '- parent one\n  * sub a\n  * sub b\n- parent two'
+        snips = split_sentences(text)
+        assert snips == ['- parent one', '  * sub a', '  * sub b', '- parent two']
+
+    def test_join_sentences_sub_bullets_preserve_indent(self):
+        snips = ['- parent', '  * sub a', '  * sub b']
+        assert join_sentences(snips) == '- parent\n  * sub a\n  * sub b'
+
+    def test_split_join_nested_bullets_roundtrip(self):
+        original = '### Heading\n- parent a\n  * sub a1\n  * sub a2\n- parent b\n  * sub b1'
+        assert join_sentences(split_sentences(original)) == original
+
+    def test_join_sentences_bullets_get_newlines(self):
+        out = join_sentences(['- alpha', '- beta', '- gamma'])
+        assert out == '- alpha\n- beta\n- gamma'
+
+    def test_join_sentences_prose_space_joined(self):
+        out = join_sentences(['Sentence one.', 'Sentence two.'])
+        assert out == 'Sentence one. Sentence two.'
+
+    def test_split_join_roundtrip_preserves_bullets(self):
+        original = '- alpha\n- beta\n- gamma'
+        assert join_sentences(split_sentences(original)) == original
+
+    def test_remove_content_by_snip_preserves_other_bullets(self, tmp_db):
+        # The scenario that surfaced the bug: remove one bullet, expect the
+        # remaining bullets to stay on their own lines.
+        body = '## Intro\n\n- alpha\n- beta\n- gamma\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Bullet Remove', body=body)
+        svc = ContentService()
+        result = svc.remove_content(post_id, 'intro', snip_id=1)
+        assert result['_success'] is True
+        entry = svc._find_entry(svc._load_metadata(), post_id)
+        saved = svc._read_content(entry['filename'])
+        assert '- alpha\n- gamma' in saved
+        assert '- alpha - gamma' not in saved
+
+    def test_revise_content_insert_bullet_preserves_neighbors(self, tmp_db):
+        body = '## Intro\n\n- alpha\n- gamma\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Bullet Revise', body=body)
+        svc = ContentService()
+        # Integer snip_id inserts at index; tuple replaces a range.
+        result = svc.revise_content(post_id, 'intro', '- beta', snip_id=1)
+        assert result['_success'] is True
+        entry = svc._find_entry(svc._load_metadata(), post_id)
+        saved = svc._read_content(entry['filename'])
+        assert '- alpha\n- beta\n- gamma' in saved
 
     def test_generate_section_renames_via_old_slug(self, tmp_db):
         body = '## Ideas\n\n- early thoughts\n'

@@ -158,20 +158,24 @@ class DraftPolicy(BasePolicy):
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         content = result.get('outline', '')
 
-        # Inject outline into resolved context so skill doesn't re-fetch. Whether the
-        # current content has bullets, prose, or just headings, the refine skill's job
-        # is to apply the user's requested changes against what's there.
+        # Stack-on: if the outline has no bullets yet, outline first so refine has
+        # something to operate on.
+        if _count_bullets(content) == 0:
+            self.flow_stack.stackon('outline')
+            state.keep_going = True
+            return DisplayFrame(thoughts='No bullets in the outline yet, outlining first.')
+
         text, tool_log = self.llm_execute(flow, state, context, tools,
             extra_resolved={'current_outline': content})
         sec_saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_section')
-        full_saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_outline')
-        saved = sec_saved or full_saved
+        removed, _ = self.engineer.tool_succeeded(tool_log, 'remove_content')
+        saved = sec_saved or removed
 
         if not text or not saved:
             return DisplayFrame(
                 origin=flow.name(),
                 metadata={'violation': 'failed_to_save'},
-                thoughts='The refine skill did not call generate_section or generate_outline.',
+                thoughts='The refine skill did not call generate_section or remove_content.',
             )
 
         # Contract backstop: the skill must preserve existing bullets. If the post-save

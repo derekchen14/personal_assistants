@@ -8,15 +8,30 @@ from pathlib import Path
 _DB_DIR = Path(__file__).resolve().parents[2] / 'database'
 
 _SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
+_STRUCTURAL_LINE = re.compile(r'^\s*(#{1,6}\s|[-*]\s|\d+\.\s)')
+_HEADING_LINE = re.compile(r'^\s*#{1,6}\s')
+
+
+def _is_structural(line:str) -> bool:
+    """A line is structural if it's a markdown heading, bullet, or numbered item.
+    Structural lines must survive round-tripping on their own line — flattening
+    them with surrounding prose would mash bullets/headings into a single line."""
+    return bool(_STRUCTURAL_LINE.match(line))
+
+
+def _is_heading(line:str) -> bool:
+    return bool(_HEADING_LINE.match(line))
 
 
 def split_sentences(text:str) -> list[str]:
-    """Split a section's text into an ordered list of sentences.
+    """Split a section's text into an ordered list of snips.
 
-    Paragraphs (separated by blank lines) are processed independently; within
-    each paragraph, sentences split on `.`, `!`, or `?` followed by whitespace.
-    Empty strings are dropped. The resulting list is the unit that `snip_id`
-    indexes into.
+    Paragraphs (separated by blank lines) are processed independently. A
+    paragraph containing any structural line (heading, bullet, numbered item)
+    is split line-by-line so bullets and sub-headings keep their own snip.
+    A pure-prose paragraph yields one snip per sentence (`.`, `!`, `?` followed
+    by whitespace). Empty strings are dropped. The resulting list is the unit
+    that `snip_id` indexes into.
     """
     text = text.strip()
     if not text:
@@ -24,10 +39,15 @@ def split_sentences(text:str) -> list[str]:
     paragraphs = re.split(r'\n\s*\n', text)
     sentences:list[str] = []
     for para in paragraphs:
-        para = re.sub(r'\s+', ' ', para.strip())
+        para = para.strip()
         if not para:
             continue
-        for part in _SENTENCE_END.split(para):
+        lines = [line for line in para.split('\n') if line.strip()]
+        if any(_is_structural(line) for line in lines):
+            sentences.extend(line.rstrip() for line in lines)
+            continue
+        flat = re.sub(r'\s+', ' ', para)
+        for part in _SENTENCE_END.split(flat):
             part = part.strip()
             if part:
                 sentences.append(part)
@@ -35,8 +55,23 @@ def split_sentences(text:str) -> list[str]:
 
 
 def join_sentences(sentences:list[str]) -> str:
-    """Rejoin sentences with single spaces. Used when writing back after edits."""
-    return ' '.join(sentences)
+    """Rejoin snips into a section body. Structural snips (bullets, headings,
+    numbered items) go on their own line; prose sentences are space-joined so
+    they flow as a paragraph. A heading following a non-heading gets a blank
+    line before it so adjacent heading+bullet groups are visually distinct."""
+    if not sentences:
+        return ''
+    parts = [sentences[0]]
+    for snip in sentences[1:]:
+        prev = parts[-1]
+        if _is_heading(snip) and not _is_heading(prev):
+            separator = '\n\n'
+        elif _is_structural(snip) or _is_structural(prev):
+            separator = '\n'
+        else:
+            separator = ' '
+        parts.append(separator + snip)
+    return ''.join(parts)
 
 
 def resolve_snip_index(snip_id:int, length:int) -> int:
@@ -154,9 +189,16 @@ class ToolService:
 
     @staticmethod
     def _rebuild_content(sections:list[dict]) -> str:
-        """Rebuild markdown content from section dicts."""
+        """Rebuild markdown content from section dicts.
+
+        Guarantees a blank line before every non-first H2 heading so newly
+        appended sections don't collide with the prior section's last bullet.
+        Idempotent: existing blank-line separators inside a section's lines
+        pass through untouched rather than double-up."""
         parts = []
-        for sec in sections:
+        for idx, sec in enumerate(sections):
+            if idx > 0 and parts and parts[-1] != '':
+                parts.append('')
             parts.append(f'## {sec["title"]}')
             parts.extend(sec['lines'])
         return '\n'.join(parts)
