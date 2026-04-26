@@ -1,9 +1,8 @@
 """Per-intent system prompts for skill execution.
 
-Each entry gives the intent-family context + any conventions that apply
-across every flow in that intent. The per-flow skill body (loaded from
-`pex/skills/<flow>.md`) and the per-flow starter (from `pex/starters/<flow>.py`)
-layer on top of this at runtime — see `backend/prompts/for_pex.py`.
+Each entry gives the intent-family context + any conventions that apply across every flow in that
+intent. The per-flow skill body (loaded from `pex/skills/<flow>.md`) and the per-flow starter (from
+`pex/starters/<flow>.py`) layer on top of this at runtime — see `backend/prompts/for_pex.py`.
 """
 
 

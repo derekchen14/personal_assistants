@@ -1,8 +1,7 @@
 """NLU isolation probe — verify the outline-direct NLU exemplar lands.
 
-Runs NLU against Scenario 2 (Observability) step 3's utterance in a
-state that mirrors post-propose-turn (topic filled, sections empty,
-OutlineFlow on stack in propose stage).
+Runs NLU against Scenario 2 (Observability) step 3's utterance in a state that mirrors
+post-propose-turn (topic filled, sections empty, OutlineFlow on stack in propose stage).
 """
 from __future__ import annotations
 

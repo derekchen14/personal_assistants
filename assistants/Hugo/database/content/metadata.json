@@ -48,9 +48,9 @@
       ],
       "color": "",
       "created_at": "2026-03-12T05:47:32.626276+00:00",
-      "updated_at": "2026-04-23T01:16:42.363150+00:00",
-      "preview": "- What is \"ML as Software 2.0\"?\n- How can companies adapt?\n- The shift from desktop to web mirrors today's move to ML\n- Early web teams argued about frameworks instead of core practices\n- What won: testing, version control, fast iteration\n- ML is repeating the same journey\n- ML teams are falling...",
-      "word_count": 172,
+      "updated_at": "2026-04-26T15:24:56.532355+00:00",
+      "preview": "ML as Software 2.0 treats machine learning as a core engineering discipline, not a research experiment. Companies that adapt will build it like they build software: with rigor, iteration, and clear ownership.\nThe desktop-to-web shift is a useful mirror for today's move to ML. Early web teams wasted...",
+      "word_count": 185,
       "filename": "posts/ml-as-software_2.md"
     },
     {
@@ -76,9 +76,9 @@
       "tags": [],
       "color": "",
       "created_at": "2026-03-12T05:47:32.625710+00:00",
-      "updated_at": "2026-04-23T01:13:19.652440+00:00",
+      "updated_at": "2026-04-26T08:25:27.364048+00:00",
       "preview": "- The limitations of fixed-length input/output in early neural networks\n- Why traditional RNNs struggled with variable-length sequences\n- The bottleneck problem: compressing entire sentences into a single vector\n- Real-world tasks that demanded a better solution (translation, summarization, Q&A)",
-      "word_count": 667,
+      "word_count": 669,
       "filename": "posts/history-of-seq2seq.md"
     },
     {
@@ -89,26 +89,10 @@
       "tags": [],
       "color": "",
       "created_at": "2026-03-12T05:47:32.625342+00:00",
-      "updated_at": "2026-04-23T01:17:21.592965+00:00",
-      "preview": "Real-world data is rarely clean. Records go missing, labels are absent, and patterns hide beneath the noise. Most machine learning algorithms treat incomplete data as a problem to fix \u2014 scrubbing, imputing, or discarding it before training begins. Expectation Maximization (EM) takes the opposite...",
-      "word_count": 300,
+      "updated_at": "2026-04-26T15:26:57.108525+00:00",
+      "preview": "Real-world data is rarely clean. Records go missing, labels are absent, and patterns hide beneath the noise. Most algorithms treat incomplete data as a problem to fix. They scrub, impute, or discard it before training begins. Expectation Maximization (EM) takes the opposite approach. It estimates...",
+      "word_count": 282,
       "filename": "drafts/expectation-maximization.md"
-    },
-    {
-      "post_id": "ca915e0f",
-      "title": "Components of Dialogue Systems",
-      "status": "draft",
-      "category": "Lorem",
-      "tags": [
-        "Lorem",
-        "Color"
-      ],
-      "color": "turquoise",
-      "created_at": "2026-03-12T05:47:32.625020+00:00",
-      "updated_at": "2026-03-12T05:47:32.625020+00:00",
-      "preview": "The key components of a dialogue system are a Dialogue State Tracker (DST) for NLU, Policy Manager (PM) for deciding on actions, and a Response Generator (RG) for NLG.  Traditionally, many of these services are built in a modular manner, where even one piece could end up being an entire company. ...",
-      "word_count": 832,
-      "filename": "drafts/components-of-dial-sys.md"
     },
     {
       "post_id": "2091aafc",
@@ -194,9 +178,9 @@
       ],
       "color": "purple",
       "created_at": "2022-05-24T00:00:00+00:00",
-      "updated_at": "2026-04-23T01:14:45.770282+00:00",
+      "updated_at": "2026-04-26T15:24:41.017158+00:00",
       "preview": "Training dialogue agents for real-life use cases is immensely difficult \u2014 manual data annotation quickly hits scaling limits. One solution is to build a user simulator that generates training examples for the agent at scale. To build such a system, though, you need a model that understands how to...",
-      "word_count": 590,
+      "word_count": 589,
       "filename": "posts/building-user-simulators.md"
     },
     {
@@ -901,22 +885,6 @@
       "filename": "drafts/feature-images.md"
     },
     {
-      "post_id": "8bff2b47",
-      "title": "Markdown and HTML",
-      "status": "draft",
-      "category": "Test",
-      "tags": [
-        "Test",
-        "Markdown"
-      ],
-      "color": "",
-      "created_at": "2014-11-28T00:00:00+00:00",
-      "updated_at": "2014-11-28T00:00:00+00:00",
-      "preview": "Jekyll supports the use of [Markdown](http://daringfireball.net/projects/markdown/syntax) with inline HTML tags which makes it easier to quickly write posts with Jekyll, without having to worry too much about text formatting. A sample of the formatting follows.",
-      "word_count": 231,
-      "filename": "drafts/markdown-and-html.md"
-    },
-    {
       "post_id": "11be3b39",
       "title": "",
       "status": "note",
@@ -961,45 +929,6 @@
       "preview": "1. Human-in-the-loop controls: Agents pause at critical decisions. Delete database? Charge card? Send customer emails? Harness requires approval. Replit\u2019s agent generates code but requires human confirmation before deployment.",
       "word_count": 149,
       "filename": "notes/this-is-pretty-cool.md"
-    },
-    {
-      "post_id": "TestPost",
-      "title": "Using Multi-modal Models to Improve AI Agents",
-      "status": "published",
-      "category": null,
-      "tags": [],
-      "color": "",
-      "created_at": "2026-04-23T18:18:48.927619+00:00",
-      "updated_at": "2026-04-23T18:23:02.907694+00:00",
-      "preview": "Most AI agents today run on text alone. That leaves them blind to screenshots, diagrams, and the UI elements humans rely on every day. Multi-modal models close that gap by adding vision, so agents can perceive their environment the way people do. That shift matters because the tasks we most want to...",
-      "word_count": 568,
-      "filename": "posts/using-multi-modal-models-to-improve-ai-agents.md"
-    },
-    {
-      "post_id": "ced97211",
-      "title": "The Wright Brothers Discovery of Flight",
-      "status": "draft",
-      "category": null,
-      "tags": [],
-      "color": "",
-      "created_at": "2026-04-23T19:09:24.871382+00:00",
-      "updated_at": "2026-04-23T19:09:24.871382+00:00",
-      "preview": "",
-      "word_count": 6,
-      "filename": "drafts/the-wright-brothers-discovery-of-flight.md"
-    },
-    {
-      "post_id": "360fbf8f",
-      "title": "Observability for Long-Running AI Agents",
-      "status": "published",
-      "category": null,
-      "tags": [],
-      "color": "",
-      "created_at": "2026-04-24T17:02:31.837121+00:00",
-      "updated_at": "2026-04-24T17:02:31.837121+00:00",
-      "preview": "Long-running agents can drift silently over hours \u2014 small prompt deviations compound into large behavioral shifts with no obvious signal. Without real-time observability, failures only surface at task completion, if they surface at all.",
-      "word_count": 934,
-      "filename": "posts/observability-for-long-running-ai-agents.md"
     }
   ]
 }

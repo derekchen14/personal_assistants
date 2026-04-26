@@ -71,10 +71,10 @@ Serialization (non-core): `to_list() -> list[dict]`  (:76).
 1. `add_turn(speaker, text, turn_type) -> Turn`  →  `turn_type` ∈ `utterance` / `action` / `system` / `clarification` / `agent_response`  (:55)
 2. `compile_history(look_back=5, keep_system=True) -> str`  →  canonical name for the string history consumed by prompts  (:66)
 3. `full_conversation(keep_system=True, as_turns=False) -> list`  (:75)
-4. `recent_turns(count=3) -> list[Turn]`  (:85)
-5. `get_turn(turn_id) -> Turn | None`  (:89)
-6. `save_checkpoint(label, data=None)`  (:95)
-7. `get_checkpoint(label) -> dict | None`  (:103)
+4. `recent[-1] -> get the last turn`
+5. `get_turn(turn_id) -> Turn | None`  (:85)
+6. `save_checkpoint(label, data=None)`  (:91)
+7. `get_checkpoint(label) -> dict | None`  (:99)
 
 Properties: `turn_count` (:119), `last_user_text` (:123), `last_user_turn` (:130).
 

@@ -1,8 +1,7 @@
 """Per-turn starter prompt for SummarizeFlow.
 
-Produces a standalone summary paragraph. The policy preloads the post
-title + outline into <resolved_details>'s post block (when available)
-plus an optional length hint.
+Produces a standalone summary paragraph. The policy preloads the post title + outline into
+<resolved_details>'s post block (when available) plus an optional length hint.
 """
 
 

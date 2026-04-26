@@ -1,9 +1,8 @@
 """Policy-in-isolation tests for the `polish` flow.
 
-Polish covers small in-paragraph revisions; the policy persists the
-revised text, inspects the skill's JSON for consumed scratchpad findings
-(bumping used_count), and escalates to `rework` when inspect_post flags
-structural issues. See `utils/policy_builder/fixes/polish.md` and
+Polish covers small in-paragraph revisions; the policy persists the revised text, inspects the
+skill's JSON for consumed scratchpad findings (bumping used_count), and escalates to `rework` when
+inspect_post flags structural issues. See `utils/policy_builder/fixes/polish.md` and
 `utils/policy_builder/inventory/polish.md` for the expected shape.
 """
 

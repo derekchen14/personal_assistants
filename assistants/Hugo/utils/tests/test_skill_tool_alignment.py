@@ -1,9 +1,8 @@
 """Phase 3 lint — Option C enforcement.
 
-For every skill file that has a `## Few-shot` block, every tool call
-pattern `<tool_name>(` mentioned there must appear in `flow.tools` of the
-owning flow. And every tool in `flow.tools` must have an entry in
-`schemas/tools.yaml`. Catches trajectory drift before it hits runtime.
+For every skill file that has a `## Few-shot` block, every tool call pattern `<tool_name>(`
+mentioned there must appear in `flow.tools` of the owning flow. And every tool in `flow.tools` must
+have an entry in `schemas/tools.yaml`. Catches trajectory drift before it hits runtime.
 """
 from __future__ import annotations
 
@@ -51,8 +50,7 @@ def _tool_call_names(body:str) -> set[str]:
     if idx == -1:
         return set()
     section = body[idx:]
-    # Match Python-style identifiers immediately followed by `(` in the
-    # skill's example code/prose.
+    # Match Python-style identifiers immediately followed by `(` in the skill's example code/prose.
     return set(re.findall(r'`([a-z][a-z0-9_]+)\(', section))
 
 

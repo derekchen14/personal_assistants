@@ -1,10 +1,9 @@
 <script lang="ts">
     import { conversation, type Message } from '$lib/stores/conversation';
-    import { setFrame, clearFrames, showPage, topFrame, bottomFrame, displayLayout, activePage, searchQuery, activeHighlight, activePost, creatingPost, initTheme, setRefreshCallback, type ActivePage } from '$lib/stores/display';
+    import { setFrame, clearFrames, showPage, topFrame, bottomFrame, displayLayout, activePage, searchQuery, activeHighlight, activeSection, activePost, creatingPost, initTheme, setRefreshCallback, type ActivePage } from '$lib/stores/display';
     import FlowMenu from '$lib/components/FlowMenu.svelte';
     import BlockRenderer from '$lib/components/blocks/BlockRenderer.svelte';
     import IconMagnifyingGlass from '$lib/assets/IconMagnifyingGlass.svelte';
-    import { get } from 'svelte/store';
     import { tick, onMount } from 'svelte';
 
     let usernameInput = $state('');
@@ -44,13 +43,13 @@
         const match = raw.match(/^\/([0-9A-Fa-f]{3})\s*(.*)/s);
         const dax = match ? `{${match[1].toUpperCase()}}` : null;
         const text = match ? match[2].trim() : raw;
-        const highlight = get(activeHighlight);
-        const post = get(activePost);
         const payload: Record<string, string> = {};
-        if (post) payload.post = post;
-        if (highlight) payload.highlight = highlight;
+        if ($activePost) payload.post = $activePost;
+        if ($activeSection) payload.section = $activeSection;
+        if ($activeHighlight.trim()) payload.snippet = $activeHighlight.trim();
         conversation.send(text, dax, payload);
         activeHighlight.set('');
+        activeSection.set('');
         messageInput = '';
     }
 
@@ -82,10 +81,12 @@
         clearFrames();
     }
 
+    let lastFrameMsgId = $state('');
     $effect(() => {
         const msgs = $conversation.messages;
         const last = msgs[msgs.length - 1];
-        if (last?.frame && last.role === 'agent') {
+        if (last?.frame && last.role === 'agent' && last.id !== lastFrameMsgId) {
+            lastFrameMsgId = last.id;
             setFrame(last.frame as any);
         }
     });

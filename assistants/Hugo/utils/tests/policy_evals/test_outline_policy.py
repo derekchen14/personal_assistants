@@ -1,10 +1,9 @@
 """Policy-in-isolation tests for the `outline` flow.
 
-Outline has two modes (propose vs. direct) plus a recursive proposals-filled
-branch. The policy delegates to `llm_execute` in every LLM-bound branch, so
-most tests mock the base `llm_execute` via `monkeypatch` and assert on the
-policy's orchestration (depth injection, exclude_tools, tool_succeeded
-gating). See `utils/policy_builder/fixes/outline.md` and
+Outline has two modes (propose vs. direct) plus a recursive proposals-filled branch. The policy
+delegates to `llm_execute` in every LLM-bound branch, so most tests mock the base `llm_execute` via
+`monkeypatch` and assert on the policy's orchestration (depth injection, exclude_tools,
+tool_succeeded gating). See `utils/policy_builder/fixes/outline.md` and
 `utils/policy_builder/inventory/outline.md` for the expected shape.
 """
 
@@ -116,47 +115,6 @@ def test_outline_propose_mode_excludes_generate_outline(monkeypatch):
     selection = frame.blocks[0]
     assert 'candidates' in selection.data
     assert len(selection.data['candidates']) == 2
-
-
-def test_outline_recursion_from_proposals(monkeypatch):
-    """Per fixes/outline.md § Safe recursion — when proposals is filled, the
-    policy promotes the chosen outline into `sections` and recurses exactly
-    once. The recursive call takes the sections-filled branch, so the total
-    llm_execute count is 1 (the direct-mode call)."""
-    policy, comps = build_policy('outline')
-    comps['flow_stack'].stackon('outline')
-    top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID)
-    top.slots['topic'].add_one('early aviation')
-    # Inject a filled ProposalSlot: 2+ options registered plus a chosen value.
-    chosen = [{'name': 'intro'}, {'name': 'body'}]
-    top.slots['proposals'].options = [chosen, [{'name': 'alt'}, {'name': 'other'}]]
-    top.slots['proposals'].values.append(chosen)
-    top.slots['proposals'].check_if_filled()
-    assert top.slots['proposals'].filled, 'precondition: proposals must be filled'
-
-    state = make_state(active_post=_POST_ID)
-    context = make_context('outline that')
-    captured:list = []
-    tool_log = [{'tool': 'generate_outline', 'input': {}, 'result': {'_success': True}}]
-    monkeypatch.setattr(BasePolicy, 'llm_execute',
-        _stub_llm_execute('## Intro\n- a\n', tool_log=tool_log, captured=captured))
-
-    tools = make_tool_stub({
-        'read_metadata': [{
-            '_success': True, 'post_id': _POST_ID,
-            'title': 'T', 'status': 'draft', 'section_ids': [],
-        }],
-    })
-
-    frame = policy.execute(state, context, tools)
-
-    # Exactly one llm_execute call (direct mode only — recursion does not
-    # re-enter propose mode).
-    assert len(captured) == 1
-    assert captured[0]['exclude_tools'] == ()
-    assert_frame(frame, origin='outline', block_types=('card',))
-    assert top.status == 'Completed'
 
 
 def test_outline_missing_source_declares_partial_ambiguity(monkeypatch):

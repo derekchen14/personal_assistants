@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from backend.components.display_frame import DisplayFrame
 
 class BasePolicy:
@@ -44,27 +45,23 @@ class BasePolicy:
     # -- Content readback ---------------------------------------------------
 
     def _read_post_content(self, post_id, tools) -> dict:
-        """Read back full post content from disk for frame display."""
+        """Read back full post content from disk for frame display.
+
+        Pulls the raw outline via `read_metadata(include_outline=True)` so markdown structure 
+        (newlines between bullets, blank lines between paragraphs) is preserved. Going through 
+        `read_section` here would flatten everything to a single space-joined sentence stream.
+        """
         if not post_id:
             return {}
-        meta = tools('read_metadata', {'post_id': post_id})
-        if not meta.get('_success'):
-            return {}
-        info = {
-            'post_id': post_id,
-            'title': meta.get('title', ''),
-            'status': meta.get('status', ''),
-        }
-        parts = []
-        for sec_id in meta.get('section_ids', []):
-            sec = tools('read_section', {'post_id': post_id, 'sec_id': sec_id})
-            if sec.get('_success'):
-                title = sec.get('title', sec_id)
-                body = sec.get('content', '')
-                final_content = body if title == '_hidden_section_title' else f'## {title}\n{body}'
-                parts.append(final_content)
-        info['content'] = '\n\n'.join(parts)
-        return info
+        meta = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
+
+        post = {}
+        if meta.get('_success'):
+            # Strip the hidden-section sentinel heading so prose-only posts display cleanly without the marker
+            content = re.sub(r'^## _hidden_section_title\n', '', meta.get('outline', ''), flags=re.M)
+            post_title, post_status = meta.get('title', ''), meta.get('status', '')
+            post = {'post_id': post_id, 'title': post_title, 'status': post_status, 'content': content}
+        return post
 
     # -- Post helpers -------------------------------------------------------
 
@@ -155,13 +152,10 @@ class BasePolicy:
     def error_frame(self, flow, violation:str, thoughts:str='',
                     code:str|None=None, **extra_metadata) -> DisplayFrame:
         """Construct an error frame with the standard violation classification.
-
-        `violation` must be one of the 8-item vocabulary
-        (failed_to_save, scope_mismatch, missing_reference, parse_failure,
-         empty_output, invalid_input, conflict, tool_error).
-        `thoughts` carries the human-readable description; `code` carries
-        the raw payload (failing JSON, tool error string). `extra_metadata`
-        merges into metadata alongside `violation`.
+        `violation` must be one of the 8-item vocabulary (failed_to_save, scope_mismatch, missing_reference,
+        parse_failure, empty_output, invalid_input, conflict, tool_error).
+        `thoughts` carries the human-readable description; `code` carries the raw payload (failing JSON,
+        tool error string). `extra_metadata` merges into metadata alongside `violation`.
         """
         metadata = {'violation': violation, **extra_metadata}
         return DisplayFrame(

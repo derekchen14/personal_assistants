@@ -1,4 +1,5 @@
 import asyncio
+import re
 import traceback
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -26,8 +27,8 @@ async def reset(username:str, queue:asyncio.Queue, first_name:str=''):
     items_r = posts_r.get('items', [])
     reset_frame = None
     if items_r:
-        reset_frame = {'block_type': 'list', 'panel': 'top', 'origin': 'welcome'}
-        reset_frame['data'] = {'title': 'Your Posts', 'items': items_r}
+        welcome_block = {'type': 'list', 'location': 'top', 'data': {'title': 'Your Posts', 'items': items_r}} 
+        reset_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [welcome_block]}
     
     start_message = f"Hey {first_name}! What are we writing today?"
     reset_panel = {'message': start_message, 'raw_utterance': '', 'actions': [], 'frame': reset_frame}
@@ -37,8 +38,8 @@ async def refresh_posts(body:dict, queue:asyncio.Queue):
     post_service = PostService()
     items = post_service.list_preview().get('items', [])
     frame_type = body.get('frame_type', 'list')
-    refresh_frame = {'block_type': frame_type, 'panel': 'top', 'origin': 'welcome'}
-    refresh_frame['data'] = {'title': 'Your Posts', 'items': items}
+    welcome_block = {'type': frame_type, 'location': 'top', 'data': {'title': 'Your Posts', 'items': items}}
+    refresh_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [welcome_block]}
     refresh_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': refresh_frame}
     await queue.put(refresh_panel)
 
@@ -53,21 +54,23 @@ async def create_post(body:dict, queue:asyncio.Queue):
                 await queue.put({'message': 'Note body must be at least 2 characters.'})
                 return
             result = post_service.create_post('', type='note', topic=note_body)
-            block_type = 'grid'
+            list_type = 'grid'
         else:
             result = post_service.create_post(title, type=post_type)
-            block_type = 'list'
+            list_type = 'list'
         if result.get('_success'):
             all_items = post_service.list_preview().get('items', [])
-            page_frame = {'block_type': block_type, 'panel': 'top', 'origin': 'welcome'}
-            page_frame['data'] = {'title': 'Your Posts', 'items': all_items}
+            page_block = {'type': list_type, 'location': 'top',
+                          'data': {'title': 'Your Posts', 'items': all_items}}
+            page_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [page_block]}
             top_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': page_frame}
             await queue.put(top_panel)
             if post_type == 'draft':
                 post_id, status = result.get('post_id', ''), result.get('status', '')
                 success_msg = f'Created "{result.get("title", title)}".'
-                draft_frame = {'block_type': 'card', 'panel': 'bottom', 'origin': 'create'}
-                draft_frame['data'] = {'post_id': post_id, 'status': status, 'title': title, 'content': ''}
+                draft_data = {'post_id': post_id, 'status': status, 'title': title, 'content': ''}
+                draft_block = {'type': 'card', 'location': 'bottom', 'data': draft_data}
+                draft_frame = {'origin': 'create', 'panel': 'bottom', 'blocks': [draft_block]}
                 bottom_panel = {'message': success_msg, 'raw_utterance': '', 'actions': [], 'frame': draft_frame}
                 await queue.put(bottom_panel)
         else:
@@ -86,23 +89,17 @@ async def read_post(body:dict, agent, queue:asyncio.Queue):
     if not body.get('view'):
         return
     post_service = PostService()
-    meta = post_service.read_metadata(post_id)
+    # Pull raw outline markdown so bullet/paragraph newlines survive. Going
+    # through read_section would route the body through split_sentences,
+    # which collapses whitespace (including \n) inside each paragraph.
+    meta = post_service.read_metadata(post_id, include_outline=True)
     if not meta.get('_success'):
         return
-    sections = meta.get('section_ids', [])
-    content_parts = []
-    for sec_id in sections:
-        sec = post_service.read_section(post_id, sec_id)
-        if sec.get('_success'):
-            title, content = sec.get('title', sec_id), sec.get('content', '')
-            final = content if title == '_hidden_section_title' else f'## {title}\n{content}'
-            content_parts.append(final)
-    view_frame = {'block_type': 'card', 'panel': 'bottom', 'origin': 'view'}
-    view_frame['data'] = {
-        'title': meta.get('title', ''), 'status': meta.get('status', ''),
-        'post_id': post_id, 'content': '\n\n'.join(content_parts),
-        'section_ids': sections,
-    }
+    content = re.sub(r'^## _hidden_section_title\n', '', meta.get('outline', ''), flags=re.M)
+    view_data = {'post_id': post_id, 'title': meta.get('title', ''), 'status': meta.get('status', ''),
+                 'content': content, 'section_ids': meta.get('section_ids', [])}
+    view_block = {'type': 'card', 'location': 'bottom', 'data': view_data}
+    view_frame = {'origin': 'view', 'panel': 'bottom', 'blocks': [view_block]}
     view_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': view_frame}
     await queue.put(view_panel)
 
@@ -124,19 +121,16 @@ async def update_post(body:dict, queue:asyncio.Queue):
                 post_service._save_metadata(entries)
         if updates:
             post_service.update_post(post_id, updates)
-        content_parts = []
-        meta = post_service.read_metadata(post_id)
-        title, status = meta.get('title', ''), meta.get('status', '')
+        # Pull raw outline markdown so bullet/paragraph newlines survive the
+        # save→response roundtrip. read_section would route the body through
+        # split_sentences and collapse whitespace inside each paragraph.
+        meta = post_service.read_metadata(post_id, include_outline=True)
         if meta.get('_success'):
-            for sec_id in meta.get('section_ids', []):
-                sec = post_service.read_section(post_id, sec_id)
-                if sec.get('_success'):
-                    sec_title, content = sec.get('title', sec_id), sec.get('content', '')
-                    final = content if sec_title == '_hidden_section_title' else f'## {sec_title}\n{content}'
-                    content_parts.append(final)
-            update_frame = {'block_type': 'card', 'panel': 'bottom', 'origin': 'update'}
-            content = '\n\n'.join(content_parts)
-            update_frame['data'] = {'post_id': post_id, 'title': title, 'status': status, 'content': content}
+            content = re.sub(r'^## _hidden_section_title\n', '', meta.get('outline', ''), flags=re.M)
+            update_data = {'post_id': post_id, 'title': meta.get('title', ''),
+                           'status': meta.get('status', ''), 'content': content}
+            update_block = {'type': 'card', 'location': 'bottom', 'data': update_data}
+            update_frame = {'origin': 'update', 'panel': 'bottom', 'blocks': [update_block]}
             update_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': update_frame}
             await queue.put(update_panel)
         else:
@@ -151,12 +145,12 @@ async def delete_post(body:dict, queue:asyncio.Queue):
         post_service = PostService()
         pre_meta = post_service.read_metadata(post_id)
         was_note = pre_meta.get('status') == 'note' if pre_meta.get('_success') else False
-        block_type = 'grid' if was_note else 'list'
+        list_type = 'grid' if was_note else 'list'
         result = post_service.delete_post(post_id)
         if result.get('_success'):
             items = post_service.list_preview().get('items', [])
-            page_frame = {'block_type': block_type, 'panel': 'top', 'origin': 'welcome'}
-            page_frame['data'] = {'title': 'Your Posts', 'items': items}
+            page_block = {'type': list_type, 'location': 'top', 'data': {'title': 'Your Posts', 'items': items}}
+            page_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [page_block]}
             top_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': page_frame}
         else:
             top_panel = {'message': result.get('_message', _ERROR_MESSAGE)}
@@ -168,8 +162,8 @@ async def delete_post(body:dict, queue:asyncio.Queue):
 
 async def _send_grid_refresh(queue:asyncio.Queue):
     items = PostService().list_preview().get('items', [])
-    frame = {'block_type': 'grid', 'panel': 'top', 'origin': 'welcome'}
-    frame['data'] = {'title': 'Your Posts', 'items': items}
+    grid_block = {'type': 'grid', 'location': 'top', 'data': {'title': 'Your Posts', 'items': items}}
+    frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [grid_block]}
     await queue.put({'message': '', 'raw_utterance': '', 'actions': [], 'frame': frame})
 
 
@@ -247,12 +241,8 @@ async def chat(websocket:WebSocket):
         posts_result = post_service.list_preview()
         post_items = posts_result.get('items', [])
 
-        welcome_frame = {
-            'block_type': 'list',
-            'data': {'title': 'Your Posts', 'items': post_items},
-            'origin': 'welcome',
-            'panel': 'top',
-        } if post_items else None
+        welcome_block = {'type': 'list', 'location': 'top', 'data': {'title': 'Your Posts', 'items': post_items}}
+        welcome_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [welcome_block]} if post_items else None
 
         if sync['missing']:
             titles = ', '.join(f'"{item["title"]}"' for item in sync['missing'])
@@ -335,11 +325,12 @@ async def chat(websocket:WebSocket):
                         f'frame_metadata_keys={sorted((frame.get("metadata") or {}).keys())}',
                         flush=True,
                     )
-                    if frame.get('origin') == 'create' and (frame.get('data') or {}).get('status') == 'note':
+                    first_block_data = (frame.get('blocks') or [{}])[0].get('data') or {}
+                    if frame.get('origin') == 'create' and first_block_data.get('status') == 'note':
                         all_items = PostService().list_preview().get('items', [])
                         if all_items:
-                            note_frame = {'block_type': 'grid', 'panel': 'top', 'origin': 'welcome'}
-                            note_frame['data'] = {'items': all_items}
+                            note_block = {'type': 'grid', 'location': 'top', 'data': {'items': all_items}}
+                            note_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [note_block]}
                             note_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': note_frame}
                             await queue.put(note_panel)
                     await queue.put(result)

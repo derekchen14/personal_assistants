@@ -1,9 +1,8 @@
 """Policy-in-isolation tests for the `simplify` flow.
 
-Simplify has a source-or-image guard (both slots elective), and the skill
-owns section persistence. The policy only calls `_persist_section` as a
-secret backup when the skill skipped the revise_content tool. See
-`utils/policy_builder/fixes/simplify.md` and
+Simplify has a source-or-image guard (both slots elective), and the skill owns section persistence.
+The policy only calls `_persist_section` as a secret backup when the skill skipped the
+revise_content tool. See `utils/policy_builder/fixes/simplify.md` and
 `utils/policy_builder/inventory/simplify.md` for the expected shape.
 """
 

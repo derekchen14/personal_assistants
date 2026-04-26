@@ -1,11 +1,6 @@
 from backend.components.flow_stack.slots import *
 from backend.components.flow_stack.parents import *
 
-# ── Outline / markdown structure ────────────────────────────────────────────
-# Canonical 4-level outline scheme (plus Level 0 for the title). Shared by
-# outline, refine, compose, add, and any tool that writes outline markdown so
-# every producer uses the same heading/bullet conventions.
-
 OUTLINE_LEVELS = {
     0: {'markdown': '# Title', 'meaning': 'Post title'},
     1: {'markdown': '## Heading', 'meaning': 'Section header'},

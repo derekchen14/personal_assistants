@@ -6,9 +6,8 @@ Covers:
   - Confidence score validation
   - Canonical flow detection across all 7 intents (10 representative utterances)
 
-Requires API keys. Mark all tests with @pytest.mark.llm.
-Run with: pytest tests/model_tests.py -m llm -v
-Skip with: pytest -m "not llm"
+Requires API keys. Mark all tests with @pytest.mark.llm. Run with: pytest tests/model_tests.py -m
+llm -v Skip with: pytest -m "not llm"
 """
 
 import json

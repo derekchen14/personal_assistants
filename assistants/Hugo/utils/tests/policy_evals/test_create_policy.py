@@ -55,10 +55,11 @@ def test_create_filled_slots_happy_path():
     assert len(tools.log) == 1 and tools.log[0]['name'] == 'create_post'
 
 
-def test_create_with_topic_stacks_outline():
-    """Per fixes/create.md § Topic-provided path — a topic triggers an inline
-    stackon('outline') with source + topic pre-filled, keep_going=True, and a
-    transition thought. Theme 6 convention (no helper)."""
+def test_create_with_topic_does_not_auto_chain_outline():
+    """A topic on create_policy does NOT auto-stackon('outline'). The user
+    must explicitly request an outline as the next turn. (Auto-chaining was
+    intentionally disabled to give the user a beat to confirm the post
+    before committing to outline generation.)"""
     policy, comps = build_policy('create')
     comps['flow_stack'].stackon('create')
     top = comps['flow_stack'].get_flow()
@@ -79,15 +80,12 @@ def test_create_with_topic_stacks_outline():
 
     frame = policy.execute(state, context, tools)
 
-    assert_frame(frame, origin='create', block_types=('card',),
-                 thoughts_contains='outline')
-    assert state.keep_going is True
+    assert_frame(frame, origin='create', block_types=('card',))
+    assert state.keep_going is False
 
-    stacked = comps['flow_stack'].get_flow()
-    assert stacked.name() == 'outline'
-    assert stacked.status == 'Active'
-    assert stacked.slots['source'].values[0]['post'] == 'wr1ght00'
-    assert stacked.slots['topic'].value == 'early aviation experiments'
+    active = comps['flow_stack'].get_flow()
+    assert active.name() == 'create', 'create_policy should not stack outline'
+    assert active.status == 'Completed'
 
 
 def test_create_missing_title_declares_specific_ambiguity():

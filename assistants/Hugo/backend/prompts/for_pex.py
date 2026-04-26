@@ -50,10 +50,9 @@ Use the `handle_ambiguity()` or `execution_error()` tools to signal such issues 
 def build_skill_system(base_system:str, flow, skill_prompt:str|None) -> str:
     """System prompt = persona + intent prompt + ambiguity block + skill body.
 
-    Execution rules have been folded into per-intent prompts and per-flow
-    skills, so there is no shared suffix. The `--- {Flow_name} Skill
-    Instructions ---` divider keeps the handoff from context to skill
-    body visually obvious.
+    Execution rules have been folded into per-intent prompts and per-flow skills, so there is no
+    shared suffix. The `--- {Flow_name} Skill Instructions ---` divider keeps the handoff from
+    context to skill body visually obvious.
     """
     from backend.prompts.pex.sys_prompts import get_intent_prompt
     intent_prompt = get_intent_prompt(flow.intent)
@@ -70,11 +69,9 @@ def build_skill_messages(flow, convo_history:str,
                          resolved:dict|None=None) -> list[dict]:
     """User message = filled starter + <recent_conversation>.
 
-    The starter owns task framing, preloaded content, and resolved
-    details. Conversation history follows in its own XML tag; the tail
-    of that tag is the latest utterance, so no separate block is
-    emitted. Falls back to a minimal scaffold for flows that don't yet
-    have a starter module.
+    The starter owns task framing, preloaded content, and resolved details. Conversation history
+    follows in its own XML tag; the tail of that tag is the latest utterance, so no separate block
+    is emitted. Falls back to a minimal scaffold for flows that don't yet have a starter module.
     """
     starter_text = _render_starter(flow, resolved or {}, user_text or '')
 

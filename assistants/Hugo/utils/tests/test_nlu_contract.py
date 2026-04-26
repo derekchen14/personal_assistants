@@ -1,8 +1,7 @@
 """Live-API validation of NLU JSON schemas against Anthropic.
 
-One tiny Messages API call per schema. Asserts no 4xx invalid_request_error.
-Covers whatever the offline linter (`test_nlu_schemas.py`) may have missed —
-provider rules we haven't encoded yet.
+One tiny Messages API call per schema. Asserts no 4xx invalid_request_error. Covers whatever the
+offline linter (`test_nlu_schemas.py`) may have missed — provider rules we haven't encoded yet.
 
 Marked `@pytest.mark.llm` so it only runs when explicitly opted in:
     pytest utils/tests/test_nlu_contract.py -m llm -v

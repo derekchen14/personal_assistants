@@ -1,8 +1,7 @@
 """Per-turn starter prompt for PreviewFlow.
 
-Renders a publication-ready view of a post. Lightweight — read-only.
-The `<post_content>` block carries section previews so the skill can
-render without re-fetching every section.
+Renders a publication-ready view of a post. Lightweight — read-only. The `<post_content>` block
+carries section previews so the skill can render without re-fetching every section.
 """
 
 from backend.prompts.for_pex import render_section_preview

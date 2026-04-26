@@ -2,13 +2,12 @@
 
 Critical because Theme 4 reshaped the failure path: tool-call failure surfaces
 as ``DisplayFrame(origin='error', metadata={'tool_error': ...})`` rather than
-an ambiguity prompt (see ``utils/policy_builder/fixes/release.md``). The UI
-MUST render a user-visible error state and MUST NOT claim success.
+an ambiguity prompt (see ``utils/policy_builder/fixes/release.md``). The UI MUST render a
+user-visible error state and MUST NOT claim success.
 
-This test relies on a post with "multi-modal" in the title already existing
-in the DB — i.e. steps 1-13 have run. Marked skip for the scaffold so CI
-does not fail on an empty DB; unskip once the full Tier-3 sequence is in
-place (Phase 3 follow-up).
+This test relies on a post with "multi-modal" in the title already existing in the DB — i.e. steps
+1-13 have run. Marked skip for the scaffold so CI does not fail on an empty DB; unskip once the full
+Tier-3 sequence is in place (Phase 3 follow-up).
 """
 
 import time

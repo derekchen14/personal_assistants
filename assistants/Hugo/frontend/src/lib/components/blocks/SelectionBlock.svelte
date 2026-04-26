@@ -1,7 +1,7 @@
 <script lang="ts">
     import { md } from '$lib/utils/markdown';
     import { conversation } from '$lib/stores/conversation';
-    import { restorePendingCard } from '$lib/stores/display';
+    import { showChosenOutline } from '$lib/stores/display';
 
     interface Section { name: string; description: string; checked?: boolean }
     type Candidate = Section[];
@@ -13,7 +13,7 @@
     function pick(idx: number) {
         const chosen = candidates[idx];
         if (!chosen) return;
-        restorePendingCard();
+        showChosenOutline(chosen);
         conversation.action(`select proposal ${idx + 1}`, '{002}', { proposals: [chosen] }, true);
     }
 

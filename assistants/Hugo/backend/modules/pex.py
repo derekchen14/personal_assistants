@@ -119,9 +119,8 @@ class PEX:
 
         check = self._validate_frame(frame, active_flow)
         if not check.passed:
-            # Error frames are already classified by the policy — no
-            # generic retry. Pass them straight to RES; the template keys
-            # off metadata['violation'] and frame.thoughts.
+            # Error frames are already classified by the policy — no generic retry. Pass them
+            # straight to RES; the template keys off metadata['violation'] and frame.thoughts.
             if check.is_error_frame:
                 state.has_issues = True
                 self.world.insert_frame(frame)

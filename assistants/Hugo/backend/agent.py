@@ -44,7 +44,7 @@ class Agent:
             )
 
     def _take_turn(self, text:str, dax:str|None=None, payload:dict|None=None) -> dict:
-        turn_type = 'action' if text.startswith('<action>') else 'utterance'
+        turn_type = 'action' if dax else 'utterance'
         self.world.context.add_turn('User', text, turn_type=turn_type)
         log.info('USER (%s): %s', turn_type, text)
 
@@ -93,10 +93,9 @@ class Agent:
             self.world.context.save_checkpoint('auto_summarize', data=turn_data)
 
         log.info(f'AGENT: {agent_utt[:256]}')
-        # Phase-2 logging: rich frame dump so the CLI↔UI gap is visible.
-        # frame.metadata + block summary surface the data shape that RES
-        # emits — diff this against what the frontend console.log shows
-        # for "[frame] received" to find serialization gaps.
+        # Phase-2 logging: rich frame dump so the CLI↔UI gap is visible. frame.metadata + block
+        # summary surface the data shape that RES emits — diff this against what the frontend
+        # console.log shows for "[frame] received" to find serialization gaps.
         block_summary = [
             {'type': b.block_type, 'data_keys': sorted((b.data or {}).keys()), 'location': b.location}
             for b in frame.blocks

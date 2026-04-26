@@ -174,9 +174,8 @@ class PromptEngineer:
             return schema.model_json_schema()
         raise TypeError(f'schema must be a dict or Pydantic BaseModel subclass, got {type(schema)!r}')
 
-    def skill_call(self, flow, convo_history:str, scratchpad:dict,
-                   skill_name:str|None=None, skill_prompt:str|None=None,
-                   resolved:dict|None=None, max_tokens:int=1024,
+    def skill_call(self, flow, convo_history:str, scratchpad:dict, skill_name:str|None=None,
+                   skill_prompt:str|None=None, resolved:dict|None=None, max_tokens:int=1024,
                    user_text:str|None=None) -> str:
         """Skill execution WITHOUT tool use. Sibling of tool_call."""
         if skill_prompt is None:
@@ -188,11 +187,9 @@ class PromptEngineer:
         response = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
         return ''.join(block.text for block in response.content if block.type == 'text')
 
-    def tool_call(self, flow, convo_history:str, scratchpad:dict,
-                  tool_defs:list[dict], tool_dispatcher,
-                  skill_name:str|None=None, skill_prompt:str|None=None,
-                  resolved:dict|None=None, max_tokens:int=4096,
-                  user_text:str|None=None) -> tuple[str, list[dict]]:
+    def tool_call(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], tool_dispatcher,
+                  skill_name:str|None=None, skill_prompt:str|None=None, resolved:dict|None=None,
+                  max_tokens:int=4096, user_text:str|None=None) -> tuple[str, list[dict]]:
         """Skill execution WITH tool use. Sibling of skill_call."""
         if skill_prompt is None:
             skill_prompt = self.load_skill_template(skill_name or flow.name())
@@ -202,7 +199,12 @@ class PromptEngineer:
         model_id = self._resolve_model('sonnet')
         tool_log: list[dict] = []
 
-        for _ in range(10):
+        max_num_calls = 8
+        # Allow certain flows that need more effort to increase the number of tool calls
+        if flow.name() in ['audit', 'refine', 'rework', 'compose', 'simplify', 'add']:
+            max_num_calls *= 2
+
+        for _ in range(max_num_calls):
             response = self._call_claude(system, msgs, model_id, tools=tool_defs, max_tokens=max_tokens)
 
             text_parts = []
@@ -222,22 +224,14 @@ class PromptEngineer:
                 log.info('  skill tool=%s  input=%s', tool_use.name,
                          {key: val for key, val in tool_use.input.items()} if tool_use.input else {})
                 result = tool_dispatcher(tool_use.name, tool_use.input)
-                tool_log.append({
-                    'tool': tool_use.name,
-                    'input': tool_use.input,
-                    'result': result,
-                })
-                tool_results.append({
-                    'type': 'tool_result',
-                    'tool_use_id': tool_use.id,
-                    'content': json.dumps(result, default=str),
-                })
+                tool_log.append({'tool': tool_use.name, 'input': tool_use.input, 'result': result})
+                parsed_content = json.dumps(result, default=str) 
+                tool_results.append({'type': 'tool_result', 'tool_use_id': tool_use.id, 'content': parsed_content})
             msgs.append({'role': 'user', 'content': tool_results})
 
         return '\n'.join(text_parts) if text_parts else '', tool_log
 
-    async def stream(self, prompt:str, task:str='skill',
-                     model:str='sonnet', max_tokens:int=4096):
+    async def stream(self, prompt:str, task:str='skill', model:str='sonnet', max_tokens:int=4096):
         """Token streaming. Same routing as __call__, yields text chunks."""
         messages = [{'role': 'user', 'content': prompt}]
         system = self._system_for_task(task)
@@ -270,10 +264,9 @@ class PromptEngineer:
         raise last_error
 
     def _call_claude(self, system, messages, model_id, *, tools=None, max_tokens=4096, schema_dict=None):
-        # Prompt caching: put a breakpoint at the end of the system prompt
-        # and at the end of tool definitions. These are the stable prefix
-        # shared across turns within a flow; per-turn content in `messages`
-        # sits after the cache boundary and is not cached.
+        # Prompt caching: put a breakpoint at the end of the system prompt and at the end of tool
+        # definitions. These are the stable prefix shared across turns within a flow; per-turn
+        # content in `messages` sits after the cache boundary and is not cached.
         system_blocks = [{
             'type': 'text',
             'text': system,

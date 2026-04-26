@@ -82,10 +82,6 @@ class ContextCoordinator:
             return filtered
         return [turn.utt() for turn in filtered]
 
-    def recent_turns(self, count:int=3) -> list[Turn]:
-        """Return last n Turn objects."""
-        return self._history[-count:]
-
     def get_turn(self, turn_id:int) -> Turn | None:
         for turn in self._history:
             if turn.turn_id == turn_id:

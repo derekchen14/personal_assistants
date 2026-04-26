@@ -40,10 +40,9 @@ class RevisePolicy(BasePolicy):
 
         post_id, _ = self._resolve_source_ids(flow, state, tools)
 
-        # Always preload the per-section preview (title + first few lines).
-        # This gives the skill enough context to handle whole-post operations
-        # (swap two sections, reorder, cross-section rewrite) in a single
-        # llm_execute pass instead of looping per section.
+        # Always preload the per-section preview (title + first few lines). This gives the skill
+        # enough context to handle whole-post operations (swap two sections, reorder, cross-section
+        # rewrite) in a single llm_execute pass instead of looping per section.
         text, tool_log = self.llm_execute(
             flow, state, context, tools, include_preview=True,
         )

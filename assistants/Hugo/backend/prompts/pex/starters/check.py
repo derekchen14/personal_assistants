@@ -1,8 +1,7 @@
 """Per-turn starter prompt for CheckFlow.
 
-Read-only narration of a status check. The policy has already called
-`find_posts` and passes the result via `<resolved_details>`. Skill
-narrates in 1-2 sentences and suggests a next action.
+Read-only narration of a status check. The policy has already called `find_posts` and passes the
+result via `<resolved_details>`. Skill narrates in 1-2 sentences and suggests a next action.
 """
 
 

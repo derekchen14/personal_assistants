@@ -1,12 +1,10 @@
 """Shared fixtures for policy-in-isolation tests (Part 4 tier 1).
 
-Each policy is exercised without the NLU/PEX/RES pipeline: we feed it a
-DialogueState, a flow on a real FlowStack, a canned-response tools stub, and
-a minimal ContextCoordinator. Real PromptEngineer / MemoryManager /
-AmbiguityHandler / FlowStack instances are used — policies treat them as
-collaborators, and the methods we exercise (apply_guardrails,
-extract_tool_result, write_scratchpad, declare, stackon) do not make LLM
-calls.
+Each policy is exercised without the NLU/PEX/RES pipeline: we feed it a DialogueState, a flow on a
+real FlowStack, a canned-response tools stub, and a minimal ContextCoordinator. Real PromptEngineer
+/ MemoryManager / AmbiguityHandler / FlowStack instances are used — policies treat them as
+collaborators, and the methods we exercise (apply_guardrails, extract_tool_result, write_scratchpad,
+declare, stackon) do not make LLM calls.
 """
 
 from __future__ import annotations
@@ -60,9 +58,8 @@ def make_state(**overrides) -> DialogueState:
 def make_context(compiled_history:str='', turn_id:int=1) -> ContextCoordinator:
     """Return a real ContextCoordinator prefilled with a synthetic history.
 
-    The policies under test call `context.compile_history()` and read
-    `context.turn_id`. We seed a single User turn so both return something
-    non-trivial without invoking NLU.
+    The policies under test call `context.compile_history()` and read `context.turn_id`. We seed a
+    single User turn so both return something non-trivial without invoking NLU.
     """
     config = _load_test_config()
     context = ContextCoordinator(config)
@@ -97,9 +94,8 @@ def make_tool_stub(responses:dict):
     """Build a callable `tools(name, params)` that returns canned responses.
 
     `responses` is `{tool_name: [dict, dict, ...]}` — each call pops the
-    front of the per-tool FIFO. If a tool is called without a canned
-    response, raises AssertionError so tests fail loudly on unexpected
-    tool traffic.
+    front of the per-tool FIFO. If a tool is called without a canned response, raises AssertionError
+    so tests fail loudly on unexpected tool traffic.
     """
     queues = {name: list(items) for name, items in responses.items()}
 
@@ -117,8 +113,7 @@ def capture_tool_log(tools_fn):
     """Wrap a tools stub so every call is appended to tools_fn.log.
 
     Each log entry is `{'name': str, 'params': dict, 'result': dict}`. Tests
-    can assert on the full sequence of tool calls without having to
-    re-instrument the stub.
+    can assert on the full sequence of tool calls without having to re-instrument the stub.
     """
     log:list[dict] = []
 
@@ -134,9 +129,8 @@ def capture_tool_log(tools_fn):
 def build_policy(flow_name:str):
     """Return a (policy, components) pair ready to drive a single flow.
 
-    The returned dict contains the real collaborator objects the test can
-    inspect after the policy executes (flow_stack, ambiguity, memory,
-    engineer, state-agnostic config).
+    The returned dict contains the real collaborator objects the test can inspect after the policy
+    executes (flow_stack, ambiguity, memory, engineer, state-agnostic config).
     """
     config = _load_test_config()
     engineer = PromptEngineer(config)

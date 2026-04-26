@@ -1,9 +1,8 @@
 """Policy-in-isolation tests for the `add` flow.
 
-Add delegates to the skill for detail-into-existing-section operations. It
-accepts any of (points, additions, image) via elective slots; the policy
-asserts only that entity_slot (source) is present before calling the LLM.
-See `utils/policy_builder/fixes/add.md` and
+Add delegates to the skill for detail-into-existing-section operations. It accepts any of (points,
+additions, image) via elective slots; the policy asserts only that entity_slot (source) is present
+before calling the LLM. See `utils/policy_builder/fixes/add.md` and
 `utils/policy_builder/inventory/add.md` for the expected shape.
 """
 

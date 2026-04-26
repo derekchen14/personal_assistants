@@ -86,11 +86,10 @@ def _drain_orphan_active_flows(agent, expected_flow_name:str):
     """Pop any Active flow whose name does not match the current step's flow.
 
     Rationale: when a flow reaches an error state but deliberately stays
-    Active (e.g. audit after parse_failure, so the user can retry), the
-    next eval step operates on a different flow and the stale flow blocks
-    the L1 active-flow check. In a real session, NLU+RES would eventually
-    abandon the stale flow; the eval harness fast-forwards that cleanup.
-    Pending flows are preserved — they belong to a queued plan.
+    Active (e.g. audit after parse_failure, so the user can retry), the next eval step operates on a
+    different flow and the stale flow blocks the L1 active-flow check. In a real session, NLU+RES
+    would eventually abandon the stale flow; the eval harness fast-forwards that cleanup. Pending
+    flows are preserved — they belong to a queued plan.
     """
     stack = agent.world.flow_stack
     kept = []
@@ -103,34 +102,13 @@ def _drain_orphan_active_flows(agent, expected_flow_name:str):
 
 def _reset_outline_flow(agent):
     """Pop any stale OutlineFlow so step 3's utterance starts from a
-    clean slate. `NLU._fill_slots` short-circuits when a pre-existing
-    flow already looks filled (source + topic), which blocks sections
-    extraction on a follow-up turn. Popping the flow simulates the user
-    abandoning the propose selection and typing a fresh outline request.
+    clean slate. `NLU._fill_slots` short-circuits when a pre-existing flow already looks filled
+    (source + topic), which blocks sections extraction on a follow-up turn. Popping the flow
+    simulates the user abandoning the propose selection and typing a fresh outline request.
     """
     stack = agent.world.flow_stack
     if stack.find_by_name('outline'):
         stack._pop()
-
-
-def _seed_proposal_options(agent, candidate):
-    """Seed the active OutlineFlow's proposals slot to the picked state.
-
-    `NLU._fill_slots` short-circuits at entry when `flow.is_filled()` is
-    already True — and at this point source + topic are both filled from
-    step 2. So the payload never routes into `ProposalSlot.add_one` and
-    the UI-style button-click can't actually commit. The pre-hook
-    reaches past that gate and writes values directly, matching the
-    end state the real UI reaches via its own path.
-    """
-    flow = agent.world.flow_stack.get_flow()
-    if flow and 'proposals' in flow.slots:
-        p = flow.slots['proposals']
-        if candidate not in p.options:
-            p.options.append(candidate)
-        if candidate not in p.values:
-            p.values.append(candidate)
-        p.check_if_filled()
 
 
 # ── Step definitions: Scenario 1 — Multi-modal agents (vision) ───────
@@ -157,23 +135,19 @@ STEPS_VISION = [
         'expected_block_data_keys': {'selection': ['candidates']},
     },
     {
-        # Button-click path: the user clicks "Pick" on Option 1 in step 2's
-        # selection block. Mirrors SelectionBlock.svelte:17 exactly —
-        # auto-generated text "select proposal 1", dax={002}, and a payload
-        # carrying the chosen candidate. Uses a static (vs. LLM-generated)
-        # candidate so downstream steps can reference Motivation / Process /
-        # Ideas / Takeaways deterministically. `pre_hook` seeds the
-        # proposals slot's `options` list with the same static candidate —
-        # ProposalSlot.add_one only accepts values already in `options`, so
-        # this match is how the button-click reaches the direct branch.
+        # Button-click path: user clicks "Pick" on Option 1 in step 2's selection block. Mirrors
+        # SelectionBlock.svelte — '<action>...' text, dax={002}, and a payload carrying the chosen
+        # candidate. A static payload (vs. capturing step 2's LLM output) keeps downstream steps
+        # that reference specific section names deterministic. NLU's `unpack_user_actions` trusts
+        # the payload shape and fills `sections` directly — no pre-seeding of `proposals.options`
+        # required.
         'step': 3,
         'flow': 'outline',
         'dax': '{002}',
-        'utterance': 'select proposal 1',
+        'utterance': '<action>select proposal 1</action>',
         'payload': {
             'proposals': [_VISION_STATIC_PROPOSAL],
         },
-        'pre_hook': lambda agent: _seed_proposal_options(agent, _VISION_STATIC_PROPOSAL),
         'expected_tools': ['generate_outline'],
         'expected_block_type': 'card',
         'max_message_chars': 300,
@@ -290,10 +264,9 @@ STEPS_VISION = [
         'expected_block_data_keys': {'list': ['items']},
     },
     {
-        # Audit returns a selection block listing findings as pickable options.
-        # The audit skill calls read_section across found posts whose section
-        # ids may not match — those not_found errors are expected exploratory
-        # reads, not real failures.
+        # Audit returns a selection block listing findings as pickable options. The audit skill
+        # calls read_section across found posts whose section ids may not match — those not_found
+        # errors are expected exploratory reads, not real failures.
         'step': 12,
         'flow': 'audit',
         'dax': '{13A}',
@@ -509,9 +482,8 @@ STEPS_OBSERVABILITY = [
         'expected_block_data_keys': {'card': ['post_id', 'title']},
     },
     {
-        # Release publishes to MT1T (local filesystem) by default when no
-        # channel is named. See Vision step 14 for the toast + _eval_ filename
-        # convention.
+        # Release publishes to MT1T (local filesystem) by default when no channel is named. See
+        # Vision step 14 for the toast + _eval_ filename convention.
         'step': 14,
         'flow': 'release',
         'dax': '{04A}',
@@ -1158,9 +1130,8 @@ def _run_with_retry_on_flake(tester, step_def, request):
 class _BaseScenarioE2E:
     """Base scaffolding for a 14-step E2E lifecycle eval.
 
-    Concrete subclasses override `_steps`, `_test_post_id`, and
-    `_post_title_default` to run the same 14-step harness against a
-    different scenario (vision / observability / voice).
+    Concrete subclasses override `_steps`, `_test_post_id`, and `_post_title_default` to run the
+    same 14-step harness against a different scenario (vision / observability / voice).
     """
 
     # Subclasses MUST override these three.
@@ -1177,17 +1148,16 @@ class _BaseScenarioE2E:
     # Timing + outcome trace — one entry per step, populated by _run_step.
     _step_traces:list = []
     # Budget above which a turn is flagged [SLOW] in the per-step output.
-    # Target per user: 3 scenarios × 14 turns in ≤15 min → ~20s avg, 60s ceiling.
-    _slow_turn_sec:float = 60.0
-    # Hard cap per turn. Exceeded turns are marked failed and the
-    # background thread is abandoned — the three-failure early exit
-    # will then end the scenario.
+    _slow_turn_sec:float = 40.0
+    # Hard cap per turn. Exceeded turns are marked failed and the background thread is abandoned
     _turn_timeout_sec:float = 60.0
-    # After this many consecutive L1 failures the rest of the scenario is
-    # skipped — three failures in a row almost always means a cascading bug
-    # that no further turn will recover from, so additional runtime is wasted.
+    # After 3 consecutive L1 failures the rest of the scenario is skipped — this many failures in a row almost
+    # always means a cascading bug that no further turn will recover from, so additional runtime is wasted.
     _max_consecutive_failures:int = 3
     _consecutive_failures:int = 0
+    # Most recent agent response — used by the L1 duplicate-utterance check so regressions like "same canned line
+    # emitted twice" surface instead of hiding behind passing tool-trajectory assertions.
+    _prev_agent_message:str|None = None
 
     @classmethod
     def setup_class(cls):
@@ -1200,21 +1170,7 @@ class _BaseScenarioE2E:
         cls._report_lines = []
         cls._post_id = None
         cls._consecutive_failures = 0
-
-    @classmethod
-    def teardown_class(cls):
-        """Delete the scenario's synthetic post so fake fixtures don't pile up
-        in `database/content/` after the eval run. Set `HUGO_E2E_KEEP_POSTS=1`
-        to skip cleanup when you want to inspect the post after the run."""
-        if os.getenv('HUGO_E2E_KEEP_POSTS') == '1':
-            return
-        from backend.utilities.services import PostService
-        svc = PostService()
-        svc.delete_post(cls._test_post_id)
-        preview = svc.list_preview().get('items', [])
-        for ent in preview:
-            if ent.get('title', '').lower() == cls._post_title_default.lower():
-                svc.delete_post(ent['post_id'])
+        cls._prev_agent_message = None
 
     @classmethod
     def _get_agent(cls):
@@ -1265,7 +1221,8 @@ class _BaseScenarioE2E:
 
     @classmethod
     def teardown_class(cls):
-        """Close the agent. Post is left on disk for part 2 reruns."""
+        """Close the agent and (unless HUGO_E2E_KEEP_POSTS=1) delete the
+        synthetic post so fake fixtures don't pile up in `database/content/`."""
         if cls._step_traces:
             cls._print_scenario_timing()
         if cls._verbose and cls._report_lines:
@@ -1277,6 +1234,14 @@ class _BaseScenarioE2E:
         if cls._agent:
             cls._agent.close()
             cls._agent = None
+        if os.getenv('HUGO_E2E_KEEP_POSTS') != '1':
+            from backend.utilities.services import PostService
+            svc = PostService()
+            svc.delete_post(cls._test_post_id)
+            preview = svc.list_preview().get('items', [])
+            for ent in preview:
+                if ent.get('title', '').lower() == cls._post_title_default.lower():
+                    svc.delete_post(ent['post_id'])
 
     @classmethod
     def _print_scenario_timing(cls):
@@ -1320,10 +1285,9 @@ class _BaseScenarioE2E:
         agent = self._get_agent()
         tool_log = _install_tool_logger(agent)
 
-        # Stack sanity: pop any orphan flow (Active from a prior failed turn
-        # whose name doesn't match this step). Prevents cascades like
-        # audit→parse_failure→stays Active→blocks polish two turns later.
-        # Does NOT touch Pending flows — those belong to a queued plan.
+        # Stack sanity: pop any orphan flow (Active from a prior failed turn whose name doesn't
+        # match this step). Prevents cascades like audit→parse_failure→stays Active→blocks polish
+        # two turns later. Does NOT touch Pending flows — those belong to a queued plan.
         _drain_orphan_active_flows(agent, step_def['flow'])
 
         # Optional per-step payload — present only for button-click turns
@@ -1365,6 +1329,10 @@ class _BaseScenarioE2E:
             l1_issues = [f'timed out after {self._turn_timeout_sec}s']
         else:
             l1_issues = _check_level1(step_def, result, tool_log, agent)
+            msg = (result.get('message') or '').strip()
+            if msg and msg == (self.__class__._prev_agent_message or '').strip():
+                l1_issues.append(f'duplicate utterance across turns: {msg[:120]!r}')
+            self.__class__._prev_agent_message = msg
         l2_issues = (
             _check_level2(tool_log, step_def['expected_tools'], strict=self._strict)
             if not l1_issues else ['skipped (L1 failed)']

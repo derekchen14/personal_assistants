@@ -263,9 +263,8 @@ class ResearchPolicy(BasePolicy):
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
         frame = DisplayFrame(flow.name(), thoughts=text)
-        # Diff compares two code versions — users need to SEE the diff
-        # visually, not just hear it narrated. Surface the structured diff
-        # via a compare block so the frontend can render it.
+        # Diff compares two code versions — users need to SEE the diff visually, not just hear it
+        # narrated. Surface the structured diff via a compare block so the frontend can render it.
         diff_result = self.engineer.extract_tool_result(tool_log, 'diff_section')
         if diff_result.get('_success'):
             frame.add_block({'type': 'compare', 'data': {

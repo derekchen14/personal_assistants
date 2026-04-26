@@ -1,10 +1,9 @@
 """Policy-in-isolation tests for the `inspect` flow.
 
-Inspect is fully deterministic after Theme 3 — the policy calls
-`inspect_post` directly, writes the metrics to scratchpad under the
-standard envelope (version / turn_number / used_count / payload), and
-returns a metrics-bearing frame. See `utils/policy_builder/fixes/inspect.md`
-and `utils/policy_builder/inventory/inspect.md` for the expected shape.
+Inspect is fully deterministic after Theme 3 — the policy calls `inspect_post` directly, writes the
+metrics to scratchpad under the standard envelope (version / turn_number / used_count / payload),
+and returns a metrics-bearing frame. See `utils/policy_builder/fixes/inspect.md` and
+`utils/policy_builder/inventory/inspect.md` for the expected shape.
 """
 
 from __future__ import annotations

@@ -75,6 +75,23 @@ One or two sentences describing what this section covers.
 
 ### Direct mode
 
+Emit a markdown outline where each bullet is on its own line. Bullets MUST use a real `\n- ` separator; never join bullets inline with ` - `. Depth 2 format:
+
+```
+## <section title>
+
+- first bullet on its own line
+- second bullet on its own line
+- third bullet on its own line
+- fourth bullet on its own line
+
+## <next section title>
+
+- ...
+```
+
+Expand each section into 3–5 substantive bullets — not a single rephrased description. If the user's proposal gave a short description, use it as the angle for the section but produce several distinct bullets covering the key beats (motivation, mechanism, concrete example, takeaway, etc.).
+
 After `generate_outline` saves, the final reply is a one-sentence acknowledgement ("Saved a 4-section outline for <title>."). The card block rendered by the policy carries the structured data.
 
 ## Few-shot examples

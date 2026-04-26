@@ -37,7 +37,6 @@ _ENSEMBLE_VOTERS = [
     {'model': 'flash', 'label': 'gemini_flash', 'weight': 0.35},
 ]
 
-
 def _get_edge_flows_for_intent(intent:str) -> set[str]:
     edge = set()
     for name, cat in FLOW_CATALOG.items():
@@ -413,20 +412,30 @@ class NLU:
         return [name for name, cat in FLOW_CATALOG.items() if cat['intent'] == intent or name in edges]
 
     def _fill_slots(self, flow, payload:dict={}):
-        if flow.is_filled(): return
+        snippet_exact_map = {'find': 'query', 'reference': 'word'}
+        entity_mapper = {'snippet': 'snip', 'post': 'post', 'section': 'sec', 'channel': 'chl'}
+        last_turn = self.world.context.last_user_turn
 
-        # Phase 1: Fill entity slots from user actions
-        source_fields = {'highlight': 'snip', 'post': 'post', 'section': 'sec', 'channel': 'chl'}
-        for slot_name, slot in flow.slots.items():
-            if slot.slot_type in ('source', 'target', 'removal', 'channel'):
-                source_values = {'post': ''}
-                for key, value in payload.items():
-                    if key in source_fields:
-                        source_values[source_fields[key]] = value
-                if any(source_values.values()):
-                    slot.add_one(**source_values)
+        if payload:
+            snippet_text = payload.get('snippet')
+            entity_slots = [s for s in flow.slots.values() if s.slot_type in ('source', 'target', 'removal')]
+            entity_kwargs = {entity_mapper[key]: val for key, val in payload.items() if key in entity_mapper}
 
-        # Phase 1b: Otherwise try to ground based on the active post
+            # Phase 1a: Fill entity slots
+            if entity_kwargs and entity_slots:
+                for slot in entity_slots:
+                    slot.add_one(**entity_kwargs)
+            # Phase 1b: Fill ExactSlot with snippets. Only for FindFLow and ReferenceFlow.
+            elif snippet_text and flow.name() in snippet_exact_map:
+                target_name = snippet_exact_map[flow.name()]
+                slot = flow.slots.get(target_name)
+                if not slot.filled:
+                    slot.add_one(snippet_text)
+            # Phase 1c: Capture slot-values when a user clicks on a button or interacts with UI
+            elif last_turn.turn_type == 'action':
+                self.unpack_user_actions(flow, payload)
+
+        # Phase 2: Ground remaining source/target slots against the active post.
         prev = self.world.current_state()
         if prev and prev.active_post:
             for slot_name, slot in flow.slots.items():
@@ -434,12 +443,7 @@ class NLU:
                     slot.add_one(post=prev.active_post)
         ent_needs_filling = self.grounding_entity_history(flow, prev)
 
-        # Phase 1c: Attempt to fill remaining slots from payload if keys match slot names
-        direct = {k: v for k, v in payload.items() if k not in source_fields and k in flow.slots}
-        if direct:
-            flow.fill_slot_values(direct)
-
-        # Phase 2: Slot-filling for any slots still remaining after payload
+        # Phase 3: LLM slot-filling for anything still unfilled
         if not flow.is_filled():
             convo_history = self.world.context.compile_history()
             before = {sn: slot.filled for sn, slot in flow.slots.items()}
@@ -456,6 +460,20 @@ class NLU:
             after = {sn: {'filled': slot.filled, 'preview': self._slot_preview(slot)}
                      for sn, slot in flow.slots.items()}
             log.info('  fill_slots post: %s', after)
+
+    def unpack_user_actions(self, flow, payload:dict):
+        """Transfer a frontend action payload into flow slots. Per-flow dispatch
+        trusting the FE+flow shape contract. A missing case means the FE started
+        sending a new action payload that this layer hasn't registered yet —
+        crash so we add the branch rather than silently drop the click."""
+        match flow.name():
+            case 'outline':
+                chosen = payload['proposals'][0]
+                for sec in chosen:
+                    flow.slots['sections'].add_one(sec['name'], sec['description'])
+                flow.slots['proposals'].values = [chosen]
+            case _:
+                raise ValueError(f'no action-payload handler for flow {flow.name()!r}: {payload}')
 
     def _check_routing(self, user_text:str, failed_flow:str|None,
                        failure_reason:str) -> dict:

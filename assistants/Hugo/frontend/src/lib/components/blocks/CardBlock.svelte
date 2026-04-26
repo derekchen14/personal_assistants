@@ -1,7 +1,7 @@
 <script lang="ts">
     import { md } from '$lib/utils/markdown';
     import { conversation } from '$lib/stores/conversation';
-    import { displayLayout, expandPost, collapsePost, activeHighlight } from '$lib/stores/display';
+    import { displayLayout, expandPost, collapsePost, activeHighlight, activeSection } from '$lib/stores/display';
     import { onDestroy } from 'svelte';
     import IconArrowsPointingOut from '$lib/assets/IconArrowsPointingOut.svelte';
     import IconArrowsPointingIn from '$lib/assets/IconArrowsPointingIn.svelte';
@@ -21,6 +21,7 @@
     let fields = $derived((data.fields as Record<string, unknown>) || {});
     let linkedPost = $derived((data.linked_post as Record<string, unknown>) || null);
     let pending = $derived(Boolean(data.pending));
+    let sectionIds = $derived((data.section_ids as string[]) || []);
 
     // Edit mode: notes and newly created drafts start editable
     let editingEnabled = $state(false);
@@ -31,6 +32,7 @@
             editingEnabled = status === 'note' || origin === 'create';
             clearMark();
             activeHighlight.set('');
+            activeSection.set('');
         }
     });
 
@@ -59,14 +61,34 @@
         if (enabled) setTimeout(() => { el.focus(); }, 0);
     }
 
+    function findSectionFromRange(startNode: Node): string {
+        // Walk upward from the selection's startContainer to find the nearest
+        // preceding <h2>. Map its text to a section title, then sectionIds[idx].
+        let node: Node | null = startNode;
+        while (node && node !== proseEl) {
+            let sib: Node | null = node.previousSibling;
+            while (sib) {
+                if (sib.nodeType === Node.ELEMENT_NODE && (sib as Element).tagName === 'H2') {
+                    const title = (sib.textContent || '').trim();
+                    const idx = sections.findIndex(s => s.title === title);
+                    return idx >= 0 ? (sectionIds[idx] ?? '') : '';
+                }
+                sib = sib.previousSibling;
+            }
+            node = node.parentNode;
+        }
+        return '';
+    }
+
     function captureSelection() {
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed) return;
         const text = sel.toString().trim();
         if (!text) return;
+        const range = sel.getRangeAt(0);
+        const secId = findSectionFromRange(range.startContainer);
         clearMark();
         try {
-            const range = sel.getRangeAt(0);
             const mark = document.createElement('mark');
             mark.className = 'prose-highlight';
             mark.appendChild(range.extractContents());
@@ -75,6 +97,26 @@
             sel.removeAllRanges();
         } catch { /* cross-element selection — no visual mark */ }
         activeHighlight.set(text);
+        activeSection.set(secId);
+    }
+
+    function findSectionFromEditOffset(offset: number): string {
+        // Scan backward in editContent from offset for the last '## Title\n'.
+        // Match title → sectionIds[idx].
+        const prefix = editContent.slice(0, offset);
+        const match = prefix.match(/^## (.+)$/gm);
+        if (!match) return '';
+        const lastHeader = match[match.length - 1].slice(3).trim();
+        const idx = sections.findIndex(s => s.title === lastHeader);
+        return idx >= 0 ? (sectionIds[idx] ?? '') : '';
+    }
+
+    function captureEditSelection(e: MouseEvent & { currentTarget: HTMLTextAreaElement }) {
+        const el = e.currentTarget;
+        const sel = el.value.substring(el.selectionStart, el.selectionEnd).trim();
+        if (!sel) return;
+        activeHighlight.set(sel);
+        activeSection.set(findSectionFromEditOffset(el.selectionStart));
     }
 
     $effect(() => { if (!$activeHighlight) clearMark(); });
@@ -287,7 +329,7 @@
             <textarea
                 bind:value={editContent}
                 oninput={onInput}
-                onmouseup={(e) => { const el = e.currentTarget; const sel = el.value.substring(el.selectionStart, el.selectionEnd).trim(); if (sel) activeHighlight.set(sel); }}
+                onmouseup={captureEditSelection}
                 class="flex-1 min-h-0 py-2 border-0 bg-transparent text-[var(--text)] text-sm leading-[1.7] resize-none outline-none w-full"
                 placeholder="Start writing..."
                 use:focusOnMount={origin === 'create'}
@@ -343,7 +385,6 @@
     .prose-content :global(ul) { list-style-type: disc; }
     .prose-content :global(ol) { list-style-type: decimal; }
     .prose-content :global(li) { margin: 0.25rem 0; }
-    /* Level 4 sub-bullets: hollow circle, tighter spacing than level-3 bullets. */
     .prose-content :global(ul ul) { list-style-type: circle; margin: 0; }
     .prose-content :global(ul ul li) { margin: 0; }
     .prose-content :global(blockquote) {

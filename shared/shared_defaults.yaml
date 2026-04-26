@@ -89,6 +89,9 @@ resilience:
   fallback_model: null              # model_id to try if primary fails; null = none
   max_recovery_attempts: 2          # max times Agent tries re-route before escalate
 
+recovery:
+  max_repair_attempts: 2            # 1 original + 1 retry = 2 total attempts
+
 context_window:
   max_input_tokens: 128000          # total input budget (model-dependent)
   allocation:                       # suggested fraction split — applies primarily to PEX policy calls

@@ -1,9 +1,8 @@
 """Pytest configuration for the Playwright UI tier (Part 4, Phase 3).
 
-Gated on the ``--ui`` CLI flag so CI default-skips the whole directory.
-Spins up backend (port 8001) + frontend (port 5174) only if they are not
-already running; tears them down on session end only if this fixture
-started them.
+Gated on the ``--ui`` CLI flag so CI default-skips the whole directory. Spins up backend (port 8001)
++ frontend (port 5174) only if they are not already running; tears them down on session end only if
+this fixture started them.
 """
 
 import os
@@ -186,10 +185,9 @@ def network_log(browser_context, pytestconfig):
 def console_log(browser_context, pytestconfig):
     """Captures browser-side console.log / console.error events.
 
-    The Phase-2 logging instrumentation in the frontend (conversation.ts
-    `[frame] received`, display.ts `[setFrame] dispatch`) emits structured
-    JSON-ish messages we can assert on. Diff against the backend-side
-    log lines (`AGENT-FRAME:`, `WS-HANDOFF:`) to spot serialization gaps.
+    The Phase-2 logging instrumentation in the frontend (conversation.ts `[frame] received`,
+    display.ts `[setFrame] dispatch`) emits structured JSON-ish messages we can assert on. Diff
+    against the backend-side log lines (`AGENT-FRAME:`, `WS-HANDOFF:`) to spot serialization gaps.
     """
     if not pytestconfig.getoption('--ui'):
         yield []

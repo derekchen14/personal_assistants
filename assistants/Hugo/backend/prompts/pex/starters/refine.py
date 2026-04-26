@@ -1,8 +1,7 @@
 """Per-turn starter prompt for RefineFlow.
 
-The skill body (`pex/skills/refine.md`) carries the static process. This
-file carries the runtime payload — post title, current outline (as XML),
-and the filled feedback / steps parameters.
+The skill body (`pex/skills/refine.md`) carries the static process. This file carries the runtime
+payload — post title, current outline (as XML), and the filled feedback / steps parameters.
 """
 
 from backend.prompts.for_pex import render_freetext, render_checklist

@@ -1,11 +1,10 @@
 """Policy-in-isolation tests for the `refine` flow.
 
-Refine merges user feedback into an existing outline by delegating to the
-LLM with the current outline injected as extra_resolved. It has a
-contract backstop that checks the post-merge bullet count and an
-OutlineFlow stack-on when the existing outline has no bullets. See
-`utils/policy_builder/fixes/refine.md` and
-`utils/policy_builder/inventory/refine.md` for the expected shape.
+Refine merges user feedback into an existing outline by delegating to the LLM with the current
+outline injected as extra_resolved. It has a contract backstop that checks the post-merge bullet
+count and an OutlineFlow stack-on when the existing outline has no bullets. See
+`utils/policy_builder/fixes/refine.md` and `utils/policy_builder/inventory/refine.md` for the
+expected shape.
 """
 
 from __future__ import annotations

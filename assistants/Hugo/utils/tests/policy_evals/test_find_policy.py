@@ -1,9 +1,8 @@
 """Policy-in-isolation tests for the `find` flow.
 
-Find is fully deterministic after its skill file was deleted: the policy
-expands the query (via a small LLM helper that we mock here), calls
-`find_posts` per term, dedupes by post_id, and always renders one list
-block. See `utils/policy_builder/fixes/find.md` and
+Find is fully deterministic after its skill file was deleted: the policy expands the query (via a
+small LLM helper that we mock here), calls `find_posts` per term, dedupes by post_id, and always
+renders one list block. See `utils/policy_builder/fixes/find.md` and
 `utils/policy_builder/inventory/find.md` for the expected shape.
 """
 

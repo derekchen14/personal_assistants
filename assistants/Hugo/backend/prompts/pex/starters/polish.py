@@ -1,8 +1,7 @@
 """Per-turn starter prompt for PolishFlow.
 
-Section-scoped sentence/paragraph polish. style_notes (when filled) takes
-priority over the inferred style from the existing prose. Image polish is
-also supported via the image slot.
+Section-scoped sentence/paragraph polish. style_notes (when filled) takes priority over the inferred
+style from the existing prose. Image polish is also supported via the image slot.
 """
 
 from backend.prompts.for_pex import render_source, render_freetext

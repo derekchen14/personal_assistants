@@ -8,21 +8,14 @@
     import CompareBlock from './CompareBlock.svelte';
     import GridBlock from './GridBlock.svelte';
     import SelectionBlock from './SelectionBlock.svelte';
-    import type { Block, FrameData } from '$lib/stores/display';
+    import type { FrameData } from '$lib/stores/display';
 
     let { frame, location = 'bottom' }:
         { frame: FrameData; location?: 'top' | 'bottom' } = $props();
 
-    // Accept both the new blocks-array shape and the legacy single-block shape.
-    let renderable = $derived.by(() => {
-        if (frame?.blocks && frame.blocks.length > 0) {
-            return frame.blocks.filter(b => (b.location ?? 'bottom') === location);
-        }
-        if (frame?.block_type) {
-            return [{ type: frame.block_type, data: frame.data ?? {}, location }] as Block[];
-        }
-        return [] as Block[];
-    });
+    let renderable = $derived(
+        (frame?.blocks ?? []).filter(b => (b.location ?? 'bottom') === location),
+    );
 </script>
 
 {#each renderable as block}

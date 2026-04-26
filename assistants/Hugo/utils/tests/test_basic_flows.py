@@ -1,7 +1,6 @@
 """E2E spot-check for the 10 basic flows (Finalizing_Flows.md).
 
-Uses the real agent fixture with live LLM + tool calls.
-Each test verifies:
+Uses the real agent fixture with live LLM + tool calls. Each test verifies:
   1. Correct flow routing (gold DAX ensures this)
   2. PEX policy executes without error
   3. Agent produces a substantive response

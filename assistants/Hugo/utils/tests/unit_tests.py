@@ -209,15 +209,6 @@ class TestReact:
         assert state.flow_name == 'summarize'
         assert state.confidence == 0.99
 
-    def test_multi_slot_values_parsed(self, nlu):
-        real_flow = flow_classes['create']()
-        nlu.flow_stack.find_by_name.return_value = None
-        nlu.flow_stack.stackon.return_value = real_flow
-        nlu.react('{05A}', {'type': 'draft', 'topic': 'SEO tips'})
-        slot_vals = real_flow.slot_values_dict()
-        assert slot_vals.get('type') == 'draft'
-        assert slot_vals.get('topic') == 'SEO tips'
-
     def test_utterance_calls_fill_slots(self, nlu):
         real_flow = flow_classes['create']()
         nlu.flow_stack.find_by_name.return_value = None
@@ -227,14 +218,24 @@ class TestReact:
         mock_fill.assert_called_once()
         assert state.flow_name == 'create'
 
-    def test_fill_slot_values_called_with_payload(self, nlu):
-        real_flow = flow_classes['create']()
+    def test_snippet_payload_fills_entity_slot(self, nlu):
+        # Phase 1a: snippet + post + section land in SourceSlot entity dict.
+        real_flow = flow_classes['refine']()
         nlu.flow_stack.find_by_name.return_value = None
         nlu.flow_stack.stackon.return_value = real_flow
-        spy = MagicMock(wraps=real_flow.fill_slot_values)
-        real_flow.fill_slot_values = spy
-        nlu.react('{05A}', {'type': 'note'})
-        spy.assert_any_call({'type': 'note'})
+        nlu.react('{02B}', {'snippet': 'matrix mult', 'post': 'post_abc', 'section': 'sec_xyz'})
+        entity = real_flow.slots['source'].values[0]
+        assert entity['snip'] == 'matrix mult'
+        assert entity['post'] == 'post_abc'
+        assert entity['sec'] == 'sec_xyz'
+
+    def test_snippet_payload_fills_exact_slot(self, nlu):
+        # Phase 1b: snippet lands in find.query via SNIPPET_EXACT_SLOTS registry.
+        real_flow = flow_classes['find']()
+        nlu.flow_stack.find_by_name.return_value = None
+        nlu.flow_stack.stackon.return_value = real_flow
+        nlu.react('{001}', {'snippet': 'matrix mult'})
+        assert real_flow.slots['query'].value == 'matrix mult'
 
     def test_all_action_dax_codes_resolve(self):
         from utils.helper import dax2flow

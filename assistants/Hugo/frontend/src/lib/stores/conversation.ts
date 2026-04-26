@@ -45,9 +45,23 @@ function createConversationStore() {
 
         const frame = data.frame as Record<string, unknown> | null;
         if (frame) {
-            console.log('[frame] received:', { origin: frame.origin, panel: frame.panel, blocks: frame.blocks });
+            // Phase-2 logging: rich frame snapshot to diff against the
+            // backend WS-HANDOFF log line. Look for shape mismatches
+            // (missing keys, wrong block types, empty data).
+            const blocks = (frame.blocks as Array<Record<string, unknown>>) || [];
+            console.log('[frame] received:', {
+                origin: frame.origin,
+                panel: data.panel || frame.panel,
+                metadata_keys: Object.keys((frame.metadata as object) || {}),
+                blocks: blocks.map((b) => ({
+                    type: b.type,
+                    data_keys: Object.keys((b.data as object) || {}),
+                    location: b.location,
+                })),
+                msg_len: ((data.message as string) || '').length,
+            });
         } else {
-            console.log('[frame] none');
+            console.log('[frame] none', { msg_len: ((data.message as string) || '').length });
         }
 
         const msg: Message = {
@@ -90,6 +104,12 @@ function createConversationStore() {
         },
 
         send(text: string, dax: string | null = null, payload: Record<string, string> = {}) {
+            // Recognized payload keys (FE→BE contract, consumed by NLU Phase 1a/1b):
+            //   post    — sec_id grounding the utterance to a specific post
+            //   section — sec_id grounding to a section within that post
+            //   snippet — user-highlighted text inside the post/section
+            // Additional keys (e.g. outline Pick's `proposals`) are recognized by
+            // `unpack_user_actions` on action-turn dispatch.
             if (!ws?.connected || !text.trim()) return;
 
             const msg: Message = {

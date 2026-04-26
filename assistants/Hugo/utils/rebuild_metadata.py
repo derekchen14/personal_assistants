@@ -1,12 +1,11 @@
 """Rebuild metadata.json from disk content.
 
-Recomputes preview, word_count, and section_ids for every entry.
-With --apply, the index is synced to disk: new files are added and
-entries for missing files are removed.
+Recomputes preview, word_count, and section_ids for every entry. With --apply, the index is synced
+to disk: new files are added and entries for missing files are removed.
 
 Usage:
-    python utils/rebuild_metadata.py          # dry-run (shows changes)
-    python utils/rebuild_metadata.py --apply  # sync index to disk
+    python utils/rebuild_metadata.py # dry-run (shows changes) python utils/rebuild_metadata.py
+    --apply # sync index to disk
 """
 
 import sys

@@ -1,11 +1,10 @@
 """Policy-in-isolation tests for the `release` flow.
 
-Release delegates the pre-publish handshake (channel_status, release_post)
-to a skill via llm_execute, then the policy gates `update_post` on those
-tools having succeeded. A tool-level failure surfaces as a frame with
-metadata['violation']='tool_error' plus failed_tool. See
-`utils/policy_builder/fixes/release.md` and
-`utils/policy_builder/inventory/release.md` for the expected shape.
+Release delegates the pre-publish handshake (channel_status, release_post) to a skill via
+llm_execute, then the policy gates `update_post` on those tools having succeeded. A tool-level
+failure surfaces as a frame with metadata['violation']='tool_error' plus failed_tool. See
+`utils/policy_builder/fixes/release.md` and `utils/policy_builder/inventory/release.md` for the
+expected shape.
 """
 
 from __future__ import annotations
@@ -60,6 +59,8 @@ def test_release_happy_path_calls_update_post(monkeypatch):
         'read_metadata': [
             {'_success': True, 'post_id': _POST_ID, 'title': 'T',
              'section_ids': []},
+            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
+             'section_ids': []},
         ],
         'update_post': [{'_success': True}],
     }))
@@ -76,11 +77,11 @@ def test_release_happy_path_calls_update_post(monkeypatch):
     assert top.status == 'Completed'
 
 
-def test_release_tool_failure_returns_error_frame(monkeypatch):
-    """When channel_status fails, the policy returns
-    origin=flow.name() with metadata['violation']='tool_error' +
-    metadata['failed_tool']='channel_status', non-empty code, does NOT
-    call update_post, and does NOT mark the flow Completed."""
+def test_release_tool_failure_returns_error_toast(monkeypatch):
+    """When a platform tool (channel_status / release_post) fails, the policy
+    surfaces the failure via a toast block carrying the tool name + error
+    message, and does NOT call update_post. Flow is still marked Completed
+    so the user can retry from a fresh turn."""
     policy, comps = build_policy('release')
     comps['flow_stack'].stackon('release')
     top = comps['flow_stack'].get_flow()
@@ -107,11 +108,8 @@ def test_release_tool_failure_returns_error_frame(monkeypatch):
     frame = policy.execute(state, context, tools)
 
     update_calls = [e for e in tools.log if e['name'] == 'update_post']
-    assert update_calls == [], 'update_post must not fire when gating tool fails'
-    assert top.status != 'Completed'
-    # Per convention #6, metadata is classification only. Channel / reason /
-    # post_id detail moved into thoughts + code after the Phase-4 sweep.
-    assert_frame(frame, origin='release',
-                 metadata={'violation': 'tool_error', 'failed_tool': 'channel_status'},
-                 has_code=True)
-    assert 'channel_status' in frame.thoughts
+    assert update_calls == [], 'update_post must not fire when a platform tool fails'
+    assert_frame(frame, origin='release', block_types=('toast',))
+    toast = frame.blocks[0]
+    assert 'channel_status' in toast.data['message']
+    assert 'OAuth token expired' in toast.data['message']

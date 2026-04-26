@@ -1,760 +1,897 @@
-# Policy Builder — Consolidated Lessons (Parts 1-5)
+# Policy Builder — Lessons Reference
 
-**This file consolidates every lesson, decision, convention, anti-pattern, and rule that emerged from the Hugo policy refactor (Parts 1-5).** Organized hierarchically by theme. Every lesson traces back to a source: architectural decisions (AD-x), universal annotations (UA-x), policy-writing conventions (#x), decision points (DP-x), themes (Tx), or specific inventory/fix documents.
+A forward-looking guide for writing Hugo policies, skills, starters, and the supporting code around them. Read this when starting a new flow; cite specific sections in code review.
 
-Target: ~100+ lessons organized into 11 chapters for scannability. Use this as a reference when writing or reviewing policies, prompts, and flows.
+**Six parts, in the order an author works:**
+
+1. **Foundations** — universal architectural surfaces, identifier formats, and closed vocabularies that span every Hugo agent and every flow.
+2. **Designing the Flow** — decisions before any code is written (dispatch, slots, cross-turn channel, transitions, output budget).
+3. **Writing the Policy** — Python in `backend/modules/policies/*.py`.
+4. **Writing the Prompt** — system prompt, user-message starter, and skill file (agentic flows only).
+5. **Verifying & Process** — evals, anti-patterns, project discipline.
+6. **Reference** — lookup tables and quick answers.
+
+Conventions are described where they apply: in Part II for flow-design rules, Part III for policy rules, Part IV for prompt rules, Part V for verification rules. Foundations holds only the cross-cutting surfaces and vocabularies.
+
+Use this as a guide, not a checklist. Deviations need an inline comment citing which convention justifies them. The goal is **consolidation** (removing variance that hides bugs), not uniformity for its own sake.
+
+This document organizes hard-won lessons; over time, settled lessons should be merged into the canonical specs at `personal_assistants/_specs/`.
 
 ---
 
-## 1. Architectural Decisions
+# Part I — Foundations
 
-These seven decisions resolve the biggest open questions and shape every subsequent part. Prefix: AD-x.
+The architectural surfaces, identifier formats, and closed vocabularies that cross every Hugo agent and every flow.
 
-### AD-1 — Cross-turn findings channel = scratchpad with key convention
+## I.A — Architectural Surfaces
 
-**Rule.** Use scratchpad (MemoryManager, L1, turn-surviving) as the standard cross-policy findings channel. Never add a new `DialogueState` or `DisplayFrame` attribute.
+### Component contracts
 
-**Why.** Findings from step 10 (inspect) must reach step 13 (polish). Scratchpad already survives turns; adding attributes requires component-level changes that violate the stability rule.
+Hugo's runtime layers communicate through fixed surfaces. Don't widen them.
 
-**Convention.** Key = `flow_name` (e.g., `'inspect'`, `'audit'`). Value = dict with required fields: `version`, `turn_number`, `used_count`, plus flow-specific payload. Type: `dict[str, dict]` (serializable). Producers write at entry; consumers walk or filter-by-key.
+| Surface | Direction | Channel |
+|---|---|---|
+| NLU → PEX | Pre-grounded context | `DialogueState` (slots already filled) |
+| PEX → RES | Display payload | `DisplayFrame` (origin, metadata, blocks, thoughts, code) |
+| Policy → Skill / Tools | Dispatch | `BasePolicy.llm_execute(...)` (agentic) or inline `tools(name, params)` (deterministic) |
+| Policy → AmbiguityHandler | Clarification | `self.ambiguity.declare(level, observation=..., metadata=...)` |
+| Policy → FlowStack | Transitions | `self.flow_stack.stackon('<name>')` / `.fallback('<name>')` |
+| Policy → MemoryManager | Cross-turn state | `self.memory.write_scratchpad(flow.name(), payload)` |
+| Skill → Tools | Tool-calls during agentic loop | `engineer.tool_call` 8-iteration cap |
 
-**Reference implementations:**
-- Write: `memory.write_scratchpad(flow.name(), {'version': 1, 'turn_number': context.turn_id, 'used_count': 0, 'findings': [...]})`
-- Read: `scratchpad = state.scratchpad; findings = scratchpad.get('inspect', {}).get('findings', [])` (Sources: `policy_spec.md § AD-1`, `best_practices.md § 9`, `inventory/audit.md`, `inventory/polish.md`)
+**NLU has already grounded** the entity, slot, and intent before the policy runs. Do NOT call `read_metadata` or `find_posts` in the policy to re-ground — use what's in `flow.slots` and the resolved-context dict. Re-grounding wastes rounds and tokens.
 
-### AD-3 — Outline recursion is already safe (document, don't refactor)
+### Slot architecture
 
-**Rule.** `outline_policy` only self-recurses after draining `proposals` into `sections`. Since the recursive call hits the sections-filled branch (non-recursive), infinite loops are impossible.
+Hugo's slot priority follows the spec's three-level scheme, plus an entity convention:
 
-**Why.** A non-recursive outline doesn't exist; outline recursion is inherent to the "propose 3 candidates, user picks one, refine if needed" pattern. Over-engineering a fix introduces bugs.
+- **`required`** — must be filled before execution. Missing → `specific` ambiguity with `metadata={'missing_slot': '<name>'}`.
+- **`elective`** — exactly one of ≥2 must be filled. Single-elective is invalid (convert to required or optional). All electives empty → `specific` with `missing_slot` listing the alternatives.
+- **`optional`** — nice-to-have. With a defensible default, commit it inline (see Part II ch. 2). Without, treat absence as OK.
 
-**How.** Document the safety in a comment at the recursion call-site. Do NOT rewrite to iterative, do NOT extract `_execute_direct_outline`, do NOT add depth guards — all mask a non-existent bug.
+`flow.is_filled()` already encodes "all required filled AND ≥1 elective filled (if any)." Trust it; don't re-derive.
 
-**Anti-pattern:** Treating outline recursion as dangerous. (Source: `policy_spec.md § AD-3`)
+**Entity slot** is the special required slot identifying what the flow operates on (post, section, channel, tags, title). Often a `SourceSlot`; sometimes `ExactSlot`, `FreeTextSlot`, or `ImageSlot`. Missing entity → `partial` ambiguity (top-level grounding failure):
 
-### AD-6 — Three failure modes, three distinct channels
+```python
+if not flow.slots[flow.entity_slot].check_if_filled():
+    self.ambiguity.declare('partial', metadata={'missing_entity': '<entity>'})
+    return DisplayFrame(flow.name())  # early return — see Convention #11
+```
 
-**Rule.** Classify failures into three channels; never conflate under `AmbiguityHandler`:
+### Terminology discipline
 
-1. **Tool-call failure** (network, API down, permission denied) → `DisplayFrame(flow.name(), metadata={'violation': 'tool_error'}, code=<raw error>)`. Use `code` attribute for payloads.
-2. **Contract violation** (skill output shape mismatch, invalid JSON) → `apply_guardrails(text, format='json')` first; if still malformed, `DisplayFrame(origin='error', metadata={'violation': 'parse_failure'}, code=<offending output>)`.
-3. **Ambiguous user intent** (missing or unclear slot) → `self.ambiguity.declare(level, observation=..., metadata=...)` with one of four levels (general/partial/specific/confirmation).
+Words have specific meanings. Use them precisely:
 
-**Why.** Tool failures are infrastructure issues (signal to user, no retry needed). Contract violations are prompt/output-shape bugs (may benefit from retry with repair scratchpad). Ambiguity is a user-facing clarification need (deserves a question, not an error). Conflating hides the root cause.
+| Layer | Verbs that apply | Verbs that don't |
+|---|---|---|
+| NLU | classifies intent, detects flow, fills slot | "fires", "triggers", "activates" |
+| Policy | calls a tool, declares ambiguity, returns a frame, scans tool_log | — |
+| Skill | produces output | "saves" (unless skill owns persistence) |
+| Flow | completes, stacks on, falls back | — |
+| In-flow control | "stages" | "modes" |
 
-**Anti-patterns:**
-- Declaring ambiguity for tool failures. Tool down is not a question for the user.
-- Using `origin='error'` as a sentinel. Errorness lives in metadata; `origin` is always `flow.name()`.
-- Inventing new violation codes outside the 8-item vocabulary. (Source: `policy_spec.md § AD-6`, `skill_tool_subagent.md § 3.2-3.3`)
+Crisp terminology lets reviewers reason about which layer is responsible without ambiguity.
 
-### AD-7 — YAML frontmatter on skill files
+## I.B — Identifier Formats
 
-**Rule.** Every skill file in `backend/prompts/pex/skills/*.md` starts with YAML frontmatter:
+Universal identifier conventions used across all flows:
+
+- **Post ID** — 8-char lowercase hex (first 8 of UUID4).
+- **Section ID** — slug (lowercase, punctuation-stripped, dashes, ≤80 chars).
+- **Flow name** — bare lowercase string (`outline`, `refine`, `compose`); used as scratchpad key and `DisplayFrame.origin`.
+
+Example post ID: `abcd0123`. Example section ID: `motivation-and-goals`.
+
+## I.C — Closed Vocabularies
+
+Closed sets. Cite by name; never extend without explicit user approval.
+
+### Violation codes (8)
+
+`metadata['violation']` names what kind of failure occurred. Specifics go in `thoughts` (natural language), not nested keys.
+
+| Code | Fires when |
+|---|---|
+| `failed_to_save` | A persistence tool ran but produced no effect |
+| `scope_mismatch` | The flow ran at the wrong granularity |
+| `missing_reference` | An entity in a slot doesn't exist on the post |
+| `parse_failure` | Skill output couldn't be parsed into the expected shape |
+| `empty_output` | Skill returned nothing when prose was expected |
+| `invalid_input` | A tool rejected (or would reject) the arguments given |
+| `conflict` | Two slot values contradict |
+| `tool_error` | A deterministic tool returned `_success=False` |
+
+### Ambiguity levels (4)
+
+Match the spec exactly. Use exactly one when declaring user-intent ambiguity.
+
+| Level | Meaning |
+|---|---|
+| `general` | Intent itself is unclear; gibberish; rare in the PEX and policy phase |
+| `partial` | Intent known, key entity unresolved (which post? which section?) |
+| `specific` | Intent + entity known; a slot value is missing or invalid |
+| `confirmation` | A candidate value exists and needs user sign-off |
+
+### Block types
+
+Render-targeting choice for `frame.blocks`. Pick the type the flow's RES template expects.
+
+| Block | Used for | Required data |
+|---|---|---|
+| `card` | Updates the post card (most Draft / Revise flows) | `{post_id, title, sections, ...}` |
+| `selection` | Presents candidate options (outline propose, audit findings) | `{options: [{label, id}, ...]}` |
+| `list` | Search results (find, browse) | `{items: [{post_id, title, ...}]}` |
+| `compare` | Side-by-side comparison | `{left, right}` |
+| `toast` | Lightweight notification (release, schedule) | `{message, level}` |
+| (none) | Chat-only flows (inspect, explain, undo) | — |
+
+**"No block" does NOT mean "empty screen"** — whatever was on screen stays. Chat-only flows are additive to the conversation, not a screen-clear.
+
+### Content tags
+
+XML wrappers for preloaded data in the user message. Match the tag to the scope of the data.
+
+| Tag | Scope |
+|---|---|
+| `<post_content>` | Whole post (used when post is just an outline) |
+| `<post_preview>` | Post with sections and first few lines of each section (used when post is prose) |
+| `<section_content>` | Single-section work (most Revise-intent flows) |
+| `<line_snippet>` | Snippet-level work (single sentence or bullet span) |
+| `<channel_content>` | Publish-intent flows |
+
+### Outline depth scheme (5 levels)
+
+| Level | Markdown |
+|---|---|
+| 0 | `# Post Title` (not editable) |
+| 1 | `## Section Subtitle` |
+| 2 | `### Sub-section` |
+| 3 | `- bullet point` |
+| 4 | `  * sub-bullet` |
+
+Most outlines use Level 1 + Level 3. Add Level 2 only when a section needs explicit sub-structure; use Level 4 only when a bullet genuinely needs supporting detail.
+
+---
+
+# Part II — Designing the Flow
+
+Decisions to make before writing any code.
+
+## 1. Deterministic vs Agentic Dispatch
+
+**Heuristic.** Deterministic when `len(flow.tools) == 1` AND the tool's args are fully derivable from `flow.slots` + `state.active_post` without LLM reasoning. Agentic when `len(flow.tools) >= 2` OR any arg is prose/content the LLM must compose.
+
+**Deterministic flow.**
+- No skill file, no starter.
+- Policy builds `params` from slots, calls `tools('<tool_name>', params)` directly, flips `flow.status = 'Completed'`, returns a `DisplayFrame`.
+- On tool failure: `DisplayFrame(flow.name(), metadata={'violation': 'tool_error'}, code=result['_message'])`.
+
+**Agentic flow.**
+- Skill file at `backend/prompts/pex/skills/<flow>.md`.
+- Starter at `backend/prompts/pex/starters/<flow>.py`.
+- Policy calls `BasePolicy.llm_execute(...)`; the sub-agent picks the trajectory from `flow.tools`.
+- On no save: `DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=...)`.
+
+The deterministic-vs-agentic split is **implied by the policy code** — never declared on the flow class. No `flow.deterministic` flag.
+
+## 2. Slot Design & Optional-Slot Defaults
+
+When designing a flow's slot schema:
+
+- **Required vs elective vs optional.** Every required slot must be filled. Electives must come in groups of ≥2; if there's only one alternative, make it required or optional. Optional slots represent nice-to-haves.
+- **Entity slot is required.** Pick the slot type that fits — `SourceSlot` for post/section, `ExactSlot` for title, `FreeTextSlot` for tags, `ImageSlot` for images.
+- **Don't widen the slot vocabulary** unless you have a contract change to back it. Inventing slot priorities or types triggers cascading consumer changes.
+
+When in doubt: ask *does the skill have enough to produce the right output given what `is_filled()` accepts?* If not, the flow's slot priorities are wrong — fix the flow, not the policy.
+
+### Default-with-commit for optional slots
+
+**Rule.** Optional slots with a sensible default commit the default at policy entry and let downstream decide whether to clarify. Do NOT declare ambiguity upfront on optional-slot absence.
+
+**Why.** Asking when a default exists wastes a turn; the expected value of perfect information is often negative.
+
+**When to apply.** Optional slots only. Required and elective slots never get defaults — they drive routing. If no defensible default exists, treat absence as OK and proceed.
+
+```python
+# At policy entry, when default-with-commit applies:
+if not flow.slots['<optional>'].check_if_filled():
+    flow.fill_slot_values({'<optional>': <default>})  # commit default
+```
+
+## 3. Cross-Turn Contract — Session Scratchpad
+
+The Session Scratchpad is the canonical cross-turn channel for findings and produced output. The spec describes it as natural-language snippets; Hugo's policies use it more structurally — keyed dicts with a small required envelope, plus flow-specific payload.
+
+### Hugo scratchpad convention
+
+Use the Session Scratchpad (`MemoryManager`, L1, turn-surviving) as the standard cross-policy findings channel. Never add a new `DialogueState` or `DisplayFrame` attribute.
+
+**Convention.**
+- **Key** = bare `flow.name()` (e.g., `'inspect'`, `'audit'`).
+- **Value** = `dict` with required envelope fields: `version`, `turn_number` (= `context.turn_id`), `used_count`, plus flow-specific payload keys.
+- **Type** of the whole pad: `dict[str, dict]` (serializable).
+
+Producers write at entry. Consumers filter by key (or walk the whole pad — capped at 64 snippets) and increment `used_count` on entries they reference.
+
+```python
+# Producer
+self.memory.write_scratchpad(flow.name(), {
+    'version': 1, 'turn_number': context.turn_id, 'used_count': 0,
+    'findings': [...],
+})
+
+# Consumer
+entry = self.memory.read_scratchpad('audit')  # live reference, mutate in place
+if entry:
+    findings = entry.get('findings', [])
+    entry['used_count'] += 1
+    self.memory.write_scratchpad('audit', entry)
+```
+
+### Designing the cross-turn contract
+
+When designing a flow, decide whether it:
+
+- **Writes findings.** It produces output another flow will consume (research-style flows). Write at policy entry with the Hugo scratchpad convention.
+- **Reads findings.** Walk or filter-by-key on the scratchpad; increment `used_count` for entries you consume.
+- **Neither.** Most flows don't touch the scratchpad.
+
+Keep payloads structured (lists of dicts, not freeform prose). Downstream consumers depend on the shape, and the shape is your contract.
+
+## 4. Transitions
+
+Three transition channels, each with different UX. Always set `state.keep_going = True` so PEX continues to the next flow on the same turn.
+
+### Stack on (prerequisite setup)
+
+The current flow needs another flow's output before it can run. Push the prerequisite, resume after.
+
+```python
+self.flow_stack.stackon('<prereq_flow>')
+state.keep_going = True
+frame = DisplayFrame(flow.name(), thoughts='<reason — surfaces to user via RES>')
+```
+
+The user sees the sub-flow's work before returning to the original.
+
+### Fall back (re-route to sibling)
+
+The user's intent maps to a different flow than NLU detected. Pop current, push sibling.
+
+```python
+self.flow_stack.fallback('<sibling_flow>')
+state.keep_going = True
+frame = DisplayFrame(flow.name(), thoughts='<why we re-routed>')
+```
+
+Use only when the intent genuinely belongs elsewhere — never for skill errors (use error frames) or tool failures (use failure-channel frames in Part III).
+
+### Self-recursion safety
+
+A policy may self-recurse only if the recursive call enters a different branch — one that does NOT self-recurse. The recursion must drain its trigger slot before recursing.
+
+**How.** Document the safety in a comment at the recursion call-site. Don't rewrite to iterative; don't add depth guards — those mask the contract instead of stating it.
+
+**Anti-pattern:** treating any self-recursion as dangerous. Some flows naturally recurse ("propose 3 candidates, user picks one, refine if needed") — the contract is the safety, not extra machinery. `OutlineFlow` may NOT `stackon('outline')` itself; other flows may.
+
+## 5. Output Budget
+
+Per-flow `max_response_tokens` (set on `BaseFlow.__init__`, default 4096). This is a flow-design decision — it directly constrains what the prompt and skill can produce, so the output shape must be designed against the cap.
+
+### Sizing guidance
+
+- Short-output flows (inspect, find post-dedup, release notifications): 1024.
+- Most single-section flows: 2048.
+- Multi-section prose flows (whole-post compose, polish-informed): keep default 4096.
+
+### Implications for prompt design (Part IV)
+
+The cap chosen here directly shapes how the prompt and skill must be written:
+
+- **Schema must fit under the cap.** A skill capped at 1024 cannot ask for a 4096-token response — it will truncate mid-output and surface as `parse_failure`. Document the expected response size in the skill body so the LLM doesn't over-produce.
+- **Few-shot examples consume the cap.** If examples occupy >60% of the cap, shrink them or raise the cap. The skill needs headroom for actual generation.
+- **Tighter caps favor structured output.** A 1024-cap flow should ask for JSON or short-form lists, not prose paragraphs. Prose-heavy flows justify the default 4096.
+- **Cap changes can break previously-passing evals.** Re-run Tier 2 on any flow whose cap moved.
+
+---
+
+# Part III — Writing the Policy
+
+## 1. Method-Shape Contract
+
+Every policy method follows the same skeleton. Sections expand or contract per flow.
+
+```python
+def <flow>_policy(self, flow, state, context, tools):
+    # 1. Guard the entity slot — partial / general use early return.
+    post_id, sec_id = self._resolve_source_ids(flow, state, tools)
+    if not flow.slots[flow.entity_slot].check_if_filled() or not post_id:
+        self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+        return DisplayFrame(flow.name())
+
+    # 2. Branch on slot state. Most flows spend their lines here.
+    if <specific ambiguity condition>:
+        self.ambiguity.declare('specific', metadata={'missing_slot': '<name>'})
+        frame = DisplayFrame(flow.name())
+    elif <prerequisite missing>:
+        self.flow_stack.stackon('<prereq>')
+        state.keep_going = True
+        frame = DisplayFrame(flow.name(), thoughts='<reason>')
+    else:
+        # 3. Dispatch.
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        saved, _ = self.engineer.tool_succeeded(tool_log, '<tool_name>')
+
+        if not saved:
+            thoughts = '<what the skill did wrong>'
+            frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+        else:
+            flow.status = 'Completed'
+            frame = DisplayFrame(flow.name(), thoughts=text)
+            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+
+    return frame  # single exit
+```
+
+**Key rules:**
+- **Single return at end.** Early returns only for `partial` / `general` ambiguity (top-level grounding failures).
+- **Slots route the flow.** The first branch decision is "which slot state are we in?" — `flow.is_filled()` answers most of it.
+- **Hand-write the guard per flow.** No universal `guard_slot` helper — slot semantics vary too much across flows for an abstraction to fit.
+- **Default-commit is rare.** Only when an optional slot has a defensible default; cite the convention in the comment.
+
+## 2. The 12 Conventions
+
+Distilled from real review. Every Hugo policy must respect these. Deviations need an inline comment citing the specific number.
+
+1. **Don't defend deterministic code.** Service tools have known contracts. `flow_metadata['outline']`, not `flow_metadata.get('outline', '')`. If a key is missing or `_success=False`, that's a bug to surface, not a branch to guard.
+
+2. **No defaults that hide errors.** `text or ''`, `parsed or {}`, `isinstance(parsed, dict)` — banned. Trust the contract; let the code crash on unexpected state so tests catch it.
+
+3. **Slot priorities are definitional, not advisory.** Trust `flow.is_filled()` instead of re-checking each elective.
+
+4. **Build `frame_meta` and `thoughts` first, then the frame.** Assemble the dict and prose on their own lines, then instantiate `DisplayFrame` in a single line. Empty guard frames shorten to `DisplayFrame(origin=flow.name())`.
+
+   ```python
+   thoughts = 'Outline shrunk from 5 bullets to 3 without an explicit removal directive.'
+   frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+   ```
+
+5. **`code` holds actual code; `thoughts` holds descriptive text.** `code` is for copy-paste payloads (raw tool response, failing JSON, error stack). Prose explanation goes in `thoughts`. Many error frames have no `code` at all, and that's fine.
+
+6. **Keep metadata sparse.** Metadata is for classification (violation category, missing-slot name). Flow identity lives in `origin`, not metadata. Specifics go in `thoughts` (natural free-form text), not nested-underscore tokens.
+
+7. **`ambiguity.declare` uses `observation`, not metadata keys.** `declare(level, observation=<human_text>, metadata=<classification>)`. Don't stuff `question` / `reason` / `prompt` into metadata.
+
+   ```python
+   self.ambiguity.declare('partial',
+       observation='Simplify needs either a section or an image to target.',
+       metadata={'missing_entity': 'section_or_image'})
+   ```
+
+8. **Never invent new keys without approval.** Hard rule. Whether in `metadata`, `extra_resolved`, `frame.blocks` data, or anywhere else — don't introduce a new key. If what you want to pass doesn't fit an existing key, surface the design question.
+
+9. **Standard variable names.** Consistency lets reviewers pattern-match instantly.
+
+   | Concept | Name |
+   |---|---|
+   | result of `tools('read_metadata', ...)` | `flow_metadata` |
+   | result of `llm_execute` | `text, tool_log` |
+   | result of `apply_guardrails` | `parsed` |
+   | result of `tool_succeeded` | `saved, _` (or `saved_any`, `content_saved` when distinguishing) |
+
+10. **No em-dashes in `frame.thoughts`.** Thoughts are user-facing. Use commas and short sentences. Em-dashes are hard to parse on small screens.
+
+11. **Single return at end; early returns only for major errors.** See § III.1. `partial` / `general` ambiguity use early returns. Everything else — `specific`, `confirmation`, stack-on, fallback, success, error frames — assigns to `frame` and falls through to one `return frame` at the bottom.
+
+12. **`origin` is always the name of the flow.** Every `DisplayFrame` a policy builds sets `origin` to `flow.name()` — guards, stack-on, fallback, error, and success frames alike. Error-ness lives in metadata (`'violation' in frame.metadata`). The only exception is frames built outside the policy layer (e.g., an `Agent.take_turn` try-catch can use `'system'`).
+
+## 3. Failure Channels
+
+Three failure modes, three distinct channels. Two channels live here (policy-side: tool failures and ambiguity); the third — contract violations from skills — lives in Part IV.C, since the skill's prompt determines whether output parses.
+
+### Tool failures vs. user-intent ambiguity
+
+**Tool-call failure** (network, API down, permission denied, deterministic tool returned `_success=False`):
+
+```python
+return DisplayFrame(flow.name(),
+    metadata={'violation': 'tool_error', 'failed_tool': '<tool_name>'},
+    code=result['_message'])
+```
+
+No ambiguity. Use `code` for raw payloads. **Retry rule:** if the error is transient (timeout, lock), retry once via `BasePolicy.retry_tool(tools, name, params, max_attempts=2)`. Non-retryable or retry-failed → return the error frame.
+
+**Ambiguous user intent** (missing or unclear slot, unresolved entity):
+
+```python
+self.ambiguity.declare(level, observation=..., metadata=...)
+```
+
+The only channel that produces a clarification question. One clarification per turn — return immediately after `declare()`.
+
+**Why split.** Tool failures are infrastructure (no question for the user). Ambiguity is a user-facing clarification need. Conflating them hides root cause.
+
+### Picking the ambiguity level
+
+| When the policy discovers... | Declare | Metadata | Frame shape |
+|---|---|---|---|
+| No entity slot filled, no candidate in scratchpad | `general` | none | empty; RES asks "what are we doing?" |
+| Entity is post/section but `post_id` unresolvable | `partial` | `{missing_entity: 'post'}` | empty; RES asks "which post?" |
+| Required value slot missing | `specific` | `{missing_slot: <name>}` | RES asks "what value do you want?" |
+| All electives empty | `specific` | `{missing_slot: <alt1>_or_<alt2>}` | "Which direction do you want to go?" |
+| Candidate exists needing sign-off (duplicate title, audit threshold) | `confirmation` | `{candidate: <value>}` or `{reason: <code>}` | optional confirmation block |
+
+### Forward-pointer to contract violations
+
+When the skill returns malformed output, the policy uses:
+
+```python
+parsed = self.engineer.apply_guardrails(text, format='json')
+if 'findings' not in parsed:
+    return DisplayFrame(flow.name(),
+        metadata={'violation': 'parse_failure'},
+        code=text)
+```
+
+The skill is broken, not the user's intent — don't route to `AmbiguityHandler`. Skill-side prevention (output schemas, schema-reinforced few-shots) lives in Part IV.C.
+
+## 4. Frame Construction
+
+`DisplayFrame` is the policy → RES contract. Single-meaning fields:
+
+- **`origin`** = flow name
+- **`metadata`** = classification only (`violation`, `missing_slot`, `missing_entity`, `missing_reference`, `failed_tool`). Sparse (Convention #6).
+- **`thoughts`** = user-facing prose (no em-dashes; commas and short sentences). Goes through RES naturalization.
+- **`code`** = raw payloads (tool error text, failing JSON, stack traces). Machine-consumable.
+- **`blocks`** = render-targeting list. Pick the type the flow's RES template expects.
+- **`flow.status = 'Completed'`** = set by the policy on successful terminal frames.
+
+**Frame patterns:**
+
+```python
+DisplayFrame(origin=flow.name())                                                        # empty guard
+frame = DisplayFrame(flow.name(), thoughts='No outline yet, outlining first.')   # stack-on
+frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=...)  # error
+frame = DisplayFrame(flow.name(), thoughts=text)                                 # success
+frame.add_block({'type': 'card', 'data': {...}})                                 # add block
+```
+
+---
+
+# Part IV — Writing the Prompt
+
+Agentic flows only. Deterministic flows have no skill file or starter.
+The prompt has three layers, owned by three different files; this Part is organized to match.
+
+- **IV.A — System Prompt** (Layer 1: persona + intent + universal tables + skill body)
+- **IV.B — Starter / User Message** (Layer 2: per-turn task framing + preloaded data)
+- **IV.C — Skill File** (the body of Layer 1 specific to this flow)
+
+## IV.A — System Prompt
+
+### 1. Three-Layer Architecture
+
+| Layer | Owner | Contents | Cacheable? |
+|---|---|---|---|
+| **Layer 1 — System prompt** | `prompts/general.py::build_system` (universal persona) + `prompts/pex/sys_prompts.py::PROMPTS[intent]` (intent-scoped Background) + `prompts/pex/skills/<flow>.md` (skill body) | Persona, ID schema, outline depth, ambiguity + violation tables, intent Background, skill behavior | ✅ Stable across turns |
+| **Layer 2 — User message** | `prompts/pex/starters/<flow>.py::build` | `<task>` framing, content tag with preloaded data, `<resolved_details>`, `<recent_conversation>` | ❌ Per-turn |
+| **Layer 3 — Tool definitions** | `schemas/tool_manifest_hugo.json` (filtered to `flow.tools`) | Tool signatures and descriptions | ✅ Stable per flow |
+
+**Critical division.** System prompt = constraints (persona, guardrails, schemas, hard rules). User message = task (this turn's job, this turn's data). Claude weights user messages slightly higher, so critical per-flow rules go there.
+
+**Tool descriptions are a prompting surface.** Refining tool descriptions yields more compliance gains than prompt edits. Treat `schemas/tool_manifest_hugo.json` as instructions; invest in precise descriptions with examples and gotcha sub-bullets.
+
+### 2. System Prompt Composition
+
+`build_skill_system` concatenates persona → intent prompt → universal `## Handling Ambiguity and Errors` → skill body.
+
+**Concrete ordering** (top to bottom):
+
+1. Universal persona + 3 rules (response length, visual blocks, no-fabrication) — stable across ALL flows.
+2. Intent-woven persona sentence opening with `"You are currently working on {Intent} tasks, which {definition}"`, plus the per-intent `## Background` block (locked in `sys_prompts.py`).
+3. `## Handling Ambiguity and Errors` (universal tables).
+4. Skill body (stable within a flow).
+
+**Hard-rule reinforcement.** Rules that absolutely cannot be violated appear in the system prompt AND get reinforced in the skill body. Empirically improves Claude compliance. Repetition is a feature.
+
+**Assembly conventions:**
+- Single blank lines between blocks. Joined with `'\n\n'.join(segments)`, never double-blanks. No trailing divider cruft.
+- Divider between intent prompt and skill body: `--- {Flow_name} Skill Instructions ---` (Title Case flow name).
+
+**Prompting techniques (apply across all three layers):**
+- **Explain WHY, not just WHAT.** *"Never output more than 5 sections — users reported feeling overwhelmed by longer outlines."* The why lets Claude reason about edge cases.
+- **Negative examples are first-class.** *"Don't add docstrings to code you didn't change"* outperforms *"be concise"*. Specific negatives are actionable; general positives are ambiguous.
+- **Repetition is a feature.** Say critical things three separate times if needed. *"Repeating one more time the core loop here for emphasis:"* is a legitimate pattern.
+- **Conversational, first-person register.** Write like a Slack message from a teammate, not strict documentation. Be firm. Use ALL CAPS at least once for non-negotiable rules.
+- **Don't over-constrain.** Clear constraints + freedom to reason. Define what the sub-agent must accomplish and what it must not do; let it reason about *how*.
+
+### 3. Prompt Caching
+
+Stable content first; volatile content last. The system prompt's universal + intent-scoped blocks are stable across all flows in an intent and heavily cacheable.
+
+**Cache markers.** Add `cache_control={'type': 'ephemeral'}` to the system-prompt tail and tool-defs array in `PromptEngineer._call_claude`. 1-hour TTL. Reads cost 0.1× input tokens; writes cost 1.25× (5-min) or 2× (1-hour). Pure cost + latency win.
+
+**Hard rule.** Never interleave per-turn tokens (date, session ID, latest utterance) inside cacheable prefixes. A single per-turn token invalidates the cache entry on every call.
+
+The user message (Layer 2) is per-turn and uncacheable; that's the right place for volatile content.
+
+## IV.B — Starter / User Message
+
+### 1. Starter Construction
+
+`backend/prompts/pex/starters/<flow>.py` exports `TEMPLATE` and a `build(flow, resolved, user_text)` function. Canonical user-message envelope:
+
+```xml
+<task>
+{flow_verb} {target} of "{post_title}". {tool_sequence}. {optional end_condition}.
+</task>
+
+<post_content>  [or <section_content>, <line_snippet>, <channel_content>]
+{preloaded content — omit block entirely if nothing to preload}
+</post_content>
+
+<resolved_details>
+Source: {render_source(...)}
+Feedback: {render_freetext(...)}
+Guidance: {render_freetext(...)}
+</resolved_details>
+
+<recent_conversation>
+{compiled convo history — tail is the latest utterance}
+</recent_conversation>
+```
+
+**Preload what the skill would otherwise re-fetch.** When the starter can carry post content, embed it in `<post_content>` so the skill skips a redundant `read_section` / `read_metadata`. Counter-example: scope-varying flows preload nothing and read at runtime.
+
+### 2. Slot Serialization
+
+Slot-serialization helpers live in `for_pex.py`. Aim for 3-5 helpers total across all flows, not one per slot:
+
+- `render_source` — SourceSlot → `post=<id>, section=<sec_id>` line.
+- `render_freetext` — FreeTextSlot → quoted prose.
+- `render_checklist` — ChecklistSlot → bullet list.
+- `render_section_preview` — per-section title + first-N-line preview.
+
+Helpers strip empty fields, drop internal flags (`ver`), and collapse list wrappers.
+
+**Don't expose the "slots" concept to the LLM.** Render values in `<resolved_details>` with semantic labels (`Source:`, `Feedback:`, `Guidance:`, `Steps:`, `Image:`, `Channel:`, `Schedule:`, `Tone:`, `Topic:`) — never raw slot names. The LLM is in execution mode; grounding is already done by NLU.
+
+### 3. Editorial Conventions for User Content
+
+**XML for content.** XML tags wrap user-supplied or retrieved content the model treats as data (`<user_input>`, `<post_content>`, `<resolved_details>`). Markdown headers (`##`, `###`) belong in system prompt and skill — not in user messages.
+
+**Single blank lines between blocks.** Starter / convo / utterance joined with `'\n\n'.join(segments)`, never double-blanks.
+
+## IV.C — Skill File
+
+### 1. Skill File Structure
+
+`backend/prompts/pex/skills/<flow>.md`. Canonical layout:
+
+```markdown
+---
+name: <flow_name>
+description: <1-sentence purpose>
+version: 1
+tools: [<list>]
+---
+
+[one-line intro: "This skill describes how to X. The relevant content is in the `<...>` block; use it directly."]
+
+## Process
+
+1. Read user guidance from `<resolved_details>` and `<recent_conversation>`.
+   a. Only act on the latest utterance — prior turns are context only.
+2. <Identify target.>
+3. <Do the work.>
+4. <Save via the appropriate tool.>
+5. End the turn.
+
+## Error Handling
+
+[invalid_input branch + handle_ambiguity branch + tool retry policy]
+
+## Tools
+
+### Task-specific tools
+
+- `tool_name(params)` — description with em dash separator. Sub-bullets call out gotchas.
+  * Sub-bullet for nuance.
+
+### General tools
+
+- `execution_error(violation, message)`
+- `handle_ambiguity(**params)`
+- `manage_memory(**params)`
+- `call_flow_stack(action, details)`
+
+## Few-shot examples
+
+### Example 1: <scenario name>
+
+Resolved Details:
+- Field: <value>
+
+Trajectory:
+1. `<tool_call>` → `_success=True`. End turn.
+```
+
+**Conventions inside the skill body:**
+- Section headers (`##`)
+- Sub-section headers (`###`) use Title Case consistently.
+- Bullets (`- `)
+- Sub-bullets (`  * `)
+
+### 2. Skill Frontmatter
+
+Every file in `backend/prompts/pex/skills/*.md` starts with YAML frontmatter:
 
 ```yaml
 ---
 name: <flow_name>               # matches flow.name()
 description: <1-sentence purpose>
 version: 1
-stages:                         # optional, only if multi-stage
+stages:                         # optional; only if multi-stage
   - propose
   - direct
-tools:                          # optional, explicit allowlist
+tools:                          # optional; explicit allowlist
   - find_posts
   - generate_outline
 ---
 ```
 
-**Why.** Anthropic's 2026 convention. `description` becomes a routing key for future registries. `tools` field asserts against `flow.tools` to catch skill-registry mismatches at load time.
+**Why.** `description` becomes a routing key for future registries. The `tools` field asserts against `flow.tools` to catch skill-registry mismatches at load time. `PromptEngineer.load_skill_template` parses + strips the frontmatter; `load_skill_meta(name)` returns the parsed dict.
 
-**How.** `PromptEngineer.load_skill_template` parses frontmatter and strips it from the body. Existing loaders keep working. Companion `load_skill_meta(name)` returns the parsed dict.
+### 3. Few-Shot Examples
 
-**Reference:** All deployed skills have frontmatter as of Part 2 Phase 1. (Source: `policy_spec.md § AD-7`, `decision_points.md UA-7`)
+Per skill: typically 3 scenarios that exercise *different tool paths*, not just different content. Variation is what teaches; redundant scenarios train for the same case.
 
-### AD-8 — EVPI default-with-commit for optional slots
+**Scenario coverage.** Cover normal case + ≥1 edge case (reordering, deletion, malformed input, ambiguity branch). If the flow has an error-handling branch, show it firing.
 
-**Rule.** Optional slots with a sensible default commit with the default and let downstream decide whether to clarify. Do NOT declare ambiguity upfront on optional-slot absence.
+**Example content.** Pick a realistic post topic that doesn't overlap with the eval set. Use a consistent post ID format (8-char hex) and section names that read naturally.
 
-**Why.** Expected value of perfect information may be negative. If `reference_count` defaults to 5 and the user can adjust it downstream, asking upfront wastes a turn.
+**Format:**
 
-**When to apply:** Only for optional slots where a default makes sense. Required and elective slots never get defaults; AD-8 applies to optional only.
+```markdown
+### Example 1: <descriptive scenario name>
 
-**Example:** `audit_policy` fills `reference_count=5` inline without asking. If the user later wants 3, they revise in the next turn.
+Resolved Details:
+- Source: post=abcd0123
+- Feedback: "..."
 
-**Anti-pattern:** Declaring ambiguity for every missing optional slot. (Source: `policy_spec.md § AD-8`, `best_practices.md § 5`, `decision_points.md UA-23`)
-
-### AD-9 — `_validate_frame` tightens; `_llm_quality_check` is off by default
-
-**Rule.** `_validate_frame` checks that expected values are present on frame blocks (e.g., card blocks have required `post_id`, `title`, `content` keys), not just that `.blocks` is non-empty. `_llm_quality_check` (LLM-as-judge secondary check) defaults off; enable only for flows where prose quality is the whole contract (e.g., `polish`, `rework`).
-
-**Why.** Deterministic value-checks are cheaper and more reliable than LLM re-verification. Prose-quality evals are expensive; most flows tolerate Sonnet output without a secondary check.
-
-**How.** Per-flow `BaseFlow.llm_quality_check` flag (default False). Override True only when the flow's contract is "prose quality matters." (Source: `policy_spec.md § AD-9`, `fixes/_shared.md § AD-9`)
-
-### AD-10 — Token-budgeting easy wins
-
-**Rule.** Two additive changes, no conflict:
-
-1. **Prompt caching** on skill system prompt + tool definitions. Add `cache_control={'type': 'ephemeral'}` markers to the system-prompt tail and tool-def array in `PromptEngineer._call_claude`. 1-hour TTL, automatic cache hit. Pure cost + latency win.
-2. **Per-flow `max_response_tokens` override.** Add `BaseFlow.max_response_tokens` attribute (default 4096). Most flows (inspect, find, release) never use more than 1024. Tighten per-flow to save cost without capping prose-heavy flows.
-
-**Why.** Infrastructure wins. Caching saves ~90% on repeated system/tool segments. Token limits prevent over-budgeting deterministic or short-output flows.
-
-**How.** Add markers at `_call_claude` lines; no behavior change. Add `max_response_tokens` override on flows where meaningful (e.g., `find.max_response_tokens = 1024`). (Source: `policy_spec.md § AD-10`, `fixes/_shared.md § AD-10`)
-
----
-
-## 2. Policy-Writing Conventions
-
-Twelve rules distilled while writing exemplar policies. Apply to every Part 3+ policy. Prefix: Convention #x or just the rule name.
-
-### Convention 1 — Don't defend deterministic code
-
-**Rule.** Service-layer tools have known contracts. Access keys directly.
-
-**Example:** `flow_metadata['outline']`, not `flow_metadata.get('outline', '')`. If a key is missing or `_success=False`, that's a bug to surface, not a branch to guard.
-
-**Why.** Default-hiding masks upstream mistakes. Let tests catch it. (Source: `policy_spec.md § Policy-writing conventions § 1`, `skill_tool_subagent.md § 3.2 convention 1`)
-
-### Convention 2 — No defaults that hide errors
-
-**Rule.** Never use `text or ''`, `parsed or {}`, `isinstance(parsed, dict)` patterns.
-
-**Why.** These mask mistakes. `apply_guardrails` returns a dict; trust it. Crashes surface bugs faster than silent degradation. (Source: `policy_spec.md § Convention 2`)
-
-### Convention 3 — Slot priorities are definitional, not advisory
-
-**Rule.** Required slots MUST be filled. Elective slots need exactly one of ≥2 options. Optional slots are nice-to-have. `flow.is_filled()` already encodes both required and elective rules.
-
-**How.** Use `if not flow.is_filled(): declare_ambiguity(...)` at the top. No re-checking of individual electives.
-
-**Why.** Slot priorities route the policy's branching. Treating them as advisory invites silent bugs. (Source: `policy_spec.md § Convention 3`, `skill_tool_subagent.md § 3.1`)
-
-### Convention 4 — Build `frame_meta` and `thoughts` first, then the frame
-
-**Rule.** Assemble metadata dict and thoughts text on separate lines, then instantiate `DisplayFrame` in a single line. Keep short dicts collapsed (one line).
-
-**Example:**
-```python
-thoughts = 'Outline shrunk from 5 bullets to 3 without explicit removal directive.'
-frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+Trajectory:
+1. <reasoning step or tool call> → `<result>`.
+2. `<tool_call>` → `_success=True`. End turn.
 ```
 
-**Why.** Readable, diff-friendly, easy to refactor. Multi-line `DisplayFrame(...)` constructions scatter intent. (Source: `policy_spec.md § Convention 4`)
+**Heading is `Resolved Details:` — capital D.** Never `Starter parameters:` or `Resolved details:` (lowercase).
 
-### Convention 5 — `code` holds actual code; `thoughts` holds descriptive text
+**Scenario setup must agree with the rendered user message.** The scenario's `sec`, `target_section`, `user_text`, content-tag heading, and recent conversation must all agree. A mismatch silently breaks the example.
 
-**Rule.** `code` is for payloads you'd copy-paste: raw tool response, failing JSON, error stack. Descriptive prose goes in `thoughts`.
+**Embed example outlines with 2-space indent** under a parent list item — never raw `## Heading` mid-example. Raw headings risk being parsed as new prompt sections.
 
-**Example:** `code=result['_message']` (the error the tool returned). `thoughts='Outline is malformed — no ## headings detected.'` (human explanation).
+### 4. Contract Compliance
 
-**Why.** `code` is machine-consumable; `thoughts` is user-readable. RES renders thoughts differently than code. (Source: `policy_spec.md § Convention 5`)
+When a skill's output doesn't parse into the expected shape, the policy returns a `parse_failure` error frame (see Part III.3). Skill authors prevent this through three mechanisms:
 
-### Convention 6 — Keep metadata sparse
+**Specify a strict output schema.** If the skill returns JSON, document the exact keys and types in the skill body. If prose, name the format constraints (e.g., "exactly 3 bullets, each starting with a verb"). Schemas embedded in the skill body are reinforcement against drift.
 
-**Rule.** Metadata is for classification (violation category, missing-slot name). Flow identity lives in `origin`, not metadata. Specifics go in `thoughts` (natural free-form text), not nested tokens.
+**Reinforce the schema in few-shot examples.** Each example's "Trajectory" should end with the parseable output, demonstrating the contract concretely. Examples that show the right shape are stronger than prose-only specifications.
 
-**Anti-pattern:** `metadata={'violation': 'parse_failure', 'field': 'title', 'error_token': 'missing_key'}`. Instead, put the field/token info in `thoughts`.
+**Honor the output-budget cap.** A skill capped at 1024 tokens must not be told to produce a 4096-token response — the response will truncate mid-output and surface as `parse_failure`. Match the schema size to the cap (Part II ch. 5).
 
-**Why.** Natural text can be rendered to users or fed to future summarizers. Mangled keys cannot. (Source: `policy_spec.md § Convention 6`)
+**Skill-side failure path.** When prevention fails, the policy catches it deterministically:
 
-### Convention 7 — `ambiguity.declare` uses `observation`, not metadata keys
-
-**Rule.** `declare(level, observation=<human_text>, metadata=<classification>)`. Use `observation` for the readable description; metadata for classification only.
-
-**Example:**
 ```python
-self.ambiguity.declare('partial',
-    observation='Simplify needs either a section or an image to target.',
-    metadata={'missing_entity': 'section_or_image'})
+parsed = self.engineer.apply_guardrails(text, format='json')
+if 'findings' not in parsed:
+    return DisplayFrame(flow.name(),
+        metadata={'violation': 'parse_failure'},
+        code=text)
 ```
 
-**Why.** Separates the question the user sees from the routing classification. (Source: `policy_spec.md § Convention 7`)
+`apply_guardrails(text, format='json')` parses-and-fails-closed. Frequent contract violations from a skill mean the skill prompt is broken — not the user's intent.
 
-### Convention 8 — Never invent new keys without approval
+# Part V — Verifying & Process
 
-**Rule.** Hard rule. Whether in `metadata`, `extra_resolved`, `frame.blocks` data, or anywhere else — don't introduce a new key name without explicit approval.
+## V.A — Verification
 
-**Why.** Downstream components (skill templates, RES templates, tool schemas) depend on known keys. Inventing a key breaks consumers.
+### 1. Three-Tier Evaluation
 
-**How.** Use existing keys or surface a design question. (Source: `policy_spec.md § Convention 8`)
+Three tiers with increasing fidelity and decreasing speed. Same rubric keys, asserted at different scope.
 
-### Convention 9 — Standard variable names
+| Tier | Location | Speed | Fidelity | What it catches |
+|---|---|---|---|---|
+| **Tier 1 — policy in isolation** | `utils/tests/policy_evals/ test_<flow>_policy.py` | ~5s per policy | No LLM, mocked tools | Tool-call sequence, frame shape, metadata keys, block types, scratchpad writes, failure-channel branches |
+| **Tier 2 — E2E CLI** | `utils/tests/e2e_agent_evals.py` | ~20 min per scenario | Real LLM, persistent disk | Step-by-step lifecycle, inter-flow state propagation, frame→block serialization |
+| **Tier 3 — Playwright UI** | `utils/tests/playwright_evals/` | ~10 min | Real browser | UI rendering, click-to-emit payloads, error-frame display |
 
-**Rule.** Use consistent names:
-- `flow_metadata` for `tools('read_metadata', ...)`
-- `text, tool_log` for `llm_execute`
-- `parsed` for `apply_guardrails`
-- `saved, _` (or `saved_any`, `content_saved` when disambiguating) for `tool_succeeded`
+**Failure dumps.** On any failure, write `utils/policy_builder/failures/<run_id>/step_<N>.md` with: utterance, expected/actual tools and frames, scratchpad state, tool call trajectory. The dump must be sufficient for a fresh Claude instance to debug from cold — no conversation context required.
 
-**Why.** Code reviewers instantly recognize the pattern. Reduces context switching. (Source: `policy_spec.md § Convention 9`, `skill_tool_subagent.md § 3.2 convention 8`)
+**Eval-failure-as-success principle.** During harness construction, success means **seeing the tests fail** — that's the signal evals catch what the app breaks on. Mock over early failures so downstream steps run and surface their own failures. Once the harness produces a realistic failure profile, design policies to get everything green.
 
-### Convention 10 — No em-dashes in `frame.thoughts`
+### 2. Frame Validation
 
-**Rule.** Thoughts are user-facing. Write like a person: commas, periods, short sentences. No em-dashes.
+**`_validate_frame` checks values, not just presence.** It asserts that expected values are present on frame blocks (e.g., `card` blocks have `post_id`, `title`, `content` keys), not just that `.blocks` is non-empty.
 
-**Example:** `'Outline shrunk from 5 bullets to 3. No explicit removal directive.'` (not `'Outline shrunk…no directive — scope mismatch.'`)
+**`_llm_quality_check` defaults off.** The LLM-as-judge secondary check only runs for flows where prose quality is the entire contract. Per-flow `BaseFlow.llm_quality_check` flag (default False). Override True only when warranted (polish, rework, brainstorm).
 
-**Why.** Em-dashes are hard to parse on small screens; commas and periods are friendlier to rendering. (Source: `policy_spec.md § Convention 10`)
+**Why.** Deterministic value-checks are cheaper and more reliable than LLM re-verification. Probabilistic verification of probabilistic output is no verification.
 
-### Convention 11 — Single return at end; early returns only for major errors
+### 3. LLM Nondeterminism
 
-**Rule.** `partial` and `general` ambiguity use early returns. Everything else — `specific` ambiguity, `confirmation`, stack-on, fallback, success, error frames — assigns to `frame` and falls through to a single `return frame` at the end.
+Even at `temperature=0`, accuracy swings up to 15% across runs. Don't pretend tests are deterministic when an LLM is in the loop.
 
-**Example:**
-```python
-def example_policy(self, flow, state, context, tools):
-    if not flow.slots[flow.entity_slot].check_if_filled():
-        self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-        return DisplayFrame(flow.name())  # Early return OK — top-level grounding failure
+**Mitigations:**
+- Set `temperature=0` in the agent's eval-mode config.
+- Require **2-of-3 successive passes** for "green" on Tier 2 / Tier 3.
+- **Retry-with-diagnostic.** Re-run a flaky turn up to 2x; fail only if both runs fail; log the divergence regardless.
+- **Eval-level tolerances** for LLM-judge flakes. If a step legitimately bounces between success and `'partial'` ambiguity, set `'expected_ambiguity': {'partial'}` rather than retrying inside PEX.
+- Tier 1 (no LLM) is single-run-gatable.
 
-    if <specific ambiguity condition>:
-        self.ambiguity.declare('specific', metadata={'missing_slot': '<name>'})
-        frame = DisplayFrame(flow.name())  # Falls through
-    else:
-        frame = DisplayFrame(flow.name(), thoughts='Success')  # Falls through
-    
-    return frame  # Single exit
-```
+**Common eval mistakes to avoid:**
+- Testing prose quality with `assert 'X' in response['thoughts']`. Prose is subjective; use LLM-as-judge sparingly and only for genuinely subjective rubrics.
+- Mocking the LLM or content service to avoid setup. Real failures live in the data layer; mocks hide them. Mock only where the tool is irrelevant to the test.
+- Asserting exact tool sequences for agentic flows. They have multiple valid trajectories — assert valid outcomes, not exact paths.
 
-**Why.** Makes the overall success/error path legible. Rare early returns stand out. (Source: `policy_spec.md § Convention 11`, `skill_tool_subagent.md § 3.1`)
+### 4. Anti-Patterns to Scan For
 
-### Convention 12 — `origin` is always `flow.name()`
+Common pitfalls. Each is a specific failure mode the conventions are designed to prevent.
 
-**Rule.** Every `DisplayFrame` a policy builds sets `origin` to `flow.name()` — guards, stack-on, fallback, error, and success frames alike. Error-ness lives in metadata (`'violation' in frame.metadata`), not `origin`.
-
-**Example:**
-```python
-return DisplayFrame(flow.name())                                              # guard
-frame = DisplayFrame(flow.name(), thoughts='No sections yet, outlining first.')  # stack-on
-frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'})   # error
-frame = DisplayFrame(flow.name(), thoughts=text)                             # success
-```
-
-**Why.** RES keys per-flow templates off `origin`. `_validate_frame` detects errors via metadata. Single-meaning field prevents routing confusion. (Source: `policy_spec.md § Convention 12`)
-
----
-
-## 3. Violation Vocabulary
-
-Eight failure categories for `metadata['violation']`. Keep this set closed; specifics go in `thoughts`. Prefix: violation-<code>.
-
-| Code | Fires when | Example |
+| Anti-pattern | Why it's wrong | Convention |
 |---|---|---|
-| `failed_to_save` | A persistence tool ran but produced no effect | Tool returned `_success=False`; post not written to disk. |
-| `scope_mismatch` | The flow ran at the wrong granularity | User asked to edit "the Motivation section" but the policy read the whole post. |
-| `missing_reference` | An entity in a slot doesn't exist | Skill referenced `sec_id='unknown-section'` which is not on the post. |
-| `parse_failure` | Skill output couldn't be parsed into expected shape | Skill returned `{title: 'X'}` when the contract requires `{post_id, sections, title}`. |
-| `empty_output` | Skill returned nothing when prose was expected | `compose` returned an empty string instead of paragraphs. |
-| `invalid_input` | A tool rejected the arguments given | Tool signature requires `snip_id` to be int or tuple, but the skill passed a string. |
-| `conflict` | Two slot values contradict | User specified both `remove` and `guidance` (incompatible intents). |
-| `tool_error` | A deterministic tool returned `_success=False` | `create_post` failed with a duplicate-title error. |
+| `text or ''`, `parsed or {}`, `dict.get('key', '')` | Silently converts errors to empty values. Tests pass; prod breaks. | #2 |
+| Declaring ambiguity for tool failures | Conflates failure channels. Tool down is not a question for the user. | III.3 |
+| Em-dashes in `frame.thoughts` | Hard to parse on small screens; user-facing text. | #10 |
+| Inventing new metadata keys | Downstream RES templates silently drop unrecognized keys. | #8 |
+| `if post_id and post_id != ''` after NLU resolved it | Defensive checks hide missing contracts. | #1 |
+| Hallucinated APIs (`engineer.tools`, `flow.resolved`) | Crashes at runtime; verify imports against the actual module. | CLAUDE.md |
+| Both policy and skill writing to disk | Double-persistence causes silent overwrites. | VI.1 |
+| `if _legacy_flag: ... else: ...` shims | Doubles code paths; testing twice as complex. Remove old paths cleanly. | — |
+| `stage = 'error'` instead of error frames | Stages should reflect genuine control-flow divergence, not cosmetic labels. | AGENTS.md |
+| `## Slots` headers in skill files | LLM is in execution mode; grounding is done by NLU. | IV.B.2 |
+| Asking for clarification despite all slots filled | Usually means a slot is missing from the flow design. Fix the flow. | #7 |
 
-**Reference:** `policy_spec.md § Violation vocabulary`, `exemplar_prompts.md § Feedback`, `decision_points.md UA-8`
+## V.B — Project Discipline
+
+### 1. Don't Create New Concepts Without Permission
+
+Hard project rule (`CLAUDE.md`). Maintain a single source of truth for the agent's behavior.
+
+**Process when tempted:**
+1. Check existing helper functions on the relevant component first.
+2. If the behavior isn't there, consider adding a *new function* that accesses data within the existing component.
+3. Do NOT create a new component to duplicate data elsewhere.
+4. If a genuinely new concept is needed, surface it as a design question before writing code.
+
+**Threshold for promoting a pattern to a helper:**
+- ≥3 call-sites AND
+- The shape doesn't vary meaningfully across them AND
+- The helper contains ≥3 lines (one-liners just add indirection without saving space).
+
+**Common rejected proposals (don't regrow):**
+- `BasePolicy.stack_on(...)` helper — belongs in the flow_stack object
+- `BasePolicy.guard_slot(...)` — slot semantics vary too much.
+- `BasePolicy.complete_with_card(...)` — saves only 3 lines; future variation will diverge.
+- `flow.deterministic` flag — implied by the policy code.
+- `DialogueState.findings` / `DisplayFrame.findings` attribute — use scratchpad.
+- `error_class` parallel taxonomy on metadata — `violation` + `tool_log` covers PEX recovery.
+- Cached fields like `active_post_title` — call the service on demand.
+- New metadata keys outside the 8-violation vocab.
+
+### 2. Migration Discipline
+
+How to ship large refactors safely.
+
+**Lock shared helpers + conventions BEFORE per-flow rewrites.** Order that works:
+1. Pure refactor first (zero behavior change — extract a helper, no signature change).
+2. Surface shrink (delete dead code; split conflicting tools).
+3. Exemplar rewrites against the new contract.
+4. Structured-output fixes + scratchpad writes.
+5. Failure-channel work (tool errors, contract violations, ambiguity).
+6. Cross-turn channel wiring (producers/consumers).
+7. Inline-reason surfaces (stack-on `thoughts`).
+
+Each step validates against the previous one. Reversing the order leads to drift.
+
+**Update test fixtures in lockstep with metadata key changes.** When renaming a key (e.g., `missing_ground` → `missing_entity`), update fixtures in the same commit. Otherwise green tests mask the new bugs the refactor was meant to surface. Grep templates and tests for the old key before the rename.
+
+**Fix root cause; don't chase cascading symptoms.** When N steps fail in a sequence, isolate the first failure. Downstream symptoms often clear automatically once upstream is fixed.
+
+Pattern when many tests fail at once:
+1. Isolate the earliest failure with focused re-runs.
+2. Hypothesize the upstream fix.
+3. Re-run a small slice (steps 1-5) before committing to a full sweep.
+4. Don't open separate PRs for cascading symptoms.
+
+### 3. Communication Patterns
+
+**Surface design questions with tradeoff analysis.** Don't just propose a solution; explain why the alternative was rejected. Two-option presentations beat single-option proposals.
+
+**Verify with code, not memory.** When proposing changes, verify assumptions with `git log` / `grep` before writing. Read actual call-sites, not mental models. Hallucinated APIs produce code that crashes at runtime and looks confident in review.
+
+**Land by theme, gate on evals.** Large refactors need waypoints. Don't ship many policy rewrites at once — land by theme (or batch), with validation gates between each. Mid-project, lessons from earlier batches inject into later batch proposals.
 
 ---
 
-## 4. Skill-Prompt Structure
+# Part VI — Reference
 
-Three-layer architecture for agentic flows (deterministic flows skip). Prefix: UA-x (universal annotation).
+## 1. Tool Registry
 
-### UA-1 through UA-6 — System prompt universals
+One canonical tool per CRUD operation per entity. Cite by name; don't extend without approval.
 
-**Rule.** System prompt contains:
-
-1. **Persona (universal).** *"You are Hugo, an AI writing assistant that helps users create, revise, and publish blog content."* + 3 rules (terse replies, reference visual blocks, never fabricate).
-2. **Post/Section ID schema.** Post IDs are 8-char lowercase hex. Section IDs are slugified. Proper-case natural-language titles.
-3. **Outline depth scheme.** Level 0 = `# Title` (not editable); 1 = `##`; 2 = `###`; 3 = `-`; 4 = `  *`. Most outlines have Level 1 + Level 3.
-4. **`## Handling Ambiguity and Errors` block.** Full 4-row ambiguity-level table + 8-row violation-code table. Required in every system prompt.
-5. **Intent-woven persona sentence.** *"You are currently working on {Intent} tasks, which encompasses..."* (Draft/Revise/Research/Publish/Converse/Plan/Internal).
-6. **`## Background` block.** Intent-scoped. Draft/Revise share the outline scheme; Research/Publish need their own framing.
-
-**Reference:** `exemplar_prompts.md`, `decision_points.md UA-1 through UA-6`
-
-### UA-7 through UA-14 — Per-flow starter and skill
-
-**Rule.** User message = task framing + content tag + resolved details. Skill file = Process + Error Handling + Tools + Few-shot.
-
-- **Task framing (DP-5).** *"Refine the outline of \"{title}\". Apply the changes from the user's final utterance to the outline below, then call the appropriate tool to save your revision. End once you have successfully saved all your refinements."*
-- **Content tag (DP-6).** One of `<post_content>`, `<section_content>`, `<line_snippet>`, `<channel_content>`.
-- **Preload content (DP-7).** Full outline for refine; per-section previews for compose; single section for simplify.
-- **Resolved details block.** XML-wrapped with semantic labels (`Source:`, `Feedback:`, `Guidance:`, `Steps:`, `Image:`, `Channel:`, etc.).
-- **Skill structure (DP-2 through DP-4).** Intro paragraph + `## Process` (numbered happy-path steps) + `## Error Handling` (failure modes) + `## Tools` (task-specific + general) + `## Few-shot examples` (3 scenarios per flow).
-
-**Anti-pattern:** Skill file with `## Slots`, `## Background`, `## Important`, `## Output` sections. These live in system prompt or user message, not the skill.
-
-**Reference:** `decision_points.md DP-5 through DP-9`, `exemplar_prompts.md`
-
-### UA-15 — Scratchpad key convention (AD-1)
-
-**Rule.** Key = `flow_name`; value = `{version, turn_number, used_count, payload}`. Producers write at entry; consumers filter-by-key.
-
-**Reference:** `policy_spec.md § AD-1`, `decision_points.md UA-15`
-
----
-
-## 5. Tool Registry & Branching
-
-One canonical tool per CRUD operation per entity. Prefix: tool-<entity>-<op>.
-
-### The CRUD-Entity Grid
+### CRUD × entity grid
 
 | Entity | Create | Read | Update | Delete |
 |---|---|---|---|---|
 | metadata | `create_post` | `read_metadata` | `update_post` | `delete_post` |
-| post outline | `generate_outline` | `read_metadata(include_outline=True)` | `generate_outline` | N/A |
-| section outline | `insert_section` + `generate_section` | `read_section` | `generate_section` | `remove_content` |
-| section prose | `insert_section` + `revise_content` | `read_section` | `revise_content` | `remove_content` |
-| snippet | `revise_content(snip_id=int)` | `read_section(snip_id=...)` | `revise_content(snip_id=...)` | `remove_content(snip_id=...)` |
-| channel | N/A | `channel_status` | `release_post` / `promote_post` / `cancel_release` | N/A |
+| post outline | `generate_outline` | `read_metadata(include_outline=True)` | `generate_outline` | N/A (use `delete_post`) |
+| section outline | `insert_section` (shell) + `generate_section` (body) | `read_section` | `generate_section` | `remove_content` |
+| section prose | `insert_section` (shell) + `revise_content` (body) | `read_section` | `revise_content` | `remove_content` |
+| snippet | `revise_content(snip_id=int)` | `read_section(snip_id=...)` | `revise_content(snip_id=(start, end))` | `remove_content(snip_id=...)` |
+| channel | N/A (configured at app setup) | `channel_status` | `release_post` / `promote_post` / `cancel_release` | N/A |
 
-### Snippet Semantics (snip_id)
+### Snippet semantics (`snip_id`)
 
-**Rule.** Section content is an ordered list of sentences. Every snippet tool accepts:
-- `snip_id=None` — whole section
-- `snip_id=<int>` — single sentence at that index (0-based; `-1` is last)
-- `snip_id=(start, end)` — slice of sentences, Python-style (end-exclusive)
+Section content is modeled as an ordered list of sentences. Every snippet-scoped tool accepts:
 
-**For `revise_content`:** `snip_id=<int>` inserts at that index; `-1` appends. `snip_id=(start, end)` replaces.
-**For `remove_content`:** `snip_id=<int>` deletes one. `snip_id=(start, end)` deletes a slice.
+| `snip_id` | Meaning |
+|---|---|
+| `None` | Whole section |
+| `<int>` | Single sentence at that index (0-based; `-1` is last) |
+| `(start, end)` | Slice of sentences, Python-style end-exclusive |
 
-**Range rule:** Both endpoints must be non-negative integers in `0 ≤ start ≤ end ≤ sentence_count`. `-1` never appears in a range; to reach the end, use the concrete `sentence_count`.
+**For `revise_content`:** `snip_id=<int>` inserts at index (pushes existing sentences right; `-1` appends). `snip_id=(start, end)` replaces the range.
 
-**Anti-pattern:** Passing `-1` as a range endpoint. That's only valid for single-int `snip_id`.
+**For `remove_content`:** `snip_id=<int>` deletes one sentence. `snip_id=(start, end)` deletes the slice.
 
-**Reference:** `tool_branching.md § Snippet identification`, `decision_points.md DP-18`
+**Range rule.** Both endpoints must be non-negative integers in `0 ≤ start ≤ end ≤ sentence_count`. `-1` is never valid as a range endpoint — only as a single-int `snip_id`.
 
-### Tool Persistence Ownership
+**Source of truth for sentence count.** `read_metadata(post_id)` returns a `sentence_count` per section. Use it before constructing ranges.
 
-**Rule.** Agentic flows (skill has tools) — the skill owns persistence via `revise_content`, `generate_section`, `generate_outline`. Deterministic flows (no skill) — the policy saves inline via `tools(tool_name, params)`.
+### Tool persistence ownership
 
-**Anti-pattern:** Both policy and skill writing to disk for the same operation. Double-persistence risks silent overwrites or lost edits. (Source: `inventory/SUMMARY.md § Theme 1`, `decision_points.md UA-17`)
+- **Agentic flows** (skill has tools): the skill owns persistence via `revise_content`, `generate_section`, `generate_outline`. The policy does NOT auto-save.
+- **Deterministic flows** (no skill): the policy saves inline via `tools(tool_name, params)`.
 
----
+Never let both layers write. Double-persistence causes silent overwrites and lost edits.
 
-## 6. Error Handling (AD-6 Model)
+### Transient helpers (not in the grid)
 
-Three failure channels, never conflated. Established by AD-6.
+Wrapped by canonical tools, never standalone:
+- `write_text(prompt)` — generate short text fragment; wrap with `revise_content` or `insert_content` to persist.
+- `brainstorm_ideas(topic)` — generate angles; wrap with `generate_outline` or `insert_content`.
+- `convert_to_prose(bullets)` — bullets → prose; wrap with `revise_content`.
 
-### Tool-Call Failure Path
+## 2. Quick Reference
 
-**Trigger.** Network down, API failure, permission denied, platform unavailable.
-
-**Response.** `DisplayFrame(flow.name(), metadata={'violation': 'tool_error'}, code=<raw error text>)`. Do NOT declare ambiguity.
-
-**Why.** Infrastructure failure is not a question for the user; it's a signal that Hugo encountered a platform issue.
-
-**Retry.** If the error is transient (timeout, lock), retry once at the policy layer via `BasePolicy.retry_tool`. If non-retryable or retry fails, return the error frame. (Source: `policy_spec.md § AD-6`, `best_practices.md § 3`)
-
-### Contract Violation Path
-
-**Trigger.** Skill output shape mismatch, invalid JSON, missing required fields, truncated result.
-
-**Response:** 
-1. First try `engineer.apply_guardrails(text, format='json')` to parse-and-fail-closed.
-2. If still malformed, `DisplayFrame(flow.name(), metadata={'violation': 'parse_failure'}, code=<offending output>)`.
-
-**Why.** Output contract violations are bugs in the skill or tool. The policy can retry with repair-scratchpad context, but eventually must fail-closed to surface the bug.
-
-**Anti-pattern:** Declaring ambiguity for bad JSON. The skill is broken, not the user's intent. (Source: `policy_spec.md § AD-6`, `skill_tool_subagent.md § 3.2`)
-
-### Ambiguous User Intent Path
-
-**Trigger.** Missing or unclear slot (entity unresolved, required slot unfilled, elective slot missing, candidate needing sign-off).
-
-**Response:** `self.ambiguity.declare(level, observation=<question>, metadata=<classification>)` with one of four levels:
-- `general` — intent itself is unclear
-- `partial` — intent known, key entity unresolved (which post? which section?)
-- `specific` — intent + entity known, a slot value missing or invalid
-- `confirmation` — candidate value exists needing sign-off (e.g., duplicate title detected)
-
-**Why.** This is the only channel that should produce a clarification question back to the user. RES renders the question and waits for user input before resuming the flow.
-
-**Anti-pattern:** Declaring ambiguity for tool failures. Use the tool-error channel instead. (Source: `policy_spec.md § AD-6`, `exemplar_prompts.md`)
-
----
-
-## 7. Slot Architecture
-
-Core slot rules: required (must fill), elective (exactly one of ≥2), optional (nice-to-have). Prefix: slot-<priority>.
-
-### Required Slots
-
-**Rule.** Must be filled before policy execution. If unfilled, declare `specific` ambiguity with `metadata={'missing_slot': '<name>'}`.
-
-**Check.** Use `if not flow.is_filled()` which already checks required slots and electives. Inside the guard branch, identify which slot is missing.
-
-**Example:** `flow.slots['title'].check_if_filled()` → False means title is missing.
-
-**Reference:** `skill_tool_subagent.md § 3.1`, `decision_points.md DP-13`
-
-### Elective Slots
-
-**Rule.** Exactly one of ≥2 must be filled. Defined as `priority='elective'` on the flow class. `flow.is_filled()` checks the at-least-one rule; the policy identifies which one is present to route branching.
-
-**Anti-pattern:** Single elective. That's not a choice; convert to required or optional.
-
-**Example:** `outline` has `proposals` (propose mode) and `sections` (direct mode) as electives. The policy checks which one is filled to branch.
-
-**Reference:** `inventory/outline.md`, `skill_tool_subagent.md § 3.1`
-
-### Optional Slots
-
-**Rule.** Nice-to-have but not a blocker. If a sensible default exists, commit it inline (AD-8) without asking. Otherwise, treat absence as OK; the skill proceeds without it.
-
-**Example:** `audit`'s `reference_count` defaults to 5. `refine`'s `guidance` has no default, so absence is OK.
-
-**Anti-pattern:** Declaring ambiguity for every missing optional slot. That's not EVPI-aware.
-
-**Reference:** `policy_spec.md § AD-8`, `decision_points.md DP-13`, `best_practices.md § 5`
-
-### Entity Slots
-
-**Rule.** Must be a SourceSlot (post, section, channel, etc.) or ExactSlot (title for create). Guards go first in the policy; missing entity triggers `partial` ambiguity.
-
-**Example:**
-```python
-post_id, sec_id = self._resolve_source_ids(flow, state, tools)
-if not post_id:
-    self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-    return DisplayFrame(flow.name())
-```
-
-**Why.** Entity resolution is grounding; without it, the flow can't proceed.
-
-**Reference:** `skill_tool_subagent.md § 3.1`
-
----
-
-## 8. Flow Stack & Cross-Turn State
-
-Stack-on and fallback semantics. Prefix: transition-<type>.
-
-### Stack-On Semantics
-
-**Rule.** `self.flow_stack.stackon('<name>')` pushes a prerequisite flow onto the stack and resumes the current flow after the prerequisite completes.
-
-**Pattern.** Three lines, no helper:
-```python
-self.flow_stack.stackon('outline')
-state.keep_going = True
-frame = DisplayFrame(flow.name(), thoughts='No outline exists, outlining first.')
-```
-
-**Why.** Stack-on is for prerequisite setup; the user sees the sub-flow's work before returning. Inlining the pattern keeps one source of truth in the policy.
-
-**Allowed recursion:** Outline may NOT stack-on itself (AD-3). Other flows can stack-on any other flow.
-
-**Reference:** `policy_spec.md § Theme 6`, `inventory/compose.md`
-
-### Fallback Semantics
-
-**Rule.** `self.flow_stack.fallback('<name>')` pops the current flow and re-routes to a sibling better-matched to the user's actual intent.
-
-**Example:** User says "shorten the intro" but simplify flow is designed for prose-to-shorter. Fallback to polish (word-level tightening) instead.
-
-**Pattern:** Same as stack-on but signals different UX (user sees the sibling flow, not the original).
-
-**When NOT to use:** Don't fallback on skill errors (use error frames instead). Use only when the user's intent genuinely maps to a different flow. (Source: `decision_points.md DP-14`)
-
-### Scratchpad Cross-Turn
-
-**Rule.** Key = flow name; value = dict with `version`, `turn_number`, `used_count`, plus flow payload. Producers write; consumers read-and-increment `used_count`.
-
-**Pattern:**
-```python
-# In audit_policy (producer)
-memory.write_scratchpad('audit', {
-    'version': 1,
-    'turn_number': context.turn_id,
-    'used_count': 0,
-    'findings': [...]
-})
-
-# In polish_policy (consumer)
-scratchpad = state.scratchpad
-audit_findings = scratchpad.get('audit', {}).get('findings', [])
-if audit_findings:
-    scratchpad['audit']['used_count'] += 1
-```
-
-**Reference:** `policy_spec.md § AD-1`, `inventory/polish.md`
-
----
-
-## 9. NLU Contract Assumptions
-
-What NLU guarantees so policies don't re-derive. Prefix: nlu-<guarantee>.
-
-### Pre-Grounded Context
-
-**Rule.** NLU slot-fills before any policy runs. The policy receives `DialogueState` with resolved `post_id`, `sec_id`, etc. from slot resolution. Do NOT call `read_metadata` or `find_posts` to re-ground; use what NLU already provided.
-
-**Why.** Re-grounding wastes rounds and tokens. "Deterministic core, agentic shell" means discovery is pre-done; the skill interprets, not discovers.
-
-**Pattern.** Check `flow.slots[slot].value` or use `_resolve_source_ids(flow, state, tools)` to fetch resolved context. Never call discovery tools in the policy layer.
-
-**Anti-pattern:** Skill calling `read_metadata` to load the outline when `_build_resolved_context` already fetched it.
-
-**Reference:** `best_practices.md § 4`, `inventory/SUMMARY.md § Theme 1`
-
-### Slot-Filling Correctness
-
-**Rule.** If `flow.is_filled()` returns True, all required slots and at least one elective (if any) are filled. The policy trusts this check; it doesn't re-validate slots.
-
-**Why.** `is_filled()` encodes the flow's slot contract. If the contract is wrong, fix the flow definition, not the policy.
-
-**Reference:** `skill_tool_subagent.md § 3.1`
-
----
-
-## 10. DisplayFrame / RES Contract
-
-Frame attributes and block types. Prefix: frame-<part>.
-
-### Frame Origin
-
-**Rule.** `origin = flow.name()` always. Error-ness lives in metadata, not origin. RES keys per-flow templates off origin.
-
-**Example:**
-```python
-DisplayFrame('refine', metadata={'violation': 'failed_to_save'})  # error refine frame
-DisplayFrame('refine', thoughts='Saved!')                         # success refine frame
-```
-
-**Why.** Single-meaning field. RES knows how to render refine frames regardless of success/error.
-
-**Reference:** `policy_spec.md § Convention 12`, `exemplar_prompts.md`
-
-### Required Metadata Keys
-
-**Rule.** Every error frame carries `metadata['violation']` set to one of the 8-item vocabulary (failed_to_save, parse_failure, etc.). Success frames may carry contextual metadata (`post_id`, `sections_touched`, etc.) but not `violation`.
-
-**Anti-pattern:** `metadata={'error': 'failed_to_save'}` or `metadata={'status': 'error'}`. Use the standardized `violation` key.
-
-**Reference:** `policy_spec.md § Violation vocabulary`
-
-### Block Types and Shapes
-
-**Rule.** Return the block type expected by the flow's RES template:
-- `card` — updates the post card (create, refine, compose, rework, polish, simplify, etc.)
-- `selection` — presents 3 candidate options (outline propose mode, audit findings)
-- `list` — search results (find, browse)
-- `compare` — side-by-side comparison (compare flows)
-- `toast` — lightweight notification (release, promote, schedule)
-- (empty) — chat-only flows (inspect, chat, explain, undo)
-
-**Required data per block type.**
-- `card` → `{type, data: {post_id, title, sections, ...}}`
-- `selection` → `{type, data: {options: [{label, id}, ...]}}`
-
-**Anti-pattern:** Returning wrong block type. `compose` returns `card`, not a prose blob.
-
-**Reference:** `block_classification.md`, `decision_points.md DP-16`
-
----
-
-## 11. Testing & Evals
-
-Three-tier eval scaffold and anti-patterns. Prefix: eval-<tier>.
-
-### Tier 1 — Policy in isolation
-
-**Scope.** `utils/tests/policy_evals/` — run a single policy against pre-seeded state + frozen tool mocks.
-
-**Runs in:** ~5 seconds per policy. No network, no side-effects.
-
-**Assertions.** Tool-call sequence, frame shape, metadata keys, block types.
-
-**What NOT to test:** Message formatting, prose quality, user-facing copy (those are Tier 2+).
-
-**Reference:** `eval_design.md § Phase 0`, `policy_spec.md § Part 4`
-
-### Tier 2 — E2E CLI
-
-**Scope.** `utils/tests/e2e_agent_evals.py` — full 14-step lifecycle with three scenarios.
-
-**Runs in:** ~20 min for all scenarios. Real LLM calls, persistent disk state.
-
-**Assertions.** Step-by-step flow execution, inter-flow state propagation, scratchpad writes, frame→block serialization.
-
-**Purpose.** Close the CLI↔UI gap. CLI evals pass but the UI app breaks → evals don't model user experience.
-
-**Anti-pattern:** Mocking the LLM or the content service. Mock early failures so downstream can run, but not tools that are the focus of the eval.
-
-**Reference:** `eval_design.md § Phase 1-2`, `census.md`
-
-### Tier 3 — Playwright UI
-
-**Scope.** `utils/tests/playwright_evals/` — run the full 14-step lifecycle in the browser.
-
-**Purpose.** Validate RES → UI rendering, frame→block display, user interaction.
-
-**Install gate:** `uv pip install pytest-playwright && playwright install chromium`
-
-**Reference:** `eval_design.md § Phase 0`
-
-### Failure Dumps
-
-**Rule.** On eval failure, write `utils/policy_builder/failures/<run_id>/step_<N>.md` with:
-- Utterance, expected tools, actual tools
-- Expected frame origin/metadata, actual frame origin/metadata
-- Scratchpad state (if relevant)
-- Tool call trajectory with responses
-
-**Why.** Machine-readable error output lets a fresh Claude instance debug without re-running the eval.
-
-**Reference:** `eval_design.md § Phase 0`
-
-### Anti-Patterns in Test Design
-
-**Common mistake 1:** Testing prose quality with assertions like `assert 'motivation' in response['thoughts']`. Prose is subjective; use LLM-as-judge only as a last resort, and only for genuinely subjective quality (not for shape/structure).
-
-**Common mistake 2:** Mocking databases to avoid setup. Real failures are in the data layer; mocks hide them. Mock only where the tool itself is irrelevant to the test.
-
-**Common mistake 3:** Testing deterministic and agentic flows the same way. Deterministic flows have a single tool call and a closed set of outcomes. Agentic flows have multiple possible tool trajectories — test for valid outcomes, not exact tool sequences.
-
-**Reference:** `policy_spec.md § Part 4`, `eval_design.md`
-
----
-
-## 12. Anti-Patterns to Flag Explicitly
-
-Common pitfalls and what to avoid. Prefix: anti-<pattern>.
-
-### Error-Masking Defaults
-
-**Pattern:** `text or ''`, `parsed or {}`, `dict.get('known_key', '')`
-
-**Problem:** Silently converts errors to empty values. Tests pass; prod breaks.
-
-**Fix:** Let the code crash. Use `apply_guardrails(text, format='json')` to parse-and-fail-closed if parsing is expected. (Source: Convention 2)
-
-### Conflating Failure Channels
-
-**Pattern:** Declaring ambiguity for tool failures. `tool.failed() → ambiguity.declare('partial')`
-
-**Problem:** Tool failure is infrastructure (signal to user, no clarification needed). Intent ambiguity is a question. Conflating hides the root cause.
-
-**Fix:** Use AD-6's three channels: tool failure → error frame; intent ambiguity → ambiguity.declare. (Source: AD-6)
-
-### Em-Dashes in User-Facing Text
-
-**Pattern:** `frame.thoughts = 'Outline shrunk from 5 bullets to 3 — scope mismatch detected.'`
-
-**Problem:** Em-dashes are hard to parse on small screens.
-
-**Fix:** Use periods or commas. `'Outline shrunk from 5 bullets to 3. Scope mismatch detected.'` (Source: Convention 10)
-
-### Inventing New Metadata Keys
-
-**Pattern:** `metadata={'error_type': '...', 'flow_id': '...', 'custom_flag': True}`
-
-**Problem:** Downstream components (RES, tools) don't know about custom keys. They silently drop unrecognized metadata.
-
-**Fix:** Use standardized keys only (`violation`, `missing_slot`, `missing_entity`, `failed_tool`, etc.). If you need to pass something new, surface a design question. (Source: Convention 8)
-
-### Defensive Checks for Guaranteed Values
-
-**Pattern:** `if post_id and post_id != '': ...` when NLU already resolved post_id.
-
-**Problem:** If NLU guarantees a value, the policy should trust it. Defensive checks hide missing contracts.
-
-**Fix:** Use the value directly. If it's None, that's a guard case at the top (missing_entity ambiguity). (Source: Convention 1, best_practices.md § 4)
-
-### Hallucinated APIs
-
-**Pattern:** `engineer.tools`, `flow.resolved`, `Block` class that doesn't exist.
-
-**Problem:** Code crashes at runtime. Test coverage is incomplete.
-
-**Fix:** Check imports. Use real APIs: `tools(name, params)`, `state`, `DisplayFrame`. (Source: CLAUDE.md § Module Contracts)
-
-### Double-Persistence
-
-**Pattern:** Both policy and skill writing to disk for the same operation.
-
-**Problem:** Overwrites, lost edits, silent regression (skill shrinks outline; policy writes stale version).
-
-**Fix:** Clear ownership per flow. Agentic flows: skill owns persistence. Deterministic flows: policy saves. (Source: Theme 1, tool_branching.md)
-
-### Backwards-Compat Shims
-
-**Pattern:** `if _legacy_flag: ... else: ...` to support old and new behavior.
-
-**Problem:** Doubles code paths, makes testing twice as complex, leads to divergent behavior over time.
-
-**Fix:** Remove old paths cleanly. Part 3 is consolidation, not migration. (Source: CLAUDE.md § Coding conventions)
-
-### Mode-as-Flag
-
-**Pattern:** `stage = 'error'` instead of error frames. `stage = 'informed'` instead of scratchpad reading.
-
-**Problem:** Stages should reflect genuine control-flow divergence, not cosmetic labels. Conflating them hides which branch the policy actually took.
-
-**Fix:** Stages only where the policy's structure genuinely branches (outline propose vs. direct). For "did we get findings?" use the scratchpad, not a flag. (Source: best_practices.md § 6, AD-2/AD-5 moved to AGENTS.md)
-
----
-
-## 13. User-Collaboration Meta-Lessons
-
-Patterns from feedback loops. Prefix: feedback-<topic>.
-
-### Communication Preference
-
-**Pattern.** User feedback consistently requests explanations of tradeoffs before new concepts are introduced.
-
-**Example:** AD-1 needed scratchpad instead of new attributes. User wanted to understand why adding attributes was problematic before accepting scratchpad as the alternative.
-
-**Lesson.** Surface design questions with tradeoff analysis. Don't just propose a solution; explain why the alternative was rejected. (Source: feedback_no_overdefending.md, feedback_hook_philosophy.md in memory/)
-
-### No Concepts Without Approval
-
-**Pattern.** Proposed `STACK_ON_REASONS` dict, `BasePolicy.guard_slot` helper, `flow.deterministic` flag — all rejected.
-
-**Lesson.** New concepts (new dicts, new helpers, new attributes) require explicit approval. Patterns are useful; concepts must be vetted first. (Source: fixes/_shared.md § Proposed but rejected)
-
-### Hallucination and Precision
-
-**Pattern.** When reading complex code to propose changes, Claude sometimes hallucinates APIs that don't exist or misread method signatures.
-
-**Lesson.** Verify assumptions with git log / grep before proposing changes. Read actual call-sites, not mental models.
-
-### Batch Discipline
-
-**Pattern.** Part 3 changes landed smoothly because Themes 1-7 had already consolidated patterns. Part 5 batching works because each batch validates against Part 4 evals.
-
-**Lesson.** Large refactors need waypoints. Don't ship 48 policy rewrites at once; land by theme, then by batch, with validation gates.
-
----
-
-## 14. Quick Reference: When to Use Each Concept
-
-| Question | Answer | Reference |
+| Question | Answer | See |
 |---|---|---|
-| User's post is missing — how do I signal? | `partial` ambiguity with `missing_entity='post'` | AD-6, Convention 3 |
-| Skill returned bad JSON — how do I respond? | Try `apply_guardrails(format='json')` first, then `parse_failure` error frame | AD-6, Convention 5 |
-| Tool failed (network down) — how do I respond? | `tool_error` error frame, not ambiguity | AD-6 |
-| Optional slot is missing — ask or default? | If sensible default exists, commit it (AD-8). Otherwise, OK to proceed without it | AD-8, Convention 3 |
-| Which tool saves an outline section? | `generate_section` for outline content; `revise_content` for prose. Use `insert_section` first for new section shell. | tool_branching.md |
-| How do I pass findings from step 10 to step 13? | Scratchpad with key=flow_name. Include `version`, `turn_number`, `used_count`. | AD-1 |
-| Should I call `read_metadata` to load context? | No — NLU already resolved it. Use `_resolve_source_ids` or `extra_resolved`. | Convention 1, best_practices.md § 4 |
-| How do I create a new DisplayFrame with metadata? | Build metadata dict and thoughts first, then one-line instantiation. | Convention 4 |
-| What's the outline depth scheme? | Level 0: `# Title` (not editable); 1: `##`; 2: `###`; 3: `-`; 4: `  *` | UA-4, tool_branching.md |
-| Should I add a new attribute to DialogueState? | No. Use scratchpad for findings; per-turn payload in frame.metadata. | AD-1, Convention 8 |
+| User's post is missing — how do I signal? | `partial` ambiguity with `missing_entity='post'` | III.3 |
+| Skill returned bad JSON — how do I respond? | `apply_guardrails(format='json')` first, then `parse_failure` error frame | III.3 + IV.C ch.4 |
+| Tool failed (network down) — how do I respond? | `tool_error` error frame, not ambiguity | III.3 |
+| Optional slot is missing — ask or default? | If sensible default exists, commit it. Otherwise, OK to proceed. | II.2 |
+| Which tool saves an outline section? | `generate_section` for outline content; `revise_content` for prose | VI.1 |
+| How do I pass findings from one flow to another? | Session Scratchpad with `key=flow_name`, fields `{version, turn_number, used_count}` | II.3 |
+| Should I call `read_metadata` to load context? | No — NLU already resolved it; use `_resolve_source_ids` or `extra_resolved` | I.A |
+| How do I create a `DisplayFrame` with metadata? | Build metadata dict and thoughts first, then one-line instantiation | III.2 #4 |
+| What's the outline depth scheme? | Level 0: `# Title`; 1: `##`; 2: `###`; 3: `-`; 4: `  *` | I.C |
+| Can I add a new attribute to `DialogueState`? | No. Use the Session Scratchpad for findings; per-turn payload in `frame.metadata` | II.3 |
+| Single elective slot — required or optional? | Convert to required (or optional). Single-elective is invalid. | I.A |
+| Should I retry on tool failure? | Yes, once via `BasePolicy.retry_tool` if transient. Otherwise return error frame. | III.3 |
+| Can my flow self-recurse? | Only if the recursive call hits a non-recursive branch. Outline excepted. | II.4 |
+| Can I add a new violation code? | No. The 8-item vocabulary is closed. Surface a design question. | I.C |
+| Where do hard rules go — system or skill? | Both. Repeat critical rules in system AND skill. | IV.A.2 |
+| Deterministic or agentic flow? | Deterministic if 1 tool + args derivable from slots. Otherwise agentic. | II.1 |
+| How do I prerequisite another flow? | `flow_stack.stackon(name)` + `state.keep_going = True` + `frame.thoughts = <reason>` | II.4 |
+| What `max_response_tokens` should my flow use? | 1024 short / 2048 single-section / 4096 multi-section prose. Match output schema to cap. | II.5 |
+| Where does YAML frontmatter live on a skill? | Top of `backend/prompts/pex/skills/<flow>.md`. | IV.C ch.2 |
 
 ---
 
 ## Final Notes
 
-**This document is a reference, not a rigid checklist.** Every policy should follow the 12 conventions and use the 8-item violation vocabulary. Deviations need an inline comment citing which convention justifies the deviation. The goal is consolidation (removing variance that hides bugs), not uniformity for its own sake.
+This document is a reference, not a rigid checklist. Every policy follows multiple conventions and a shared vocabulary; deviations need an inline comment citing the convention number that justifies them. Goal: consolidation (removing variance that hides bugs), not uniformity for its own sake.
 
-**Update cadence.** After each Part 5 batch, review the lessons and add new ones discovered during implementation. If a new lesson contradicts an existing one, flag it for discussion — don't silently override.
-
-**For reviewers.** Use this document to frame feedback. "This violates Convention 6 (keep metadata sparse)" is clearer than "metadata is too complex." Link to the specific lesson.
-
----
-
-**Generated:** 2026-04-23 (Parts 1-5 consolidated)
-**Source documents:** policy_spec.md, best_practices.md, decision_points.md, skill_tool_subagent.md, exemplar_prompts.md, census.md, tool_branching.md, block_classification.md, eval_design.md, inventory/*, fixes/*, memory/*.md
-
+**Update cadence.** As new flows surface lessons that would help future authors, add them to the relevant chapter. If a new lesson contradicts an existing one or conflicts with the canonical specs at `personal_assistants/_specs/`, flag it for review — don't silently override.

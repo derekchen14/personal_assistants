@@ -1,9 +1,8 @@
 """Policy-in-isolation tests for the `rework` flow.
 
-Rework is section-scoped by default but enters a per-section loop when the
-source lacks a sec_id (whole-post scope). The policy also inspects the
-skill's JSON reply to check off completed ChecklistSlot suggestions. See
-`utils/policy_builder/fixes/rework.md` and
+Rework is section-scoped by default but enters a per-section loop when the source lacks a sec_id
+(whole-post scope). The policy also inspects the skill's JSON reply to check off completed
+ChecklistSlot suggestions. See `utils/policy_builder/fixes/rework.md` and
 `utils/policy_builder/inventory/rework.md` for the expected shape.
 """
 
@@ -73,11 +72,11 @@ def test_rework_section_scoped_single_call(monkeypatch):
     assert top.status == 'Completed'
 
 
-def test_rework_whole_post_loops_per_section(monkeypatch):
-    """Per fixes/rework.md § Changes that landed #2 — when source has no
-    sec_id, the policy reads section_ids from metadata and calls
-    llm_execute once per section with
-    extra_resolved={'target_section': sid, 'rework_scope': 'whole_post'}."""
+def test_rework_whole_post_single_call_with_preview(monkeypatch):
+    """When source has no sec_id, the policy makes a single llm_execute call
+    with `include_preview=True` so the skill can handle whole-post operations
+    (swap two sections, reorder, cross-section rewrite) in one pass instead
+    of looping per section."""
     policy, comps = build_policy('rework')
     comps['flow_stack'].stackon('rework')
     top = comps['flow_stack'].get_flow()
@@ -88,35 +87,23 @@ def test_rework_whole_post_loops_per_section(monkeypatch):
     context = make_context('rework the whole post')
     captured:list = []
     monkeypatch.setattr(BasePolicy, 'llm_execute',
-        _stub_llm_execute('per-section output', tool_log=[], captured=captured))
+        _stub_llm_execute('rework output', tool_log=[], captured=captured))
 
     tools = make_tool_stub({
         'read_metadata': [
-            # resolve_post_id
+            # _resolve_source_ids
             {'_success': True, 'post_id': _POST_ID, 'title': 'T',
              'section_ids': ['sec_a', 'sec_b', 'sec_c']},
-            # Whole-post scope branch: section_ids lookup
+            # _read_post_content (include_outline=True)
             {'_success': True, 'post_id': _POST_ID, 'title': 'T',
+             'status': 'draft', 'outline': '## A\nalpha\n\n## B\nbeta\n\n## C\ngamma',
              'section_ids': ['sec_a', 'sec_b', 'sec_c']},
-            # _read_post_content final
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'section_ids': ['sec_a', 'sec_b', 'sec_c']},
-        ],
-        'read_section': [
-            {'_success': True, 'title': 'A', 'content': 'alpha'},
-            {'_success': True, 'title': 'B', 'content': 'beta'},
-            {'_success': True, 'title': 'C', 'content': 'gamma'},
         ],
     })
 
     frame = policy.execute(state, context, tools)
 
-    assert len(captured) == 3, 'one llm_execute per section'
-    targets = [call['extra_resolved'].get('target_section') for call in captured]
-    assert targets == ['sec_a', 'sec_b', 'sec_c']
-    for call in captured:
-        assert call['extra_resolved'].get('rework_scope') == 'whole_post'
-
+    assert len(captured) == 1, 'rework should make a single whole-post call'
     assert_frame(frame, origin='rework', block_types=('card',))
     assert top.status == 'Completed'
 

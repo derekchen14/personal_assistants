@@ -29,9 +29,6 @@ export interface FrameData {
     metadata?: Record<string, unknown>;
     panel?: 'top' | 'bottom' | 'split';
     thoughts?: string;
-    // Legacy single-block shape — still used by locally-synthesized frames (showPage).
-    block_type?: string;
-    data?: Record<string, unknown>;
 }
 
 function firstBlock(frame: FrameData | null): Block | undefined {
@@ -49,6 +46,7 @@ export const activePage = writable<ActivePage>('posts');
 export const activeTag = writable<string>('');
 export const searchQuery = writable('');
 export const activeHighlight = writable<string>('');
+export const activeSection = writable<string>('');
 export const creatingPost = writable(false);
 export const activePost = writable<string>('');
 
@@ -78,10 +76,10 @@ export function clearFrames() {
 }
 
 export function setFrame(frame: FrameData) {
-    // Blockless frame (e.g. inspect, clarification) carries chat-only content — metadata / thoughts but nothing 
+    // Blockless frame (e.g. inspect, clarification) carries chat-only content — metadata / thoughts but nothing
     // to render. Leave the display containers alone so the user's current view (card, list, grid) survives.
-    if (!firstBlock(frame) && !frame.block_type) return;
-    const primary = firstBlock(frame) ?? { type: frame.block_type ?? 'default', data: frame.data ?? {}, location: 'bottom' };
+    const primary = firstBlock(frame);
+    if (!primary) return;
     if (primary.type === 'card' && (primary.data as Record<string, unknown>)?.status === 'note') return;
     activeFrame.set(frame);
     if (frame.origin === 'find' && (primary.data as Record<string, unknown>)?.page) {
@@ -107,18 +105,34 @@ export function setFrame(frame: FrameData) {
 
 export function restorePendingCard() {
     const saved = get(lastCardFrame);
-    if (!saved) return;
-    let pending: FrameData;
-    if (saved.blocks && saved.blocks.length > 0) {
-        const blocks = saved.blocks.map(b =>
-            b.type === 'card' ? { ...b, data: { ...b.data, pending: true } } : b,
-        );
-        pending = { ...saved, blocks };
-    } else {
-        pending = { ...saved, data: { ...(saved.data ?? {}), pending: true } };
-    }
+    if (!saved?.blocks?.length) return;
+    const blocks = saved.blocks.map(b =>
+        b.type === 'card' ? { ...b, data: { ...b.data, pending: true } } : b,
+    );
+    const pending: FrameData = { ...saved, blocks };
     activeFrame.set(pending);
     bottomFrame.set(pending);
+}
+
+export function showChosenOutline(outline: Array<{ name: string; description?: string }>) {
+    const content = outline
+        .map(sec => `## ${sec.name}\n\n${sec.description ?? ''}`)
+        .join('\n\n');
+    const saved = get(lastCardFrame);
+    const priorCard = saved?.blocks?.find(b => b.type === 'card');
+    const priorData = (priorCard?.data ?? {}) as Record<string, unknown>;
+    const frame: FrameData = {
+        origin: 'outline',
+        panel: 'bottom',
+        blocks: [{
+            type: 'card',
+            location: 'bottom',
+            data: { ...priorData, content, pending: true },
+        }],
+    };
+    activeFrame.set(frame);
+    bottomFrame.set(frame);
+    lastCardFrame.set(frame);
 }
 
 let _onRefresh: ((frameType: string) => void) | null = null;
@@ -132,8 +146,10 @@ export function showPage(page: ActivePage) {
     _expanded.set(false);
     const frameType = page === 'notes' ? 'grid' : 'list';
     topFrame.update((current) => {
-        if (current) return { ...current, block_type: frameType };
-        return { block_type: frameType, data: { items: [] }, origin: 'welcome', panel: 'top' };
+        const data = firstBlock(current ?? null)?.data ?? { items: [] };
+        const block: Block = { type: frameType, data, location: 'top' };
+        if (current) return { ...current, blocks: [block] };
+        return { origin: 'welcome', panel: 'top', blocks: [block] };
     });
     _onRefresh?.(frameType);
 }

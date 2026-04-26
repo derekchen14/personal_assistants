@@ -83,23 +83,7 @@ class DraftPolicy(BasePolicy):
 
         elif flow.slots['topic'].check_if_filled():
             flow.stage = 'propose'
-
-            if flow.slots['proposals'].check_if_filled():
-                # Safe recursion: after sections are filled from proposals, the
-                # recursive call takes the sections-filled branch (which does not
-                # self-recurse). Max depth = 1. Outline may NOT stackon('outline').
-                chosen_outline = flow.slots['proposals'].values[0]
-                for section in chosen_outline:
-                    if isinstance(section, dict):
-                        flow.slots['sections'].add_one(
-                            section.get('name', ''),
-                            section.get('description', ''),
-                        )
-                    else:
-                        flow.slots['sections'].add_one(section)
-                frame = self.outline_policy(flow, state, context, tools)
-            else:
-                frame = self._propose_outline(flow, state, context, tools, depth=depth)
+            frame = self._propose_outline(flow, state, context, tools, depth=depth)
 
         else:
             convo_history = context.compile_history(look_back=3)
@@ -119,28 +103,18 @@ class DraftPolicy(BasePolicy):
 
     def _propose_outline(self, flow, state, context, tools, depth:int=2):
         post_id = state.active_post
-        # Defensive guard: strip outline-persistence tools from the skill's
-        # tool registry for propose mode. Also pass propose_mode=True in the
-        # resolved-context hint so the skill knows to stay text-only.
+        # Defensive guard: Remove persistence tools from the skill's tool registry for Propose mode.
+        # Also pass propose_mode=True in the resolved-context hint so the skill knows to stay text-only.
+        frame = DisplayFrame(origin='outline')
+
         raw, tool_log = self.llm_execute(flow, state, context, tools,
             extra_resolved={'depth': depth, 'propose_mode': True},
             exclude_tools=('generate_outline', 'generate_section'))
-        frame = DisplayFrame(origin='outline')
+        candidates = self.engineer.apply_guardrails(raw, format='markdown', shape='candidates')
+        flow.slots['proposals'].options = candidates
 
-        # Safety net: if the LLM somehow still called generate_outline (tool
-        # stripping should prevent this), log the violation and reframe to
-        # direct-mode rather than returning an empty card.
-        if any(tc.get('tool') == 'generate_outline' for tc in tool_log):
-            log.warning('outline propose-mode guard bypassed: generate_outline was called despite tool stripping')
-            flow.stage = 'direct'
-            flow.status = 'Completed'
-            if post_id:
-                frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-        else:
-            candidates = self.engineer.apply_guardrails(raw, format='markdown', shape='candidates')
-            flow.slots['proposals'].options = candidates
-            if candidates:
-                frame.add_block({'type': 'selection', 'data': {'candidates': candidates}})
+        if candidates:
+            frame.add_block({'type': 'selection', 'data': {'candidates': candidates}})
         return frame
 
     def refine_policy(self, flow, state, context, tools):
@@ -274,15 +248,14 @@ class DraftPolicy(BasePolicy):
             frame = DisplayFrame(origin='create')
             block_data = {'post_id': new_id, 'title': result.get('title', ''), 'status': result['status']}
             frame.add_block({'type': 'card', 'data': block_data})
-
             # If topic provided, chain into OutlineFlow to propose an initial outline.
-            if 'topic' in slots:
-                self.flow_stack.stackon('outline')
-                state.keep_going = True
-                outline_flow = self.flow_stack.get_flow()
-                outline_flow.slots['source'].add_one(post=new_id)
-                outline_flow.slots['topic'].add_one(slots['topic'])
-                frame.thoughts = 'Created the post, moving on to outline.'
+            # if 'topic' in slots:
+            #     self.flow_stack.stackon('outline')
+            #     state.keep_going = True
+            #     outline_flow = self.flow_stack.get_flow()
+            #     outline_flow.slots['source'].add_one(post=new_id)
+            #     outline_flow.slots['topic'].add_one(slots['topic'])
+            #     frame.thoughts = 'Created the post, moving on to outline.'
 
         elif result.get('_error') == 'duplicate':
             observation = f'A post titled "{slots["title"]}" already exists. Overwrite it, or pick a different title?'

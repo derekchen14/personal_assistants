@@ -1,11 +1,10 @@
 """Policy-in-isolation tests for the `compose` flow.
 
-Compose delegates section writing to a skill that calls `revise_content`
-itself; the policy passes `include_preview=True` so the skill has each
-section's leading lines without an extra read_metadata call. When the post
-has no sections yet, the policy stacks on OutlineFlow and surfaces the
-reason inline. See `utils/policy_builder/fixes/compose.md` and
-`utils/policy_builder/inventory/compose.md` for the expected shape.
+Compose delegates section writing to a skill that calls `revise_content` itself; the policy passes
+`include_preview=True` so the skill has each section's leading lines without an extra read_metadata
+call. When the post has no sections yet, the policy stacks on OutlineFlow and surfaces the reason
+inline. See `utils/policy_builder/fixes/compose.md` and `utils/policy_builder/inventory/compose.md`
+for the expected shape.
 """
 
 from __future__ import annotations
