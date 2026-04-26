@@ -109,7 +109,7 @@ def test_outline_propose_mode_excludes_generate_outline(monkeypatch):
     assert len(captured) == 1
     call = captured[0]
     assert call['extra_resolved'] == {'depth': 2, 'propose_mode': True}
-    assert call['exclude_tools'] == ('generate_outline', 'generate_section')
+    assert call['exclude_tools'] == ('generate_outline',)
 
     assert_frame(frame, origin='outline', block_types=('selection',))
     selection = frame.blocks[0]

@@ -24,9 +24,8 @@ class RevisePolicy(BasePolicy):
                 return DisplayFrame()
 
     def _guard_entity(self, flow):
-        """Entity-missing guard. Declares `partial` and returns an empty
-        frame with origin=flow.name() when the entity slot is unfilled.
-        Callers early-return on non-None result per convention #11."""
+        """Entity-missing guard. Declares `partial` and returns an empty frame with origin=flow.name() 
+        when the entity slot is unfilled. Callers early-return on non-None result"""
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
             self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
@@ -35,17 +34,12 @@ class RevisePolicy(BasePolicy):
 
     def rework_policy(self, flow, state, context, tools):
         early = self._guard_entity(flow)
-        if early is not None:
-            return early
-
+        if early is not None: return early
         post_id, _ = self._resolve_source_ids(flow, state, tools)
 
-        # Always preload the per-section preview (title + first few lines). This gives the skill
-        # enough context to handle whole-post operations (swap two sections, reorder, cross-section
-        # rewrite) in a single llm_execute pass instead of looping per section.
-        text, tool_log = self.llm_execute(
-            flow, state, context, tools, include_preview=True,
-        )
+        # Preload per-section preview (title + first few lines). This gives context to handle whole-post operations
+        # (swap two sections, reorder, cross-section rewrite) in a single llm_execute pass instead of looping.
+        text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
         self._mark_suggestions_done(flow, tool_log, text)
 
         flow.status = 'Completed'
@@ -55,10 +49,9 @@ class RevisePolicy(BasePolicy):
         return frame
 
     def _mark_suggestions_done(self, flow, tool_log, text):
-        """Inspect the skill's JSON reply for `done` markers on suggestions and
-        check the corresponding ChecklistSlot items off. The skill returns
-        either {"target": ..., "added": [...], "done": ["sug1", "sug2"]} or
-        {"suggestions": {"sug1": "done", "sug2": "done"}}; both shapes work."""
+        """Inspect the skill's JSON reply for `done` markers on suggestions and check the corresponding
+        ChecklistSlot items off. The skill returns either {"target": ..., "added": [...], "done": ["sug1", "sug2"]}
+        or {"suggestions": {"sug1": "done", "sug2": "done"}}; both shapes work."""
         sug_slot = flow.slots.get('suggestions')
         if not sug_slot or not getattr(sug_slot, 'steps', None):
             return
@@ -154,10 +147,7 @@ class RevisePolicy(BasePolicy):
         # wrote scratchpad (keyed by flow.name()); we just read what was saved.
         saved = self.engineer.extract_tool_result(tool_log, 'save_findings')
         if not saved:
-            # Skill didn't land save_findings — leave flow Active so the user's
-            # next turn can retry/supplement, then surface an error frame.
-            return self.error_frame(flow, 'parse_failure',
-                thoughts='Audit did not emit structured findings.')
+            return self.error_frame(flow, 'parse_failure', thoughts='Audit did not emit structured findings.')
 
         flow.status = 'Completed'
         frame = DisplayFrame(flow.name())

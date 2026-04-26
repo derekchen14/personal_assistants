@@ -5,8 +5,7 @@ Two-stage flow:
   - Propose mode: `topic` filled but no sections — emit 3 candidate options as text.
 
 The skill body branches on the same signal; the starter just frames the task
-and surfaces the depth + topic + sections.
-"""
+and surfaces the depth + topic + sections."""
 
 from backend.prompts.for_pex import render_freetext, render_checklist
 
@@ -29,7 +28,7 @@ def build(flow, resolved:dict, user_text:str) -> str:
     if propose_mode or not sections_filled:
         tool_sequence = (
             'Emit three candidate outlines as text. '
-            'Forbidden tools this turn: read_metadata, generate_outline, generate_section, inspect_post, write_text. '
+            'Forbidden tools this turn: read_metadata, generate_outline, inspect_post, write_text. '
             'find_posts is optional (at most once) — skip it for green-field topics'
         )
         end_condition = 'Stop after Option 3 — no trailing commentary'

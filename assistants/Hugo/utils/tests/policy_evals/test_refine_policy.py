@@ -44,7 +44,7 @@ def _stub_llm_execute(return_text:str, tool_log:list|None=None, captured:list|No
 def test_refine_happy_path_saves_section(monkeypatch):
     """Happy path: source + feedback + steps filled with an existing
     bulleted outline calls llm_execute with extra_resolved=
-    {'current_outline': <outline>}, confirms generate_section succeeded,
+    {'current_outline': <outline>}, confirms revise_content succeeded,
     marks flow Completed and returns a card."""
     policy, comps = build_policy('refine')
     comps['flow_stack'].stackon('refine')
@@ -57,7 +57,7 @@ def test_refine_happy_path_saves_section(monkeypatch):
     context = make_context('refine the outline')
     captured:list = []
     tool_log = [
-        {'tool': 'generate_section', 'input': {}, 'result': {'_success': True}},
+        {'tool': 'revise_content', 'input': {}, 'result': {'_success': True}},
     ]
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute('saved section', tool_log=tool_log, captured=captured))
@@ -106,7 +106,7 @@ def test_refine_bullet_shrink_contract_violation(monkeypatch):
 
     state = make_state(active_post=_POST_ID)
     context = make_context('refine')
-    tool_log = [{'tool': 'generate_section', 'input': {}, 'result': {'_success': True}}]
+    tool_log = [{'tool': 'revise_content', 'input': {}, 'result': {'_success': True}}]
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute('done', tool_log=tool_log))
 

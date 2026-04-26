@@ -1,8 +1,7 @@
 """Per-turn starter prompt for ComposeFlow.
 
 Shows the per-section preview as XML so the LLM can scope the work
-before reading individual sections, plus filled steps/guidance.
-"""
+before reading individual sections, plus filled steps/guidance."""
 
 from backend.prompts.for_pex import (
     render_source, render_freetext, render_checklist, render_section_preview,

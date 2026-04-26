@@ -109,7 +109,7 @@ class DraftPolicy(BasePolicy):
 
         raw, tool_log = self.llm_execute(flow, state, context, tools,
             extra_resolved={'depth': depth, 'propose_mode': True},
-            exclude_tools=('generate_outline', 'generate_section'))
+            exclude_tools=('generate_outline',))
         candidates = self.engineer.apply_guardrails(raw, format='markdown', shape='candidates')
         flow.slots['proposals'].options = candidates
 
@@ -132,8 +132,8 @@ class DraftPolicy(BasePolicy):
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         content = result.get('outline', '')
 
-        # Stack-on: if the outline has no bullets yet, outline first so refine has
-        # something to operate on.
+        # Stack-on: if the outline has no bullets yet, outline first so refine has something to
+        # operate on.
         if _count_bullets(content) == 0:
             self.flow_stack.stackon('outline')
             state.keep_going = True
@@ -141,20 +141,22 @@ class DraftPolicy(BasePolicy):
 
         text, tool_log = self.llm_execute(flow, state, context, tools,
             extra_resolved={'current_outline': content})
-        sec_saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_section')
+        revised, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
+        inserted, _ = self.engineer.tool_succeeded(tool_log, 'insert_section')
+        renamed, _ = self.engineer.tool_succeeded(tool_log, 'update_post')
         removed, _ = self.engineer.tool_succeeded(tool_log, 'remove_content')
-        saved = sec_saved or removed
+        saved = revised or inserted or renamed or removed
 
         if not text or not saved:
             return DisplayFrame(
                 origin=flow.name(),
                 metadata={'violation': 'failed_to_save'},
-                thoughts='The refine skill did not call generate_section or remove_content.',
+                thoughts='The refine skill did not save any changes (revise_content, insert_section, update_post rename, or remove_content).',
             )
 
-        # Contract backstop: the skill must preserve existing bullets. If the post-save
-        # outline is strictly shorter AND the user did not request removal, the skill
-        # violated the contract.
+        # Contract backstop: the skill must preserve existing bullets. If the post-save outline
+        # is strictly shorter AND the user did not request removal, the skill violated the
+        # contract.
         prior_bullets = _count_bullets(content)
         new_result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         new_outline = new_result.get('outline', '')

@@ -10,8 +10,7 @@ authored fields:
 
 The `## Background` section is shared across all intents (see
 `backend/prompts/for_experts.py:BACKGROUND_STATIC`) — intent modules do not
-author background.
-"""
+author background."""
 
 from __future__ import annotations
 

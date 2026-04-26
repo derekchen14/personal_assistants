@@ -2,8 +2,7 @@
 
 Browse is read-only. The policy already called `find_posts` and passes
 the result `items` via `extra_resolved`; this starter shows the user's
-query, the target scope, and the result set for narration.
-"""
+query, the target scope, and the result set for narration."""
 
 from backend.prompts.for_pex import render_freetext
 

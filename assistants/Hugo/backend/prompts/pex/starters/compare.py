@@ -1,8 +1,7 @@
 """Per-turn starter prompt for CompareFlow.
 
 Two-post structural comparison. The policy preloads metadata for both posts. Skill optionally calls
-compare_style + read_section, then narrates differences in 2-3 sentences.
-"""
+compare_style + read_section, then narrates differences in 2-3 sentences."""
 
 
 TEMPLATE_WITH_PREVIEWS = """<task>

@@ -4,8 +4,7 @@ Two paths through the skill:
   - URL filled → attach the citation directly via revise_content.
   - URL empty + target snippet filled → web_search and propose a source.
 
-The starter shows the snippet (when known) plus the URL when present.
-"""
+The starter shows the snippet (when known) plus the URL when present."""
 
 from backend.prompts.for_pex import render_freetext
 

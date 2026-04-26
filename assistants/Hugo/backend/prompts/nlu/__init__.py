@@ -11,8 +11,7 @@ keyed by flow_name. Each entry has four authored fields:
   - 'examples'      XML-tagged `<positive_example>` / `<edge_case>` blocks
 
 The `## Background` section is shared across all flows (see
-`backend/prompts/for_nlu.py:BACKGROUND_STATIC`) — flows do not author background.
-"""
+`backend/prompts/for_nlu.py:BACKGROUND_STATIC`) — flows do not author background."""
 
 from __future__ import annotations
 

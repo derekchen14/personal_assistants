@@ -1,8 +1,7 @@
 """Per-turn starter prompt for AddFlow.
 
 Three-way elective: points / additions / image. The starter shows whichever
-is filled and the target section (or 'end of section' default for position).
-"""
+is filled and the target section (or 'end of section' default for position)."""
 
 from backend.prompts.for_pex import render_source, render_freetext, render_checklist
 

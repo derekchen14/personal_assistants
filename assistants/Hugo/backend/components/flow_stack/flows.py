@@ -160,7 +160,7 @@ class RefineFlow(DraftParentFlow):
       'steps': ChecklistSlot(priority='elective'),  # structured list of specific changes requested by the user
       'feedback': FreeTextSlot(priority='elective'),  # open-ended feedback on how to improve the outline
     }
-    self.tools = ['find_posts', 'read_metadata', 'read_section', 'generate_section', 'remove_content', 'write_text']
+    self.tools = ['find_posts', 'read_metadata', 'read_section', 'update_post', 'insert_section', 'revise_content', 'remove_content', 'write_text']
 
 class CiteFlow(DraftParentFlow):
   def __init__(self):
@@ -319,8 +319,6 @@ class ReleaseFlow(PublishParentFlow):
       'source': SourceSlot(1),
       'channel': ChannelSlot(priority='required'),
     }
-    # `update_post` is called by release_policy after the skill returns; the
-    # skill itself must not flip status, so it's not exposed to the LLM.
     self.tools = ['read_metadata', 'channel_status', 'release_post']
 
 class SyndicateFlow(PublishParentFlow):

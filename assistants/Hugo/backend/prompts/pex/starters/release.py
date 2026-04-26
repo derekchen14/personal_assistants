@@ -1,8 +1,7 @@
 """Per-turn starter prompt for ReleaseFlow.
 
 Publishes the post to one or more channels (defaults to the primary blog). The skill iterates each
-channel: channel_status → release_post, then emits a single JSON response with a `releases` array.
-"""
+channel: channel_status → release_post, then emits a single JSON response with a `releases` array."""
 
 
 TEMPLATE = """<task>

@@ -13,16 +13,9 @@ class ContentService(ToolService):
 
     def generate_outline(self, post_id:str, content:str, sec_id:str|None=None) -> dict:
         """FULL overwrite of an outline. Used by the `outline` flow when
-        starting from scratch, and by `refine` when removing sections. For
-        targeted single-section edits, use `generate_section`."""
-        errors = self._validate_outline(content)
-        if errors:
-            return self._error('validation', '; '.join(errors))
-
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
+        starting from scratch, and by `refine` when removing sections."""
+        self._validate_outline(content)
+        ent, entries = self._require_entry(post_id)
 
         if sec_id:
             file_content = self._read_content(ent['filename'])
@@ -51,93 +44,8 @@ class ContentService(ToolService):
         self._save_metadata(entries)
         return self._success()
 
-    def generate_section(self, post_id:str, sec_id:str, content:str) -> dict:
-        """Save a single section. Used by the `refine` flow for targeted edits.
-
-        If `sec_id` matches an existing section, its content is replaced
-        wholesale (and the section renamed if the incoming `## Heading`
-        differs — `sec_id` is recomputed from the new title). If `sec_id`
-        does not match any existing section, the content is appended as
-        a new section at the tail of the outline.
-
-        The `content` argument must begin with a `## Heading` line so the
-        tool can detect rename intent; bullets follow.
-        """
-        errors = self._validate_outline(content)
-        if errors:
-            return self._error('validation', '; '.join(errors))
-
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
-        incoming = self._extract_sections(content)
-        if not incoming:
-            return self._error('validation', 'Section content must include a ## heading')
-        inc = incoming[0]
-        new_slug = self._slugify(inc['title'])
-
-        file_content = self._read_content(ent['filename'])
-        sections = self._extract_sections(file_content)
-
-        renamed = False
-        found = False
-        for sec in sections:
-            if sec['sec_id'] == sec_id:
-                renamed = (sec['title'] != inc['title'])
-                sec['sec_id'] = new_slug
-                sec['title'] = inc['title']
-                sec['lines'] = inc['lines']
-                found = True
-                break
-        if not found:
-            sections.append({'sec_id': new_slug, 'title': inc['title'], 'lines': inc['lines']})
-
-        self._save_section_content(ent, sections)
-        self._save_metadata(entries)
-        return self._success(section_id=new_slug, renamed=renamed, appended=(not found))
-
-    def _validate_outline(self, content:str) -> list[str]:
-        errors = []
-        h2_titles = []
-        h3_titles = []
-        has_h2 = False
-
-        for line in content.split('\n'):
-            stripped = line.strip()
-            if stripped.startswith('## ') and not stripped.startswith('### '):
-                has_h2 = True
-                title = stripped[3:].strip()
-                if title in h2_titles:
-                    errors.append(f'Duplicate H2: "{title}"')
-                h2_titles.append(title)
-            elif stripped.startswith('### '):
-                if not has_h2:
-                    errors.append('H3 without parent H2')
-                title = stripped[4:].strip()
-                if title in h3_titles:
-                    errors.append(f'Duplicate H3: "{title}"')
-                h3_titles.append(title)
-            elif stripped.startswith('- ') or re.match(r'^\d+\.\s', stripped):
-                if not has_h2:
-                    errors.append('Bullet point without parent section')
-            elif stripped.startswith('  *') or stripped.startswith('  -'):
-                pass
-            elif stripped.startswith('    '):
-                nested = stripped.lstrip()
-                if nested.startswith('*') or nested.startswith('-') or re.match(r'^\d+\.', nested):
-                    errors.append('Outline exceeds 4 levels deep')
-                    break
-
-        return errors
-
     def convert_to_prose(self, post_id:str, sec_id:str|None=None) -> dict:
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, entries = self._require_entry(post_id)
         content = self._read_content(ent['filename'])
 
         if sec_id:
@@ -150,14 +58,13 @@ class ContentService(ToolService):
                 if sec_item['sec_id'] == sec_id:
                     sec_item['lines'] = converted.split('\n')
                     break
-            self._save_section_content(ent, sections)
         else:
             sections = self._extract_sections(content)
             for sec_item in sections:
                 converted = self._outline_to_skeleton(sec_item['lines'])
                 sec_item['lines'] = converted.split('\n')
-            self._save_section_content(ent, sections)
 
+        self._save_section_content(ent, sections)
         self._save_metadata(entries)
         return self._success()
 
@@ -190,11 +97,7 @@ class ContentService(ToolService):
 
     def insert_section(self, post_id:str, sec_id:str,
                        section_title:str, content:str|None=None) -> dict:
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, entries = self._require_entry(post_id)
         file_content = self._read_content(ent['filename'])
         sections = self._extract_sections(file_content)
 
@@ -206,23 +109,20 @@ class ContentService(ToolService):
         if insert_idx is None:
             return self._error('not_found', f'Section not found: {sec_id}')
 
+        new_slug = self._slugify(section_title)
         new_sec = {
-            'sec_id': self._slugify(section_title),
+            'sec_id': new_slug,
             'title': section_title,
             'lines': (content or '').split('\n'),
         }
         sections.insert(insert_idx, new_sec)
         self._save_section_content(ent, sections)
         self._save_metadata(entries)
-        return self._success()
+        return self._success(sec_id=new_slug)
 
     def revise_content(self, post_id:str, sec_id:str,
                        content:str, snip_id:int|tuple|list|None=None) -> dict:
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, entries = self._require_entry(post_id)
         file_content = self._read_content(ent['filename'])
         sections = self._extract_sections(file_content)
 
@@ -271,11 +171,7 @@ class ContentService(ToolService):
 
     def remove_content(self, post_id:str, sec_id:str,
                        snip_id:int|tuple|list|None=None) -> dict:
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, entries = self._require_entry(post_id)
         file_content = self._read_content(ent['filename'])
         sections = self._extract_sections(file_content)
 
@@ -318,11 +214,7 @@ class ContentService(ToolService):
         if source_section == target_section and source_snip_id is None:
             return self._error('validation', 'Cannot move entire section to itself')
 
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, entries = self._require_entry(post_id)
         file_content = self._read_content(ent['filename'])
         sections = self._extract_sections(file_content)
 
@@ -371,11 +263,7 @@ class ContentService(ToolService):
                      target_section:str|None=None, version:int=0) -> dict:
         import difflib
 
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, _ = self._require_entry(post_id)
         content = self._read_content(ent['filename'])
         src = self._resolve_section(content, source_section)
         if not src:

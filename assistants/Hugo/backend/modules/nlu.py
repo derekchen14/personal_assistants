@@ -96,8 +96,8 @@ def _fill_slots_schema(flow) -> dict:
 
 
 def _strip_nulls(obj):
-    """Recursively drop None values before handing slots to fill_slot_values.
-    Models now emit `null` (schema-enforced) rather than a string sentinel."""
+    """Recursively drop None values before handing slots to fill_slot_values. Models now emit
+    `null` (schema-enforced) rather than a string sentinel."""
     if isinstance(obj, dict):
         return {k: _strip_nulls(v) for k, v in obj.items() if v is not None}
     if isinstance(obj, list):
@@ -324,9 +324,9 @@ class NLU:
         )
 
     def grounding_entity_history(self, flow, prev) -> set[str]:
-        """Entity slots still open for the LLM to fill. Drops entity slots
-        already grounded deterministically against the prior-turn active_post
-        — no new information for the LLM to contribute on those."""
+        """Entity slots still open for the LLM to fill. Drops entity slots already grounded
+        deterministically against the prior-turn active_post — no new information for the LLM to
+        contribute on those."""
         prev_post = prev.active_post if prev else None
         needs = set()
         for name, slot in flow.slots.items():
@@ -462,10 +462,10 @@ class NLU:
             log.info('  fill_slots post: %s', after)
 
     def unpack_user_actions(self, flow, payload:dict):
-        """Transfer a frontend action payload into flow slots. Per-flow dispatch
-        trusting the FE+flow shape contract. A missing case means the FE started
-        sending a new action payload that this layer hasn't registered yet —
-        crash so we add the branch rather than silently drop the click."""
+        """Transfer a frontend action payload into flow slots. Per-flow dispatch trusting the
+        FE+flow shape contract. A missing case means the FE started sending a new action payload
+        that this layer hasn't registered yet — crash so we add the branch rather than silently
+        drop the click."""
         match flow.name():
             case 'outline':
                 chosen = payload['proposals'][0]

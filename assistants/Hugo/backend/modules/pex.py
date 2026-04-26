@@ -12,7 +12,10 @@ from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.memory_manager import MemoryManager
 
-from backend.utilities.services import PostService, ContentService, AnalysisService, PlatformService
+from backend.utilities.services import (
+    PostService, ContentService, AnalysisService, PlatformService,
+    OutlineValidationError, PostNotFoundError,
+)
 from backend.modules.policies import *
 from schemas.ontology import Intent
 
@@ -58,7 +61,6 @@ class PEX:
             'rollback_post':     (self._post_service, 'rollback_post'),
             # ContentService (11)
             'generate_outline':  (self._content_service, 'generate_outline'),
-            'generate_section':  (self._content_service, 'generate_section'),
             'convert_to_prose':  (self._content_service, 'convert_to_prose'),
             'insert_section':    (self._content_service, 'insert_section'),
             'revise_content':    (self._content_service, 'revise_content'),
@@ -167,8 +169,8 @@ class PEX:
         return None
 
     def _verify_active_post(self, flow):
-        """Read-only check: if the flow is grounded on a post/section/channel,
-        state.active_post must be set by the policy. Topic-grounded flows skip this."""
+        """Read-only check: if the flow is grounded on a post/section/channel, state.active_post
+        must be set by the policy. Topic-grounded flows skip this."""
         state = self.world.current_state()
         ent_slot = flow.slots[flow.entity_slot]
         if ent_slot.slot_type in ['source', 'target', 'removal', 'channel'] and not state.active_post:
@@ -177,10 +179,9 @@ class PEX:
     # -- Validation -------------------------------------------------------
 
     def _validate_frame(self, frame:DisplayFrame, flow) -> FrameCheck:
-        """Check whether a frame is good enough to show to the user. A frame with a 'violation' set
-        is already recognized as an error frame, so it does NOT need Tier-1 retry.
-        return passed=False + is_error_frame=True so the outer caller routes it directly to RES.
-        """
+        """Check whether a frame is good enough to show to the user. A frame with a 'violation'
+        set is already recognized as an error frame, so it does NOT need Tier-1 retry. Return
+        passed=False + is_error_frame=True so the outer caller routes it directly to RES."""
         if self.ambiguity.present():
             return FrameCheck(passed=True)
         if 'violation' in frame.metadata:
@@ -234,18 +235,15 @@ class PEX:
                 context:'ContextCoordinator') -> tuple[DisplayFrame, bool]:
         """Attempt to recover from a failed frame validation.
 
-        Returns (frame, escalated). escalated=True means the caller
-        should flip state.has_issues and surface the ambiguity to the
-        user; False means the retry succeeded.
+        Returns (frame, escalated). escalated=True means the caller should flip state.has_issues
+        and surface the ambiguity to the user; False means the retry succeeded.
 
-        Only runs when `check.is_error_frame` is False — error frames
-        bypass this path and go straight to RES.
+        Only runs when `check.is_error_frame` is False — error frames bypass this path and go
+        straight to RES.
 
-        Tier 2 (retrieve-based context gather) and Tier 3 (NLU
-        re-route) are intentionally not live: reviving them requires a
-        concrete driving failure mode plus dedicated tests. Escalation
-        is the terminal fallback.
-        """
+        Tier 2 (retrieve-based context gather) and Tier 3 (NLU re-route) are intentionally not
+        live: reviving them requires a concrete driving failure mode plus dedicated tests.
+        Escalation is the terminal fallback."""
         log.warning('recover: %s (flow=%s)', check.reason, flow.name())
 
         # ── Tier 1: Retry skill with error feedback ─────────────────
@@ -306,6 +304,10 @@ class PEX:
                     '_success': False, '_error': 'invalid_input',
                     '_message': f'Unknown tool: {tool_name}',
                 }
+        except OutlineValidationError as ecp:
+            return {'_success': False, '_error': 'validation', '_message': str(ecp)}
+        except PostNotFoundError as ecp:
+            return {'_success': False, '_error': 'not_found', '_message': str(ecp)}
         except Exception as ecp:
             return {
                 '_success': False, '_error': 'server_error',
@@ -372,11 +374,10 @@ class PEX:
     def _dispatch_save_findings_tool(self, params:dict) -> dict:
         """Persist structured findings to the scratchpad under the active flow's name.
 
-        Tool-call-shaped replacement for skills that would otherwise emit a
-        JSON blob as their terminal text response. The policy reads the
-        findings out of tool_log via `extract_tool_result`; downstream flows
-        read them via `memory.read_scratchpad(<flow_name>)`.
-        """
+        Tool-call-shaped replacement for skills that would otherwise emit a JSON blob as their
+        terminal text response. The policy reads the findings out of tool_log via
+        `extract_tool_result`; downstream flows read them via
+        `memory.read_scratchpad(<flow_name>)`."""
         findings = params.get('findings', [])
         summary = params.get('summary', '')
         references_used = params.get('references_used', [])

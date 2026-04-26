@@ -1,8 +1,6 @@
 
-class BaseFlow(object):
-  """
-  Parent flow classes for Hugo (Blog Writing).
-  """
+class BaseFlow(object):"""
+  Parent flow classes for Hugo (Blog Writing)."""
   def __init__(self):
     self.slots = {}
     self.tools = []
@@ -60,8 +58,7 @@ class BaseFlow(object):
     """System 1: Targeted single-slot fill from PEX label extraction.
     Labels format: {slot_name: extracted_value}
     Routes entity-slot values through validate_entity so domain parents
-    can override for early validation (e.g. checking post existence).
-    """
+    can override for early validation (e.g. checking post existence)."""
     for slot_name, value in labels.items():
       if slot_name not in self.slots or value is None:
         continue

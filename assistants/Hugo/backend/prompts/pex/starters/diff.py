@@ -1,8 +1,7 @@
 """Per-turn starter prompt for DiffFlow.
 
 Section-scoped version diff. Calls diff_section with either lookback
-(N versions back) or mapping (e.g. draft vs published).
-"""
+(N versions back) or mapping (e.g. draft vs published)."""
 
 from backend.prompts.for_pex import render_source
 

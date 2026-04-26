@@ -2,8 +2,7 @@
 
 Each entry gives the intent-family context + any conventions that apply across every flow in that
 intent. The per-flow skill body (loaded from `pex/skills/<flow>.md`) and the per-flow starter (from
-`pex/starters/<flow>.py`) layer on top of this at runtime — see `backend/prompts/for_pex.py`.
-"""
+`pex/starters/<flow>.py`) layer on top of this at runtime — see `backend/prompts/for_pex.py`."""
 
 
 DRAFT = """You are currently working on Draft tasks, which encompasses generating outlines, refining them, and composing prose from those outlines in order to create a *draft* of new blog posts.

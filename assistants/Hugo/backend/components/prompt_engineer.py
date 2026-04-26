@@ -387,9 +387,9 @@ class PromptEngineer:
 
     @classmethod
     def apply_guardrails(cls, text:str, format:str='json', shape:str|None=None):
-        """Strip fences, then dispatch to the right format parser.
-        format: 'json' | 'sql' | 'markdown'
-        shape: optional hint passed to the format parser (e.g. 'outline', 'candidates')."""
+        """Strip fences, then dispatch to the right format parser. `format` is one of
+        'json' | 'sql' | 'markdown'; `shape` is an optional hint passed to the format parser
+        (e.g. 'outline', 'candidates')."""
         text = cls._strip_fences(text)
         match format:
             case 'json':     return cls._parse_json(text)
@@ -513,10 +513,9 @@ class PromptEngineer:
     def tool_succeeded(tool_log:list, tool_name:str) -> tuple[bool, dict]:
         """Check whether a named tool was called AND every call succeeded.
 
-        Returns (True, last_result_dict) when the tool appears at least once in
-        the log and every matching entry has _success=True; returns (False, {})
-        otherwise. The result dict strips underscore-prefixed control keys.
-        """
+        Returns (True, last_result_dict) when the tool appears at least once in the log and every
+        matching entry has _success=True; returns (False, {}) otherwise. The result dict strips
+        underscore-prefixed control keys."""
         calls = [tc for tc in tool_log if tc.get('tool') == tool_name]
         if not calls:
             return False, {}

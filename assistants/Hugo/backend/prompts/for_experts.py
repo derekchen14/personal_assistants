@@ -27,8 +27,7 @@ the same hybrid XML + Markdown shell used by slot-filling
 Output shapes are enforced by provider-side JSON schemas in
 `backend/modules/nlu.py`:
   - intent:  {"reasoning": str, "intent": one-of-6}
-  - flow:    {"reasoning": str, "flow_name": one-of-candidates, "confidence": float}
-"""
+  - flow:    {"reasoning": str, "flow_name": one-of-candidates, "confidence": float}"""
 
 from backend.prompts.experts import get_prompt
 

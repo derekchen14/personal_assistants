@@ -2,8 +2,7 @@
 
 Disjunction-style entity (source vs image), so the parameters block shows whichever is filled. When
 the policy preloads the target section content via `extra_resolved['section_content']`, the starter
-embeds it in a `<section_content>` XML block so the skill can skip a runtime `read_section` call.
-"""
+embeds it in a `<section_content>` XML block so the skill can skip a runtime `read_section` call."""
 
 from backend.prompts.for_pex import render_source, render_freetext
 

@@ -28,8 +28,7 @@ The per-flow content (instructions/rules/slots/examples) lives in backend/prompt
 
 Output shape is `{"reasoning": "...", "slots": {name: value}}`, enforced by a JSON schema
 from the provider. Use `null` for any slot the user did not specify — inside entity
-dicts, set individual keys to `null` rather than omitting them.
-"""
+dicts, set individual keys to `null` rather than omitting them."""
 
 from backend.prompts.nlu import get_prompt
 

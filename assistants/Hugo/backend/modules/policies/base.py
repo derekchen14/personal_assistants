@@ -3,9 +3,8 @@ import re
 from backend.components.display_frame import DisplayFrame
 
 class BasePolicy:
-    """Toolkit of reusable utility methods for per-flow policy methods.
-    No lifecycle orchestration — each flow method decides what to call and when.
-    """
+    """Toolkit of reusable utility methods for per-flow policy methods. No lifecycle
+    orchestration — each flow method decides what to call and when."""
 
     _STATUS_SUFFIXES = (' draft', ' post', ' note', ' published')
 
@@ -20,15 +19,12 @@ class BasePolicy:
                     extra_resolved:dict|None=None, exclude_tools:tuple=()):
         """Agentic tool-use loop for multi-tool flows. Returns (text, tool_log).
 
-        Pass include_preview=True to preload per-section previews in the
-        resolved-entities block, so the skill can plan without re-fetching.
-        Pass extra_resolved to merge already-fetched data (e.g. the current
-        outline) into the resolved-entities block so the skill skips a
-        redundant tool call.
-        Pass exclude_tools to hard-strip tool names from the skill's tool
-        registry for this call (e.g. forbid `generate_outline` in propose
-        mode). The tool call will error on the model side if it tries anyway.
-        """
+        Pass include_preview=True to preload per-section previews in the resolved-entities block,
+        so the skill can plan without re-fetching. Pass extra_resolved to merge already-fetched
+        data (e.g. the current outline) into the resolved-entities block so the skill skips a
+        redundant tool call. Pass exclude_tools to hard-strip tool names from the skill's tool
+        registry for this call (e.g. forbid `generate_outline` in propose mode). The tool call
+        will error on the model side if it tries anyway."""
         resolved = self._build_resolved_context(flow, state, tools, include_preview=include_preview)
         if extra_resolved:
             resolved = {**(resolved or {}), **extra_resolved}
@@ -47,10 +43,9 @@ class BasePolicy:
     def _read_post_content(self, post_id, tools) -> dict:
         """Read back full post content from disk for frame display.
 
-        Pulls the raw outline via `read_metadata(include_outline=True)` so markdown structure 
-        (newlines between bullets, blank lines between paragraphs) is preserved. Going through 
-        `read_section` here would flatten everything to a single space-joined sentence stream.
-        """
+        Pulls the raw outline via `read_metadata(include_outline=True)` so markdown structure
+        (newlines between bullets, blank lines between paragraphs) is preserved. Going through
+        `read_section` here would flatten everything to a single space-joined sentence stream."""
         if not post_id:
             return {}
         meta = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
@@ -115,8 +110,7 @@ class BasePolicy:
         """Pre-resolve post/section IDs so the LLM gets deterministic entities.
 
         When include_preview=True, also fetches a per-section preview (title +
-        first 3 lines) so skills don't need a follow-up read_metadata call.
-        """
+        first 3 lines) so skills don't need a follow-up read_metadata call."""
         post_id, sec_id = self._resolve_source_ids(flow, state, tools)
         if not post_id and state.active_post:
             post_id = state.active_post
@@ -151,12 +145,11 @@ class BasePolicy:
 
     def error_frame(self, flow, violation:str, thoughts:str='',
                     code:str|None=None, **extra_metadata) -> DisplayFrame:
-        """Construct an error frame with the standard violation classification.
-        `violation` must be one of the 8-item vocabulary (failed_to_save, scope_mismatch, missing_reference,
-        parse_failure, empty_output, invalid_input, conflict, tool_error).
-        `thoughts` carries the human-readable description; `code` carries the raw payload (failing JSON,
-        tool error string). `extra_metadata` merges into metadata alongside `violation`.
-        """
+        """Construct an error frame with the standard violation classification. `violation` must
+        be one of the 8-item vocabulary (failed_to_save, scope_mismatch, missing_reference,
+        parse_failure, empty_output, invalid_input, conflict, tool_error). `thoughts` carries the
+        human-readable description; `code` carries the raw payload (failing JSON, tool error
+        string). `extra_metadata` merges into metadata alongside `violation`."""
         metadata = {'violation': violation, **extra_metadata}
         return DisplayFrame(
             origin=flow.name(),
@@ -170,11 +163,10 @@ class BasePolicy:
     def retry_tool(self, tools, tool_name:str, params:dict, max_attempts:int=2) -> dict:
         """Call a tool with transient-failure retries. Returns the final result.
 
-        Retries on `_success=False` up to `max_attempts` total calls. The
-        last result (success or final failure) is returned verbatim; callers
-        inspect `_success` / `_error` as usual. Keep `max_attempts` small —
-        retry is for transient network/lock errors, not validation failures.
-        """
+        Retries on `_success=False` up to `max_attempts` total calls. The last result (success or
+        final failure) is returned verbatim; callers inspect `_success` / `_error` as usual. Keep
+        `max_attempts` small — retry is for transient network/lock errors, not validation
+        failures."""
         result = tools(tool_name, params)
         attempts = 1
         while not result.get('_success') and attempts < max_attempts:

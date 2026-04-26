@@ -4,8 +4,7 @@ Two modes:
   - Topic mode (`topic` filled): generate 3–5 angle ideas.
   - Snippet mode (`source.snip` filled): suggest 2–3 alternative phrasings.
 
-Disjunction entity: at least one of source / topic must be filled.
-"""
+Disjunction entity: at least one of source / topic must be filled."""
 
 from backend.prompts.for_pex import render_source
 

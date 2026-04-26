@@ -14,8 +14,7 @@ Three layers, each owned by a different file:
 
 Slot-rendering helpers below are used by starter modules; add new ones
 here on demand. The helpers are deliberately minimal — most slots
-serialize fine via direct attribute access in the starter template.
-"""
+serialize fine via direct attribute access in the starter template."""
 
 from importlib import import_module
 
@@ -52,8 +51,7 @@ def build_skill_system(base_system:str, flow, skill_prompt:str|None) -> str:
 
     Execution rules have been folded into per-intent prompts and per-flow skills, so there is no
     shared suffix. The `--- {Flow_name} Skill Instructions ---` divider keeps the handoff from
-    context to skill body visually obvious.
-    """
+    context to skill body visually obvious."""
     from backend.prompts.pex.sys_prompts import get_intent_prompt
     intent_prompt = get_intent_prompt(flow.intent)
 
@@ -71,8 +69,7 @@ def build_skill_messages(flow, convo_history:str,
 
     The starter owns task framing, preloaded content, and resolved details. Conversation history
     follows in its own XML tag; the tail of that tag is the latest utterance, so no separate block
-    is emitted. Falls back to a minimal scaffold for flows that don't yet have a starter module.
-    """
+    is emitted. Falls back to a minimal scaffold for flows that don't yet have a starter module."""
     starter_text = _render_starter(flow, resolved or {}, user_text or '')
 
     segments = []
@@ -97,8 +94,7 @@ def _default_starter(flow, resolved:dict) -> str:
 
     Produces the canonical XML shape (<task>, <resolved_details>) so that
     unmigrated flows still render a consistent prompt. Per-flow starters
-    can override this for shape-specific needs (e.g. <post_content>).
-    """
+    can override this for shape-specific needs (e.g. <post_content>)."""
     post_title = resolved.get('post_title', '')
     title_clause = f' for "{post_title}"' if post_title else ''
     task = (
@@ -155,8 +151,7 @@ def render_freetext(slot) -> str:
 
 def render_checklist(slot) -> str:
     """ChecklistSlot stores items in `steps` (dicts with name/description/checked).
-    Fall back to `values` for non-checklist GroupSlots that happen to be passed in.
-    """
+    Fall back to `values` for non-checklist GroupSlots that happen to be passed in."""
     steps = getattr(slot, 'steps', None)
     if steps:
         return '; '.join(str(s.get('name', '')) for s in steps if s.get('name'))

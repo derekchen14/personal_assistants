@@ -77,11 +77,7 @@ class PlatformService(ToolService):
             return self._error('auth_error',
                 f'{pub.display_name} is not connected.')
 
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, _ = self._require_entry(post_id)
         content = self._read_content(ent['filename'])
         post = {
             'post_id': post_id,

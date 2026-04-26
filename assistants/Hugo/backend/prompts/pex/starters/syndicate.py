@@ -1,8 +1,7 @@
 """Per-turn starter prompt for SyndicateFlow.
 
 Cross-posts an already-published post to one or more SECONDARY channels.
-The primary blog never appears here — that's release.
-"""
+The primary blog never appears here — that's release."""
 
 
 TEMPLATE = """<task>

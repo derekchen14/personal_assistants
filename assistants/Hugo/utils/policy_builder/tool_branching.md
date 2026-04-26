@@ -25,7 +25,7 @@ Each cell names the single tool we believe owns the operation. A `?` flags uncer
 | **metadata** | `create_post` | `read_metadata` | `update_post` | `delete_post` |
 | **post outline** | `generate_outline` | `read_metadata(include_outline=True)` | `generate_outline` | N/A (whole-post delete is `delete_post`; emptying just the outline is not a first-class op) |
 | **post prose** | N/A (assembled per-section) | N/A (loops `read_section`) | N/A (per-section loop) | N/A |
-| **section outline** | `insert_section` (shell) + `generate_section` (body) | `read_section` | `generate_section` | `remove_content` |
+| **section outline** | `insert_section` (shell) + `revise_content` (body) | `read_section` | `revise_content` (body) / `update_post` with `sections=[…]` (headings, position-by-position) | `remove_content` |
 | **section prose** | `insert_section` (shell) + `revise_content` (body) | `read_section` | `revise_content` | `remove_content` |
 | **snippet** | `revise_content(snip_id=<int>)` | `read_section(snip_id=..., include_sentence_ids=?)` | `revise_content(snip_id=(start, end))` | `remove_content(snip_id=...)` |
 | **channel** | N/A (channels are configured, not created at runtime) | `channel_status` | `release_post` / `promote_post` / `cancel_release` (three distinct verbs) | N/A (channels are not deleted at runtime) |
@@ -71,17 +71,19 @@ Each conflict below has a recommendation plus alternatives. Work through them on
 
 **Decision**: extend `revise_content(post_id, sec_id, content, snip_id=None)` with an optional `snip_id` parameter. The signature replaces the earlier `target={start, end}` proposal; `snip_id` models the section content as an ordered list of sentences and supports int or tuple indexing. `find_and_replace` is retired.
 
-### Conflict 3: section outline update vs. section prose update \u2014 RESOLVED
+### Conflict 3: section outline update vs. section prose update \u2014 REVISED (merged)
 
 **Cells**: section outline \u00d7 Update and section prose \u00d7 Update.
 
-**Decision**: keep two tools. `generate_section` owns outline update; `revise_content` owns prose update. Distinct content shapes get distinct validation contracts.
+**Original decision (superseded)**: keep two tools \u2014 `generate_section` for outline, `revise_content` for prose.
+
+**Current decision**: merge into `revise_content` for both shapes. `generate_section` was retired because (a) only one flow used it (refine) versus eight using `revise_content`, (b) its silent "first ## heading wins" parsing dropped data when callers passed multi-section content, and (c) the outline-vs-prose validation split moved to `_save_section_content` so every section write enforces structure regardless of caller. Heading rename moved to `update_post(updates={'sections': [<title 0>, <title 1>, \u2026]})` since heading is metadata, not content. The position-based shape avoids forcing the model to learn slug derivation and lets a single call rename multiple headings at once.
 
 ### Conflict 4: section create (the two-step pattern) \u2014 RESOLVED
 
 **Cells**: section outline \u00d7 Create and section prose \u00d7 Create.
 
-**Decision**: keep the two-step pattern. `insert_section(post_id, after_sec, title)` creates the section shell with explicit ordering; the subsequent `generate_section` (outline) or `revise_content` (prose) fills the body. Ordering intent stays legible and signatures stay small.
+**Decision**: keep the two-step pattern. `insert_section(post_id, sec_id, section_title)` creates the section shell with explicit ordering after the anchor; the subsequent `revise_content(post_id, sec_id=<new slug>, content)` fills the body. Ordering intent stays legible and signatures stay small. The same pair handles both outline bodies and prose bodies \u2014 the body shape is just markdown.
 
 ### Conflict 5: channel update semantics \u2014 RESOLVED
 
@@ -108,7 +110,7 @@ Section content is modelled as an ordered list of sentences. Every snippet-scope
 - **Previewing sentences with ids**: `read_section(post_id, sec_id, include_sentence_ids=True)` prepends each sentence with its index so the skill can locate spans by id rather than by substring match.
 - **Slicing semantics**: int returns one sentence; tuple returns a slice. Index `0` is the first sentence; index `-1` is the last (single-int usage only). Ranges follow Python list-slicing conventions (end-exclusive), so `snip_id=(2, 5)` selects sentences at indices 2, 3, and 4.
 - **Range endpoint rule**: both positions of a range must be non-negative integers within `0 \u2264 start \u2264 end \u2264 sentence_count`. `-1` has one meaning and one only \u2014 the last sentence when `snip_id` is a single integer. It is never a valid range endpoint; to reach through the end of a section, pass the concrete `sentence_count` from `read_metadata`.
-- **Outline sections**: prose-oriented snippet operations do not apply. Whole-section outline updates go through `generate_section(post_id, sec_id, content)` even when only one bullet changes; the skill rewrites the bullet list wholesale and passes it to `generate_section`. `revise_content` technically accepts an outline section and will not crash, but it is not the right tool for that shape.
+- **Outline sections**: prose-oriented snippet operations do not apply. Whole-section outline updates go through `revise_content(post_id, sec_id, content)` even when only one bullet changes; the skill rewrites the bullet list wholesale. The validation that used to live in `generate_section` now runs in `_save_section_content`, so every save (outline or prose) is guarded.
 
 ### `revise_content` with `snip_id`
 
@@ -148,9 +150,10 @@ Section content is modelled as an ordered list of sentences. Every snippet-scope
 
 ### Section outline
 
-- **Create**: `insert_section(post_id="abcd0123", after_sec="motivation", title="Architectures of the Past")` then `generate_section(post_id="abcd0123", sec_id="architectures-of-the-past", content="- seq2seq era\n- transformer era\n- self-play breakthroughs")`
+- **Create**: `insert_section(post_id="abcd0123", sec_id="motivation", section_title="Architectures of the Past")` (returns `sec_id="architectures-of-the-past"`) then `revise_content(post_id="abcd0123", sec_id="architectures-of-the-past", content="- seq2seq era\n- transformer era\n- self-play breakthroughs")`
 - **Read**: `read_section(post_id="abcd0123", sec_id="architectures-of-the-past")`
-- **Update**: `generate_section(post_id="abcd0123", sec_id="architectures-of-the-past", content="- seq2seq era\n- transformer era\n- self-play breakthroughs\n- memory-augmented networks")`
+- **Update body**: `revise_content(post_id="abcd0123", sec_id="architectures-of-the-past", content="- seq2seq era\n- transformer era\n- self-play breakthroughs\n- memory-augmented networks")`
+- **Update heading (rename)**: `update_post(post_id="abcd0123", updates={"sections": ["The Need for Data", "Architectural Lineage"]})` — pass one heading per existing section, in order. Renames any that differ from the current titles.
 - **Delete**: `remove_content(post_id="abcd0123", sec_id="architectures-of-the-past")`
 
 ### Section prose

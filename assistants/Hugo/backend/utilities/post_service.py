@@ -26,7 +26,7 @@ _PLACEHOLDER_SECTIONS = [
     ['Origin', 'Evolution', 'Future'],
 ]
 
-_VALID_METADATA_KEYS = {'title', 'category', 'tags', 'color', 'status'}
+_VALID_METADATA_KEYS = {'title', 'category', 'tags', 'color', 'status', 'sections'}
 
 
 class PostService(ToolService):
@@ -101,11 +101,7 @@ class PostService(ToolService):
 
     def read_metadata(self, post_id:str, include_outline:bool=False,
                       include_preview:bool=False) -> dict:
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, _ = self._require_entry(post_id)
         content = self._read_content(ent['filename'])
         sections = self._extract_sections(content)
 
@@ -149,11 +145,7 @@ class PostService(ToolService):
     def read_section(self, post_id:str, sec_id:str,
                      snip_id:int|tuple|list|None=None,
                      include_sentence_ids:bool=False) -> dict:
-        entries = self._load_metadata()
-        entry = self._find_entry(entries, post_id)
-        if not entry:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        entry, _ = self._require_entry(post_id)
         content = self._read_content(entry['filename'])
         section = self._resolve_section(content, sec_id)
         if not section:
@@ -283,15 +275,25 @@ class PostService(ToolService):
         )
 
     def update_post(self, post_id:str, updates:dict) -> dict:
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
+        ent, entries = self._require_entry(post_id)
+        file_content = self._read_content(ent['filename'])
 
         invalid_keys = set(updates.keys()) - _VALID_METADATA_KEYS
         if invalid_keys:
             return self._error('validation',
                 f'Invalid metadata keys: {invalid_keys}. Use content tools for content changes.')
+
+        section_headers = updates.pop('sections', [])
+        sections = self._extract_sections(file_content)
+        if len(section_headers) == len(sections):
+            for sec, new_header in zip(sections, section_headers):
+                if sec['title'] != new_header:
+                    sec['title'] = new_header
+                    sec['sec_id'] = self._slugify(new_header)
+            self._save_section_content(ent, sections)
+        elif len(section_headers) > 0:
+            mismatch_length = f'sections list has {len(section_headers)} entries but the post has {len(sections)}  sections'
+            return self._error('validation', mismatch_length)
 
         for key in ('title', 'category', 'tags', 'color'):
             if key in updates:
@@ -325,19 +327,16 @@ class PostService(ToolService):
         )
 
     def delete_post(self, post_id:str) -> dict:
-        entries = self._load_metadata()
-        for idx, ent in enumerate(entries):
-            if ent['post_id'] == post_id:
-                removed = entries.pop(idx)
-                self._save_metadata(entries)
-                filepath = self._content_dir / removed['filename']
-                if filepath.exists():
-                    filepath.unlink()
-                sdir = self._snapshot_dir(post_id)
-                if sdir.exists():
-                    shutil.rmtree(sdir)
-                return self._success()
-        return self._error('not_found', f'Post not found: {post_id}')
+        ent, entries = self._require_entry(post_id)
+        entries.remove(ent)
+        self._save_metadata(entries)
+        filepath = self._content_dir / ent['filename']
+        if filepath.exists():
+            filepath.unlink()
+        sdir = self._snapshot_dir(post_id)
+        if sdir.exists():
+            shutil.rmtree(sdir)
+        return self._success()
 
     def summarize_text(self, post_id:str|None=None, sec_id:str|None=None,
                        note:str|None=None, raw_text:str|None=None) -> dict:
@@ -346,18 +345,12 @@ class PostService(ToolService):
         elif note:
             text = note
         elif sec_id and post_id:
-            entries = self._load_metadata()
-            ent = self._find_entry(entries, post_id)
-            if not ent:
-                return self._error('not_found', f'Post not found: {post_id}')
+            ent, _ = self._require_entry(post_id)
             content = self._read_content(ent['filename'])
             sec = self._resolve_section(content, sec_id)
             text = '\n'.join(sec['lines']) if sec else ''
         elif post_id:
-            entries = self._load_metadata()
-            ent = self._find_entry(entries, post_id)
-            if not ent:
-                return self._error('not_found', f'Post not found: {post_id}')
+            ent, _ = self._require_entry(post_id)
             text = self._read_content(ent['filename'])
         else:
             return self._error('validation', 'Provide at least one of: raw_text, note, sec_id, post_id')
@@ -375,11 +368,7 @@ class PostService(ToolService):
         if version < 1 or version > self.max_snapshots:
             return self._error('validation', f'Version must be 1-{self.max_snapshots}')
 
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, entries = self._require_entry(post_id)
         content = self._read_content(ent['filename'])
         sections = self._extract_sections(content)
         restored_any = False

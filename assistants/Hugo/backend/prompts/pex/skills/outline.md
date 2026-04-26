@@ -27,7 +27,9 @@ This skill describes how to generate a fresh outline for a post. You operate in 
 
 1. Confirm that `stage='direct'` from `<resolved_details>`.
 2. Read the section list from `<resolved_details>`. These are the sections of the outline.
-3. Draft bullets per section honoring the depth value. Depth 2 is flat bullets. Depth 3 adds `### Sub-section` headings with bullets under each. Depth 4 goes further to `### Sub-section` + `- bullet` + `  * sub-bullet`.
+3. Draft bullets per section honoring the depth value. 
+  a. Bullet points are written in a concise manner to allow for quick review, rather than full sentences.
+  b. Depth 2 is flat bullets. Depth 3 adds `### Sub-section` headings with bullets under each. Depth 4 goes further to `### Sub-section` + `- bullet` + `  * sub-bullet`.
 4. Call `generate_outline(post_id, content=<markdown outline>)` to save. End the turn.
 
 ## Handling Ambiguity and Errors

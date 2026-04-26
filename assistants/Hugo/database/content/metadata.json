@@ -38,22 +38,6 @@
       "filename": "drafts/syntax-highlighting.md"
     },
     {
-      "post_id": "07d64034",
-      "title": "ML as Software 2.0",
-      "status": "published",
-      "category": "thoughts",
-      "tags": [
-        "thoughts",
-        "trends"
-      ],
-      "color": "",
-      "created_at": "2026-03-12T05:47:32.626276+00:00",
-      "updated_at": "2026-04-26T15:24:56.532355+00:00",
-      "preview": "ML as Software 2.0 treats machine learning as a core engineering discipline, not a research experiment. Companies that adapt will build it like they build software: with rigor, iteration, and clear ownership.\nThe desktop-to-web shift is a useful mirror for today's move to ML. Early web teams wasted...",
-      "word_count": 185,
-      "filename": "posts/ml-as-software_2.md"
-    },
-    {
       "post_id": "1ff23b50",
       "title": "Insights around Attention Mechanism",
       "status": "draft",
@@ -69,19 +53,6 @@
       "filename": "drafts/insights-around-attention-mechanism.md"
     },
     {
-      "post_id": "7449ae4c",
-      "title": "History of Seq2Seq",
-      "status": "published",
-      "category": null,
-      "tags": [],
-      "color": "",
-      "created_at": "2026-03-12T05:47:32.625710+00:00",
-      "updated_at": "2026-04-26T08:25:27.364048+00:00",
-      "preview": "- The limitations of fixed-length input/output in early neural networks\n- Why traditional RNNs struggled with variable-length sequences\n- The bottleneck problem: compressing entire sentences into a single vector\n- Real-world tasks that demanded a better solution (translation, summarization, Q&A)",
-      "word_count": 669,
-      "filename": "posts/history-of-seq2seq.md"
-    },
-    {
       "post_id": "4c1b3412",
       "title": "Expectation Maximization",
       "status": "draft",
@@ -89,9 +60,9 @@
       "tags": [],
       "color": "",
       "created_at": "2026-03-12T05:47:32.625342+00:00",
-      "updated_at": "2026-04-26T15:26:57.108525+00:00",
-      "preview": "Real-world data is rarely clean. Records go missing, labels are absent, and patterns hide beneath the noise. Most algorithms treat incomplete data as a problem to fix. They scrub, impute, or discard it before training begins. Expectation Maximization (EM) takes the opposite approach. It estimates...",
-      "word_count": 282,
+      "updated_at": "2026-04-26T17:44:23.715993+00:00",
+      "preview": "Real-world data is rarely clean. Records go missing, labels are absent, and meaningful patterns hide beneath noise. Most algorithms respond by treating that messiness as something to be eliminated. They scrub, impute, or discard incomplete records before training even begins. Expectation...",
+      "word_count": 301,
       "filename": "drafts/expectation-maximization.md"
     },
     {
@@ -178,9 +149,9 @@
       ],
       "color": "purple",
       "created_at": "2022-05-24T00:00:00+00:00",
-      "updated_at": "2026-04-26T15:24:41.017158+00:00",
+      "updated_at": "2026-04-26T17:42:20.632180+00:00",
       "preview": "Training dialogue agents for real-life use cases is immensely difficult \u2014 manual data annotation quickly hits scaling limits. One solution is to build a user simulator that generates training examples for the agent at scale. To build such a system, though, you need a model that understands how to...",
-      "word_count": 589,
+      "word_count": 518,
       "filename": "posts/building-user-simulators.md"
     },
     {
@@ -929,6 +900,48 @@
       "preview": "1. Human-in-the-loop controls: Agents pause at critical decisions. Delete database? Charge card? Send customer emails? Harness requires approval. Replit\u2019s agent generates code but requires human confirmation before deployment.",
       "word_count": 149,
       "filename": "notes/this-is-pretty-cool.md"
+    },
+    {
+      "post_id": "a63a2821",
+      "title": "History of Seq2Seq",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-04-26T16:05:33.986649+00:00",
+      "updated_at": "2026-04-26T17:41:41.614971+00:00",
+      "preview": "- The limitations of fixed-length input/output in early neural networks\n- Why traditional RNNs struggled with variable-length sequences\n- The bottleneck problem: compressing entire sentences into a single vector\n- Real-world tasks that demanded a better solution (translation, summarization, Q&A)",
+      "word_count": 670,
+      "filename": "drafts/history-of-seq2seq.md"
+    },
+    {
+      "post_id": "e36412d6",
+      "title": "ML as Software 2.0",
+      "status": "draft",
+      "category": null,
+      "tags": [
+        "thoughts",
+        "trends"
+      ],
+      "color": "",
+      "created_at": "2026-04-26T16:05:33.986649+00:00",
+      "updated_at": "2026-04-26T17:43:55.474471+00:00",
+      "preview": "ML as Software 2.0 treats machine learning as a core engineering discipline, not a research experiment. Companies that adapt build it with rigor, iteration, and clear ownership.",
+      "word_count": 178,
+      "filename": "drafts/ml-as-software_2.md"
+    },
+    {
+      "post_id": "8a60a97c",
+      "title": "The Wright Brothers and the Discovery of Flight",
+      "status": "draft",
+      "category": null,
+      "tags": [],
+      "color": "",
+      "created_at": "2026-04-26T16:07:07.132092+00:00",
+      "updated_at": "2026-04-26T18:29:49.857888+00:00",
+      "preview": "- Wilbur and Orville Wright ran a modest bicycle shop in Dayton, Ohio, giving them hands-on mechanical intuition that would prove invaluable\n- Both brothers were largely self-taught, voracious readers of engineering and science texts, particularly the works of Otto Lilienthal\n- Inspired by...",
+      "word_count": 710,
+      "filename": "drafts/the-wright-brothers-and-the-discovery-of-flight.md"
     }
   ]
 }

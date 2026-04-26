@@ -1,8 +1,7 @@
 """Per-turn starter prompt for AuditFlow.
 
 Whole-post style + voice consistency check. Read-only — never edits the post.
-The policy handles threshold-based confirmation before any downstream edits.
-"""
+The policy handles threshold-based confirmation before any downstream edits."""
 
 from backend.prompts.for_pex import render_source
 

@@ -3,13 +3,12 @@ title: "Expectation Maximization"
 ---
 
 ## _hidden_section_title
-Real-world data is rarely clean. Records go missing, labels are absent, and patterns hide beneath the noise. Most algorithms treat incomplete data as a problem to fix. They scrub, impute, or discard it before training begins. Expectation Maximization (EM) takes the opposite approach. It estimates missing information directly from the data. Incomplete records become a working ingredient, not an obstacle.
+Real-world data is rarely clean. Records go missing, labels are absent, and meaningful patterns hide beneath noise. Most algorithms respond by treating that messiness as something to be eliminated. They scrub, impute, or discard incomplete records before training even begins. Expectation Maximization (EM) takes the opposite approach. Rather than working around missing information, it folds uncertainty directly into the learning process. Incomplete records become a working ingredient, not an obstacle. That shift is what lets EM thrive where other algorithms stall — powering anomaly detection, customer segmentation, speech recognition, and unsupervised clustering, all without requiring clean input data.
 
-EM thrives where other algorithms stall. It powers anomaly detection, customer segmentation, speech recognition, and unsupervised clustering.
+At its core, EM alternates between two steps in a principled feedback loop. The **E-step** (Expectation) evaluates each data point against the current model parameters, assigning it a probability weight for every cluster or hidden state. The **M-step** (Maximization) then updates those parameters to best fit the weighted assignments the E-step produced. The cycle repeats until the parameters stabilize and the likelihood stops climbing.
 
-At its core, EM alternates between two steps. The **E-step** (Expectation) uses the current model parameters to assign each data point a probability weight. That weight reflects how likely the point belongs to each cluster or hidden state. The **M-step** (Maximization) updates the parameters to best explain those weighted assignments. Each iteration improves the model's fit. The cycle repeats until the parameters stabilize and the likelihood stops climbing.
+The sections that follow unpack the mathematics behind EM and walk through a worked example. By the end, you will understand not just how EM works, but why it works.
 
-The sections that follow unpack the mathematics behind EM and walk through a worked example. You'll come away understanding not just how EM works, but why it works.
 ## Results
 
 |         | E-step           | M-step  |

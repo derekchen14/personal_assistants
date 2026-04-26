@@ -1,8 +1,7 @@
 """Per-turn starter prompt for PromoteFlow.
 
 Amplifies an already-published post via pin / feature / announce / social.
-Channel slot is a CategorySlot (the action), not a publishing channel.
-"""
+Channel slot is a CategorySlot (the action), not a publishing channel."""
 
 
 TEMPLATE = """<task>

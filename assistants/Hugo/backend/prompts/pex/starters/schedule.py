@@ -1,8 +1,7 @@
 """Per-turn starter prompt for ScheduleFlow.
 
 Schedules a post for future publication on one or more channels. The
-datetime slot carries `{start, stop, time_len, unit, recurrence}`.
-"""
+datetime slot carries `{start, stop, time_len, unit, recurrence}`."""
 
 
 TEMPLATE = """<task>

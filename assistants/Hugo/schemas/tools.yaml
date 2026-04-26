@@ -158,12 +158,12 @@ tools:
   update_post:
     tool_id: update_post
     name: "Update post"
-    description: "Update a post's metadata (title, category, tags, color, status)"
+    description: "Update post metadata. Valid keys in `updates`: title, category, tags, color, status, sections. The `sections` value is a list of section headings in order, used to rename one or more H2s — the list length must match the post's existing section count, and any entry that differs from the current title triggers a rename. Pass any subset of valid keys; omitted keys are unchanged."
     input_schema:
       type: object
       properties:
         post_id: {type: string, description: "The post ID to update"}
-        updates: {type: object, description: "Key-value pairs to update (title, category, tags, color, status)"}
+        updates: {type: object, description: "Key-value pairs. Valid keys: title, category, tags, color, status, sections. `sections` is a list of section headings in order; length must match existing section count."}
       required: [post_id, updates]
       additionalProperties: false
     idempotent: false
@@ -220,7 +220,7 @@ tools:
   generate_outline:
     tool_id: generate_outline
     name: "Generate outline"
-    description: "Save an outline to a post as a FULL overwrite. Used when starting from scratch (the `outline` flow) and when removing sections during refinement — the new outline replaces the old one wholesale. For targeted edits to a single section, use `generate_section` instead."
+    description: "Save an outline to a post as a FULL overwrite. Used when starting from scratch (the `outline` flow) and when removing or restructuring multiple sections at once — the new outline replaces the old one wholesale. For targeted single-section edits, use `revise_content`."
     input_schema:
       type: object
       properties:
@@ -228,22 +228,6 @@ tools:
         content: {type: string, description: "Outline content as markdown (## Section headings with bullet points)"}
         sec_id: {type: string, description: "Optional section ID to scope the outline to"}
       required: [post_id, content]
-      additionalProperties: false
-    idempotent: false
-    timeout_ms: 10000
-    capabilities: {accesses_private_data: true, receives_untrusted_input: true, communicates_externally: false}
-
-  generate_section:
-    tool_id: generate_section
-    name: "Generate section"
-    description: "Save a single outline section. Used by the `refine` flow for targeted edits. If `sec_id` matches an existing section, its content is replaced (and renamed if the incoming ## heading differs); if not, the content is appended as a new section at the tail of the outline. Cannot remove sections — use `generate_outline` for removals."
-    input_schema:
-      type: object
-      properties:
-        post_id: {type: string, description: "The post ID whose outline to edit"}
-        sec_id: {type: string, description: "The section id (slug) to target. Pass the old slug when renaming — the tool rederives the slug from the new heading."}
-        content: {type: string, description: "Full section markdown starting with a `## Heading` line, followed by bullets"}
-      required: [post_id, sec_id, content]
       additionalProperties: false
     idempotent: false
     timeout_ms: 10000
@@ -267,7 +251,7 @@ tools:
   revise_content:
     tool_id: revise_content
     name: "Revise content"
-    description: "Revise a section's prose. Without snip_id, replaces the whole section. With an integer snip_id, inserts the new content at that sentence index (-1 appends to the end). With a two-element [start, end] snip_id, replaces the slice of sentences (end-exclusive) with the new content. Not appropriate for outline-shaped sections; use generate_section for those."
+    description: "Revise a section's content (outline bullets or prose). Without snip_id, replaces the whole section body. With an integer snip_id, inserts the new content at that sentence index (-1 appends to the end). With a two-element [start, end] snip_id, replaces the slice of sentences (end-exclusive) with the new content. Outline structure is validated on every save, so well-formed `##`/`###`/bullets pass through unchanged."
     input_schema:
       type: object
       properties:

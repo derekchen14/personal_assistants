@@ -2,8 +2,7 @@
 
 Rework handles both single-section and whole-post (structural) operations in a single llm_execute
 pass. Policy preloads a per-section preview (title + first few lines) via include_preview=True so
-the skill sees the whole-post shape without N×read_section calls.
-"""
+the skill sees the whole-post shape without N×read_section calls."""
 
 from backend.prompts.for_pex import (
     render_source, render_freetext, render_checklist, render_section_preview,

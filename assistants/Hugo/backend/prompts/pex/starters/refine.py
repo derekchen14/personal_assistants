@@ -1,14 +1,13 @@
 """Per-turn starter prompt for RefineFlow.
 
 The skill body (`pex/skills/refine.md`) carries the static process. This file carries the runtime
-payload — post title, current outline (as XML), and the filled feedback / steps parameters.
-"""
+payload — post title, current outline (as XML), and the filled feedback / steps parameters."""
 
 from backend.prompts.for_pex import render_freetext, render_checklist
 
 
 TEMPLATE = """<task>
-Refine the outline of "{post_title}". Apply the changes from the user's final utterance to the outline below. Call `generate_section` for each targeted edit, or `remove_content` when deleting a section. End once you have successfully saved all your refinements.
+Refine the outline of "{post_title}". Apply the changes from the user's final utterance to the outline below. Use `revise_content` to rewrite an existing section's body, `insert_section` (then `revise_content` for the body) to add a new H2 at a position, `update_post` with `rename_section` to rename an existing heading, or `remove_content` to delete a section. End once you have successfully saved all your refinements.
 </task>
 
 <post_content>

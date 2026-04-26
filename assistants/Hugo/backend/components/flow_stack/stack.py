@@ -32,16 +32,13 @@ class FlowStack:
         return new_flow
 
     def fallback(self, flow_name:str) -> BaseFlow:
-        """Replace the current flow. Marks it Invalid, transfers matching
-        slot values to the new flow, then pushes the replacement."""
-        old = self._stack[-1] if self._stack else None
-        new = self._push(flow_name)
-        if old:
-            old.status = FlowLifecycle.INVALID.value
-            for slot_name, slot in old.slots.items():
-                if slot_name in new.slots and slot.filled:
-                    new.fill_slot_values({slot_name: slot.to_dict()})
-        return new
+        """Replace the current flow. Marks it Invalid and transfers matching slot values to the new flow."""
+        old_flow, new_flow = self._stack[-1], self._push(flow_name)
+        old_flow.status = FlowLifecycle.INVALID.value
+        for slot_name, slot in old_flow.slots.items():
+            if slot_name in new_flow.slots and slot.filled:
+                new_flow.fill_slot_values({slot_name: slot.to_dict()})
+        return new_flow
 
     def peek(self) -> BaseFlow|None:
         """Top of stack without removing."""

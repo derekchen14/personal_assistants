@@ -12,10 +12,21 @@ _STRUCTURAL_LINE = re.compile(r'^\s*(#{1,6}\s|[-*]\s|\d+\.\s)')
 _HEADING_LINE = re.compile(r'^\s*#{1,6}\s')
 
 
+class OutlineValidationError(ValueError):
+    """Raised when a section write would produce a structurally invalid outline (duplicate
+    headings, depth overflow, orphaned bullets, etc.). Caught at the PEX dispatch boundary and
+    surfaced as `_error: 'validation'` in the tool result so the skill can retry."""
+
+
+class PostNotFoundError(LookupError):
+    """Raised when a `post_id` does not match any entry in metadata. Caught at the PEX dispatch
+    boundary and surfaced as `_error: 'not_found'`."""
+
+
 def _is_structural(line:str) -> bool:
-    """A line is structural if it's a markdown heading, bullet, or numbered item.
-    Structural lines must survive round-tripping on their own line — flattening
-    them with surrounding prose would mash bullets/headings into a single line."""
+    """A line is structural if it's a markdown heading, bullet, or numbered item. Structural lines
+    must survive round-tripping on their own line — flattening them with surrounding prose would
+    mash bullets/headings into a single line."""
     return bool(_STRUCTURAL_LINE.match(line))
 
 
@@ -26,13 +37,11 @@ def _is_heading(line:str) -> bool:
 def split_sentences(text:str) -> list[str]:
     """Split a section's text into an ordered list of snips.
 
-    Paragraphs (separated by blank lines) are processed independently. A
-    paragraph containing any structural line (heading, bullet, numbered item)
-    is split line-by-line so bullets and sub-headings keep their own snip.
-    A pure-prose paragraph yields one snip per sentence (`.`, `!`, `?` followed
-    by whitespace). Empty strings are dropped. The resulting list is the unit
-    that `snip_id` indexes into.
-    """
+    Paragraphs (separated by blank lines) are processed independently. A paragraph containing any
+    structural line (heading, bullet, numbered item) is split line-by-line so bullets and
+    sub-headings keep their own snip. A pure-prose paragraph yields one snip per sentence (`.`,
+    `!`, `?` followed by whitespace). Empty strings are dropped. The resulting list is the unit
+    that `snip_id` indexes into."""
     text = text.strip()
     if not text:
         return []
@@ -55,10 +64,10 @@ def split_sentences(text:str) -> list[str]:
 
 
 def join_sentences(sentences:list[str]) -> str:
-    """Rejoin snips into a section body. Structural snips (bullets, headings,
-    numbered items) go on their own line; prose sentences are space-joined so
-    they flow as a paragraph. A heading following a non-heading gets a blank
-    line before it so adjacent heading+bullet groups are visually distinct."""
+    """Rejoin snips into a section body. Structural snips (bullets, headings, numbered items) go
+    on their own line; prose sentences are space-joined so they flow as a paragraph. A heading
+    following a non-heading gets a blank line before it so adjacent heading+bullet groups are
+    visually distinct."""
     if not sentences:
         return ''
     parts = [sentences[0]]
@@ -120,6 +129,15 @@ class ToolService:
                 return ent
         return None
 
+    def _require_entry(self, post_id:str) -> tuple[dict, list[dict]]:
+        """Load metadata and locate the entry, raising `PostNotFoundError` if missing. Returns
+        `(entry, entries)` — write callers mutate both, read-only callers can discard `entries` with `_`."""
+        entries = self._load_metadata()
+        for ent in entries:
+            if ent['post_id'] == post_id:
+                return ent, entries
+        raise PostNotFoundError(f'Post not found: {post_id}')
+
     # -- Content I/O --------------------------------------------------------
 
     def _read_content(self, filename:str) -> str:
@@ -156,7 +174,7 @@ class ToolService:
             stripped = para.strip()
             if not stripped or stripped.startswith('!['):
                 continue
-            # Skip heading lines within the paragraph
+            # Skip heading lines within the paragraph.
             lines = [line for line in stripped.split('\n')
                      if line.strip() and not line.strip().startswith('#')]
             if not lines:
@@ -189,12 +207,10 @@ class ToolService:
 
     @staticmethod
     def _rebuild_content(sections:list[dict]) -> str:
-        """Rebuild markdown content from section dicts.
-
-        Guarantees a blank line before every non-first H2 heading so newly
-        appended sections don't collide with the prior section's last bullet.
-        Idempotent: existing blank-line separators inside a section's lines
-        pass through untouched rather than double-up."""
+        """Rebuild markdown content from section dicts. Guarantees a blank line before every
+        non-first H2 heading so newly appended sections don't collide with the prior section's
+        last bullet. Idempotent: existing blank-line separators inside a section's lines pass
+        through untouched rather than double-up."""
         parts = []
         for idx, sec in enumerate(sections):
             if idx > 0 and parts and parts[-1] != '':
@@ -210,9 +226,12 @@ class ToolService:
                 return sec
         return None
 
-    def _save_section_content(self, entry:dict, sections:list[dict]):
-        """Write updated sections back to the post file and update metadata."""
+    def _save_section_content(self, entry:dict, sections:list[dict]) -> None:
+        """Write updated sections back to the post file and update metadata. Validates outline
+        structure first; raises `OutlineValidationError` WITHOUT writing if the rebuilt content
+        fails any structural check."""
         body = self._rebuild_content(sections)
+        self._validate_outline(body)
         if entry.get('status') == 'note':
             (self._content_dir / entry['filename']).write_text(body, encoding='utf-8')
         else:
@@ -225,6 +244,45 @@ class ToolService:
         entry['preview'] = self._compute_preview(body)
         entry['word_count'] = len(re.sub(r'<[^>]+>', '', body).split())
         entry['updated_at'] = self._now()
+
+    @staticmethod
+    def _validate_outline(content:str) -> None:
+        """Structural guards run on every section write so violations can't sneak in regardless
+        of which tool produced the content. Raises `OutlineValidationError` listing all
+        violations; returns silently when the content is well-formed."""
+        errors = []
+        h2_titles = []
+        h3_titles = []
+        has_h2 = False
+
+        for line in content.split('\n'):
+            stripped = line.strip()
+            if stripped.startswith('## ') and not stripped.startswith('### '):
+                has_h2 = True
+                title = stripped[3:].strip()
+                if title in h2_titles:
+                    errors.append(f'Duplicate H2: "{title}"')
+                h2_titles.append(title)
+            elif stripped.startswith('### '):
+                if not has_h2:
+                    errors.append('H3 without parent H2')
+                title = stripped[4:].strip()
+                if title in h3_titles:
+                    errors.append(f'Duplicate H3: "{title}"')
+                h3_titles.append(title)
+            elif stripped.startswith('- ') or re.match(r'^\d+\.\s', stripped):
+                if not has_h2:
+                    errors.append('Bullet point without parent section')
+            elif stripped.startswith('  *') or stripped.startswith('  -'):
+                pass
+            elif stripped.startswith('    '):
+                nested = stripped.lstrip()
+                if nested.startswith('*') or nested.startswith('-') or re.match(r'^\d+\.', nested):
+                    errors.append('Outline exceeds 4 levels deep')
+                    break
+
+        if errors:
+            raise OutlineValidationError('; '.join(errors))
 
     # -- String helpers -----------------------------------------------------
 
@@ -290,7 +348,7 @@ class ToolService:
         (sdir / 'snapshot-1.txt').write_text('\n'.join(content_lines), encoding='utf-8')
 
     def _read_snapshot(self, post_id:str, sec_id:str, version:int) -> str | None:
-        """Read a snapshot. version=0 is current (not stored here), 1-4 are historical."""
+        """Read a snapshot. `version=0` is current (not stored here); 1-4 are historical."""
         if version < 1 or version > self.max_snapshots:
             return None
         path = self._snapshot_dir(post_id) / sec_id / f'snapshot-{version}.txt'

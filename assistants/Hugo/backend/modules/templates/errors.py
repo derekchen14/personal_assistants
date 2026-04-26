@@ -2,8 +2,7 @@
 
 RES consumes this when rendering an error frame — the `violation` key in `frame.metadata` maps to a
 single-sentence user-facing description. Keep the copy short and neutral; technical detail belongs
-in `frame.thoughts` (for the agent's voice) or `frame.code` (for payloads), not in this map.
-"""
+in `frame.thoughts` (for the agent's voice) or `frame.code` (for payloads), not in this map."""
 
 
 VIOLATION_COPY = {

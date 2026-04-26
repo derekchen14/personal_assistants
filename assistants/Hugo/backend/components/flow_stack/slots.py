@@ -22,8 +22,7 @@ Hierarchy:
   ├── ExactSlot            (specific term or phrase)
   ├── DictionarySlot       (key-value pairs)
   ├── RangeSlot            (time or value range)
-  └── ImageSlot            (hero image, diagram, picture) [domain-specific]
-"""
+  └── ImageSlot            (hero image, diagram, picture) [domain-specific]"""
 
 class BaseSlot(object):
   def __init__(self, priority):

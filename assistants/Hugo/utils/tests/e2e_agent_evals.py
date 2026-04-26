@@ -157,7 +157,7 @@ STEPS_VISION = [
         },
     },
     {
-        # Refine — appends bullets to Process and Ideas via generate_section.
+        # Refine — appends bullets to Process and Ideas via revise_content.
         # Refine is in `recovery.llm_validate_flows` (tools.yaml) so the LLM
         # quality judge runs on the output; in practice it frequently escalates
         # to 'partial' ambiguity on draft-quality bullets. Accept as expected.
@@ -171,7 +171,7 @@ STEPS_VISION = [
             'temporal grounding, treating screenshots as a tool the agent can call, '
             'and falling back to text-only when latency budget is tight.'
         ),
-        'expected_tools': ['generate_section'],
+        'expected_tools': ['revise_content'],
         'expected_ambiguity': {'partial'},
         'expected_block_data_keys': {'card': ['post_id', 'title']},
     },
@@ -367,7 +367,7 @@ STEPS_OBSERVABILITY = [
             'often dominate. Under Cost Modeling, add: cost-per-completed-task '
             'as the headline metric.'
         ),
-        'expected_tools': ['generate_section'],
+        'expected_tools': ['revise_content'],
         'expected_ambiguity': {'partial'},
         'expected_block_data_keys': {'card': ['post_id', 'title']},
     },
@@ -552,7 +552,7 @@ STEPS_VOICE = [
             'using prosody as a signal for confusion, and falling back to text when '
             'the audio quality drops.'
         ),
-        'expected_tools': ['generate_section'],
+        'expected_tools': ['revise_content'],
         'expected_ambiguity': {'partial'},
         'expected_block_data_keys': {'card': ['post_id', 'title']},
     },

@@ -36,11 +36,7 @@ class AnalysisService(ToolService):
         )
 
     def inspect_post(self, post_id:str, metrics:list|None=None) -> dict:
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, _ = self._require_entry(post_id)
         content = self._read_content(ent['filename'])
         sections = self._extract_sections(content)
         lines = content.split('\n')
@@ -216,11 +212,7 @@ class AnalysisService(ToolService):
         )
 
     def analyze_seo(self, post_id:str, target_keyword:str|None=None) -> dict:
-        entries = self._load_metadata()
-        ent = self._find_entry(entries, post_id)
-        if not ent:
-            return self._error('not_found', f'Post not found: {post_id}')
-
+        ent, _ = self._require_entry(post_id)
         content = self._read_content(ent['filename'])
         words = content.lower().split()
         word_count = len(words) or 1

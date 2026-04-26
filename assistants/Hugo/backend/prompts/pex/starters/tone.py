@@ -1,8 +1,7 @@
 """Per-turn starter prompt for ToneFlow.
 
 Whole-post tone shift. The policy default-commits chosen_tone='natural' when both electives are
-unset; that resolution happens before the starter sees the slot state.
-"""
+unset; that resolution happens before the starter sees the slot state."""
 
 from backend.prompts.for_pex import render_source, render_freetext
 

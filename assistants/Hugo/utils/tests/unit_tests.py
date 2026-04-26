@@ -360,8 +360,12 @@ class TestPostService:
     # -- Return format invariants -------------------------------------------
 
     def test_error_has_three_keys(self, tmp_db):
+        # Section-not-found still returns an error dict (post-not-found
+        # raises PostNotFoundError instead). This guards the dict shape
+        # for the cases that haven't been converted to exceptions.
+        post_id, _ = _seed_test_post(tmp_db, title='Shape Test')
         svc = PostService()
-        result = svc.read_metadata('nonexistent_id')
+        result = svc.read_section(post_id, 'nonexistent-section')
         assert result['_success'] is False
         assert '_error' in result
         assert '_message' in result
@@ -417,10 +421,10 @@ class TestPostService:
         assert 'section_ids' in result
 
     def test_read_metadata_not_found(self, tmp_db):
+        from backend.utilities.services import PostNotFoundError
         svc = PostService()
-        result = svc.read_metadata('nonexistent')
-        assert result['_success'] is False
-        assert result['_error'] == 'not_found'
+        with pytest.raises(PostNotFoundError):
+            svc.read_metadata('nonexistent')
 
     def test_read_metadata_with_preview(self, tmp_db):
         body = '## Intro\n\nSome content here.\n\n## Body\n\nMore content.\n'
@@ -552,13 +556,14 @@ class TestPostService:
         assert result['status'] == 'published'
 
     def test_delete_post_removes_file(self, tmp_db):
+        from backend.utilities.services import PostNotFoundError
         post_id, _ = _seed_test_post(tmp_db, title='Delete Me')
         svc = PostService()
         result = svc.delete_post(post_id)
         assert result['_success'] is True
-        # Verify it's gone
-        result2 = svc.read_metadata(post_id)
-        assert result2['_success'] is False
+        # Verify it's gone — read_metadata now raises on missing posts.
+        with pytest.raises(PostNotFoundError):
+            svc.read_metadata(post_id)
 
     def test_delete_post_cleans_snapshots(self, tmp_db):
         post_id, _ = _seed_test_post(tmp_db, title='Snap Delete')
@@ -603,47 +608,51 @@ class TestContentService:
         assert result['_success'] is True
 
     def test_generate_outline_rejects_bullet_without_section(self, tmp_db):
+        from backend.utilities.services import OutlineValidationError
         post_id, _ = _seed_test_post(tmp_db)
         svc = ContentService()
         content = '- orphan bullet\n- another orphan\n'
-        result = svc.generate_outline(post_id, content)
-        assert result['_success'] is False
-        assert result['_error'] == 'validation'
+        with pytest.raises(OutlineValidationError):
+            svc.generate_outline(post_id, content)
 
     def test_generate_outline_rejects_duplicates(self, tmp_db):
+        from backend.utilities.services import OutlineValidationError
         post_id, _ = _seed_test_post(tmp_db)
         svc = ContentService()
         content = '## Intro\n\ntext\n\n## Intro\n\nmore text\n'
-        result = svc.generate_outline(post_id, content)
-        assert result['_success'] is False
-        assert 'Duplicate' in result['_message']
+        with pytest.raises(OutlineValidationError, match='Duplicate'):
+            svc.generate_outline(post_id, content)
 
-    def test_generate_section_replaces_existing_section(self, tmp_db):
+    def test_revise_content_replaces_existing_outline_section(self, tmp_db):
         body = '## Process\n\n- gather data\n- train model\n'
         post_id, _ = _seed_test_post(tmp_db, title='Section Replace', body=body)
         svc = ContentService()
-        revised = '## Process\n\n- gather data\n- train model\n- evaluate model\n'
-        result = svc.generate_section(post_id, 'process', revised)
+        revised = '- gather data\n- train model\n- evaluate model'
+        result = svc.revise_content(post_id, 'process', revised)
         assert result['_success'] is True
-        assert result['appended'] is False
-        assert result['renamed'] is False
+        entry = svc._find_entry(svc._load_metadata(), post_id)
+        saved = svc._read_content(entry['filename'])
+        assert '- evaluate model' in saved
 
-    def test_generate_section_appends_new_section(self, tmp_db):
+    def test_insert_section_appends_new_section_after_anchor(self, tmp_db):
         body = '## Motivation\n\n- pain point\n'
         post_id, _ = _seed_test_post(tmp_db, title='Section Append', body=body)
         svc = ContentService()
-        new_sec = '## Takeaways\n\n- key insight\n'
-        result = svc.generate_section(post_id, 'takeaways', new_sec)
+        result = svc.insert_section(post_id, 'motivation', 'Takeaways',
+            content='- key insight')
         assert result['_success'] is True
-        assert result['appended'] is True
+        assert result['sec_id'] == 'takeaways'
+        entry = svc._find_entry(svc._load_metadata(), post_id)
+        saved = svc._read_content(entry['filename'])
+        assert '## Takeaways' in saved
+        assert '- key insight' in saved
 
-    def test_generate_section_append_preserves_blank_separator(self, tmp_db):
-        # Prior section's body has no trailing blank; regression guard for the
-        # case where the appended H2 collided with the previous bullet.
+    def test_insert_section_preserves_blank_separator(self, tmp_db):
         body = '## Motivation\n- pain point'
         post_id, _ = _seed_test_post(tmp_db, title='Append Spacing', body=body)
         svc = ContentService()
-        result = svc.generate_section(post_id, 'takeaways', '## Takeaways\n- key insight')
+        result = svc.insert_section(post_id, 'motivation', 'Takeaways',
+            content='- key insight')
         assert result['_success'] is True
         entry = svc._find_entry(svc._load_metadata(), post_id)
         saved = svc._read_content(entry['filename'])
@@ -746,24 +755,52 @@ class TestContentService:
         saved = svc._read_content(entry['filename'])
         assert '- alpha\n- beta\n- gamma' in saved
 
-    def test_generate_section_renames_via_old_slug(self, tmp_db):
-        body = '## Ideas\n\n- early thoughts\n'
+    def test_update_post_renames_section_via_sections_list(self, tmp_db):
+        body = '## Ideas\n\n- early thoughts\n\n## Process\n\n- alpha\n'
         post_id, _ = _seed_test_post(tmp_db, title='Section Rename', body=body)
-        svc = ContentService()
-        # Pass old slug 'ideas'; heading changes to 'Breakthrough Ideas'.
-        renamed = '## Breakthrough Ideas\n\n- early thoughts\n'
-        result = svc.generate_section(post_id, 'ideas', renamed)
+        svc = PostService()
+        result = svc.update_post(post_id,
+            updates={'sections': ['Breakthrough Ideas', 'Process']})
         assert result['_success'] is True
-        assert result['renamed'] is True
-        assert result['section_id'] == 'breakthrough-ideas'
+        entry = svc._find_entry(svc._load_metadata(), post_id)
+        saved = svc._read_content(entry['filename'])
+        assert '## Breakthrough Ideas' in saved
+        assert '- early thoughts' in saved
+        assert '## Process' in saved
 
-    def test_generate_section_rejects_without_heading(self, tmp_db):
-        post_id, _ = _seed_test_post(tmp_db, title='Section No Heading')
-        svc = ContentService()
-        bad = '- orphan bullet\n- another orphan\n'
-        result = svc.generate_section(post_id, 'process', bad)
+    def test_update_post_renames_multiple_sections_at_once(self, tmp_db):
+        body = '## Alpha\n- a1\n\n## Beta\n- b1\n\n## Gamma\n- g1\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Multi Rename', body=body)
+        svc = PostService()
+        result = svc.update_post(post_id,
+            updates={'sections': ['Alpha One', 'Beta Two', 'Gamma Three']})
+        assert result['_success'] is True
+        entry = svc._find_entry(svc._load_metadata(), post_id)
+        saved = svc._read_content(entry['filename'])
+        assert '## Alpha One' in saved
+        assert '## Beta Two' in saved
+        assert '## Gamma Three' in saved
+
+    def test_update_post_sections_length_mismatch_returns_validation(self, tmp_db):
+        body = '## Ideas\n\n- early thoughts\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Mismatch', body=body)
+        svc = PostService()
+        result = svc.update_post(post_id,
+            updates={'sections': ['Ideas', 'Extra']})
         assert result['_success'] is False
         assert result['_error'] == 'validation'
+
+    def test_save_section_content_validates_duplicate_h2(self, tmp_db):
+        # _validate_outline now runs on every section write, regardless of
+        # which tool initiated it. Renaming a section to a name that already
+        # exists should raise OutlineValidationError; PEX dispatch maps that
+        # to {'_error': 'validation'} for the LLM.
+        from backend.utilities.services import OutlineValidationError
+        body = '## Ideas\n- early\n\n## Process\n- alpha\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Dup Guard', body=body)
+        svc = PostService()
+        with pytest.raises(OutlineValidationError, match='Duplicate H2'):
+            svc.update_post(post_id, updates={'sections': ['Process', 'Process']})
 
     def test_convert_to_prose(self, tmp_db):
         body = '## Method\n\n- step one\n- step two\n- step three\n'
