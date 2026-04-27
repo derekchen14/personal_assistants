@@ -1,3 +1,4 @@
+from collections import Counter
 from backend.components.flow_stack.parents import BaseFlow
 from backend.components.display_frame import DisplayFrame
 
@@ -5,11 +6,14 @@ TEMPLATES = {
     'rework':   {'template': "{message}", 'block_hint': 'card'},
     'polish':   {'template': "{message}", 'block_hint': 'card'},
     'tone':     {'template': "{message}", 'block_hint': 'card'},
-    'audit':    {'template': "{message}", 'block_hint': 'card'},
+    'audit':    {'template': "{message}", 'block_hint': 'checklist'},
     'simplify': {'template': "{message}", 'block_hint': 'card'},
     'remove':   {'template': "{message}", 'block_hint': 'card'},
     'tidy':     {'template': "{message}", 'block_hint': 'card'},
 }
+
+_SEVERITY_ORDER = {'high': 0, 'medium': 1, 'low': 2}
+
 
 def fill_revise_template(template:str, flow:BaseFlow, frame:DisplayFrame) -> str:
     template = TEMPLATES[flow.name()]['template']
@@ -19,41 +23,34 @@ def fill_revise_template(template:str, flow:BaseFlow, frame:DisplayFrame) -> str
 
 
 def _format_audit_message(frame:DisplayFrame) -> str:
-    """Build a short spoken report from the audit card block data."""
-    if not frame.blocks:
-        return frame.thoughts or 'Audit complete — no structured findings to report.'
+    """Spoken readout for an audit turn. Branches on which metadata key is present:
+      'reports'      → per-delegate rollup, audit just completed delegation
+      'group_count'  → routing announcement, dispatch just stacked children
+      otherwise      → discovery breakdown (findings + summary, may be empty for the no-findings path)"""
+    metadata = frame.metadata
+    if 'reports' in metadata:
+        reports = metadata['reports']
+        if not reports:
+            return 'Audit complete.'
+        rollup = '. '.join(f'{name}: {summary}' for name, summary in reports.items())
+        return f'Audit complete. {rollup}.'
+    if 'group_count' in metadata:
+        names = metadata['flow_names']
+        joined = ', '.join(names) if names else 'sub-flows'
+        return f"Working on it — sending {metadata['group_count']} fix(es) to {joined}."
 
-    data = frame.blocks[0].data
-    report = data.get('report') or {}
-    title = data.get('post_title', '')
-    findings = report.get('findings') or []
-    suggestions = report.get('suggestions') or []
-    score = report.get('style_score')
-    tone = report.get('tone_match')
+    findings = metadata['findings']
+    summary = metadata['summary']
+    if not findings:
+        return summary or 'No findings — the post aligns with prior writing.'
 
-    parts = []
-    header = f'Audit of "{title}"' if title else 'Audit complete'
-    if score is not None:
-        header += f' — style score {score}'
-    if tone:
-        header += f', tone {tone}'
-    parts.append(header + '.')
-
-    if findings:
-        parts.append(f'Found {len(findings)} finding(s):')
-        for item in findings[:3]:
-            aspect = item.get('aspect', 'style')
-            severity = item.get('severity', 'low')
-            observed = item.get('observed', '')
-            line = f'- [{severity}] {aspect}'
-            if observed:
-                line += f': {observed}'
-            parts.append(line)
-    else:
-        parts.append('No findings — the post aligns with prior writing.')
-
-    if suggestions:
-        parts.append('Suggestions:')
-        for sug in suggestions[:3]:
-            parts.append(f'- {sug}')
+    counts = Counter(f['severity'] for f in findings)
+    breakdown = ', '.join(f'{counts[k]} {k}' for k in ('high', 'medium', 'low') if counts[k])
+    parts = [f'Audit complete. Found {len(findings)} finding(s): {breakdown}.']
+    if summary:
+        parts.append(summary)
+    sorted_findings = sorted(findings, key=lambda f: _SEVERITY_ORDER[f['severity']])
+    for item in sorted_findings[:3]:
+        sec = item['sec_id'] or 'whole post'
+        parts.append(f"- [{item['severity']}] {item['issue']} ({sec}): {item['note']}")
     return '\n'.join(parts)

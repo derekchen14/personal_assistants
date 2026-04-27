@@ -36,12 +36,11 @@ _COMPONENT_TOOLS = {'handle_ambiguity', 'coordinate_context', 'manage_memory', '
 _VISION_POST_ID = 'VisionPost'            # scenario 1
 _OBS_POST_ID = 'ObservabilityPost'        # scenario 2
 _VOICE_POST_ID = 'VoicePost'              # scenario 3
-_REPORT_DIR = Path(__file__).parent / 'reports'
 _TOTAL_CHECKPOINTS = 42
 # Live progress log. Each completed step appends a JSON line so external
 # observers (a tail -f, a Monitor loop, the _progress_snapshot CLI) can
 # report N/42 + avg turn time + ETA while the suite is still running.
-_PROGRESS_PATH = _REPORT_DIR / 'e2e_progress_latest.jsonl'
+_PROGRESS_PATH = Path(__file__).parent / 'e2e_progress_latest.jsonl'
 
 
 _progress_initialized = False
@@ -49,10 +48,9 @@ _progress_initialized = False
 
 def _append_progress(record:dict):
     """Append one JSON line and flush so tailers see it immediately.
-    First call per process truncates the log and ensures the dir exists."""
+    First call per process truncates the log."""
     global _progress_initialized
     if not _progress_initialized:
-        _REPORT_DIR.mkdir(parents=True, exist_ok=True)
         _PROGRESS_PATH.write_text('')
         _progress_initialized = True
     with _PROGRESS_PATH.open('a') as fh:
@@ -731,7 +729,7 @@ def _check_level1(step_def, result, tool_log, agent):
     # Active-flow check: either still on the stack, or it just completed this turn.
     active_flow = agent.world.flow_stack.get_flow()
     state = agent.world.current_state()
-    flow_name = active_flow.name() if active_flow else state.flow_name
+    flow_name = active_flow.name() if active_flow else state.flow_name(string=True)
     if expected_flow and flow_name != expected_flow:
         issues.append(f'expected active flow={expected_flow}, got {flow_name}')
 
@@ -759,7 +757,7 @@ def _check_level1(step_def, result, tool_log, agent):
             issues.append(f'expected frame.metadata.failed_tool in {expected_failed_tool}, got {actual_failed_tool!r}')
 
     # For block-expecting steps, the payload must live in frame.blocks, not the chat utterance.
-    if expected_bt in ('card', 'selection', 'list', 'compare', 'form', 'confirmation', 'toast'):
+    if expected_bt in ('card', 'selection', 'checklist', 'list', 'compare', 'confirmation', 'toast'):
         if not blocks:
             issues.append(f'empty {expected_bt} — no blocks in frame')
     elif is_error_frame:
@@ -1203,7 +1201,7 @@ class _BaseScenarioE2E:
         from backend.components.dialogue_state import DialogueState
         state = agent.world.current_state()
         if not state:
-            state = DialogueState(agent.config)
+            state = DialogueState(intent=None, dax=None, turn_count=0)
             agent.world.insert_state(state)
         state.active_post = cls._test_post_id
 
@@ -1226,9 +1224,8 @@ class _BaseScenarioE2E:
         if cls._step_traces:
             cls._print_scenario_timing()
         if cls._verbose and cls._report_lines:
-            _REPORT_DIR.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            path = _REPORT_DIR / f'e2e_report_{cls.__name__}_{stamp}.txt'
+            path = Path(__file__).parent / f'e2e_report_{cls.__name__}_{stamp}.txt'
             path.write_text('\n'.join(cls._report_lines), encoding='utf-8')
             print(f'\n  Report saved to {path}')
         if cls._agent:

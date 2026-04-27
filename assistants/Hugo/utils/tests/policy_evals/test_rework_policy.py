@@ -48,8 +48,9 @@ def test_rework_section_scoped_single_call(monkeypatch):
     state = make_state(active_post=_POST_ID)
     context = make_context('rework this section')
     captured:list = []
+    tool_log = [{'tool': 'revise_content', 'input': {}, 'result': {'_success': True}}]
     monkeypatch.setattr(BasePolicy, 'llm_execute',
-        _stub_llm_execute('reworked', tool_log=[], captured=captured))
+        _stub_llm_execute('{"done": []}', tool_log=tool_log, captured=captured))
 
     tools = make_tool_stub({
         'read_metadata': [
@@ -86,8 +87,9 @@ def test_rework_whole_post_single_call_with_preview(monkeypatch):
     state = make_state(active_post=_POST_ID)
     context = make_context('rework the whole post')
     captured:list = []
+    tool_log = [{'tool': 'revise_content', 'input': {}, 'result': {'_success': True}}]
     monkeypatch.setattr(BasePolicy, 'llm_execute',
-        _stub_llm_execute('rework output', tool_log=[], captured=captured))
+        _stub_llm_execute('{"done": []}', tool_log=tool_log, captured=captured))
 
     tools = make_tool_stub({
         'read_metadata': [

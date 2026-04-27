@@ -166,5 +166,6 @@ Follow these rules to avoid permission denials:
 1. Use native Tailwind CSS classes instead of creating custom CSS classes whenever possible.
 2. Use `uv pip install` instead of `pip install` for all Python package installations.
 3. Avoid using the words 'tighten' or 'delve'
+4. Read through AGENTS.md and LESSONS.md before coding anything.
 
 

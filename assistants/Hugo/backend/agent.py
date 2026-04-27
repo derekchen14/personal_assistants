@@ -14,6 +14,7 @@ from backend.components.prompt_engineer import PromptEngineer
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.memory_manager import MemoryManager
 from backend.components.world import World
+from utils.helper import flow2dax
 
 log = logging.getLogger(__name__)
 _MAX_KEEP_GOING = 5
@@ -74,9 +75,8 @@ class Agent:
                 keep_going = False
 
             if keep_going:
-                new_state = DialogueState(self.config)
-                new_state.update(pred_intent=flow.intent,
-                    flow_name=flow.name(), confidence=1.0)
+                new_state = DialogueState(intent=flow.intent, dax=flow2dax(flow.name()),
+                    turn_count=state.turn_count + 1, confidence=1.0)
                 new_state.has_plan = state.has_plan
                 new_state.active_post = state.active_post
                 # One-shot for stack-on; Plans keep keep_going alive across sub-flows.
@@ -114,7 +114,7 @@ class Agent:
     def _self_check(self, state: DialogueState) -> bool:
         if state.confidence < 0.1:
             return False
-        if not state.flow_name:
+        if not state.flow_name():
             return False
         return True
 
@@ -130,7 +130,7 @@ class Agent:
         # Add a panel key when we aren't just using a 'default' block type
         if len(frame_data['blocks']) > 0:
             block_type = frame_data['blocks'][-1]['type']
-            panel = 'top' if block_type in ('form', 'confirmation', 'toast') else 'bottom'
+            panel = 'top' if block_type in ('confirmation', 'toast') else 'bottom'
             payload['panel'] = panel   # top / bottom / split
 
         return payload

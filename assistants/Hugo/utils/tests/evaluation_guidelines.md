@@ -18,19 +18,22 @@ Previous evals mocked the LLM and/or tool dispatch, which hid real failures. We 
 - Run from Hugo root: `cd assistants/Hugo`
 
 ### Running
+
 ```bash
-# Unit tests (no API keys, no LLM)
-pytest utils/tests/unit_tests.py -v
+# Free tier — no API keys, no LLM, ~6s for ~210 tests. Run after every major change.
+pytest utils/tests/unit_tests.py utils/tests/policy_evals/ utils/tests/test_artifacts.py
 
-# Model tests (real LLM, NLU-only)
-pytest utils/tests/model_tests.py -m llm -v
+# NLU accuracy (real LLM, flow-detection benchmark on test_cases.json)
+pytest utils/tests/model_tests.py -m llm
 
-# E2E agent evals (real LLM, real tools, full pipeline)
+# E2E full pipeline (real LLM + real tools, ~7 min)
 pytest utils/tests/e2e_agent_evals.py -v --tb=short
 
 # E2E with reliability checks (runs each turn 3x, slower)
 pytest utils/tests/e2e_agent_evals.py -v -m reliability
 ```
+
+The free tier covers service behavior, policy orchestration, and static lints — three layers that catch most local regressions without burning tokens. Run it after every non-trivial change. Reserve `model_tests.py` for changes touching NLU prompts/schemas, and `e2e_agent_evals.py` for end-of-feature integration verification.
 
 ### Test case format
 
@@ -72,13 +75,15 @@ Labels on user turns:
 
 ### File responsibilities
 
-| File | Purpose |
-|------|---------|
-| `unit_tests.py` | Pure code logic — mocked LLM, no API keys needed |
-| `model_tests.py` | NLU accuracy — flow detection, confidence calibration, requires real LLM |
-| `e2e_agent_evals.py` | Full pipeline — real LLM + real tools, 3-level evaluation, produces report |
-| `test_cases.json` | Shared test data — conversations with labels, expected_tools, and rubrics |
-| `conftest.py` | Fixtures — `agent` (real LLM), `mock_agent` (stubbed for unit routing) |
+| File | Purpose | LLM? | Speed |
+|------|---------|------|-------|
+| `unit_tests.py` | Service-layer behavior on a tmp DB — disk round-trips, format invariants, regression tests | No | ~3s |
+| `policy_evals/` | Per-flow policy orchestration with mocked `llm_execute` — argument passing, guard clauses, ambiguity declarations, frame shapes, scratchpad contracts | No | ~2s |
+| `test_artifacts.py` | Static lints — skill-file frontmatter, few-shot tool alignment vs `flow.tools`, NLU JSON schema rules | No | ~0.1s |
+| `model_tests.py` | NLU accuracy benchmarks against `test_cases.json` — flow detection, confidence calibration | Yes (`-m llm`) | ~1 min |
+| `e2e_agent_evals.py` | Full pipeline scenarios — real LLM + real tools, 3-level evaluation, produces report next to the file | Yes | ~5–8 min |
+| `test_cases.json` | Shared test data — conversations with labels, expected_tools, and rubrics |  |  |
+| `conftest.py` | Fixtures — `agent` (real LLM), `config` |  |  |
 
 ---
 
@@ -88,45 +93,117 @@ Labels on user turns:
 **Requires:** No API keys, no LLM calls
 **Fixture:** `tmp_db` (temporary database directory, patched via monkeypatch)
 
-Unit tests verify pure code logic with no external dependencies. The LLM is either mocked or bypassed entirely. These run fast (<1s) and catch regressions in deterministic code.
+Behavioral tests for the service layer (PostService, ContentService, AnalysisService, PlatformService) plus pure helpers in `services.py` (`split_sentences`, `join_sentences`, `_rebuild_content`, `_validate_outline`). Also covers PromptEngineer model resolution, ensemble voting math, NLU action-turn dispatch, and template fill helpers.
 
-### What they cover
+### What earns its keep
 
-**PromptEngineer internals:**
-- `TestResolveModel` — model ID resolution for each provider/tier
-- `TestCallDispatch` — routing to Claude, Gemini, OpenAI based on provider
-- `TestTallyVotes` — ensemble voting tallies from multiple NLU voters
-- `TestDetectFlow` — flow detection with mocked voter responses
-- `TestEnsembleConfig` — config validation (voters have family + model fields)
-
-**NLU react() path:**
-- `TestReactActionTurn` — gold DAX parsing creates correct flow with slots
-- `TestReactMultiSlot` — comma-separated slot values parsed correctly
-- `TestReactUtteranceTurn` — utterance turns fill slots via LLM (mocked)
-- `TestReactEdgeCases` — fill_slot_values, DAX code resolution edge cases
-
-**Service layer (real code, temporary database):**
-- `TestOptionCReturnFormat` — `_success` / `_error` return envelope format
-- `TestPostService` — find_posts, search_notes, read_metadata, read_section, create_post, update_post, delete_post, summarize_text, rollback_post
-- `TestContentService` — generate_outline, convert_to_prose, insert_section, insert_content, revise_content, write_text, find_and_replace, remove_content, cut_and_paste, diff_section
-- `TestAnalysisService` — brainstorm_ideas, inspect_post, check_readability, check_links, compare_style, editor_review, analyze_seo
-- `TestPlatformService` — list_channels, channel_status, publisher connections
-- `TestSnapshotInfra` — snapshot creation, rotation, version reading
+The strongest tests in this file write to a temp DB and **read content back from disk** to verify the round-trip:
+- `test_revise_content_replaces_existing_outline_section` — asserts `'- evaluate model' in saved`.
+- `test_insert_section_preserves_blank_separator` — asserts `'- pain point\n\n## Takeaways' in saved` (regression test).
+- `test_update_post_renames_section_via_sections_list` — verifies position-based rename writes the right `## Heading`.
+- `test_save_section_content_validates_duplicate_h2` — exercises `_validate_outline` raising `OutlineValidationError`.
+- `test_split_sentences_*` and `test_split_join_*_roundtrip` — round-trip property tests, each guarding a specific past bug (e.g., bullets collapsing into `- a - b - c`).
+- `test_rebuild_content_does_not_double_blank` — exact-string assertion on rebuilt markdown.
 
 ### How they work
 
 Each service test uses the `tmp_db` fixture which:
-1. Creates a temporary directory structure (content/drafts, content/notes, content/posts, .snapshots, guides)
-2. Writes a minimal `metadata.json`
-3. Monkeypatches `_DB_DIR` in `backend.utilities.services` so all ToolService instances use the temp path
-4. Service instances created within tests automatically pick up the patched paths via `__init__`
+1. Creates a temporary directory structure (`content/drafts`, `content/notes`, `content/posts`, `.snapshots`, `guides`).
+2. Writes a minimal `metadata.json`.
+3. Monkeypatches `_DB_DIR` in `backend.utilities.services` so all ToolService instances use the temp path.
+4. Service instances created within tests automatically pick up the patched paths via `__init__`.
 
 ### What they do NOT cover
 
-- Real LLM responses (all LLM calls are mocked or bypassed)
-- End-to-end pipeline integration (NLU → PEX → RES)
-- Tool-use loops (policy → tool dispatch → persistence)
-- Response quality or template formatting
+- Live LLM behavior (any test that touched the LLM was moved to `model_tests.py` or `e2e_agent_evals.py`).
+- End-to-end pipeline integration (NLU → PEX → RES) — covered by `e2e_agent_evals.py`.
+- Per-flow policy orchestration — covered by `policy_evals/`.
+- Skill-file structural correctness — covered by `test_artifacts.py`.
+
+---
+
+## Policy Evals
+
+**Directory:** `policy_evals/`
+**Requires:** No API keys, no LLM calls
+**Fixture:** `monkeypatch` to stub `BasePolicy.llm_execute`
+
+One file per flow (`test_outline_policy.py`, `test_refine_policy.py`, `test_release_policy.py`, etc.). Stubs `llm_execute` to return a controlled `(text, tool_log)` tuple, then asserts on what the policy *did* with that signal — argument passing, guard clauses, frame shapes, ambiguity declarations, scratchpad contracts.
+
+### What they catch
+
+- **Argument drift.** "I refactored the policy and forgot to pass `propose_mode=True` through `extra_resolved`" — caught.
+- **Tool gating bugs.** Release only fires `update_post(status='published')` when both `channel_status` AND `release_post` succeeded; a regression that flips the gate is caught here.
+- **Guard-clause regressions.** Compose stacking-on Outline when the post has no sections; Refine declaring `partial` ambiguity when source is missing.
+- **Frame-shape contracts.** Right block types (`card`, `list`, `selection`, `toast`), right `origin`, right `data` keys.
+- **Scratchpad write contracts.** Find writes `{version, turn_number, used_count, query, items: [{post_id, title, status, preview}]}`. Audit/Brainstorm have their own shapes.
+- **Algorithmic correctness.** Find dedupes by `post_id` across expansion terms; Rework checks off ChecklistSlot suggestions when the skill returns `{"done": [...]}`.
+
+### What they cannot catch
+
+- Skill-prompt bugs (the LLM is mocked).
+- Tool-implementation bugs (tools are stubbed by `make_tool_stub`).
+- Wire-format bugs between PEX and the frontend (the policy never sees the wire).
+- NLU classification bugs (flows are pre-stacked).
+- Cross-flow control-flow bugs where one policy's `call_flow_stack` mutation should drive another flow on the next iteration. (Add the tool_log entry yourself if you need to test this seam.)
+
+### Pattern to follow
+
+```python
+def _stub_llm_execute(return_text, tool_log=None, captured=None):
+    log = list(tool_log or [])
+    def stub(self, flow, state, context, tools, include_preview=False,
+            extra_resolved=None, exclude_tools=()):
+        if captured is not None:
+            captured.append({'extra_resolved': dict(extra_resolved or {}),
+                             'exclude_tools': tuple(exclude_tools)})
+        return return_text, log
+    return stub
+
+def test_<flow>_<scenario>(monkeypatch):
+    policy, comps = build_policy('<flow>')
+    comps['flow_stack'].stackon('<flow>')
+    top = comps['flow_stack'].get_flow()
+    top.slots['source'].add_one(post=_POST_ID)
+    # ... fill remaining slots ...
+    captured = []
+    tool_log = [{'tool': '<save_tool>', 'input': {}, 'result': {'_success': True}}]
+    monkeypatch.setattr(BasePolicy, 'llm_execute',
+        _stub_llm_execute('<skill text>', tool_log=tool_log, captured=captured))
+    tools = make_tool_stub({...})
+    frame = policy.execute(state, context, tools)
+    # assert on captured args, frame shape, flow status, ambiguity, scratchpad
+```
+
+---
+
+## Static Lints
+
+**File:** `test_artifacts.py`
+**Requires:** No API keys, no LLM calls
+
+Three layers of offline lints, each parameterized over the relevant universe:
+
+1. **Skill frontmatter** (`test_skill_tools_match_flow`) — every `.md` in `backend/prompts/pex/skills/` has YAML frontmatter whose `tools:` list matches `flow.tools` of the owning flow.
+2. **Few-shot tool alignment** (`test_few_shot_tools_are_allowlisted`) — every `name(` token in a skill's `## Few-shot` block is either in `flow.tools` or in the `COMPONENT_TOOLS` allowlist (`handle_ambiguity`, `coordinate_context`, `manage_memory`, `call_flow_stack`, `execution_error`, `save_findings`).
+3. **NLU JSON schema rules** — locally encodes Anthropic structured-output rules empirically observed via API rejections:
+   - Rule A: `minimum`/`maximum`/`exclusiveMinimum`/`exclusiveMaximum` not allowed on `number`.
+   - Rule B: `enum` cannot combine with a list-valued `type` (use `anyOf`).
+   - Rule C: `additionalProperties` cannot be a schema object (must be `false` or absent).
+
+**Adding a new rule:** when a live-API rejection surfaces in dev, add a clause to `_lint_schema()` and a self-test (`test_lint_detects_rule_<X>`). That converts a one-time discovery into permanent offline coverage.
+
+### What they catch
+
+- Skill `.md` references a tool that isn't in the flow's tools list (typo, stale prompt, retired tool).
+- Flow's tool list contains a tool with no entry in `schemas/tools.yaml` (orphan registration).
+- NLU emits a JSON schema that Anthropic would reject (any of the three rules above).
+
+### What they cannot catch
+
+- Skill prompts that are syntactically valid but semantically wrong (wrong instructions, missing examples).
+- Tool YAML entries whose schema is malformed in ways outside the encoded rules.
+- Anthropic provider rules we haven't encoded yet (a new rejection type would surface in dev first; encode it then).
 
 ---
 

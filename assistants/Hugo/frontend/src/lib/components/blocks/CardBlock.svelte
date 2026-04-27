@@ -43,7 +43,7 @@
     }
 
     // Persistent text highlight for view mode
-    let proseEl: HTMLElement | null = null;
+    let proseEl: HTMLElement | null = $state(null);
     let markEl: HTMLElement | null = null;
 
     function clearMark() {
@@ -357,6 +357,9 @@
                 bind:this={proseEl}
                 ondblclick={enterEditMode}
                 onmouseup={captureSelection}
+                role="textbox"
+                tabindex="0"
+                aria-readonly={status === 'published'}
                 class="prose-content text-sm leading-relaxed flex-1 overflow-y-auto {status !== 'published' ? 'cursor-text' : ''}"
             >{@html md(content)}</div>
         {/if}

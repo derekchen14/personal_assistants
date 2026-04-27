@@ -1,6 +1,6 @@
 
-class BaseFlow(object):"""
-  Parent flow classes for Hugo (Blog Writing)."""
+class BaseFlow(object):
+  """Parent flow classes for Hugo (Blog Writing)."""
   def __init__(self):
     self.slots = {}
     self.tools = []
@@ -213,3 +213,4 @@ class PlanParentFlow(BaseFlow):
   def __init__(self):
     super().__init__()
     self.parent_type = 'Plan'
+    self.structured_plan: dict = {}

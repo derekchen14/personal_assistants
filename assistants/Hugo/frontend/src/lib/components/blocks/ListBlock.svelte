@@ -241,6 +241,10 @@
         if (!id) return;
         conversation.updatePost(id, { tags: getTags(item).filter(t => t !== tag) });
     }
+
+    function focusOnMount(el: HTMLElement) {
+        setTimeout(() => el.focus(), 0);
+    }
 </script>
 
 {#snippet itemRow(item: unknown, i: number)}
@@ -252,18 +256,13 @@
     <div
         class="rounded {expanded ? 'bg-[var(--surface)] border border-[var(--border)] mb-2' : ''} {dragOverId === id ? 'border-t-2 border-[var(--accent)]' : ''}"
         draggable={isDraggable}
+        role="listitem"
         ondragstart={(e) => { if (isDraggable && id) { draggedId = id; e.dataTransfer?.setData('text', id); } }}
         ondragover={(e) => { e.preventDefault(); if (isDraggable && id) dragOverId = id; }}
         ondrop={(e) => { e.preventDefault(); handleDrop(id); }}
         ondragend={() => { draggedId = null; dragOverId = null; }}
     >
-        <div
-            class="group flex items-center gap-2 py-2 px-2 rounded {clickable ? 'cursor-pointer' : ''}"
-            onclick={() => handleClick(item)}
-            role={clickable ? 'button' : undefined}
-            tabindex={clickable ? 0 : undefined}
-            onkeydown={(e) => { if (clickable && e.key === 'Enter') handleClick(item); }}
-        >
+        {#snippet rowBody()}
             {#if isDraggable}
                 <span class="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab text-[var(--muted)] shrink-0 select-none">
                     <IconGripVertical size={14} />
@@ -280,7 +279,16 @@
                     {getPublishedDate(item)}
                 </span>
             {/if}
-        </div>
+        {/snippet}
+        {#if clickable}
+            <button
+                type="button"
+                class="group flex items-center gap-2 py-2 px-2 rounded cursor-pointer w-full text-left bg-transparent border-0"
+                onclick={() => handleClick(item)}
+            >{@render rowBody()}</button>
+        {:else}
+            <div class="group flex items-center gap-2 py-2 px-2 rounded">{@render rowBody()}</div>
+        {/if}
 
         {#if expanded}
             <div class="px-4 pb-3 pt-1 space-y-2 border-t border-[var(--border)] ml-4 mr-2">
@@ -299,7 +307,7 @@
                             bind:value={newTagInput}
                             onblur={() => handleAddTag(item)}
                             onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(item); } else if (e.key === 'Escape') { addingTagId = null; newTagInput = ''; } }}
-                            autofocus
+                            use:focusOnMount
                         />
                     {:else}
                         <button
@@ -420,8 +428,20 @@
 {/if}
 
 {#if confirmDeleteItem}
-    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onclick={() => confirmDeleteItem = null} role="presentation">
-        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-lg py-5 px-6 max-w-xs w-[90%] shadow-lg" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div
+        class="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+        onclick={() => confirmDeleteItem = null}
+        onkeydown={(e) => { if (e.key === 'Escape') confirmDeleteItem = null; }}
+        role="presentation"
+    >
+        <div
+            class="bg-[var(--surface)] border border-[var(--border)] rounded-lg py-5 px-6 max-w-xs w-[90%] shadow-lg"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            tabindex="-1"
+        >
             <p class="text-sm font-medium mb-1">Delete "{itemLabel(confirmDeleteItem)}"?</p>
             <p class="text-xs text-[var(--muted)] mb-4">This action cannot be undone.</p>
             <div class="flex justify-end gap-2">

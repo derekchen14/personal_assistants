@@ -43,9 +43,7 @@ def _load_test_config():
 
 def make_state(**overrides) -> DialogueState:
     """Return a DialogueState with sensible defaults; any kwarg overrides."""
-    config = _load_test_config()
-    state = DialogueState(config)
-    state.turn_count = 1
+    state = DialogueState(intent=None, dax=None, turn_count=1)
     state.active_post = None
     state.keep_going = False
     state.has_plan = False

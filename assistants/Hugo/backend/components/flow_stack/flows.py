@@ -230,6 +230,7 @@ class PolishFlow(ReviseParentFlow):
       'source': SourceSlot(1, 'sec'),
       'style_notes': FreeTextSlot(priority='optional'),
       'image': ImageSlot(priority='optional'),
+      'suggestions': ChecklistSlot(priority='elective'),
     }
     self.tools = ['read_metadata', 'read_section', 'write_text', 'revise_content']
 
@@ -244,6 +245,7 @@ class ToneFlow(ReviseParentFlow):
       'source': SourceSlot(1, 'post'),
       'custom_tone': ExactSlot(priority='elective'),
       'chosen_tone': CategorySlot(tone_options, priority='elective'),
+      'suggestions': ChecklistSlot(priority='elective'),
     }
     self.tone_mapping_defaults = {
       'linkedin': ['formal', 'academic'],
@@ -265,6 +267,7 @@ class AuditFlow(ReviseParentFlow):
       'source': SourceSlot(1, 'post'),
       'reference_count': LevelSlot(priority='optional', threshold=1),
       'threshold': ProbabilitySlot(priority='optional'),
+      'delegates': ChecklistSlot(priority='optional'),
     }
     self.tools = ['find_posts', 'compare_style', 'editor_review', 'inspect_post', 'read_section']
 
@@ -278,6 +281,7 @@ class SimplifyFlow(ReviseParentFlow):
       'source': SourceSlot(1, 'sec', priority='elective'),
       'image': ImageSlot(priority='elective'),
       'guidance': FreeTextSlot(priority='required'),
+      'suggestions': ChecklistSlot(priority='elective'),
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'remove_content', 'write_text']
 
@@ -288,7 +292,7 @@ class RemoveFlow(ReviseParentFlow):
     self.dax = '{007}'
     self.goal = 'remove a section from the post, delete a draft or note'
     self.slots = {
-      'source': SourceSlot(1, 'sec', priority='elective'),
+      'target': RemovalSlot(1, 'sec', priority='elective'),
       'image': ImageSlot(priority='elective'),
       'type': CategorySlot(['post', 'draft', 'section', 'paragraph', 'note', 'image'], priority='required'),
     }

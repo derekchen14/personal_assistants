@@ -3,7 +3,7 @@ from backend.components.display_frame import DisplayFrame
 
 TEMPLATES = {
     'brainstorm': {'template': "{message}", 'skip_naturalize': True},
-    'create':     {'template': "I've created a new draft called '{title}'", 'block_hint': 'form'},
+    'create':     {'template': "I've created a new draft called '{title}'", 'block_hint': 'card'},
     'outline':    {'template': "{message}", 'skip_naturalize': True, 'block_hint': 'card'},
     'refine':     {'template': "{message}", 'block_hint': 'card'},
     'cite':       {'template': "{message}", 'block_hint': 'card'},

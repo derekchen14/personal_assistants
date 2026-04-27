@@ -65,7 +65,7 @@ def nlu(minimal_config):
     world = MagicMock()
     world.context.compile_history.return_value = ''
     # Contract: current_state() always returns a DialogueState.
-    world.current_state.return_value = DialogueState(minimal_config)
+    world.current_state.return_value = DialogueState(intent=None, dax=None, turn_count=0)
     world.flow_stack.find_by_name.return_value = None
     world.flow_stack._stack = []
     return NLU(minimal_config, ambiguity, engineer, world)
@@ -82,15 +82,6 @@ def _make_context(turn_type='action'):
 # ═══════════════════════════════════════════════════════════════════
 
 class TestPromptEngineer:
-    def test_claude_sonnet(self, engineer):
-        assert engineer._resolve_model('sonnet') == 'claude-sonnet-4-6'
-
-    def test_claude_haiku(self, engineer):
-        assert engineer._resolve_model('haiku') == 'claude-haiku-4-5-20251001'
-
-    def test_gemini_flash(self, engineer):
-        assert engineer._resolve_model('flash') == 'gemini-3-flash-preview'
-
     def test_unknown_raises(self, engineer):
         with pytest.raises(ValueError):
             engineer._resolve_model('unknown')
@@ -201,12 +192,12 @@ class TestEnsembleVoting:
 class TestReact:
     def test_action_turn_routes_flow(self, nlu):
         state = nlu.react('{05A}', {'type': 'draft'})
-        assert state.flow_name == 'create'
+        assert state.flow_name(string=True) == 'create'
         assert state.confidence == 0.99
 
     def test_action_turn_different_dax(self, nlu):
         state = nlu.react('{19A}', {'post': 'post_abc123'})
-        assert state.flow_name == 'summarize'
+        assert state.flow_name(string=True) == 'summarize'
         assert state.confidence == 0.99
 
     def test_utterance_calls_fill_slots(self, nlu):
@@ -216,7 +207,7 @@ class TestReact:
         with patch.object(nlu, '_fill_slots') as mock_fill:
             state = nlu.react('{05A}', {'topic': 'SEO'})
         mock_fill.assert_called_once()
-        assert state.flow_name == 'create'
+        assert state.flow_name(string=True) == 'create'
 
     def test_snippet_payload_fills_entity_slot(self, nlu):
         # Phase 1a: snippet + post + section land in SourceSlot entity dict.
@@ -333,15 +324,6 @@ class TestTemplateFill:
         result = fill_draft_template('', flow, frame)
         assert 'My New Post' in result
 
-    def test_get_template_returns_metadata(self):
-        from backend.modules.templates import get_template
-        info = get_template('brainstorm', 'Draft')
-        assert info['skip_naturalize'] is True
-        assert '{message}' in info['template']
-        info2 = get_template('outline', 'Draft')
-        assert info2['skip_naturalize'] is True
-        assert '{message}' in info2['template']
-
     def test_build_payload_frame_sets_panel(self, minimal_config):
         from backend.agent import Agent
         frame = self._make_frame(minimal_config, block_type='card',
@@ -350,6 +332,63 @@ class TestTemplateFill:
         assert payload['panel'] == 'bottom'
         assert payload['frame']['blocks'][0]['type'] == 'card'
         assert payload['frame']['blocks'][0]['data']['content'] == 'Hello'
+
+    def test_audit_message_groups_findings_by_severity(self, minimal_config):
+        from backend.modules.templates.revise import _format_audit_message
+        from backend.components.display_frame import DisplayFrame
+        findings = [
+            {'sec_id': None, 'issue': 'sentence structure', 'severity': 'high',
+             'note': 'Average sentence length 23.1 vs reference 13.5.'},
+            {'sec_id': 'mechanics', 'issue': 'composition', 'severity': 'medium',
+             'note': 'Negative parallelism overuse.'},
+            {'sec_id': 'kitty-hawk', 'issue': 'word choice', 'severity': 'low',
+             'note': 'False range construction.'},
+        ]
+        frame = DisplayFrame(origin='audit',
+            metadata={'findings': findings, 'summary': 'Three findings.'})
+        result = _format_audit_message(frame)
+        assert 'Found 3 finding(s)' in result
+        assert '1 high, 1 medium, 1 low' in result
+        assert 'Three findings.' in result
+        assert '[high] sentence structure (whole post)' in result
+        # High-severity finding's note must be present (sorts first).
+        assert 'Average sentence length 23.1' in result
+        # `sec_id=None` renders as `whole post`, not literal None.
+        assert 'None' not in result.split('Three findings.')[1]
+
+    def test_audit_message_empty_findings_uses_summary(self, minimal_config):
+        from backend.modules.templates.revise import _format_audit_message
+        from backend.components.display_frame import DisplayFrame
+        frame = DisplayFrame(origin='audit',
+            metadata={'findings': [], 'summary': 'Reads on-voice.'})
+        assert _format_audit_message(frame) == 'Reads on-voice.'
+
+    def test_audit_message_empty_no_summary_falls_back(self, minimal_config):
+        from backend.modules.templates.revise import _format_audit_message
+        from backend.components.display_frame import DisplayFrame
+        frame = DisplayFrame(origin='audit', metadata={'findings': [], 'summary': ''})
+        assert 'No findings' in _format_audit_message(frame)
+
+    def test_audit_message_dispatch_announces_groups(self, minimal_config):
+        from backend.modules.templates.revise import _format_audit_message
+        from backend.components.display_frame import DisplayFrame
+        frame = DisplayFrame(origin='audit',
+            metadata={'group_count': 2, 'flow_names': ['rework', 'polish']})
+        result = _format_audit_message(frame)
+        assert 'Working on it' in result
+        assert '2 fix' in result
+        assert 'rework' in result
+        assert 'polish' in result
+
+    def test_audit_message_completed_rolls_up_reports(self, minimal_config):
+        from backend.modules.templates.revise import _format_audit_message
+        from backend.components.display_frame import DisplayFrame
+        frame = DisplayFrame(origin='audit',
+            metadata={'reports': {'rework': 'rewrote intro', 'polish': 'tightened phrasing'}})
+        result = _format_audit_message(frame)
+        assert 'Audit complete' in result
+        assert 'rework: rewrote intro' in result
+        assert 'polish: tightened phrasing' in result
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -43,13 +43,16 @@ Class constant: `_SKILL_DIR` → `backend/prompts/skills/`. Task suffixes in `_T
 
 ## 2. DialogueState — beliefs + flags
 
-`backend/components/dialogue_state.py` contains 3 core methods and 11 attributes.
+`backend/components/dialogue_state.py`. Direct construction is the primary entry point;
+`from_dict` exists for restoring multi-session state.
 
-1. `update(pred_intent, flow_name, confidence)`  →  also increments `turn_count`, resets `keep_going`/`has_issues`  (:23)
-2. `serialize() -> dict`  (:49)
-3. `from_dict(data, config)` (classmethod)  (:65)
+1. `__init__(intent, dax, turn_count, confidence=0.5)` — direct init for a fresh turn.
+2. `flow_name(string=False)` — returns the dax by default; `string=True` returns the human-readable name via `dax2flow`.
+3. `reset()` — clear all fields back to a seed-state shape.
+4. `serialize() -> dict` — JSON-compatible snapshot for persistence.
+5. `from_dict(data)` (classmethod) — reconstruct from a serialized dict.
 
-Attributes: `pred_intent`, `flow_name`, `confidence`, `pred_flows`, `turn_count`, `keep_going`, `has_issues`, `has_plan`, `structured_plan`, `natural_birth`, `active_post`.
+Attributes: `pred_intent`, `pred_flow` (dax), `confidence`, `pred_flows`, `turn_count`, `keep_going`, `has_issues`, `has_plan`, `natural_birth`, `active_post`, `slices`. (The structured plan now lives on the active Plan flow in the flow_stack — not on state.)
 
 ## 3. FlowStack — flow lifecycle
 

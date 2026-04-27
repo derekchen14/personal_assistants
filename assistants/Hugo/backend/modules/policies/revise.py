@@ -1,7 +1,7 @@
 from __future__ import annotations
 from backend.modules.policies.base import BasePolicy
 from backend.components.display_frame import DisplayFrame
-
+from backend.prompts.pex.support.revise_prompts import ROUTE_FINDINGS_SCHEMA, build_route_findings_prompt
 
 class RevisePolicy(BasePolicy):
 
@@ -33,47 +33,45 @@ class RevisePolicy(BasePolicy):
         return None
 
     def rework_policy(self, flow, state, context, tools):
-        early = self._guard_entity(flow)
-        if early is not None: return early
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
+        if not flow.slots['source'].filled:
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(origin=flow.name())
 
-        # Preload per-section preview (title + first few lines). This gives context to handle whole-post operations
-        # (swap two sections, reorder, cross-section rewrite) in a single llm_execute pass instead of looping.
+        if flow.slots['changes'].filled:
+            ideas = flow.slots['changes'].values
+        elif flow.slots['suggestions'].filled:
+            ideas = flow.slots['suggestions'].values
+        else:
+            self.ambiguity.declare('specific', metadata={'missing_slot': 'changes or suggestions'})
+            return DisplayFrame(origin=flow.name())
+
         text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
-        self._mark_suggestions_done(flow, tool_log, text)
+        parsed = self.engineer.apply_guardrails(text)
+        saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
 
-        flow.status = 'Completed'
         frame = DisplayFrame(flow.name(), thoughts=text)
-        if post_id:
+        if saved:
+            for step_name in parsed['done']:
+                flow.slots['suggestions'].mark_as_complete(step_name)
+
+            if state.has_plan:
+                scratch = {'version': '1', 'turn_number': context.turn_id, 'used_count': 0, 'summary': text[:200]}
+                self.memory.write_scratchpad(flow.name(), scratch)
+                audit = self.flow_stack.find_by_name('audit')
+                audit.slots['delegates'].mark_as_complete(flow.name())
+
+            flow.status = 'Completed'
+            post_id, _ = self._resolve_source_ids(flow, state, tools)
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        else:
+            frame.set_frame(new_data={'violation': 'failed_to_save'})
+
         return frame
 
-    def _mark_suggestions_done(self, flow, tool_log, text):
-        """Inspect the skill's JSON reply for `done` markers on suggestions and check the corresponding
-        ChecklistSlot items off. The skill returns either {"target": ..., "added": [...], "done": ["sug1", "sug2"]}
-        or {"suggestions": {"sug1": "done", "sug2": "done"}}; both shapes work."""
-        sug_slot = flow.slots.get('suggestions')
-        if not sug_slot or not getattr(sug_slot, 'steps', None):
-            return
-        saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
-        if not saved:
-            return
-        parsed = self.engineer.apply_guardrails(text)
-        if not isinstance(parsed, dict):
-            return
-        completed_names = []
-        if isinstance(parsed.get('done'), list):
-            completed_names.extend(str(name) for name in parsed['done'])
-        sug_payload = parsed.get('suggestions')
-        if isinstance(sug_payload, dict):
-            completed_names.extend(name for name, status in sug_payload.items() if str(status).lower() == 'done')
-        for step_name in completed_names:
-            sug_slot.mark_as_complete(step_name)
-
     def polish_policy(self, flow, state, context, tools):
-        early = self._guard_entity(flow)
-        if early is not None:
-            return early
+        if not flow.slots['source'].filled:
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(origin=flow.name())
 
         post_id, sec_id = self._resolve_source_ids(flow, state, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools)
@@ -102,12 +100,19 @@ class RevisePolicy(BasePolicy):
             frame = DisplayFrame(flow.name(), thoughts=text)
             if post_id:
                 frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            if state.has_plan:
+                self.memory.write_scratchpad(flow.name(), {
+                    'version': '1', 'turn_number': context.turn_id,
+                    'used_count': 0, 'summary': text[:200],
+                })
+                audit = self.flow_stack.find_by_name('audit')
+                audit.slots['delegates'].mark_as_complete(flow.name())
         return frame
 
     def tone_policy(self, flow, state, context, tools):
-        early = self._guard_entity(flow)
-        if early is not None:
-            return early
+        if not flow.slots['source'].filled:
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(origin=flow.name())
 
         # Default-commit: at least one tone elective must land before dispatch.
         if not flow.slots['chosen_tone'].check_if_filled() and not flow.slots['custom_tone'].check_if_filled():
@@ -129,33 +134,92 @@ class RevisePolicy(BasePolicy):
                 'used_count': 0,
                 'summary': text[:200],
             })
+            audit = self.flow_stack.find_by_name('audit')
+            audit.slots['delegates'].mark_as_complete(flow.name())
         return frame
 
     def audit_policy(self, flow, state, context, tools):
-        early = self._guard_entity(flow)
-        if early is not None:
-            return early
-
-        # Default-commit: reference_count=5.
+        if not flow.slots['source'].filled:
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            return DisplayFrame(origin=flow.name())
         if not flow.slots['reference_count'].filled:
             flow.fill_slot_values({'reference_count': 5})
 
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
-        _, tool_log = self.llm_execute(flow, state, context, tools)
+        if flow.slots['delegates'].is_verified():
+            flow.status = 'Completed'
+            reports = {}
+            for step in flow.slots['delegates'].steps:
+                reports[step['name']] = self.memory.read_scratchpad(step['name'])['summary']
 
-        # Source of truth is the save_findings tool call. The tool already
-        # wrote scratchpad (keyed by flow.name()); we just read what was saved.
-        saved = self.engineer.extract_tool_result(tool_log, 'save_findings')
-        if not saved:
-            return self.error_frame(flow, 'parse_failure', thoughts='Audit did not emit structured findings.')
+            state.has_plan = False
+            state.keep_going = False
+            finish_msg = f'Audit completed with {len(flow.slots["delegates"].steps)} delegated flows.'
+            frame = DisplayFrame('audit', thoughts=finish_msg, metadata={'reports': reports})
 
-        flow.status = 'Completed'
-        frame = DisplayFrame(flow.name())
-        frame.add_block({'type': 'card', 'data': {
-            'post_id': post_id,
-            'findings': saved['findings'],
-            'summary': saved.get('summary', ''),
-        }})
+        elif flow.stage == 'discovery' and len(state.slices['choices']) > 0:
+            flow.stage = 'delegation'
+            frame = self._audit_dispatch(flow, state)
+
+        else:
+            self._resolve_source_ids(flow, state, tools)
+            _, tool_log = self.llm_execute(flow, state, context, tools)
+            saved = self.engineer.extract_tool_result(tool_log, 'save_findings')
+            if saved:
+                flow.stage = 'discovery'
+                findings, summary = saved['findings'], saved['summary']
+                frame = DisplayFrame(flow.name(), metadata={'findings': findings, 'summary': summary})
+                if findings:
+                    options = []
+                    for idx, f in enumerate(findings):
+                        location = f['sec_id'] or 'whole post'
+                        opt = {'label': f"[{f['severity']}] {f['issue']} ({location})", 'payload': idx, 'body': f['note']}
+                        options.append(opt)
+
+                    block_msg = f'Audit found {len(findings)} issues — pick which to fix'
+                    block_data = {'title': block_msg, 'options': options, 'submit_dax': '{13A}', 'submit_label': 'Send to fix'}
+                    frame.add_block({'type': 'checklist', 'data': block_data})
+                else:
+                    flow.status = 'Completed'
+            else:
+                state.has_plan = False
+                state.keep_going = False
+                frame = self.error_frame(flow, 'parse_failure', thoughts='Audit did not emit structured findings.')
+
+        return frame
+
+    def _audit_dispatch(self, flow, state):
+        saved = self.memory.read_scratchpad('audit')
+        findings = saved['findings']
+        picked_idxs = list(state.slices['choices'])
+        picked = [findings[i] for i in picked_idxs]
+
+        # Short-circuit: all selected → single rework, skips routing LLM call.
+        if len(picked) == len(findings):
+            groups = [{'flow_name': 'rework', 'finding_idxs': picked_idxs}]
+        else:
+            prompt = build_route_findings_prompt(picked)
+            result = self.engineer(prompt, task='skill', schema=ROUTE_FINDINGS_SCHEMA)
+            groups = result['groups']
+
+            for grp in groups:
+                if grp['flow_name'] not in ('rework', 'polish', 'simplify', 'tone'):
+                    grp['flow_name'] = 'polish'
+
+        for delegate in groups:
+            new_flow = delegate['flow_name']
+            suggestions = []
+            for index in delegate['finding_idxs']:
+                finding = findings[index]
+                suggestions.append(f"[{finding['severity']}] {finding['issue']}: {finding['note']}")
+            child = self.flow_stack.stackon(delegate['flow_name'])
+            child.fill_slot_values({'suggestions': suggestions})
+            flow.slots['delegates'].add_one(name=new_flow, description='; '.join(suggestions)[:200])
+
+        state.has_plan = True
+        state.keep_going = True
+        num_picks, num_delegates = len(picked), len(groups)
+        frame = DisplayFrame('audit', thoughts=f'Routing {num_picks} fix(es) to {num_delegates} flow(s).',
+            metadata={'group_count': num_delegates, 'flow_names': [g['flow_name'] for g in groups]})
         return frame
 
     def simplify_policy(self, flow, state, context, tools):
@@ -182,25 +246,32 @@ class RevisePolicy(BasePolicy):
 
         flow.status = 'Completed'
         frame = DisplayFrame(flow.name(), thoughts=text)
-        if post_id:
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        if state.has_plan:
+            self.memory.write_scratchpad(flow.name(), {
+                'version': '1', 'turn_number': context.turn_id,
+                'used_count': 0, 'summary': text[:200],
+            })
+            audit = self.flow_stack.find_by_name('audit')
+            audit.slots['delegates'].mark_as_complete(flow.name())
         return frame
 
     def remove_policy(self, flow, state, context, tools):
-        early = self._guard_entity(flow)
-        if early is not None:
-            return early
+        if not flow.is_filled():
+            missing = 'section to remove' if not flow.slots['target'].filled else 'image to remove'
+            self.ambiguity.declare('partial', metadata={'missing_entity': missing})
+            return DisplayFrame(flow.name())
 
-        if not flow.slots['type'].check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': 'type'})
-            frame = DisplayFrame(flow.name())
-        else:
+        if flow.slots['type'].check_if_filled():
             post_id, _ = self._resolve_source_ids(flow, state, tools)
             text, tool_log = self.llm_execute(flow, state, context, tools)
             flow.status = 'Completed'
             frame = DisplayFrame(flow.name(), thoughts=text)
-            if post_id:
-                frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        else:
+            self.ambiguity.declare('specific', metadata={'missing_slot': 'type'})
+            frame = DisplayFrame(flow.name())
+
         return frame
 
     def tidy_policy(self, flow, state, context, tools):

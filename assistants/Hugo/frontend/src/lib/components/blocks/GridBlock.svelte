@@ -89,6 +89,10 @@
         creatingNote = false;
         newNoteBody = '';
     }
+
+    function focusOnMount(el: HTMLElement) {
+        setTimeout(() => el.focus(), 0);
+    }
 </script>
 
 <div class="px-2">
@@ -153,8 +157,8 @@
                                 placeholder="Write something..."
                                 bind:value={newNoteBody}
                                 use:autoresize
+                                use:focusOnMount
                                 onblur={handleNewNoteBlur}
-                                autofocus
                             ></textarea>
                         </div>
                     {:else}
@@ -221,8 +225,8 @@
                                 placeholder="Write something..."
                                 bind:value={newNoteBody}
                                 use:autoresize
+                                use:focusOnMount
                                 onblur={handleNewNoteBlur}
-                                autofocus
                             ></textarea>
                         </div>
                     {:else}
@@ -289,8 +293,8 @@
                                 placeholder="Write something..."
                                 bind:value={newNoteBody}
                                 use:autoresize
+                                use:focusOnMount
                                 onblur={handleNewNoteBlur}
-                                autofocus
                             ></textarea>
                         </div>
                     {:else}
@@ -306,8 +310,20 @@
 
 {#if confirmDeleteItem}
     {@const id = itemId(confirmDeleteItem)}
-    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onclick={() => confirmDeleteItem = null} role="presentation">
-        <div class="bg-[var(--surface)] border border-[var(--border)] rounded-lg py-5 px-6 max-w-xs w-[90%] shadow-lg" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div
+        class="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+        onclick={() => confirmDeleteItem = null}
+        onkeydown={(e) => { if (e.key === 'Escape') confirmDeleteItem = null; }}
+        role="presentation"
+    >
+        <div
+            class="bg-[var(--surface)] border border-[var(--border)] rounded-lg py-5 px-6 max-w-xs w-[90%] shadow-lg"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            tabindex="-1"
+        >
             <p class="text-sm font-medium mb-1">Delete "{noteDisplayName(confirmDeleteItem)}"?</p>
             <p class="text-xs text-[var(--muted)] mb-4">This action cannot be undone.</p>
             <div class="flex justify-end gap-2">

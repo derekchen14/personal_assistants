@@ -113,8 +113,16 @@ def test_outline_propose_mode_excludes_generate_outline(monkeypatch):
 
     assert_frame(frame, origin='outline', block_types=('selection',))
     selection = frame.blocks[0]
-    assert 'candidates' in selection.data
-    assert len(selection.data['candidates']) == 2
+    assert 'options' in selection.data
+    options = selection.data['options']
+    assert len(options) == 2
+    for opt in options:
+        assert opt['dax'] == '{002}'
+        assert 'proposals' in opt['payload']
+        assert isinstance(opt['payload']['proposals'], list)
+        assert opt['payload']['proposals'][0]
+        assert opt.get('body')
+        assert opt.get('label')
 
 
 def test_outline_missing_source_declares_partial_ambiguity(monkeypatch):

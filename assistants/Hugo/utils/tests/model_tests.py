@@ -52,7 +52,7 @@ class TestFirstTurnFlowAccuracy:
             expected_flow = _user_turns(convo)[0]['labels']['flow']
 
             state = _detect_flow(agent, first_utterance)
-            detected = state.flow_name
+            detected = state.flow_name(string=True)
             confidence = state.confidence
 
             hit = detected == expected_flow
@@ -89,7 +89,7 @@ class TestConfidenceScoresMeaningful:
 
             print(
                 f"  convo={convo['convo_id']} "
-                f"flow={state.flow_name} confidence={confidence:.2f}"
+                f"flow={state.flow_name(string=True)} confidence={confidence:.2f}"
             )
 
         assert not below_floor, (
@@ -113,7 +113,7 @@ class TestMultiTurnFlowAccuracy:
                 state = _detect_flow(agent, user_turn['utterance'])
 
                 expected_flow = user_turn['labels']['flow']
-                detected = state.flow_name
+                detected = state.flow_name(string=True)
                 confidence = state.confidence
 
                 hit = detected == expected_flow
@@ -145,53 +145,53 @@ class TestCanonicalFlowDetection:
     def test_chat(self, agent):
         result = agent.take_turn('Hello there!')
         state = agent.world.current_state()
-        assert state.flow_name == 'chat'
+        assert state.flow_name(string=True) == 'chat'
         assert result['message']
 
     def test_suggest(self, agent):
         result = agent.take_turn('What should I do next?')
         state = agent.world.current_state()
-        assert state.flow_name == 'suggest'
+        assert state.flow_name(string=True) == 'suggest'
         assert result['message']
 
     def test_check(self, agent):
         agent.take_turn('Show me the status of my drafts')
         state = agent.world.current_state()
-        assert state.flow_name == 'check'
+        assert state.flow_name(string=True) == 'check'
 
     def test_find(self, agent):
         result = agent.take_turn('Search for blog posts about machine learning')
         state = agent.world.current_state()
-        assert state.flow_name == 'find'
+        assert state.flow_name(string=True) == 'find'
         assert re.search(r'(search|found|result|post|machine learning)', result['message'], re.I)
 
     def test_explain(self, agent):
         result = agent.take_turn('Why did you restructure the outline that way?')
         state = agent.world.current_state()
-        assert state.flow_name == 'explain'
+        assert state.flow_name(string=True) == 'explain'
         assert result['message']
 
     def test_brainstorm(self, agent):
         result = agent.take_turn('Brainstorm some blog post ideas about productivity')
         state = agent.world.current_state()
-        assert state.flow_name == 'brainstorm'
+        assert state.flow_name(string=True) == 'brainstorm'
         assert re.search(r'(idea|topic|productiv|brainstorm)', result['message'], re.I)
 
     def test_outline(self, agent):
         result = agent.take_turn('Generate an outline for a post about climate change')
         state = agent.world.current_state()
-        assert state.flow_name == 'outline'
+        assert state.flow_name(string=True) == 'outline'
         assert re.search(r'(outline|section|climate)', result['message'], re.I)
 
     def test_rework(self, agent):
         agent.take_turn('This draft needs a complete rework and major revision')
         state = agent.world.current_state()
-        assert state.flow_name == 'rework'
+        assert state.flow_name(string=True) == 'rework'
 
     def test_survey(self, agent):
         result = agent.take_turn('Show me which publishing platforms are available')
         state = agent.world.current_state()
-        assert state.flow_name == 'survey'
+        assert state.flow_name(string=True) == 'survey'
         assert re.search(r'(platform|channel|substack|twitter|linkedin|publish)', result['message'], re.I)
 
     def test_calendar(self, agent):
@@ -199,4 +199,4 @@ class TestCanonicalFlowDetection:
             'I need a content calendar — schedule out my blog posts for the next 4 weeks'
         )
         state = agent.world.current_state()
-        assert state.flow_name == 'calendar'
+        assert state.flow_name(string=True) == 'calendar'

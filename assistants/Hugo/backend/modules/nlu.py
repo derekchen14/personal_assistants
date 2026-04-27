@@ -17,7 +17,7 @@ from backend.prompts.for_nlu import build_slot_filling_prompt, ENTITY_SLOT_TYPES
 from backend.prompts.for_contemplate import build_contemplate_prompt as _build_contemplate_prompt_text
 from backend.utilities.services import PostService
 from schemas.ontology import FLOW_CATALOG, Intent
-from utils.helper import _DAX_LOOKUP, edge_flows_for, dax2flow
+from utils.helper import _DAX_LOOKUP, edge_flows_for, dax2flow, flow2dax
 
 if TYPE_CHECKING:
     from backend.components.world import World
@@ -149,14 +149,14 @@ class NLU:
         if self.ambiguity.needs_clarification(state.confidence):
             self.ambiguity.declare(
                 'general',
-                metadata={'top_detection': state.flow_name},
-                observation=f'Low confidence ({state.confidence:.2f}) on flow "{state.flow_name}"',
+                metadata={'top_detection': state.flow_name()},
+                observation=f'Low confidence ({state.confidence:.2f}) on flow "{state.flow_name()}"',
             )
         return state
 
     def contemplate(self, user_text:str) -> DialogueState:
         prev = self.world.current_state()
-        failed_flow = prev.flow_name if prev else None
+        failed_flow = prev.flow_name() if prev else None
         failure_reason = self.ambiguity.observation or ''
 
         detection = self._check_routing(user_text, failed_flow, failure_reason)
@@ -169,18 +169,22 @@ class NLU:
     def react(self, gold_dax:str, payload:dict={}) -> DialogueState:
         """Automatically create the flow since we know the correct DAX."""
         flow_name = dax2flow(gold_dax)
-        if not flow_name:
-            log.warning('react() received unknown DAX %s — falling back to think()', gold_dax)
-            return self.think('', payload)
         flow = self._push_or_get(flow_name)
         self._fill_slots(flow, payload)
-        return self._build_state(flow_name, confidence=0.99)
+        state = self._build_state(flow_name, confidence=0.99)
+
+        for slice_key in ['choices', 'channels', 'campaigns']:
+            if slice_key in payload:
+                for value in payload[slice_key]:
+                    # if value > 0: // can add guardrails in this line if desired
+                    state.slices[slice_key].append(value)
+        return state
 
     def validate(self, state:DialogueState) -> DialogueState:
-        cat = FLOW_CATALOG.get(state.flow_name)
+        cat = FLOW_CATALOG.get(state.flow_name(string=True))
         if not cat:
             state.pred_intent = 'Converse'
-            state.flow_name = 'chat'
+            state.pred_flow = flow2dax('chat')
             state.confidence = 0.3
             return state
 
@@ -188,7 +192,7 @@ class NLU:
         if state.pred_intent != catalog_intent:
             state.pred_intent = catalog_intent
 
-        flow = self.flow_stack.find_by_name(state.flow_name)
+        flow = self.flow_stack.find_by_name(state.flow_name(string=True))
         if flow:
             state = self._repair_entities(state, flow)
 
@@ -472,6 +476,8 @@ class NLU:
                 for sec in chosen:
                     flow.slots['sections'].add_one(sec['name'], sec['description'])
                 flow.slots['proposals'].values = [chosen]
+            case 'audit':
+                pass  # picks live in state.slices['choices'] via react()'s slices passover
             case _:
                 raise ValueError(f'no action-payload handler for flow {flow.name()!r}: {payload}')
 
@@ -541,8 +547,8 @@ class NLU:
         cat = FLOW_CATALOG.get(flow_name, {})
         pred_intent = cat.get('intent', Intent.CONVERSE)
 
-        state = DialogueState(self.config)
-        state.update(pred_intent=pred_intent, flow_name=flow_name, confidence=confidence)
+        state = DialogueState(intent=pred_intent, dax=flow2dax(flow_name),
+            turn_count=prev.turn_count + 1, confidence=confidence)
         state.has_plan = prev.has_plan
         state.natural_birth = prev.natural_birth
         state.active_post = prev.active_post

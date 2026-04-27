@@ -22,7 +22,7 @@ class World:
         """Every session starts with an initial state, a default frame, and a
         system kickoff turn so the first user turn has turn_count = 1 and every
         downstream component can assume current_state() is non-None."""
-        self.states.append(DialogueState(self.config))
+        self.states.append(DialogueState(intent=None, dax=None, turn_count=0))
         self.frames.append(DisplayFrame())
         self.context.add_turn('System', 'Session started.', 'system')
 

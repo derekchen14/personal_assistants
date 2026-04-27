@@ -60,9 +60,9 @@
       "tags": [],
       "color": "",
       "created_at": "2026-03-12T05:47:32.625342+00:00",
-      "updated_at": "2026-04-26T17:44:23.715993+00:00",
-      "preview": "Real-world data is rarely clean. Records go missing, labels are absent, and meaningful patterns hide beneath noise. Most algorithms respond by treating that messiness as something to be eliminated. They scrub, impute, or discard incomplete records before training even begins. Expectation...",
-      "word_count": 301,
+      "updated_at": "2026-04-26T20:32:50.636962+00:00",
+      "preview": "Real-world data is rarely clean. Records go missing, labels are absent, and meaningful patterns hide beneath noise.",
+      "word_count": 300,
       "filename": "drafts/expectation-maximization.md"
     },
     {
@@ -149,9 +149,9 @@
       ],
       "color": "purple",
       "created_at": "2022-05-24T00:00:00+00:00",
-      "updated_at": "2026-04-26T17:42:20.632180+00:00",
+      "updated_at": "2026-04-26T20:30:24.204173+00:00",
       "preview": "Training dialogue agents for real-life use cases is immensely difficult \u2014 manual data annotation quickly hits scaling limits. One solution is to build a user simulator that generates training examples for the agent at scale. To build such a system, though, you need a model that understands how to...",
-      "word_count": 518,
+      "word_count": 522,
       "filename": "posts/building-user-simulators.md"
     },
     {
@@ -874,9 +874,9 @@
       "tags": [],
       "color": "",
       "created_at": "2026-03-14T17:31:04.652323+00:00",
-      "updated_at": "2026-04-24T19:18:41.288736+00:00",
-      "preview": "Ambiguity, at its core, is the condition in which a word, sentence, or piece of communication can be understood in more than one way. In everyday language and in AI systems alike, it shows up in three distinct forms. Lexical ambiguity arises when a single word carries multiple meanings \u2014 the...",
-      "word_count": 888,
+      "updated_at": "2026-04-27T16:22:42.075736+00:00",
+      "preview": "Ambiguity, at its core, is the condition in which a word, sentence, or piece of communication can be understood in more than one way. In everyday language and in AI systems alike, it shows up in three distinct forms. Lexical ambiguity arises when a single word carries multiple meanings, as with...",
+      "word_count": 868,
       "filename": "drafts/collapse-on-ambiguity.md"
     },
     {
@@ -909,7 +909,7 @@
       "tags": [],
       "color": "",
       "created_at": "2026-04-26T16:05:33.986649+00:00",
-      "updated_at": "2026-04-26T17:41:41.614971+00:00",
+      "updated_at": "2026-04-26T20:29:54.610068+00:00",
       "preview": "- The limitations of fixed-length input/output in early neural networks\n- Why traditional RNNs struggled with variable-length sequences\n- The bottleneck problem: compressing entire sentences into a single vector\n- Real-world tasks that demanded a better solution (translation, summarization, Q&A)",
       "word_count": 670,
       "filename": "drafts/history-of-seq2seq.md"
@@ -925,9 +925,9 @@
       ],
       "color": "",
       "created_at": "2026-04-26T16:05:33.986649+00:00",
-      "updated_at": "2026-04-26T17:43:55.474471+00:00",
-      "preview": "ML as Software 2.0 treats machine learning as a core engineering discipline, not a research experiment. Companies that adapt build it with rigor, iteration, and clear ownership.",
-      "word_count": 178,
+      "updated_at": "2026-04-26T20:32:15.217632+00:00",
+      "preview": "ML as Software 2.0 means treating machine learning as core engineering \u2014 not a research side project. Companies that adapt build it with rigor, iteration, and clear ownership.",
+      "word_count": 177,
       "filename": "drafts/ml-as-software_2.md"
     },
     {
@@ -938,9 +938,9 @@
       "tags": [],
       "color": "",
       "created_at": "2026-04-26T16:07:07.132092+00:00",
-      "updated_at": "2026-04-26T18:29:49.857888+00:00",
-      "preview": "- Wilbur and Orville Wright ran a modest bicycle shop in Dayton, Ohio, giving them hands-on mechanical intuition that would prove invaluable\n- Both brothers were largely self-taught, voracious readers of engineering and science texts, particularly the works of Otto Lilienthal\n- Inspired by...",
-      "word_count": 710,
+      "updated_at": "2026-04-27T20:56:59.874616+00:00",
+      "preview": "Long before they ever left the ground, Wilbur and Orville Wright were shaping metal, fitting spokes, and tuning chains in a modest bicycle shop in Dayton, Ohio. That daily, hands-on work gave them something most aviation dreamers of the era lacked: a mechanic's intuition for how materials behave...",
+      "word_count": 1121,
       "filename": "drafts/the-wright-brothers-and-the-discovery-of-flight.md"
     }
   ]

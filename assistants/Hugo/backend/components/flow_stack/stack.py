@@ -27,7 +27,7 @@ class FlowStack:
             dst = new_flow.slots.get(new_flow.entity_slot)
             for entity in src.values:
                 payload = entity.copy()
-                if payload.get('post'):
+                if any(payload.get(k) for k in ('post', 'sec', 'snippet')):
                     dst.add_one(**payload)
         return new_flow
 

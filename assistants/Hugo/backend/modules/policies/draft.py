@@ -114,7 +114,16 @@ class DraftPolicy(BasePolicy):
         flow.slots['proposals'].options = candidates
 
         if candidates:
-            frame.add_block({'type': 'selection', 'data': {'candidates': candidates}})
+            options = [{
+                'label': f'Option {idx + 1}',
+                'dax': '{002}',
+                'payload': {'proposals': [cand]},
+                'body': '\n\n'.join(f"**{sec['name']}**\n\n{sec.get('description', '')}" for sec in cand),
+            } for idx, cand in enumerate(candidates)]
+            frame.add_block({'type': 'selection', 'data': {
+                'title': 'Outline options',
+                'options': options,
+            }})
         return frame
 
     def refine_policy(self, flow, state, context, tools):
@@ -155,8 +164,7 @@ class DraftPolicy(BasePolicy):
             )
 
         # Contract backstop: the skill must preserve existing bullets. If the post-save outline
-        # is strictly shorter AND the user did not request removal, the skill violated the
-        # contract.
+        # is strictly shorter AND the user did not request removal, the skill violated the contract.
         prior_bullets = _count_bullets(content)
         new_result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         new_outline = new_result.get('outline', '')

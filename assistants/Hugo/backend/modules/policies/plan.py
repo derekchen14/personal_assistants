@@ -30,7 +30,7 @@ class PlanPolicy(BasePolicy):
     # -- Plan lifecycle (3-phase state machine) -----------------------------
 
     def _plan_lifecycle(self, flow, state, context, tools):
-        structured_plan = state.structured_plan
+        structured_plan = flow.structured_plan
 
         if not structured_plan:
             return self._generate_plan(flow, state, context, tools)
@@ -63,7 +63,7 @@ class PlanPolicy(BasePolicy):
         for sub_flow in structured_plan.get('sub_flows', []):
             sub_flow.setdefault('status', 'pending')
 
-        state.structured_plan = structured_plan
+        flow.structured_plan = structured_plan
 
         return DisplayFrame(origin=flow.name(), thoughts=freeform)
 
@@ -73,21 +73,22 @@ class PlanPolicy(BasePolicy):
         user_text = context.last_user_text or ''
 
         if not _APPROVE_PATTERN.match(user_text.strip()):
-            state.structured_plan = {}
+            flow.structured_plan = {}
             return self._generate_plan(flow, state, context, tools)
 
         plan_id = self.flow_stack.get_flow().flow_id
 
-        self._push_next_sub_flow(state, plan_id)
+        self._push_next_sub_flow(flow, plan_id)
 
-        state.update_flags(has_plan=True, keep_going=True)
+        state.has_plan=True
+        state.keep_going=True
 
         return DisplayFrame(origin=flow.name())
 
     # -- Mode C: Verify and continue ----------------------------------------
 
     def _verify_and_continue(self, flow, state, context, tools):
-        structured_plan = state.structured_plan
+        structured_plan = flow.structured_plan
         sub_flows = structured_plan.get('sub_flows', [])
 
         last_completed = None
@@ -114,20 +115,20 @@ class PlanPolicy(BasePolicy):
 
         if all_done:
             self.flow_stack.get_flow().status = 'Completed'
-            state.update_flags(keep_going=False)
+            state.keep_going=False
             summary = f'Plan completed: {structured_plan.get("description", flow.name())}'
             return DisplayFrame(origin=flow.name(), thoughts=summary)
 
         plan_id = self.flow_stack.get_flow().flow_id
-        self._push_next_sub_flow(state, plan_id)
-        state.update_flags(keep_going=True)
+        self._push_next_sub_flow(flow, plan_id)
+        state.keep_going = True
 
         return DisplayFrame(origin=flow.name())
 
     # -- Helpers ------------------------------------------------------------
 
-    def _push_next_sub_flow(self, state, plan_id):
-        sub_flows = state.structured_plan.get('sub_flows', [])
+    def _push_next_sub_flow(self, plan_flow, plan_id):
+        sub_flows = plan_flow.structured_plan.get('sub_flows', [])
 
         for sf in sub_flows:
             if sf['status'] != 'pending':

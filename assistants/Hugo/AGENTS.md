@@ -13,8 +13,10 @@ The 7 core components cover ~80% of every assistant's capability. Flow policies 
 - `./init_backend.sh` — FastAPI on port 8001
 - `./init_frontend.sh` — frontend on port 5174
 - `uv pip install -r requirements.txt` — never `pip install`
-- `python -m pytest utils/tests/e2e_agent_evals.py -v -s --tb=short` — full 14-step post lifecycle (~5 min, LLM-heavy)
-- Bash permission rules: no `&&`, `&`, `$()`, `2>&1` — run independent commands as parallel Bash calls
+- `pytest utils/tests/unit_tests.py utils/tests/policy_evals/ utils/tests/test_artifacts.py` — free-tier tests (no LLM, ~6s for ~210 tests). **Run after every major change.**
+- `pytest utils/tests/e2e_agent_evals.py -v -s --tb=short` — full pipeline scenarios (~5–8 min, LLM-heavy). Run at end of feature work.
+- Test catalog and what-each-suite-catches: `utils/tests/evaluation_guidelines.md` (canonical reference).
+- Bash permission rules: no `&&`, `&`, `$()`, `2>&1` — run independent commands as parallel Bash calls.
 
 ## Mental model
 
@@ -29,7 +31,7 @@ The 7 core components cover ~80% of every assistant's capability. Flow policies 
 One line per component. Full method inventory in `utils/helper_ref.md`.
 
 - **PromptEngineer** (`components/prompt_engineer.py`) — focused LLM interface. PromptEngineer is **callable**: `engineer(prompt, task='<task>', max_tokens=N)` is the standard one-shot LLM call (uses `_TASK_SUFFIXES[task]` for the system prompt). Other methods: `skill_call(flow, convo_history, scratchpad, skill_name, skill_prompt, resolved, max_tokens)` (skill-without-tools), `tool_call(flow, convo_history, scratchpad, tool_defs, dispatcher, skill_name, skill_prompt, resolved, max_tokens)` (skill-with-tools, agentic loop — symmetric with skill_call), `stream(prompt, task, model, max_tokens)`, `apply_guardrails(text, format)` dispatching to `_parse_json` / `_parse_sql` / `_parse_markdown`, `load_skill_template`, `extract_tool_result`. For persona-only system prompt, call `build_system(engineer.persona)` from `prompts/general.py`.
-- **DialogueState** — beliefs + flags. `update`, `update_flags`, `reset`, `serialize`.
+- **DialogueState** — beliefs + flags. `update`, `reset`, `serialize`.
 - **FlowStack** — flow lifecycle. Public: `stackon(name, plan_id=None)` push a prerequisite flow on top, `fallback(name)` replace current flow (mark Invalid, transfer slots, push new), `peek`, `get_flow(status=None)`, `find_by_name`, `pop_completed` remove done/invalid flows (returns only completed), `to_list`. Internal: `_push`, `_pop`.
 - **ContextCoordinator** (`components/context_coordinator.py`) — conversation turns + checkpoints. `add_turn`, `compile_history`, `save_checkpoint`, `get_checkpoint`, `get_turn`, `last_user_text`, `rewrite_history`, `contains_keyword`.
 - **DisplayFrame** — turn output container. `set_frame`, `add_block`, `compose`, `clear`, `to_dict`. Block types: `card`, `form`, `confirmation`, `toast`, `default`, `selection`, `list`.
@@ -154,9 +156,3 @@ assistants/Hugo/
 - `utils/flow_recipe.md` — authoring a Hugo flow end-to-end; **canonical definition of slot priorities** (`required` / `elective` / `optional`) in § 1.
 - `utils/helper_ref.md` — component method inventory. Read before adding a helper so you don't reinvent an existing one.
 - `~/.claude/projects/-Users-derekchen-Documents-repos-personal-assistants/memory/MEMORY.md` — persistent cross-session feedback.
-
-## Known e2e quality gaps (as of 2026-04)
-
-Not regressions from recent work — flagged for future attention:
-- Step 3 `refine_bullets` (L3): `generate_outline` overwrites instead of appending; investigate skill prompt or tool semantics.
-- Step 11 `audit` (L3): response surfaces post content instead of a structured style report; audit policy's card choice.

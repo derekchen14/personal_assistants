@@ -1,7 +1,7 @@
 from types import MappingProxyType
 
-VALID_BLOCK_TYPES = frozenset(('card', 'form', 'confirmation', 'toast', 'default', 'selection', 'list', 'compare'))
-_TOP_TYPES = frozenset(('form', 'confirmation', 'toast'))
+VALID_BLOCK_TYPES = frozenset(('card', 'checklist', 'confirmation', 'toast', 'default', 'selection', 'list', 'compare'))
+_TOP_TYPES = frozenset(('confirmation', 'toast'))
 
 class BuildingBlock:
 

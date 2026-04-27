@@ -83,7 +83,7 @@ async def read_post(body:dict, agent, queue:asyncio.Queue):
     post_id = body.get('read_post')
     state = agent.world.current_state()
     if not state:
-        state = DialogueState(agent.config)
+        state = DialogueState(intent=None, dax=None, turn_count=0)
         agent.world.insert_state(state)
     state.active_post = post_id
     if not body.get('view'):

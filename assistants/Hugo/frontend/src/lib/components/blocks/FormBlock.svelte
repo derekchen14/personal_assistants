@@ -23,16 +23,16 @@
     {/if}
     <div class="space-y-3">
         {#each fields as field}
-            <div>
-                <label class="block text-xs text-[var(--muted)] mb-1">
+            <label class="block">
+                <span class="block text-xs text-[var(--muted)] mb-1">
                     {field.label}{field.required ? ' *' : ''}
-                </label>
+                </span>
                 <input
                     type={field.type || 'text'}
                     bind:value={values[field.name]}
                     class="w-full px-3 py-1.5 rounded bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
                 />
-            </div>
+            </label>
         {/each}
         <button
             onclick={handleSubmit}

@@ -108,8 +108,7 @@ class RES(object):
         for flow in completed:
             if flow.intent == Intent.PLAN:
                 state = self.world.current_state()
-                state.update_flags(has_plan=False)
-                state.structured_plan = {}
+                state.has_plan = False
 
         if len(completed) > 1:
             self.world.context.save_checkpoint(
