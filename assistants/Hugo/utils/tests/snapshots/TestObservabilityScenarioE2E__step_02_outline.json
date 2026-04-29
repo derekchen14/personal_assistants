@@ -1,0 +1,96 @@
+{
+  "flow_stack": [
+    {
+      "flow_type": "outline",
+      "interjected": false,
+      "is_newborn": true,
+      "is_uncertain": false,
+      "parent_type": "Draft",
+      "slot_shape": {
+        "depth": {
+          "criteria": "numeric",
+          "filled": false,
+          "level_set": true,
+          "priority": "optional"
+        },
+        "proposals": {
+          "criteria": "multiple",
+          "filled": false,
+          "priority": "optional",
+          "value_count": 0
+        },
+        "sections": {
+          "criteria": "multiple",
+          "filled": false,
+          "priority": "elective",
+          "value_count": 0
+        },
+        "source": {
+          "criteria": "multiple",
+          "filled": true,
+          "priority": "required",
+          "value_count": 1,
+          "value_keys": [
+            "chl",
+            "post",
+            "sec",
+            "snip",
+            "ver"
+          ]
+        },
+        "topic": {
+          "criteria": "single",
+          "filled": true,
+          "priority": "elective"
+        }
+      },
+      "status": "Active"
+    }
+  ],
+  "frame": {
+    "block_data_keys": [
+      [
+        "options",
+        "title"
+      ]
+    ],
+    "block_locations": [
+      "bottom"
+    ],
+    "block_types": [
+      "selection"
+    ],
+    "has_code": false,
+    "has_thoughts": false,
+    "metadata_keys": [],
+    "missing_entity": null,
+    "missing_slot": null,
+    "origin": "outline",
+    "violation": null
+  },
+  "state": {
+    "active_post_set": true,
+    "flow_dax": "{002}",
+    "has_issues": false,
+    "has_plan": false,
+    "keep_going": false,
+    "natural_birth": true,
+    "pred_intent": "Draft"
+  },
+  "tool_log": [
+    {
+      "success": null,
+      "tool": "read_metadata"
+    },
+    {
+      "success": null,
+      "tool": "read_metadata"
+    }
+  ],
+  "top_flow": {
+    "entity_slot": "source",
+    "flow_type": "outline",
+    "is_filled": true,
+    "parent_type": "Draft"
+  }
+}

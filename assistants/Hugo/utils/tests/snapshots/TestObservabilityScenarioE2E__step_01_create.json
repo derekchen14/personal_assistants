@@ -1,0 +1,41 @@
+{
+  "flow_stack": [],
+  "frame": {
+    "block_data_keys": [
+      [
+        "post_id",
+        "status",
+        "title"
+      ]
+    ],
+    "block_locations": [
+      "bottom"
+    ],
+    "block_types": [
+      "card"
+    ],
+    "has_code": false,
+    "has_thoughts": false,
+    "metadata_keys": [],
+    "missing_entity": null,
+    "missing_slot": null,
+    "origin": "create",
+    "violation": null
+  },
+  "state": {
+    "active_post_set": true,
+    "flow_dax": "{05A}",
+    "has_issues": false,
+    "has_plan": false,
+    "keep_going": false,
+    "natural_birth": true,
+    "pred_intent": "Draft"
+  },
+  "tool_log": [
+    {
+      "success": null,
+      "tool": "create_post"
+    }
+  ],
+  "top_flow": {}
+}

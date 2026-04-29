@@ -1,0 +1,52 @@
+{
+  "flow_stack": [],
+  "frame": {
+    "block_data_keys": [
+      [
+        "items",
+        "page"
+      ]
+    ],
+    "block_locations": [
+      "bottom"
+    ],
+    "block_types": [
+      "list"
+    ],
+    "has_code": false,
+    "has_thoughts": false,
+    "metadata_keys": [],
+    "missing_entity": null,
+    "missing_slot": null,
+    "origin": "find",
+    "violation": null
+  },
+  "state": {
+    "active_post_set": true,
+    "flow_dax": "{001}",
+    "has_issues": false,
+    "has_plan": false,
+    "keep_going": false,
+    "natural_birth": true,
+    "pred_intent": "Research"
+  },
+  "tool_log": [
+    {
+      "success": null,
+      "tool": "find_posts"
+    },
+    {
+      "success": null,
+      "tool": "find_posts"
+    },
+    {
+      "success": null,
+      "tool": "find_posts"
+    },
+    {
+      "success": null,
+      "tool": "find_posts"
+    }
+  ],
+  "top_flow": {}
+}

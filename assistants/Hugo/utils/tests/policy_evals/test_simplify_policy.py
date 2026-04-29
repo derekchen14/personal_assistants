@@ -4,6 +4,8 @@ Simplify has a source-or-image guard (both slots elective), and the skill owns s
 The policy only calls `_persist_section` as a secret backup when the skill skipped the
 revise_content tool. See `utils/policy_builder/fixes/simplify.md` and
 `utils/policy_builder/inventory/simplify.md` for the expected shape.
+
+Pillar 2b: tools dispatch to real services on a tmp_path-isolated DB.
 """
 
 from __future__ import annotations
@@ -14,13 +16,9 @@ from utils.tests.policy_evals.fixtures import (
     assert_frame,
     build_policy,
     make_context,
-    make_flow,
     make_state,
-    make_tool_stub,
+    real_tools,
 )
-
-
-_POST_ID = 'abcd1234'
 
 
 def _stub_llm_execute(return_text:str, tool_log:list|None=None):
@@ -33,11 +31,22 @@ def _stub_llm_execute(return_text:str, tool_log:list|None=None):
     return stub
 
 
-def test_simplify_source_or_image_guard(monkeypatch):
+def _seed_post_with_section(title='T', sec_title='Intro', body='Some text.'):
+    """Seed a post with one section. Returns (post_id, sec_id)."""
+    from backend.utilities.services import PostService, ContentService
+    post_id = PostService().create_post(title=title, type='draft')['post_id']
+    ContentService().generate_outline(post_id, f'## {sec_title}\n\n{body}\n')
+    meta = PostService().read_metadata(post_id)
+    sec_id = meta['section_ids'][0] if meta['section_ids'] else 'intro'
+    return post_id, sec_id
+
+
+def test_simplify_source_or_image_guard(monkeypatch, tmp_path):
     """Per inventory/simplify.md § Guard clauses — both source and image
     empty declares partial ambiguity with
     {'missing_slot': 'source_or_image'} and returns an empty frame; no
     llm_execute call."""
+    tools = real_tools(monkeypatch, tmp_path)
     policy, comps = build_policy('simplify')
     comps['flow_stack'].stackon('simplify')
     # source + image intentionally empty
@@ -50,7 +59,6 @@ def test_simplify_source_or_image_guard(monkeypatch):
 
     state = make_state()
     context = make_context('simplify it')
-    tools = make_tool_stub({})
 
     frame = policy.execute(state, context, tools)
 
@@ -62,16 +70,19 @@ def test_simplify_source_or_image_guard(monkeypatch):
     assert amb.metadata == {'missing_entity': 'post_or_image'}
 
 
-def test_simplify_skill_owns_persistence(monkeypatch):
+def test_simplify_skill_owns_persistence(monkeypatch, tmp_path):
     """Per fixes/simplify.md § Skill owns persistence, with a policy-level
     backup — when the skill's tool_log contains a successful revise_content,
     `_persist_section` is NOT called by the policy."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id, sec_id = _seed_post_with_section()
+
     policy, comps = build_policy('simplify')
     comps['flow_stack'].stackon('simplify')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID, sec='sec_one')
+    top.slots['source'].add_one(post=post_id, sec=sec_id)
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('simplify the intro')
 
     tool_log = [{'tool': 'revise_content', 'input': {}, 'result': {'_success': True}}]
@@ -83,21 +94,6 @@ def test_simplify_skill_owns_persistence(monkeypatch):
         persist_calls.append((post_id, sec_id, text))
     monkeypatch.setattr(BasePolicy, '_persist_section', fake_persist)
 
-    tools = make_tool_stub({
-        'read_metadata': [
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'section_ids': ['sec_one']},
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'section_ids': ['sec_one']},
-        ],
-        # Two read_section calls: (1) preload target section via extra_resolved,
-        # (2) card-building in _read_post_content at the tail.
-        'read_section': [
-            {'_success': True, 'title': 'Intro', 'content': 'x'},
-            {'_success': True, 'title': 'Intro', 'content': 'x'},
-        ],
-    })
-
     frame = policy.execute(state, context, tools)
 
     assert persist_calls == [], 'skill already persisted — policy must not'
@@ -105,16 +101,19 @@ def test_simplify_skill_owns_persistence(monkeypatch):
     assert top.status == 'Completed'
 
 
-def test_simplify_backup_persist_when_skill_skipped(monkeypatch):
+def test_simplify_backup_persist_when_skill_skipped(monkeypatch, tmp_path):
     """Per fixes/simplify.md § Skill owns persistence, with a policy-level
     backup — when the tool_log has NO revise_content call, the policy
     falls back to `_persist_section`."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id, sec_id = _seed_post_with_section()
+
     policy, comps = build_policy('simplify')
     comps['flow_stack'].stackon('simplify')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID, sec='sec_one')
+    top.slots['source'].add_one(post=post_id, sec=sec_id)
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('simplify it')
 
     # tool_log deliberately empty — skill replied with text only.
@@ -126,22 +125,8 @@ def test_simplify_backup_persist_when_skill_skipped(monkeypatch):
         persist_calls.append((post_id, sec_id, text))
     monkeypatch.setattr(BasePolicy, '_persist_section', fake_persist)
 
-    tools = make_tool_stub({
-        'read_metadata': [
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'section_ids': ['sec_one']},
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'section_ids': ['sec_one']},
-        ],
-        # Two read_section calls: (1) preload target section, (2) card build.
-        'read_section': [
-            {'_success': True, 'title': 'Intro', 'content': 'x'},
-            {'_success': True, 'title': 'Intro', 'content': 'x'},
-        ],
-    })
-
     frame = policy.execute(state, context, tools)
 
     assert len(persist_calls) == 1, 'backup persistence must fire once'
-    assert persist_calls[0] == (_POST_ID, 'sec_one', 'simplified fallback text')
+    assert persist_calls[0] == (post_id, sec_id, 'simplified fallback text')
     assert_frame(frame, origin='simplify', block_types=('card',))

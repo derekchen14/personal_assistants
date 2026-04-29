@@ -30,6 +30,8 @@ from pathlib import Path
 
 import pytest
 
+from utils.tests._snapshot import assert_snapshot, project_state
+
 llm = pytest.mark.llm
 
 _COMPONENT_TOOLS = {'handle_ambiguity', 'coordinate_context', 'manage_memory', 'call_flow_stack', 'save_findings'}
@@ -1383,7 +1385,18 @@ class _BaseScenarioE2E:
         else:
             l3_issues = []
 
-        for issue in l1_issues + l2_issues + l3_issues:
+        snap_issues = []
+        if not timed_out:
+            try:
+                projection = project_state(agent, result, tool_log)
+                snap_name = (
+                    f'{self.__class__.__name__}__step_{step_def["step"]:02d}_{step_def["flow"]}'
+                )
+                assert_snapshot(projection, snap_name)
+            except AssertionError as exc:
+                snap_issues = [str(exc)[:500]]
+
+        for issue in l1_issues + l2_issues + l3_issues + snap_issues:
             self._log(f'  issue: {issue}')
 
         res = {
@@ -1395,6 +1408,8 @@ class _BaseScenarioE2E:
             'l2_issues': l2_issues,
             'l3_pass': not l3_issues,
             'l3_issues': l3_issues,
+            'snap_pass': not snap_issues,
+            'snap_issues': snap_issues,
             'domain_tools': _domain_tools(tool_log),
             'duration_sec': turn_duration,
         }
@@ -1438,6 +1453,7 @@ class _BaseScenarioE2E:
         print(f"    L1 (functionality): {'PASS' if res['l1_pass'] else 'FAIL ' + str(res['l1_issues'])}")
         print(f"    L2 (trajectory):    {'PASS' if res['l2_pass'] else 'FAIL ' + str(res['l2_issues'])}")
         print(f"    L3 (quality):       {'PASS' if res['l3_pass'] else 'FAIL ' + str(res['l3_issues'])}")
+        print(f"    SNAP (structural):  {'PASS' if res['snap_pass'] else 'FAIL ' + str(res['snap_issues'])}")
 
         failures = []
         if not res['l1_pass']:
@@ -1446,6 +1462,8 @@ class _BaseScenarioE2E:
             failures.append(f'L2 FAIL — {"; ".join(res["l2_issues"])}')
         if not res['l3_pass'] and 'skipped' not in str(res['l3_issues']):
             failures.append(f'L3 FAIL — {"; ".join(res["l3_issues"])}')
+        if not res['snap_pass']:
+            failures.append(f'SNAP FAIL — {"; ".join(res["snap_issues"])}')
 
         if failures:
             cls._consecutive_failures += 1

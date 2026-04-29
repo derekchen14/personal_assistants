@@ -84,6 +84,38 @@ Labels on user turns:
 | `e2e_agent_evals.py` | Full pipeline scenarios — real LLM + real tools, 3-level evaluation, produces report next to the file | Yes | ~5–8 min |
 | `test_cases.json` | Shared test data — conversations with labels, expected_tools, and rubrics |  |  |
 | `conftest.py` | Fixtures — `agent` (real LLM), `config` |  |  |
+| `_snapshot.py` | DIY snapshot helper — `assert_snapshot(actual, name)` + `project_state(...)` for the e2e regression harness | No | trivial |
+| `snapshots/` | JSON sidecar files keyed by `<TestClass>__step_<NN>_<flow>.json` | — | — |
+
+---
+
+## Reading test failures
+
+Each suite produces a different failure mode. Read the diff before "fixing" anything.
+
+### Snapshot failures (Pillar 1 — `e2e_agent_evals.py`)
+
+A `SNAP FAIL` line means the structural projection of agent state diverged from the recorded sidecar. The diff is included in the failure message — read it before doing anything else.
+
+- **Intentional behavior change** (e.g., a policy now emits a `card` block where it previously emitted a `toast`): re-run with `UPDATE_SNAPSHOTS=1 pytest utils/tests/e2e_agent_evals.py` and explain the diff in the PR body.
+- **Regression** (the diff shows a slot that's no longer filled, a flow_stack that contains a Completed flow, a missing block-data key): fix the code, do not update the snapshot.
+- **Mask coverage**: `flow_id`, `turn_ids`, `post_id`, and timestamp keys are auto-masked by `_mask_volatile`. Everything else is real and meaningful — slot value-counts, value-key-sets, block types, frame metadata keys.
+
+The structural projection deliberately excludes LLM-generated text (slot values, frame `thoughts`, response message). LLM text varies turn to turn even with `temperature=0`; the snapshot is for *shape* regressions only.
+
+### Hypothesis failures (Pillar 3 — `TestFlowStackMachine`)
+
+Hypothesis prints a *minimal* failing sequence (`Falsifying example: ...`). Copy that sequence and reproduce with `@reproduce_failure` if you need to debug the same shrunk case repeatedly. Shrinking can take 1–2 minutes on first failure — that is normal.
+
+The shrunk case is a real bug, not a Hypothesis quirk. If the failure is a state-machine *modeling* error (the test's preconditions are wrong), fix the precondition. If the failure is a `FlowStack` invariant violation, fix `FlowStack`.
+
+### Free-tier unit/policy/artifact failures
+
+Free-tier tests have no LLM and no flake budget. A failure is a real regression. If a `policy_eval/` test fails after the Pillar 2b rollout (real tools running on `tmp_path`), the bug is in the policy or skill prompt — not in the test. Do not re-introduce `make_tool_stub` to "fix" it. Read the tool error; it points at the bug.
+
+### Trivial-attribute regressions to avoid
+
+If you find yourself writing `assert isinstance(x, T)` or `assert 'key' in result` as the only assertion in a new test, stop. That pattern was deliberately pruned in Pillar 2a — it adds maintenance cost without catching real bugs. Write a behavior assertion instead: assert on a specific value, a specific tool sequence, a specific state transition.
 
 ---
 

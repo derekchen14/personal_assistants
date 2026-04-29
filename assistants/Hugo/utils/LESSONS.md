@@ -711,6 +711,8 @@ Three tiers with increasing fidelity and decreasing speed. Same rubric keys, ass
 
 **Eval-failure-as-success principle.** During harness construction, success means **seeing the tests fail** — that's the signal evals catch what the app breaks on. Mock over early failures so downstream steps run and surface their own failures. Once the harness produces a realistic failure profile, design policies to get everything green.
 
+**Snapshot updates require PR-body justification.** Pillar 1's structural snapshots (`utils/tests/snapshots/*.json`) capture flow_stack composition, slot shape, frame structure, and tool sequence after every e2e turn. A failure means the projection diverged from the recorded shape. Re-running with `UPDATE_SNAPSHOTS=1` is not a fix — it overwrites the recorded behavior. Always read the diff first: if the change is intentional, update and explain *what changed and why* in the PR body; if it's a regression, fix the code.
+
 ### 2. Frame Validation
 
 **`_validate_frame` checks values, not just presence.** It asserts that expected values are present on frame blocks (e.g., `card` blocks have `post_id`, `title`, `content` keys), not just that `.blocks` is non-empty.

@@ -520,10 +520,14 @@ class ChannelSlot(SourceSlot):
   def json_schema(self):
     return {'type': ['array', 'null'], 'items': {'type': 'string'}}
 
-  def add_one(self, chl='', **_ignored):
-    if chl and chl not in self.values:
-      self.values.append(chl)
+  def add_one(self, channel):
+    if channel not in self.values:
+      self.values.append(channel)
     self.check_if_filled()
+
+  def add_many(self, channels):
+    for channel in channels:
+      self.add_one(channel)
 
   def check_if_filled(self):
     self.filled = len(self.values) >= self.size

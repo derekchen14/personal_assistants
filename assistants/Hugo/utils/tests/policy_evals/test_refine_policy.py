@@ -5,6 +5,11 @@ outline injected as extra_resolved. It has a contract backstop that checks the p
 count and an OutlineFlow stack-on when the existing outline has no bullets. See
 `utils/policy_builder/fixes/refine.md` and `utils/policy_builder/inventory/refine.md` for the
 expected shape.
+
+Pillar 2b: tools dispatch to real services on a tmp_path-isolated DB. The
+bullet-shrink contract test keeps make_tool_stub since it specifically needs
+DIFFERENT outline values from pre-save and post-save reads — a synthetic
+divergence the real tools cannot produce when the skill is itself stubbed.
 """
 
 from __future__ import annotations
@@ -15,9 +20,9 @@ from utils.tests.policy_evals.fixtures import (
     assert_frame,
     build_policy,
     make_context,
-    make_flow,
     make_state,
     make_tool_stub,
+    real_tools,
 )
 
 
@@ -41,19 +46,29 @@ def _stub_llm_execute(return_text:str, tool_log:list|None=None, captured:list|No
     return stub
 
 
-def test_refine_happy_path_saves_section(monkeypatch):
+def _seed_post_with_outline(outline_md, title='T'):
+    from backend.utilities.services import PostService, ContentService
+    post_id = PostService().create_post(title=title, type='draft')['post_id']
+    ContentService().generate_outline(post_id, outline_md)
+    return post_id
+
+
+def test_refine_happy_path_saves_section(monkeypatch, tmp_path):
     """Happy path: source + feedback + steps filled with an existing
     bulleted outline calls llm_execute with extra_resolved=
     {'current_outline': <outline>}, confirms revise_content succeeded,
     marks flow Completed and returns a card."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id = _seed_post_with_outline(_OUTLINE_WITH_BULLETS)
+
     policy, comps = build_policy('refine')
     comps['flow_stack'].stackon('refine')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID)
+    top.slots['source'].add_one(post=post_id)
     top.slots['feedback'].add_one('tighten the body')
     top.slots['steps'].add_one('tighten', 'cut filler words')
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('refine the outline')
     captured:list = []
     tool_log = [
@@ -62,29 +77,12 @@ def test_refine_happy_path_saves_section(monkeypatch):
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute('saved section', tool_log=tool_log, captured=captured))
 
-    tools = make_tool_stub({
-        'read_metadata': [
-            # resolve_post_id confirms the 8-char post exists.
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'section_ids': []},
-            # Pre-merge outline snapshot.
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'outline': _OUTLINE_WITH_BULLETS,
-             'section_ids': []},
-            # Post-merge outline snapshot (same — no shrink).
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'outline': _OUTLINE_WITH_BULLETS,
-             'section_ids': []},
-            # _read_post_content's read_metadata for the card data.
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'section_ids': []},
-        ],
-    })
-
     frame = policy.execute(state, context, tools)
 
     assert len(captured) == 1
-    assert captured[0]['extra_resolved'] == {'current_outline': _OUTLINE_WITH_BULLETS}
+    # current_outline should be present and reflect the bulleted form.
+    assert 'current_outline' in captured[0]['extra_resolved']
+    assert '- First point' in captured[0]['extra_resolved']['current_outline']
 
     assert_frame(frame, origin='refine', block_types=('card',))
     assert top.status == 'Completed'
@@ -95,12 +93,15 @@ def test_refine_bullet_shrink_contract_violation(monkeypatch):
     fewer bullets than the prior outline AND the user did not request
     removal, the policy returns DisplayFrame(origin=flow.name(),
     metadata['violation']='failed_to_save') with a descriptive thoughts
-    line. Flow is not Completed and no ambiguity is declared."""
+    line. Flow is not Completed and no ambiguity is declared.
+
+    Synthetic test: the pre/post outline divergence requires controlled
+    multi-call returns. Keep make_tool_stub.
+    """
     policy, comps = build_policy('refine')
     comps['flow_stack'].stackon('refine')
     top = comps['flow_stack'].get_flow()
     top.slots['source'].add_one(post=_POST_ID)
-    # Feedback + steps have no 'remove'/'delete' tokens — no removal intent.
     top.slots['feedback'].add_one('make it clearer')
     top.slots['steps'].add_one('clarify', 'sharper wording')
 
@@ -113,13 +114,10 @@ def test_refine_bullet_shrink_contract_violation(monkeypatch):
     shrunk = '## Intro\n- only one\n'  # 1 bullet; prior had 3
     tools = make_tool_stub({
         'read_metadata': [
-            # resolve_post_id ack
             {'_success': True, 'post_id': _POST_ID, 'title': 'T',
              'section_ids': []},
-            # Pre-save outline
             {'_success': True, 'post_id': _POST_ID, 'title': 'T',
              'outline': _OUTLINE_WITH_BULLETS, 'section_ids': []},
-            # Post-save outline shrunk
             {'_success': True, 'post_id': _POST_ID, 'title': 'T',
              'outline': shrunk, 'section_ids': []},
         ],
@@ -134,34 +132,26 @@ def test_refine_bullet_shrink_contract_violation(monkeypatch):
     assert not comps['ambiguity'].present()
 
 
-def test_refine_no_bullets_stacks_on_outline(monkeypatch):
+def test_refine_no_bullets_stacks_on_outline(monkeypatch, tmp_path):
     """Per fixes/refine.md § Stack-on to OutlineFlow — when the existing
     outline has no bullets, the policy stacks on 'outline', sets
     state.keep_going=True, and surfaces the reason in frame.thoughts."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id = _seed_post_with_outline(_OUTLINE_NO_BULLETS)
+
     policy, comps = build_policy('refine')
     comps['flow_stack'].stackon('refine')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID)
+    top.slots['source'].add_one(post=post_id)
     top.slots['feedback'].add_one('punch it up')
     top.slots['steps'].add_one('punch', 'make punchier')
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('refine')
 
     called:list = []
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute('', captured=called))
-
-    tools = make_tool_stub({
-        'read_metadata': [
-            # resolve_post_id ack
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'section_ids': []},
-            # include_outline response with no bullets
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'outline': _OUTLINE_NO_BULLETS, 'section_ids': []},
-        ],
-    })
 
     frame = policy.execute(state, context, tools)
 

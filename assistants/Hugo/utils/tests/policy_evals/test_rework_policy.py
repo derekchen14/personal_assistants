@@ -4,6 +4,8 @@ Rework is section-scoped by default but enters a per-section loop when the sourc
 (whole-post scope). The policy also inspects the skill's JSON reply to check off completed
 ChecklistSlot suggestions. See `utils/policy_builder/fixes/rework.md` and
 `utils/policy_builder/inventory/rework.md` for the expected shape.
+
+Pillar 2b: tools dispatch to real services on a tmp_path-isolated DB.
 """
 
 from __future__ import annotations
@@ -14,13 +16,9 @@ from utils.tests.policy_evals.fixtures import (
     assert_frame,
     build_policy,
     make_context,
-    make_flow,
     make_state,
-    make_tool_stub,
+    real_tools,
 )
-
-
-_POST_ID = 'abcd1234'
 
 
 def _stub_llm_execute(return_text:str, tool_log:list|None=None, captured:list|None=None):
@@ -35,36 +33,35 @@ def _stub_llm_execute(return_text:str, tool_log:list|None=None, captured:list|No
     return stub
 
 
-def test_rework_section_scoped_single_call(monkeypatch):
+def _seed_post_with_sections(sections):
+    """Seed a post with N sections (each {title, body}). Returns (post_id, [sec_ids])."""
+    from backend.utilities.services import PostService, ContentService
+    post_id = PostService().create_post(title='T', type='draft')['post_id']
+    body = '\n\n'.join(f'## {s["title"]}\n\n{s["body"]}' for s in sections) + '\n'
+    ContentService().generate_outline(post_id, body)
+    meta = PostService().read_metadata(post_id)
+    return post_id, meta['section_ids']
+
+
+def test_rework_section_scoped_single_call(monkeypatch, tmp_path):
     """Per fixes/rework.md § Changes that landed #2 — when source has a
     sec_id, rework runs a single llm_execute pass (no per-section loop)
     and returns a card frame."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id, sec_ids = _seed_post_with_sections([{'title': 'Intro', 'body': 'text'}])
+
     policy, comps = build_policy('rework')
     comps['flow_stack'].stackon('rework')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID, sec='sec_one')
+    top.slots['source'].add_one(post=post_id, sec=sec_ids[0])
     top.slots['changes'].add_one('tighten the transitions')
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('rework this section')
     captured:list = []
     tool_log = [{'tool': 'revise_content', 'input': {}, 'result': {'_success': True}}]
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute('{"done": []}', tool_log=tool_log, captured=captured))
-
-    tools = make_tool_stub({
-        'read_metadata': [
-            # resolve_post_id
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'section_ids': ['sec_one']},
-            # _read_post_content
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'section_ids': ['sec_one']},
-        ],
-        'read_section': [
-            {'_success': True, 'title': 'Intro', 'content': 'text'},
-        ],
-    })
 
     frame = policy.execute(state, context, tools)
 
@@ -73,35 +70,30 @@ def test_rework_section_scoped_single_call(monkeypatch):
     assert top.status == 'Completed'
 
 
-def test_rework_whole_post_single_call_with_preview(monkeypatch):
+def test_rework_whole_post_single_call_with_preview(monkeypatch, tmp_path):
     """When source has no sec_id, the policy makes a single llm_execute call
     with `include_preview=True` so the skill can handle whole-post operations
     (swap two sections, reorder, cross-section rewrite) in one pass instead
     of looping per section."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id, _ = _seed_post_with_sections([
+        {'title': 'A', 'body': 'alpha'},
+        {'title': 'B', 'body': 'beta'},
+        {'title': 'C', 'body': 'gamma'},
+    ])
+
     policy, comps = build_policy('rework')
     comps['flow_stack'].stackon('rework')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID)  # no sec_id
+    top.slots['source'].add_one(post=post_id)  # no sec_id
     top.slots['changes'].add_one('restructure arguments')
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('rework the whole post')
     captured:list = []
     tool_log = [{'tool': 'revise_content', 'input': {}, 'result': {'_success': True}}]
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute('{"done": []}', tool_log=tool_log, captured=captured))
-
-    tools = make_tool_stub({
-        'read_metadata': [
-            # _resolve_source_ids
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'section_ids': ['sec_a', 'sec_b', 'sec_c']},
-            # _read_post_content (include_outline=True)
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'outline': '## A\nalpha\n\n## B\nbeta\n\n## C\ngamma',
-             'section_ids': ['sec_a', 'sec_b', 'sec_c']},
-        ],
-    })
 
     frame = policy.execute(state, context, tools)
 
@@ -110,20 +102,23 @@ def test_rework_whole_post_single_call_with_preview(monkeypatch):
     assert top.status == 'Completed'
 
 
-def test_rework_mark_suggestions_done_checks_off_names(monkeypatch):
+def test_rework_mark_suggestions_done_checks_off_names(monkeypatch, tmp_path):
     """Per fixes/rework.md § Changes that landed #3 — when the skill
     returns `{"done": ["sug_one", "sug_two"]}` alongside a successful
     revise_content, `_mark_suggestions_done` checks those ChecklistSlot
     items."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id, sec_ids = _seed_post_with_sections([{'title': 'Intro', 'body': 'text'}])
+
     policy, comps = build_policy('rework')
     comps['flow_stack'].stackon('rework')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID, sec='sec_one')
+    top.slots['source'].add_one(post=post_id, sec=sec_ids[0])
     top.slots['suggestions'].add_one('sug_one', 'do A')
     top.slots['suggestions'].add_one('sug_two', 'do B')
     top.slots['suggestions'].add_one('sug_three', 'do C')
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('rework')
 
     tool_log = [
@@ -132,16 +127,6 @@ def test_rework_mark_suggestions_done_checks_off_names(monkeypatch):
     skill_reply = '{"done": ["sug_one", "sug_two"]}'
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute(skill_reply, tool_log=tool_log))
-
-    tools = make_tool_stub({
-        'read_metadata': [
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'section_ids': ['sec_one']},
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'section_ids': ['sec_one']},
-        ],
-        'read_section': [{'_success': True, 'title': 'Intro', 'content': 'x'}],
-    })
 
     frame = policy.execute(state, context, tools)
 

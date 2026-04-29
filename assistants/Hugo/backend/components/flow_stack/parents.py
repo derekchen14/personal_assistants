@@ -70,10 +70,7 @@ class BaseFlow(object):
     return self.is_filled()
 
   def fill_slot_values(self, values: dict):
-    """Each concrete flow implements its own. The flow knows which slots it has and
-    how each is shaped (per slot.json_schema and the slot-filling prompt), so it can
-    drive each slot's existing API directly without generic dispatch."""
-    raise NotImplementedError(f'{type(self).__name__} must implement fill_slot_values')
+    raise NotImplementedError(f'{self.flow_type} must implement fill_slot_values')
 
   def slot_values_dict(self) -> dict:
     """Read filled slot values as a flat dict (for prompt serialization)."""

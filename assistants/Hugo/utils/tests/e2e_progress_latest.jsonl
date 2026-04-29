@@ -1,2 +1,3 @@
-{"ts": "2026-04-28T21:54:27", "scenario": "TestVisionScenarioE2E", "step": 1, "flow": "create", "duration_sec": 2.9936471249966417, "l1_pass": true, "l2_pass": true, "l3_pass": true}
-{"ts": "2026-04-28T21:54:39", "scenario": "TestVisionScenarioE2E", "step": 14, "flow": "release", "duration_sec": 11.99671437498182, "l1_pass": true, "l2_pass": true, "l3_pass": true}
+{"ts": "2026-04-29T06:47:05", "scenario": "TestVisionScenarioE2E", "step": 1, "flow": "create", "duration_sec": 2.9149186669965275, "l1_pass": true, "l2_pass": true, "l3_pass": true}
+{"ts": "2026-04-29T06:47:30", "scenario": "TestVisionScenarioE2E", "step": 2, "flow": "outline", "duration_sec": 24.838211291993503, "l1_pass": true, "l2_pass": true, "l3_pass": true}
+{"ts": "2026-04-29T06:47:47", "scenario": "TestVisionScenarioE2E", "step": 3, "flow": "outline", "duration_sec": 16.379190415987978, "l1_pass": true, "l2_pass": true, "l3_pass": true}

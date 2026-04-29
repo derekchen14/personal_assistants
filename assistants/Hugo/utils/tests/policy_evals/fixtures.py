@@ -107,6 +107,86 @@ def make_tool_stub(responses:dict):
     return tools
 
 
+def real_tools(monkeypatch, tmp_path):
+    """Build a `tools(name, params)` callable that dispatches to REAL service methods
+    against a tmp_path-isolated DB. Pillar 2b: replaces `make_tool_stub` so policy
+    evals exercise the actual service contracts (catches argument-shape and
+    state-propagation bugs the canned stub silently accepted).
+
+    Mirrors the registry in `backend/modules/pex.py:51-88` so the dispatch matches
+    production exactly. Returns a callable with `.log` (list of {name, params, result}).
+
+    Usage:
+        tools = real_tools(monkeypatch, tmp_path)
+        # pre-seed any post the test depends on, e.g.:
+        from backend.utilities.services import PostService
+        PostService().create_post(title='Test', type='draft')
+        # ...then run the policy with `tools`.
+    """
+    db = tmp_path / 'database'
+    content = db / 'content'
+    (content / 'drafts').mkdir(parents=True)
+    (content / 'notes').mkdir(parents=True)
+    (content / 'posts').mkdir(parents=True)
+    (db / '.snapshots').mkdir(parents=True)
+    (db / 'guides').mkdir(parents=True)
+    (content / 'metadata.json').write_text('{"entries": []}')
+
+    import backend.utilities.services as _svc
+    monkeypatch.setattr(_svc, '_DB_DIR', db)
+
+    from backend.utilities.services import (
+        PostService, ContentService, AnalysisService, PlatformService,
+    )
+    post = PostService()
+    cont = ContentService()
+    analysis = AnalysisService()
+    platform = PlatformService()
+    registry = {
+        'find_posts': post.find_posts, 'search_notes': post.search_notes,
+        'read_metadata': post.read_metadata, 'read_section': post.read_section,
+        'create_post': post.create_post, 'update_post': post.update_post,
+        'delete_post': post.delete_post, 'summarize_text': post.summarize_text,
+        'rollback_post': post.rollback_post,
+        'generate_outline': cont.generate_outline,
+        'convert_to_prose': cont.convert_to_prose,
+        'insert_section': cont.insert_section, 'revise_content': cont.revise_content,
+        'write_text': cont.write_text, 'remove_content': cont.remove_content,
+        'cut_and_paste': cont.cut_and_paste, 'diff_section': cont.diff_section,
+        'insert_media': cont.insert_media, 'web_search': cont.web_search,
+        'brainstorm_ideas': analysis.brainstorm_ideas,
+        'inspect_post': analysis.inspect_post,
+        'check_readability': analysis.check_readability,
+        'check_links': analysis.check_links, 'compare_style': analysis.compare_style,
+        'editor_review': analysis.editor_review,
+        'explain_action': analysis.explain_action, 'analyze_seo': analysis.analyze_seo,
+        'release_post': platform.release_post, 'promote_post': platform.promote_post,
+        'cancel_release': platform.cancel_release,
+        'list_channels': platform.list_channels,
+        'channel_status': platform.channel_status,
+    }
+
+    log:list[dict] = []
+    def tools(name:str, params:dict):
+        from backend.utilities.services import PostNotFoundError, OutlineValidationError
+        if name not in registry:
+            result = {'_success': False, '_error': 'invalid_input',
+                      '_message': f'Unknown tool: {name}'}
+        else:
+            try:
+                result = registry[name](**params)
+            except OutlineValidationError as ecp:
+                result = {'_success': False, '_error': 'validation', '_message': str(ecp)}
+            except PostNotFoundError as ecp:
+                result = {'_success': False, '_error': 'not_found', '_message': str(ecp)}
+        log.append({'name': name, 'params': params, 'result': result})
+        return result
+
+    tools.log = log
+    tools.db = db  # exposed so tests can read disk state directly
+    return tools
+
+
 def capture_tool_log(tools_fn):
     """Wrap a tools stub so every call is appended to tools_fn.log.
 

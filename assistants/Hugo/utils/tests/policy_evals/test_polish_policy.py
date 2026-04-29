@@ -4,6 +4,8 @@ Polish covers small in-paragraph revisions; the policy persists the revised text
 skill's JSON for consumed scratchpad findings (bumping used_count), and escalates to `rework` when
 inspect_post flags structural issues. See `utils/policy_builder/fixes/polish.md` and
 `utils/policy_builder/inventory/polish.md` for the expected shape.
+
+Pillar 2b: tools dispatch to real services on a tmp_path-isolated DB.
 """
 
 from __future__ import annotations
@@ -14,13 +16,9 @@ from utils.tests.policy_evals.fixtures import (
     assert_frame,
     build_policy,
     make_context,
-    make_flow,
     make_state,
-    make_tool_stub,
+    real_tools,
 )
-
-
-_POST_ID = 'abcd1234'
 
 
 def _stub_llm_execute(return_text:str, tool_log:list|None=None):
@@ -33,10 +31,20 @@ def _stub_llm_execute(return_text:str, tool_log:list|None=None):
     return stub
 
 
-def test_polish_missing_source_declares_partial(monkeypatch):
+def _seed_post_with_section(title='T', sec_title='Intro', body='Some text.'):
+    from backend.utilities.services import PostService, ContentService
+    post_id = PostService().create_post(title=title, type='draft')['post_id']
+    ContentService().generate_outline(post_id, f'## {sec_title}\n\n{body}\n')
+    meta = PostService().read_metadata(post_id)
+    sec_id = meta['section_ids'][0] if meta['section_ids'] else 'intro'
+    return post_id, sec_id
+
+
+def test_polish_missing_source_declares_partial(monkeypatch, tmp_path):
     """Entity-missing guard: polish's entity_slot (source) unset declares
     `partial` ambiguity with {'missing_entity': 'post'} per Lesson 2;
     llm_execute is not called."""
+    tools = real_tools(monkeypatch, tmp_path)
     policy, comps = build_policy('polish')
     comps['flow_stack'].stackon('polish')
 
@@ -48,7 +56,6 @@ def test_polish_missing_source_declares_partial(monkeypatch):
 
     state = make_state()
     context = make_context('polish')
-    tools = make_tool_stub({})
 
     frame = policy.execute(state, context, tools)
 
@@ -59,15 +66,18 @@ def test_polish_missing_source_declares_partial(monkeypatch):
     assert amb.metadata == {'missing_entity': 'post'}
 
 
-def test_polish_used_count_increments_on_consumed_findings(monkeypatch):
+def test_polish_used_count_increments_on_consumed_findings(monkeypatch, tmp_path):
     """Per fixes/polish.md § Policy increments used_count on consumed
     findings — when the skill's JSON reply has `{"used": ["audit",
     "inspect"]}`, the policy bumps those scratchpad entries' used_count
     by 1."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id, sec_id = _seed_post_with_section()
+
     policy, comps = build_policy('polish')
     comps['flow_stack'].stackon('polish')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID, sec='sec_one')
+    top.slots['source'].add_one(post=post_id, sec=sec_id)
 
     # Pre-populate scratchpad with the standard envelope.
     comps['memory'].write_scratchpad('audit', {
@@ -79,27 +89,15 @@ def test_polish_used_count_increments_on_consumed_findings(monkeypatch):
         'metrics': {'word_count': 100},
     })
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('polish the intro')
 
     skill_reply = '{"used": ["audit", "inspect"]}'
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute(skill_reply, tool_log=[]))
 
-    # No _persist_section fires because the policy's default guard requires
-    # post_id+sec_id+text — suppress its effect by stubbing.
     monkeypatch.setattr(BasePolicy, '_persist_section',
         lambda self, post_id, sec_id, text, tools: None)
-
-    tools = make_tool_stub({
-        'read_metadata': [
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'section_ids': ['sec_one']},
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'status': 'draft', 'section_ids': ['sec_one']},
-        ],
-        'read_section': [{'_success': True, 'title': 'Intro', 'content': 'x'}],
-    })
 
     frame = policy.execute(state, context, tools)
 
@@ -111,17 +109,20 @@ def test_polish_used_count_increments_on_consumed_findings(monkeypatch):
     assert top.status == 'Completed'
 
 
-def test_polish_structural_issues_falls_back_to_rework(monkeypatch):
+def test_polish_structural_issues_falls_back_to_rework(monkeypatch, tmp_path):
     """Per fixes/polish.md § Two usage contexts, one code path — when the
     skill's tool_log has an `inspect_post` result with `structural_issues`,
     the policy calls `flow_stack.fallback('rework')`, sets
     state.keep_going=True, and returns an empty frame (no origin/card)."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id, sec_id = _seed_post_with_section()
+
     policy, comps = build_policy('polish')
     comps['flow_stack'].stackon('polish')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID, sec='sec_one')
+    top.slots['source'].add_one(post=post_id, sec=sec_id)
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('polish it')
 
     tool_log = [{
@@ -134,16 +135,8 @@ def test_polish_structural_issues_falls_back_to_rework(monkeypatch):
     }]
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute('polished text', tool_log=tool_log))
-    # Stub persist so we don't need a revise_content tool.
     monkeypatch.setattr(BasePolicy, '_persist_section',
         lambda self, post_id, sec_id, text, tools: None)
-
-    tools = make_tool_stub({
-        'read_metadata': [
-            {'_success': True, 'post_id': _POST_ID, 'title': 'T',
-             'section_ids': ['sec_one']},
-        ],
-    })
 
     frame = policy.execute(state, context, tools)
 

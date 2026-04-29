@@ -13,9 +13,11 @@ The 7 core components cover ~80% of every assistant's capability. Flow policies 
 - `./init_backend.sh` — FastAPI on port 8001
 - `./init_frontend.sh` — frontend on port 5174
 - `uv pip install -r requirements.txt` — never `pip install`
-- `pytest utils/tests/unit_tests.py utils/tests/policy_evals/ utils/tests/test_artifacts.py` — free-tier tests (no LLM, ~6s for ~210 tests). **Run after every major change.**
-- `pytest utils/tests/e2e_agent_evals.py -v -s --tb=short` — full pipeline scenarios (~5–8 min, LLM-heavy). Run at end of feature work.
-- Test catalog and what-each-suite-catches: `utils/tests/evaluation_guidelines.md` (canonical reference).
+- `pytest utils/tests/unit_tests.py utils/tests/policy_evals/ utils/tests/test_artifacts.py` — free-tier tests (no LLM, ~13s for ~280 tests, includes the Hypothesis FlowStack state machine). **Run after every major change.**
+- `pytest utils/tests/e2e_agent_evals.py -v -s --tb=short` — full pipeline scenarios (~5–8 min, LLM-heavy, includes structural snapshot checks). Run at end of feature work.
+- `UPDATE_SNAPSHOTS=1 pytest utils/tests/e2e_agent_evals.py` — re-record snapshot sidecars after a *deliberate* behavior change. The `.json` diff in the resulting PR must be reviewed and justified in the PR body.
+- Test catalog and how-to-read-failures: `utils/tests/evaluation_guidelines.md` (canonical reference).
+- **Two ironclad test rules**: (1) snapshot-sidecar diffs require PR-body justification; (2) when a `policy_evals/` test fails with real tools, fix the code, not the mock.
 - Bash permission rules: no `&&`, `&`, `$()`, `2>&1` — run independent commands as parallel Bash calls.
 
 ## Mental model

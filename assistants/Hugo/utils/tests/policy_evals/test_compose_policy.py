@@ -5,6 +5,8 @@ Compose delegates section writing to a skill that calls `revise_content` itself;
 call. When the post has no sections yet, the policy stacks on OutlineFlow and surfaces the reason
 inline. See `utils/policy_builder/fixes/compose.md` and `utils/policy_builder/inventory/compose.md`
 for the expected shape.
+
+Pillar 2b: tools dispatch to real services on a tmp_path-isolated DB.
 """
 
 from __future__ import annotations
@@ -15,13 +17,10 @@ from utils.tests.policy_evals.fixtures import (
     assert_frame,
     build_policy,
     make_context,
-    make_flow,
     make_state,
     make_tool_stub,
+    real_tools,
 )
-
-
-_POST_ID = 'abcd1234'
 
 
 def _stub_llm_execute(return_text:str, captured:list|None=None):
@@ -37,17 +36,28 @@ def _stub_llm_execute(return_text:str, captured:list|None=None):
     return stub
 
 
-def test_compose_happy_path_includes_preview(monkeypatch):
+def _seed_post_with_section(title='Aviation', sec_title='Intro', content='opening text'):
+    """Seed a post with one section already written. Returns post_id."""
+    from backend.utilities.services import PostService, ContentService
+    post_id = PostService().create_post(title=title, type='draft')['post_id']
+    ContentService().generate_outline(post_id, f'## {sec_title}\n\n{content}\n')
+    return post_id
+
+
+def test_compose_happy_path_includes_preview(monkeypatch, tmp_path):
     """Per fixes/compose.md § Skill owns persistence — when source is filled
     and the post has sections, the policy calls llm_execute with
     include_preview=True (skill plans without re-fetching) and does NOT
     call `_persist_section` itself. Returns origin='compose' with a card."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id = _seed_post_with_section()
+
     policy, comps = build_policy('compose')
     comps['flow_stack'].stackon('compose')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID)
+    top.slots['source'].add_one(post=post_id)
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('write the intro')
 
     captured:list = []
@@ -60,23 +70,6 @@ def test_compose_happy_path_includes_preview(monkeypatch):
         persist_calls.append((post_id, sec_id, text))
         return orig_persist(self, post_id, sec_id, text, tools)
     monkeypatch.setattr(BasePolicy, '_persist_section', fake_persist)
-
-    tools = make_tool_stub({
-        'read_metadata': [
-            # resolve_post_id
-            {'_success': True, 'post_id': _POST_ID, 'title': 'Aviation',
-             'section_ids': ['sec_one']},
-            # Pre-compose: sections check
-            {'_success': True, 'post_id': _POST_ID, 'title': 'Aviation',
-             'section_ids': ['sec_one']},
-            # _read_post_content for the card
-            {'_success': True, 'post_id': _POST_ID, 'title': 'Aviation',
-             'status': 'draft', 'section_ids': ['sec_one']},
-        ],
-        'read_section': [
-            {'_success': True, 'title': 'Intro', 'content': 'opening text'},
-        ],
-    })
 
     frame = policy.execute(state, context, tools)
 
@@ -91,7 +84,12 @@ def test_compose_happy_path_includes_preview(monkeypatch):
 def test_compose_no_sections_stacks_on_outline(monkeypatch):
     """Per fixes/compose.md § Stack-on to OutlineFlow — when the post has
     no sections, the policy stacks on 'outline', sets state.keep_going=True,
-    and surfaces the reason in frame.thoughts. llm_execute is not called."""
+    and surfaces the reason in frame.thoughts. llm_execute is not called.
+
+    Synthetic-condition test: real `create_post` seeds placeholder sections so
+    we can't naturally produce a 0-section post. Keep the canned stub here.
+    """
+    _POST_ID = 'abcd1234'
     policy, comps = build_policy('compose')
     comps['flow_stack'].stackon('compose')
     top = comps['flow_stack'].get_flow()
@@ -106,12 +104,8 @@ def test_compose_no_sections_stacks_on_outline(monkeypatch):
 
     tools = make_tool_stub({
         'read_metadata': [
-            # resolve_post_id
-            {'_success': True, 'post_id': _POST_ID, 'title': 'Aviation',
-             'section_ids': []},
-            # Sections check — no sections
-            {'_success': True, 'post_id': _POST_ID, 'title': 'Aviation',
-             'section_ids': []},
+            {'_success': True, 'post_id': _POST_ID, 'title': 'Aviation', 'section_ids': []},
+            {'_success': True, 'post_id': _POST_ID, 'title': 'Aviation', 'section_ids': []},
         ],
     })
 

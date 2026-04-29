@@ -1,0 +1,70 @@
+{
+  "flow_stack": [],
+  "frame": {
+    "block_data_keys": [
+      [
+        "content",
+        "post_id",
+        "status",
+        "title"
+      ]
+    ],
+    "block_locations": [
+      "bottom"
+    ],
+    "block_types": [
+      "card"
+    ],
+    "has_code": false,
+    "has_thoughts": true,
+    "metadata_keys": [],
+    "missing_entity": null,
+    "missing_slot": null,
+    "origin": "refine",
+    "violation": null
+  },
+  "state": {
+    "active_post_set": true,
+    "flow_dax": "{02B}",
+    "has_issues": false,
+    "has_plan": false,
+    "keep_going": false,
+    "natural_birth": true,
+    "pred_intent": "Draft"
+  },
+  "tool_log": [
+    {
+      "success": null,
+      "tool": "read_metadata"
+    },
+    {
+      "success": null,
+      "tool": "read_metadata"
+    },
+    {
+      "success": null,
+      "tool": "read_metadata"
+    },
+    {
+      "success": null,
+      "tool": "read_metadata"
+    },
+    {
+      "success": null,
+      "tool": "revise_content"
+    },
+    {
+      "success": null,
+      "tool": "revise_content"
+    },
+    {
+      "success": null,
+      "tool": "read_metadata"
+    },
+    {
+      "success": null,
+      "tool": "read_metadata"
+    }
+  ],
+  "top_flow": {}
+}

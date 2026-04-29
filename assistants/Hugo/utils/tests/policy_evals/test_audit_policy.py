@@ -12,6 +12,10 @@ Audit is a 3-branch flow:
      completes.
 
 See `backend/prompts/pex/skills/audit.md` for the expected save_findings shape.
+
+Pillar 2b: tools dispatch to real services on a tmp_path-isolated DB. The dispatch
+branch tests do not call any real tools (they only exercise scratchpad routing),
+so real_tools is used for setup uniformity even though it has no effect there.
 """
 
 from __future__ import annotations
@@ -24,11 +28,8 @@ from utils.tests.policy_evals.fixtures import (
     build_policy,
     make_context,
     make_state,
-    make_tool_stub,
+    real_tools,
 )
-
-
-_POST_ID = 'abcd1234'
 
 
 def _stub_llm_execute(return_text:str, tool_log:list|None=None):
@@ -41,10 +42,18 @@ def _stub_llm_execute(return_text:str, tool_log:list|None=None):
     return stub
 
 
-def _seed_audit_flow(comps):
+def _seed_post(title='Aviation', body=None):
+    from backend.utilities.services import PostService, ContentService
+    post_id = PostService().create_post(title=title, type='draft')['post_id']
+    if body:
+        ContentService().generate_outline(post_id, body)
+    return post_id
+
+
+def _seed_audit_flow(comps, post_id):
     comps['flow_stack'].stackon('audit')
     top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID)
+    top.slots['source'].add_one(post=post_id)
     return top
 
 
@@ -59,11 +68,14 @@ def _findings_fixture():
     ]
 
 
-def test_discovery_emits_checklist_with_per_finding_options(monkeypatch):
+def test_discovery_emits_checklist_with_per_finding_options(monkeypatch, tmp_path):
     """Branch A: skill emits save_findings → policy puts findings in frame.metadata
     and renders a ChecklistBlock with one option per finding."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id = _seed_post(title='Aviation')
+
     policy, comps = build_policy('audit')
-    top = _seed_audit_flow(comps)
+    top = _seed_audit_flow(comps, post_id)
 
     findings = _findings_fixture()
     tool_result = {'_success': True, 'findings': findings,
@@ -72,11 +84,8 @@ def test_discovery_emits_checklist_with_per_finding_options(monkeypatch):
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute('Saved 3 findings.', tool_log=tool_log))
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('audit this post', turn_id=2)
-    tools = make_tool_stub({'read_metadata': [
-        {'_success': True, 'post_id': _POST_ID, 'title': 'Aviation', 'section_ids': []},
-    ]})
 
     frame = policy.execute(state, context, tools)
 
@@ -97,20 +106,20 @@ def test_discovery_emits_checklist_with_per_finding_options(monkeypatch):
     assert top.stage == 'discovery'
 
 
-def test_audit_discovery_no_findings_completes_immediately(monkeypatch):
+def test_audit_discovery_no_findings_completes_immediately(monkeypatch, tmp_path):
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id = _seed_post(title='X')
+
     policy, comps = build_policy('audit')
-    top = _seed_audit_flow(comps)
+    top = _seed_audit_flow(comps, post_id)
 
     tool_result = {'_success': True, 'findings': [], 'summary': 'Reads on-voice.', 'references_used': []}
     tool_log = [{'tool': 'save_findings', 'input': tool_result, 'result': tool_result}]
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute('No findings.', tool_log=tool_log))
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('audit this post')
-    tools = make_tool_stub({'read_metadata': [
-        {'_success': True, 'post_id': _POST_ID, 'title': 'X', 'section_ids': []},
-    ]})
 
     frame = policy.execute(state, context, tools)
 
@@ -119,18 +128,18 @@ def test_audit_discovery_no_findings_completes_immediately(monkeypatch):
     assert top.status == 'Completed'
 
 
-def test_audit_missing_save_findings_returns_error_frame(monkeypatch):
+def test_audit_missing_save_findings_returns_error_frame(monkeypatch, tmp_path):
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id = _seed_post(title='T')
+
     policy, comps = build_policy('audit')
-    top = _seed_audit_flow(comps)
+    top = _seed_audit_flow(comps, post_id)
 
     monkeypatch.setattr(BasePolicy, 'llm_execute',
         _stub_llm_execute('The post reads well.', tool_log=[]))
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     context = make_context('audit')
-    tools = make_tool_stub({'read_metadata': [
-        {'_success': True, 'post_id': _POST_ID, 'title': 'T', 'section_ids': []},
-    ]})
 
     frame = policy.execute(state, context, tools)
 
@@ -139,32 +148,33 @@ def test_audit_missing_save_findings_returns_error_frame(monkeypatch):
     assert top.status != 'Completed'
 
 
-def test_dispatch_all_selected_short_circuits_to_rework(monkeypatch):
+def test_dispatch_all_selected_short_circuits_to_rework(monkeypatch, tmp_path):
     """Branch B, all-picked variant: every finding selected → no routing LLM call,
     single Rework stacked with all findings as suggestions."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id = _seed_post(title='Aviation')
+
     policy, comps = build_policy('audit')
-    top = _seed_audit_flow(comps)
+    top = _seed_audit_flow(comps, post_id)
     findings = _findings_fixture()
     comps['memory'].write_scratchpad('audit', {
         'version': '1', 'turn_number': 1, 'used_count': 0,
         'findings': findings, 'summary': 's', 'references_used': [],
     })
 
-    # Engineer must NOT be called — the all-selected short-circuit skips routing entirely.
     def fail_engineer(self, *a, **kw):
         raise AssertionError('engineer should not be called when all findings are selected')
     monkeypatch.setattr(PromptEngineer, '__call__', fail_engineer)
 
-    state = make_state(active_post=_POST_ID)
+    state = make_state(active_post=post_id)
     state.slices['choices'] = [0, 1, 2]
-    state.has_plan = False  # discovery filled flow.stage; manually set since we skipped that turn
+    state.has_plan = False
     top.stage = 'discovery'
     context = make_context('submit picks')
-    tools = make_tool_stub({})
 
     frame = policy.execute(state, context, tools)
 
-    assert top.status != 'Completed'  # audit stays Pending until children pop
+    assert top.status != 'Completed'
     assert top.stage == 'delegation'
     assert state.has_plan is True
     assert state.keep_going is True
@@ -175,15 +185,18 @@ def test_dispatch_all_selected_short_circuits_to_rework(monkeypatch):
     assert rework.name() == 'rework'
     assert len(rework.slots['suggestions'].steps) == 3
     src_values = rework.slots['source'].values
-    assert any(v.get('post') == _POST_ID for v in src_values), src_values
+    assert any(v.get('post') == post_id for v in src_values), src_values
     assert_frame(frame, origin='audit', thoughts_contains='Routing 3')
 
 
-def test_dispatch_subset_runs_routing_and_stacks_groups(monkeypatch):
+def test_dispatch_subset_runs_routing_and_stacks_groups(monkeypatch, tmp_path):
     """Branch B, subset variant: routing returns 2 groups → 2 children stacked,
     delegates slot has 2 entries, has_plan is True."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id = _seed_post(title='Aviation')
+
     policy, comps = build_policy('audit')
-    top = _seed_audit_flow(comps)
+    top = _seed_audit_flow(comps, post_id)
     findings = _findings_fixture()
     comps['memory'].write_scratchpad('audit', {
         'version': '1', 'turn_number': 1, 'used_count': 0,
@@ -197,11 +210,10 @@ def test_dispatch_subset_runs_routing_and_stacks_groups(monkeypatch):
         ]}
     monkeypatch.setattr(PromptEngineer, '__call__', stub_engineer)
 
-    state = make_state(active_post=_POST_ID)
-    state.slices['choices'] = [0, 1]  # subset (not all 3)
+    state = make_state(active_post=post_id)
+    state.slices['choices'] = [0, 1]
     top.stage = 'discovery'
     context = make_context('submit')
-    tools = make_tool_stub({})
 
     frame = policy.execute(state, context, tools)
 
@@ -210,7 +222,6 @@ def test_dispatch_subset_runs_routing_and_stacks_groups(monkeypatch):
     delegate_names = [s['name'] for s in top.slots['delegates'].steps]
     assert delegate_names == ['rework', 'polish']
 
-    # Top of stack should be the most-recently-stacked child (polish, LIFO).
     top_after = comps['flow_stack'].get_flow()
     assert top_after.name() == 'polish'
     assert len(top_after.slots['suggestions'].steps) == 1
@@ -218,10 +229,13 @@ def test_dispatch_subset_runs_routing_and_stacks_groups(monkeypatch):
     assert_frame(frame, origin='audit', thoughts_contains='2 flow')
 
 
-def test_dispatch_unknown_flow_falls_back_to_polish(monkeypatch):
+def test_dispatch_unknown_flow_falls_back_to_polish(monkeypatch, tmp_path):
     """Routing LLM returns a flow_name outside ALLOWED set → coerced to 'polish'."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id = _seed_post(title='Aviation')
+
     policy, comps = build_policy('audit')
-    top = _seed_audit_flow(comps)
+    top = _seed_audit_flow(comps, post_id)
     findings = _findings_fixture()
     comps['memory'].write_scratchpad('audit', {
         'version': '1', 'turn_number': 1, 'used_count': 0,
@@ -229,14 +243,13 @@ def test_dispatch_unknown_flow_falls_back_to_polish(monkeypatch):
     })
 
     def stub_engineer(self, prompt, task='skill', model='sonnet', max_tokens=1024, schema=None):
-        return {'groups': [{'flow_name': 'rewrite_everything', 'finding_idxs': [0]}]}  # bogus
+        return {'groups': [{'flow_name': 'rewrite_everything', 'finding_idxs': [0]}]}
     monkeypatch.setattr(PromptEngineer, '__call__', stub_engineer)
 
-    state = make_state(active_post=_POST_ID)
-    state.slices['choices'] = [0]  # subset to trigger routing
+    state = make_state(active_post=post_id)
+    state.slices['choices'] = [0]
     top.stage = 'discovery'
     context = make_context('submit')
-    tools = make_tool_stub({})
 
     policy.execute(state, context, tools)
 
@@ -245,17 +258,18 @@ def test_dispatch_unknown_flow_falls_back_to_polish(monkeypatch):
     assert comps['flow_stack'].get_flow().name() == 'polish'
 
 
-def test_finalize_completes_when_all_delegates_verified():
+def test_finalize_completes_when_all_delegates_verified(monkeypatch, tmp_path):
     """Audit re-enters at top after all children have checked themselves off
     in the `delegates` slot. is_verified() trips → status=Completed, has_plan/
     keep_going cleared, scratchpad reports rolled up into metadata."""
+    tools = real_tools(monkeypatch, tmp_path)
+    post_id = _seed_post(title='Aviation', body='## Intro\n\nUpdated body.\n')
+
     policy, comps = build_policy('audit')
-    top = _seed_audit_flow(comps)
+    top = _seed_audit_flow(comps, post_id)
     top.stage = 'delegation'
     top.slots['delegates'].add_one(name='rework', description='did rework')
     top.slots['delegates'].add_one(name='polish', description='did polish')
-    # Each child is responsible for marking itself complete on success — pre-mark to mimic
-    # the post-children state.
     top.slots['delegates'].mark_as_complete('rework')
     top.slots['delegates'].mark_as_complete('polish')
 
@@ -264,9 +278,8 @@ def test_finalize_completes_when_all_delegates_verified():
     comps['memory'].write_scratchpad('polish',
         {'version': '1', 'turn_number': 3, 'summary': 'tightened phrasing'})
 
-    state = make_state(active_post=_POST_ID, has_plan=True)
+    state = make_state(active_post=post_id, has_plan=True)
     context = make_context('finalize')
-    tools = make_tool_stub({})
 
     frame = policy.execute(state, context, tools)
 
@@ -275,4 +288,8 @@ def test_finalize_completes_when_all_delegates_verified():
     assert state.keep_going is False
     reports = frame.metadata['reports']
     assert reports == {'rework': 'rewrote intro', 'polish': 'tightened phrasing'}
-    assert_frame(frame, origin='audit', thoughts_contains='Audit completed')
+    assert_frame(frame, origin='audit', block_types=('card',), thoughts_contains='Audit completed')
+    card = frame.blocks[0].data
+    assert card['post_id'] == post_id
+    assert card['title'] == 'Aviation'
+    assert 'Updated body.' in card['content']

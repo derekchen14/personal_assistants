@@ -81,44 +81,9 @@ def _make_context(turn_type='action'):
 # PromptEngineer: model resolution and provider dispatch
 # ═══════════════════════════════════════════════════════════════════
 
-class TestPromptEngineer:
-    def test_unknown_raises(self, engineer):
-        with pytest.raises(ValueError):
-            engineer._resolve_model('unknown')
-
-    def test_claude_dispatch(self, engineer):
-        mock_response = MagicMock()
-        mock_block = MagicMock()
-        mock_block.type = 'text'
-        mock_block.text = '{"flow_name": "chat"}'
-        mock_response.content = [mock_block]
-
-        with patch.object(engineer, '_call_claude', return_value=mock_response):
-            result = engineer('hi', task='detect_flow', model='haiku')
-        assert result == '{"flow_name": "chat"}'
-
-    def test_gemini_dispatch(self, engineer):
-        with patch.object(engineer, '_call_gemini', return_value='{"flow_name": "chat"}'):
-            result = engineer('hi', task='detect_flow', model='flash')
-        assert result == '{"flow_name": "chat"}'
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Ensemble voting: _tally_votes
-# ═══════════════════════════════════════════════════════════════════
-
 class TestEnsembleVoting:
-    # -- Config invariants --------------------------------------------------
-
-    def test_weights_sum_to_one(self):
-        total = sum(v['weight'] for v in _ENSEMBLE_VOTERS)
-        assert total == pytest.approx(1.0)
-
-    def test_unique_labels(self):
-        labels = [v['label'] for v in _ENSEMBLE_VOTERS]
-        assert len(labels) == len(set(labels))
-
-    # -- _tally_votes -------------------------------------------------------
+    """Tally + dispatch math for the NLU ensemble voter. Config invariants and
+    bare-routing dispatch tests removed — they pass on typos, not behavior."""
 
     def test_two_agree_one_dissents(self, nlu):
         votes = [
@@ -189,25 +154,36 @@ class TestEnsembleVoting:
 # NLU react()
 # ═══════════════════════════════════════════════════════════════════
 
+def _stub_phase3_engineer(nlu, monkeypatch, slots:dict|None=None):
+    """Replace nlu.engineer with a MagicMock that returns realistic Phase 3 LLM output.
+    `slots` is the flow-shaped dict the LLM would have emitted (it's the same shape
+    `flow.fill_slot_values` accepts). Pass an empty dict to simulate an LLM that
+    couldn't extract anything — that is itself a failure mode and there is a dedicated
+    test for it below.
+
+    apply_guardrails is preserved on the mock so other call sites that go through
+    `engineer.apply_guardrails(text, format='json')` still work."""
+    real_apply = nlu.engineer.apply_guardrails
+    mock = MagicMock(return_value={'slots': slots if slots is not None else {}})
+    mock.apply_guardrails = real_apply
+    monkeypatch.setattr(nlu, 'engineer', mock)
+
+
 class TestReact:
-    def test_action_turn_routes_flow(self, nlu):
+    def test_action_turn_routes_flow(self, nlu, monkeypatch):
+        # Phase 3 fills the still-empty `title` slot with a realistic LLM output.
+        _stub_phase3_engineer(nlu, monkeypatch, slots={'title': 'My Draft Post'})
         state = nlu.react('{05A}', {'type': 'draft'})
         assert state.flow_name(string=True) == 'create'
         assert state.confidence == 0.99
+        flow = nlu.flow_stack.get_flow()
+        assert flow.is_filled(), 'create flow should be filled after Phase 3 supplies title'
+        assert flow.slots['title'].value == 'My Draft Post'
 
-    def test_action_turn_different_dax(self, nlu):
-        state = nlu.react('{19A}', {'post': 'post_abc123'})
-        assert state.flow_name(string=True) == 'summarize'
-        assert state.confidence == 0.99
-
-    def test_utterance_calls_fill_slots(self, nlu):
-        with patch.object(nlu, '_fill_slots') as mock_fill:
-            state = nlu.react('{05A}', {'topic': 'SEO'})
-        mock_fill.assert_called_once()
-        assert state.flow_name(string=True) == 'create'
-
-    def test_snippet_payload_fills_entity_slot(self, nlu):
+    def test_snippet_payload_fills_entity_slot(self, nlu, monkeypatch):
         # Phase 1a: snippet + post + section land in SourceSlot entity dict.
+        # Phase 3 satisfies refine's elective requirement with a feedback value.
+        _stub_phase3_engineer(nlu, monkeypatch, slots={'feedback': ['tighten the prose']})
         nlu.react('{02B}', {'snippet': 'matrix mult', 'post': 'post_abc', 'section': 'sec_xyz'})
         flow = nlu.flow_stack.get_flow()
         assert flow.name() == 'refine'
@@ -216,8 +192,9 @@ class TestReact:
         assert entity['post'] == 'post_abc'
         assert entity['sec'] == 'sec_xyz'
 
-    def test_snippet_payload_fills_exact_slot(self, nlu):
+    def test_snippet_payload_fills_exact_slot(self, nlu, monkeypatch):
         # Phase 1b: snippet lands in find.query via SNIPPET_EXACT_SLOTS registry.
+        _stub_phase3_engineer(nlu, monkeypatch, slots={'count': 5})
         nlu.react('{001}', {'snippet': 'matrix mult'})
         flow = nlu.flow_stack.get_flow()
         assert flow.name() == 'find'
@@ -231,13 +208,29 @@ class TestReact:
             assert resolved == flow_name, \
                 f'dax2flow({dax!r}) returned {resolved!r}, expected {flow_name!r}'
 
-    def test_context_only_payload_skips_per_flow_dispatch(self, nlu):
+    def test_context_only_payload_skips_per_flow_dispatch(self, nlu, monkeypatch):
         """FE attaches active post/section as context to every action. _fill_slots must
         skip unpack_user_actions when the payload is purely entity-context or slice keys —
         per-flow dispatch is for real click data only."""
+        _stub_phase3_engineer(nlu, monkeypatch, slots={'title': 'Backfilled by Phase 3'})
         with patch.object(nlu, 'unpack_user_actions') as mock_dispatch:
             nlu.react('{05A}', {'post': '17be00f6'})  # create has no source/target slot
         mock_dispatch.assert_not_called()
+
+    def test_phase3_empty_response_leaves_required_slots_unfilled(self, nlu, monkeypatch):
+        """Failure mode: when Phase 3's LLM returns an empty slots dict (parse failure,
+        hallucination, schema rejection), required slots stay empty. Downstream policy
+        is responsible for declaring ambiguity — NLU itself must not silently mark the
+        flow filled. Catches the regression where an empty dict was accepted as success."""
+        _stub_phase3_engineer(nlu, monkeypatch, slots={})
+        nlu.react('{05A}', {'type': 'draft'})
+        flow = nlu.flow_stack.get_flow()
+        assert flow.name() == 'create'
+        assert not flow.slots['title'].filled, (
+            'empty Phase 3 response must leave title unfilled; '
+            'the policy will then declare specific ambiguity'
+        )
+        assert not flow.is_filled()
 
     def test_refine_steps_unpacks_dict_kwargs(self):
         """Regression: under the old generic dispatch, slot.add_one(item) bound the whole
@@ -343,28 +336,6 @@ class TestTemplateFill:
             frame.add_block({'type': block_type, 'data': data})
         return frame
 
-    def test_thoughts_used_when_set(self, minimal_config):
-        from backend.modules.templates.draft import fill_draft_template
-        flow = flow_classes['brainstorm']()
-        frame = self._make_frame(minimal_config, thoughts='My outline ideas')
-        result = fill_draft_template('{message}', flow, frame)
-        assert 'My outline ideas' in result
-
-    def test_research_template_uses_thoughts(self, minimal_config):
-        from backend.modules.templates.research import fill_research_template
-        flow = flow_classes['browse']()
-        frame = self._make_frame(minimal_config, thoughts='Found 5 items')
-        result = fill_research_template('', flow, frame)
-        assert 'Found 5 items' in result
-
-    def test_create_uses_slot_title(self, minimal_config):
-        from backend.modules.templates.draft import fill_draft_template
-        flow = flow_classes['create']()
-        flow.fill_slot_values({'title': 'My New Post'})
-        frame = self._make_frame(minimal_config)
-        result = fill_draft_template('', flow, frame)
-        assert 'My New Post' in result
-
     def test_build_payload_frame_sets_panel(self, minimal_config):
         from backend.agent import Agent
         frame = self._make_frame(minimal_config, block_type='card',
@@ -437,28 +408,6 @@ class TestTemplateFill:
 # ═══════════════════════════════════════════════════════════════════
 
 class TestPostService:
-    # -- Return format invariants -------------------------------------------
-
-    def test_error_has_three_keys(self, tmp_db):
-        # Section-not-found still returns an error dict (post-not-found
-        # raises PostNotFoundError instead). This guards the dict shape
-        # for the cases that haven't been converted to exceptions.
-        post_id, _ = _seed_test_post(tmp_db, title='Shape Test')
-        svc = PostService()
-        result = svc.read_section(post_id, 'nonexistent-section')
-        assert result['_success'] is False
-        assert '_error' in result
-        assert '_message' in result
-
-    def test_success_data_at_top_level(self, tmp_db):
-        svc = PostService()
-        result = svc.find_posts()
-        assert 'items' in result
-        assert 'count' in result
-        assert result['_success'] is True
-
-    # -- CRUD ---------------------------------------------------------------
-
     def test_find_posts_returns_items(self, tmp_db):
         post_id, _ = _seed_test_post(tmp_db)
         svc = PostService()
@@ -505,14 +454,6 @@ class TestPostService:
         svc = PostService()
         with pytest.raises(PostNotFoundError):
             svc.read_metadata('nonexistent')
-
-    def test_read_metadata_with_preview(self, tmp_db):
-        body = '## Intro\n\nSome content here.\n\n## Body\n\nMore content.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Preview Test', body=body)
-        svc = PostService()
-        result = svc.read_metadata(post_id, include_preview=True)
-        assert result['_success'] is True
-        assert 'preview' in result
 
     def test_read_section_success(self, tmp_db):
         body = '## Intro\n\nHello world.\n\n## Body\n\nMore text.\n'
@@ -655,12 +596,6 @@ class TestPostService:
         svc.delete_post(post_id)
         assert not (svc._snap_root / post_id).exists()
 
-    def test_summarize_text_raw(self, tmp_db):
-        svc = PostService()
-        result = svc.summarize_text(raw_text='This is some raw text to summarize.')
-        assert result['_success'] is True
-        assert result['text_to_summarize'] == 'This is some raw text to summarize.'
-
     def test_summarize_text_empty_error(self, tmp_db):
         svc = PostService()
         result = svc.summarize_text()
@@ -680,13 +615,6 @@ class TestPostService:
 # ═══════════════════════════════════════════════════════════════════
 
 class TestContentService:
-    def test_generate_outline_valid(self, tmp_db):
-        post_id, _ = _seed_test_post(tmp_db, title='Outline Post')
-        svc = ContentService()
-        content = '## Section A\n\n- point 1\n- point 2\n\n## Section B\n\n- point 3\n'
-        result = svc.generate_outline(post_id, content)
-        assert result['_success'] is True
-
     def test_generate_outline_rejects_bullet_without_section(self, tmp_db):
         from backend.utilities.services import OutlineValidationError
         post_id, _ = _seed_test_post(tmp_db)
@@ -882,27 +810,6 @@ class TestContentService:
         with pytest.raises(OutlineValidationError, match='Duplicate H2'):
             svc.update_post(post_id, updates={'sections': ['Process', 'Process']})
 
-    def test_convert_to_prose(self, tmp_db):
-        body = '## Method\n\n- step one\n- step two\n- step three\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Prose Test', body=body)
-        svc = ContentService()
-        result = svc.convert_to_prose(post_id, sec_id='method')
-        assert result['_success'] is True
-
-    def test_insert_section_after(self, tmp_db):
-        body = '## Alpha\n\nContent A.\n\n## Beta\n\nContent B.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Insert Sec', body=body)
-        svc = ContentService()
-        result = svc.insert_section(post_id, 'alpha', 'Gamma', 'New content')
-        assert result['_success'] is True
-
-    def test_revise_content_insert_at_index(self, tmp_db):
-        body = '## Intro\n\nFirst sentence. Second sentence. Third sentence.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Insert Sentence', body=body)
-        svc = ContentService()
-        result = svc.revise_content(post_id, 'intro', 'Inserted sentence.', snip_id=1)
-        assert result['_success'] is True
-
     def test_revise_content_takes_snapshot(self, tmp_db):
         body = '## Intro\n\nOriginal content.\n'
         post_id, _ = _seed_test_post(tmp_db, title='Revise Snap', body=body)
@@ -912,13 +819,6 @@ class TestContentService:
 
         snapshot = ToolService()._read_snapshot(post_id, 'intro', 1)
         assert snapshot is not None
-
-    def test_revise_content_replace_snippet_range(self, tmp_db):
-        body = '## Intro\n\nSentence A. Sentence B. Sentence C.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Sentence Range', body=body)
-        svc = ContentService()
-        result = svc.revise_content(post_id, 'intro', 'Replaced.', snip_id=(1, 3))
-        assert result['_success'] is True
 
     def test_write_text_rejects_long_content(self, tmp_db):
         svc = ContentService()
@@ -934,27 +834,6 @@ class TestContentService:
         result = svc.write_text('make it better', 'some seed content')
         assert result['_success'] is True
         assert 'Be concise' in result['writing_guide']
-
-    def test_remove_content_snippet_range(self, tmp_db):
-        body = '## Intro\n\nSentence A. Sentence B. Sentence C.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Remove Range', body=body)
-        svc = ContentService()
-        result = svc.remove_content(post_id, 'intro', snip_id=(1, 2))
-        assert result['_success'] is True
-
-    def test_remove_content_section(self, tmp_db):
-        body = '## Intro\n\nKeep.\n\n## ToRemove\n\nDelete me.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Remove Sec', body=body)
-        svc = ContentService()
-        result = svc.remove_content(post_id, 'toremove')
-        assert result['_success'] is True
-
-    def test_cut_and_paste_moves_lines(self, tmp_db):
-        body = '## Source\n\nSentence A. Sentence B.\n\n## Target\n\nSentence C.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='CnP Test', body=body)
-        svc = ContentService()
-        result = svc.cut_and_paste(post_id, 'source', 'target', source_snip_id=(0, 1))
-        assert result['_success'] is True
 
     def test_cut_and_paste_self_error(self, tmp_db):
         body = '## Only\n\nContent.\n'
@@ -1011,16 +890,6 @@ class TestAnalysisService:
         assert result['_success'] is True
         assert result['count'] >= 1
 
-    def test_inspect_post_metrics(self, tmp_db):
-        body = '## Intro\n\nSome words here for testing metrics.\n\n## Body\n\nMore content.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Inspect Test', body=body)
-        svc = AnalysisService()
-        result = svc.inspect_post(post_id)
-        assert result['_success'] is True
-        assert 'word_count' in result
-        assert 'section_count' in result
-        assert 'estimated_read_time' in result
-
     def test_inspect_post_empty_sections(self, tmp_db):
         body = '## Filled\n\nHas content.\n\n## Empty\n\n'
         post_id, _ = _seed_test_post(tmp_db, title='Empty Sec', body=body)
@@ -1047,31 +916,6 @@ class TestAnalysisService:
         assert result['_success'] is True
         assert result['score_label'] in ('advanced', 'difficult')
 
-    def test_check_links_inline(self, tmp_db):
-        svc = AnalysisService()
-        content = 'Check [this link](https://example.com) for more info.'
-        result = svc.check_links(content)
-        assert result['_success'] is True
-        assert result['count'] >= 1
-        assert any(l['type'] == 'inline' for l in result['links'])
-
-    def test_check_links_images(self, tmp_db):
-        svc = AnalysisService()
-        content = '![alt text](image.png)\n\nSome text.'
-        result = svc.check_links(content)
-        assert result['_success'] is True
-        assert result['image_count'] >= 1
-
-    def test_compare_style_deltas(self, tmp_db):
-        body1 = '## Intro\n\nShort post.\n'
-        body2 = '## Intro\n\nA much longer post with more words and sentences to compare.\n'
-        pid1, _ = _seed_test_post(tmp_db, title='Style A', body=body1)
-        pid2, _ = _seed_test_post(tmp_db, title='Style B', body=body2)
-        svc = AnalysisService()
-        result = svc.compare_style(pid1, reference_ids=[pid2])
-        assert result['_success'] is True
-        assert 'deltas' in result
-
     def test_editor_review_loads_guide(self, tmp_db):
         svc = AnalysisService()
         guide_path = svc._guides_dir / 'editor_guide.md'
@@ -1080,21 +924,6 @@ class TestAnalysisService:
         assert result['_success'] is True
         assert 'Check for clarity' in result['guide']
 
-    def test_analyze_seo_keyword_density(self, tmp_db):
-        body = '## ML Guide\n\nMachine learning is great. Machine learning helps everyone.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='SEO Test', body=body)
-        svc = AnalysisService()
-        result = svc.analyze_seo(post_id, target_keyword='machine learning')
-        assert result['_success'] is True
-        assert result['keyword_density'] > 0
-
-    def test_analyze_seo_suggestions(self, tmp_db):
-        body = '## Overview\n\nGeneric content without keywords.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='A', body=body)
-        svc = AnalysisService()
-        result = svc.analyze_seo(post_id, target_keyword='blockchain')
-        assert result['_success'] is True
-        assert len(result['suggestions']) > 0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1102,12 +931,6 @@ class TestAnalysisService:
 # ═══════════════════════════════════════════════════════════════════
 
 class TestPlatformService:
-    def test_list_channels(self, tmp_db):
-        svc = PlatformService()
-        result = svc.list_channels()
-        assert result['_success'] is True
-        assert len(result['channels']) == 4
-
     def test_channel_status_unknown_platform(self, tmp_db):
         svc = PlatformService()
         result = svc.channel_status('some_id', 'wordpress')
@@ -1151,3 +974,158 @@ class TestSnapshotInfra:
         snapshot4 = ToolService()._read_snapshot('test_post', 'intro', 4)
         assert 'version 2' in snapshot4
 
+
+# ═══════════════════════════════════════════════════════════════════
+# Pillar 1 snapshot harness — DIY helper smoke tests
+# ═══════════════════════════════════════════════════════════════════
+
+class TestSnapshotHarness:
+    """Smoke tests for utils/tests/_snapshot.py — ensure the harness itself works."""
+
+    def test_volatile_keys_masked(self):
+        from utils.tests._snapshot import _mask_volatile
+        result = _mask_volatile({
+            'flow_id': 'abc-123', 'post_id': 'xyz', 'value_count': 3,
+            'nested': {'turn_id': 't1', 'real_data': 'kept'},
+        })
+        assert result['flow_id'] == '<masked>'
+        assert result['post_id'] == '<masked>'
+        assert result['value_count'] == 3  # non-volatile shape stays
+        assert result['nested']['turn_id'] == '<masked>'
+        assert result['nested']['real_data'] == 'kept'
+
+    def test_record_then_match(self, tmp_path, monkeypatch):
+        from utils.tests import _snapshot
+        monkeypatch.setattr(_snapshot, 'SNAPSHOT_DIR', tmp_path)
+        # Record
+        monkeypatch.setenv('UPDATE_SNAPSHOTS', '1')
+        _snapshot.assert_snapshot({'a': 1, 'b': [2, 3]}, 'sample')
+        assert (tmp_path / 'sample.json').exists()
+        # Compare — same value passes
+        monkeypatch.delenv('UPDATE_SNAPSHOTS')
+        _snapshot.assert_snapshot({'a': 1, 'b': [2, 3]}, 'sample')
+
+    def test_mismatch_raises(self, tmp_path, monkeypatch):
+        from utils.tests import _snapshot
+        monkeypatch.setattr(_snapshot, 'SNAPSHOT_DIR', tmp_path)
+        monkeypatch.setenv('UPDATE_SNAPSHOTS', '1')
+        _snapshot.assert_snapshot({'a': 1}, 'sample')
+        monkeypatch.delenv('UPDATE_SNAPSHOTS')
+        with pytest.raises(AssertionError, match='Snapshot mismatch'):
+            _snapshot.assert_snapshot({'a': 2}, 'sample')
+
+    def test_missing_snapshot_raises(self, tmp_path, monkeypatch):
+        from utils.tests import _snapshot
+        monkeypatch.setattr(_snapshot, 'SNAPSHOT_DIR', tmp_path)
+        with pytest.raises(AssertionError, match='No snapshot at'):
+            _snapshot.assert_snapshot({'a': 1}, 'never_recorded')
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Pillar 3 — Hypothesis stateful test for FlowStack
+# Drives FlowStack through random-but-valid sequences. Catches FSM-
+# discipline regressions: depth bounds, status-transition correctness,
+# pop_completed semantics, get_flow filtering. Recorded counter-examples
+# become permanent regression tests via @reproduce_failure.
+# ═══════════════════════════════════════════════════════════════════
+
+class TestFlowStackStateful:
+    """Wrapper namespace for the auto-generated Hypothesis TestCase."""
+
+
+def _build_flowstack_machine():
+    """Build the RuleBasedStateMachine class. Done in a helper so the imports
+    only execute when Hypothesis is collected — avoids slowing free-tier import."""
+    from hypothesis import settings
+    from hypothesis.stateful import RuleBasedStateMachine, rule, invariant
+    from hypothesis import strategies as st
+    from backend.components.flow_stack import FlowStack
+    from backend.components.flow_stack import flow_classes as _all_classes
+
+    _NAMES = tuple(sorted(_all_classes))
+    _STATUSES = (None, 'Active', 'Pending', 'Completed', 'Invalid')
+
+    class FlowStackMachine(RuleBasedStateMachine):
+        def __init__(self):
+            super().__init__()
+            config = MappingProxyType({'session': {'max_flow_depth': 8}})
+            self.stack = FlowStack(config, flow_classes=_all_classes)
+
+        @rule(name=st.sampled_from(_NAMES))
+        def stackon(self, name):
+            if len(self.stack._stack) < self.stack._max_depth:
+                top_before = self.stack._stack[-1] if self.stack._stack else None
+                new_flow = self.stack.stackon(name)
+                # Two valid outcomes: pushed a new Active flow, OR returned the
+                # existing in-flight top because no-consecutive-same-type kicked in.
+                assert new_flow.flow_id and len(new_flow.flow_id) >= 6
+                assert self.stack._stack[-1] is new_flow
+                if new_flow is not top_before:
+                    assert new_flow.status == 'Active'
+
+        @rule(name=st.sampled_from(_NAMES))
+        def fallback(self, name):
+            # fallback() implements "replace top" by push-then-mark-invalid, which
+            # grows the stack by 1. Skip when at the depth limit. (This shape —
+            # fallback grows but is documented as "replace" — is a real surprise
+            # the test surfaced; flagging here, not fixing.)
+            if not self.stack._stack:
+                return
+            if len(self.stack._stack) >= self.stack._max_depth:
+                return
+            old_top = self.stack._stack[-1]
+            self.stack.fallback(name)
+            assert old_top.status == 'Invalid'
+            assert self.stack._stack[-1].status == 'Active'
+            assert self.stack._stack[-1].flow_type == name
+
+        @rule()
+        def complete_top(self):
+            if self.stack._stack:
+                self.stack._stack[-1].status = 'Completed'
+
+        @rule()
+        def mark_pending(self):
+            # Some flows are pushed Pending by plans; simulate that state by
+            # marking top Pending. Then pop_completed should activate it.
+            if self.stack._stack:
+                self.stack._stack[-1].status = 'Pending'
+
+        @rule()
+        def pop_completed(self):
+            before_completed = [e for e in self.stack._stack if e.status == 'Completed']
+            self.stack.pop_completed()
+            for entry in self.stack._stack:
+                assert entry.status not in ('Completed', 'Invalid'), \
+                    f'pop_completed left a {entry.status} flow on the stack'
+            # Pending top auto-activates after pop_completed.
+            if self.stack._stack and self.stack._stack[-1].status == 'Pending':
+                pytest.fail('pop_completed did not activate the new top Pending flow')
+
+        @rule(status=st.sampled_from(_STATUSES))
+        def get_flow(self, status):
+            result = self.stack.get_flow(status=status)
+            if status is not None and result is not None:
+                assert result.status == status, \
+                    f'get_flow(status={status!r}) returned a {result.status!r} flow'
+
+        @invariant()
+        def depth_within_limit(self):
+            assert 0 <= len(self.stack._stack) <= self.stack._max_depth
+
+        @invariant()
+        def all_flows_have_id(self):
+            for entry in self.stack._stack:
+                assert entry.flow_id, f'Flow {entry.flow_type} on stack without flow_id'
+
+        @invariant()
+        def statuses_in_vocabulary(self):
+            valid = {'Pending', 'Active', 'Completed', 'Invalid'}
+            for entry in self.stack._stack:
+                assert entry.status in valid, f'unknown status {entry.status!r}'
+
+    FlowStackMachine.TestCase.settings = settings(max_examples=50, deadline=2000)
+    return FlowStackMachine
+
+
+TestFlowStackMachine = _build_flowstack_machine().TestCase

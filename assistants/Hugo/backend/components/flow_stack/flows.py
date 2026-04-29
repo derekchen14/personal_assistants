@@ -104,11 +104,10 @@ class FindFlow(ResearchParentFlow):
     self.tools = ['find_posts']
 
   def fill_slot_values(self, values):
-    if 'query' in values:
-      self.slots['query'].add_one(values['query'])
+    self.slots['query'].add_one(values['query'])
     if 'count' in values:
       self.slots['count'].level = int(values['count'])
-      self.slots['count'].check_if_filled()
+    return self.is_filled()
 
 class CompareFlow(ResearchParentFlow):
   def __init__(self):

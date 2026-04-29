@@ -1,0 +1,136 @@
+{
+  "flow_stack": [
+    {
+      "flow_type": "audit",
+      "interjected": false,
+      "is_newborn": true,
+      "is_uncertain": false,
+      "parent_type": "Revise",
+      "slot_shape": {
+        "delegates": {
+          "criteria": "multiple",
+          "filled": false,
+          "priority": "optional",
+          "value_count": 0
+        },
+        "reference_count": {
+          "criteria": "numeric",
+          "filled": true,
+          "level_set": true,
+          "priority": "optional"
+        },
+        "source": {
+          "criteria": "multiple",
+          "filled": true,
+          "priority": "required",
+          "value_count": 1,
+          "value_keys": [
+            "chl",
+            "post",
+            "sec",
+            "snip",
+            "ver"
+          ]
+        },
+        "threshold": {
+          "criteria": "numeric",
+          "filled": false,
+          "level_set": true,
+          "priority": "optional"
+        }
+      },
+      "status": "Active"
+    }
+  ],
+  "frame": {
+    "block_data_keys": [
+      [
+        "options",
+        "submit_dax",
+        "submit_label",
+        "title"
+      ]
+    ],
+    "block_locations": [
+      "bottom"
+    ],
+    "block_types": [
+      "checklist"
+    ],
+    "has_code": false,
+    "has_thoughts": false,
+    "metadata_keys": [
+      "findings",
+      "summary"
+    ],
+    "missing_entity": null,
+    "missing_slot": null,
+    "origin": "audit",
+    "violation": null
+  },
+  "state": {
+    "active_post_set": true,
+    "flow_dax": "{13A}",
+    "has_issues": false,
+    "has_plan": false,
+    "keep_going": false,
+    "natural_birth": true,
+    "pred_intent": "Revise"
+  },
+  "tool_log": [
+    {
+      "success": null,
+      "tool": "read_metadata"
+    },
+    {
+      "success": null,
+      "tool": "read_metadata"
+    },
+    {
+      "success": null,
+      "tool": "read_metadata"
+    },
+    {
+      "success": null,
+      "tool": "find_posts"
+    },
+    {
+      "success": null,
+      "tool": "editor_review"
+    },
+    {
+      "success": null,
+      "tool": "inspect_post"
+    },
+    {
+      "success": null,
+      "tool": "compare_style"
+    },
+    {
+      "success": null,
+      "tool": "read_section"
+    },
+    {
+      "success": null,
+      "tool": "read_section"
+    },
+    {
+      "success": null,
+      "tool": "read_section"
+    },
+    {
+      "success": null,
+      "tool": "read_section"
+    },
+    {
+      "success": null,
+      "tool": "save_findings"
+    }
+  ],
+  "top_flow": {
+    "entity_slot": "source",
+    "flow_type": "audit",
+    "is_filled": true,
+    "parent_type": "Revise"
+  }
+}
