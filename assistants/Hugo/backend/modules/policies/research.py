@@ -198,10 +198,7 @@ class ResearchPolicy(BasePolicy):
             'used_count': 0,
             'query': query,
             'items': [
-                {
-                    'post_id': it.get('post_id'),
-                    'title': it.get('title', ''),
-                    'status': it.get('status', ''),
+                {'post_id': it['post_id'], 'title': it['title'], 'status': it['status'],
                     'preview': it.get('preview', it.get('preview_snippet', '')),
                 }
                 for it in items
@@ -210,7 +207,7 @@ class ResearchPolicy(BasePolicy):
 
         flow.status = 'Completed'
         frame = DisplayFrame(flow.name())
-        frame.add_block({'type': 'list', 'data': list_data})
+        frame.add_block({'type': 'list', 'data': list_data, 'expand': True})
         return frame
 
     def _expand_query(self, query:str) -> list[str]:

@@ -5,16 +5,18 @@ _TOP_TYPES = frozenset(('confirmation', 'toast'))
 
 class BuildingBlock:
 
-    def __init__(self, block_type:str, data:dict, location:str):
+    def __init__(self, block_type:str, data:dict, location:str, expand:bool=False):
         self.block_type = block_type
         self.data = data
         self.location = location
+        self.expand = expand
 
     def to_dict(self) -> dict:
         block_dict = {
             'type': self.block_type,
             'data': self.data,
             'location': self.location,
+            'expand': self.expand,
         }
         return block_dict
 
@@ -45,7 +47,8 @@ class DisplayFrame:
         else:
             location = 'bottom'
 
-        block = BuildingBlock(block_type, data, location)
+        expand = block_data.get('expand', False)
+        block = BuildingBlock(block_type, data, location, expand)
         self.blocks.append(block)
 
     def clear(self):

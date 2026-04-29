@@ -69,7 +69,7 @@ async def create_post(body:dict, queue:asyncio.Queue):
                 post_id, status = result.get('post_id', ''), result.get('status', '')
                 success_msg = f'Created "{result.get("title", title)}".'
                 draft_data = {'post_id': post_id, 'status': status, 'title': title, 'content': ''}
-                draft_block = {'type': 'card', 'location': 'bottom', 'data': draft_data}
+                draft_block = {'type': 'card', 'location': 'bottom', 'expand': True, 'data': draft_data}
                 draft_frame = {'origin': 'create', 'panel': 'bottom', 'blocks': [draft_block]}
                 bottom_panel = {'message': success_msg, 'raw_utterance': '', 'actions': [], 'frame': draft_frame}
                 await queue.put(bottom_panel)

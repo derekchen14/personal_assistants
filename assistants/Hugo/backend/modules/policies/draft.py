@@ -257,7 +257,7 @@ class DraftPolicy(BasePolicy):
             flow.status = 'Completed'
             frame = DisplayFrame(origin='create')
             block_data = {'post_id': new_id, 'title': result.get('title', ''), 'status': result['status']}
-            frame.add_block({'type': 'card', 'data': block_data})
+            frame.add_block({'type': 'card', 'data': block_data, 'expand': True})
             # If topic provided, chain into OutlineFlow to propose an initial outline.
             # if 'topic' in slots:
             #     self.flow_stack.stackon('outline')

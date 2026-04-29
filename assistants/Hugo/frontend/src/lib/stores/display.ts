@@ -21,6 +21,7 @@ export interface Block {
     type: string;
     data: Record<string, unknown>;
     location: 'top' | 'bottom';
+    expand?: boolean;
 }
 
 export interface FrameData {
@@ -97,7 +98,7 @@ export function setFrame(frame: FrameData) {
     } else {
         _listExpanded.set(false);
         bottomFrame.set(frame);
-        if (frame.origin === 'create') {
+        if (primary.expand) {
             _expanded.set(true);
         }
     }
