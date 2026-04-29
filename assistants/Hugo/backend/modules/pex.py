@@ -109,11 +109,8 @@ class PEX:
 
         policy = self._policies[active_flow.intent]
         frame = policy.execute(state, context, self._dispatch_tool)
-
-        # Phase-2 logging: post-policy frame snapshot, before RES.
         log.info(
-            f'PEX-POST-POLICY: flow={active_flow.name()!r} '
-            f'origin={frame.origin!r} '
+            f'PEX: flow={active_flow.name()!r} stage={active_flow.stage} '
             f'metadata_keys={sorted(frame.metadata.keys())} '
             f'block_types={[b.block_type for b in frame.blocks]} '
             f'thoughts_len={len(frame.thoughts or "")}'

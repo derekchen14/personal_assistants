@@ -58,16 +58,16 @@ def engineer(minimal_config):
 
 @pytest.fixture
 def nlu(minimal_config):
-    from backend.components.dialogue_state import DialogueState
-    ambiguity = MagicMock()
-    ambiguity.needs_clarification.return_value = False
+    """Live World, ContextCoordinator, FlowStack, AmbiguityHandler — only the LLM call
+    sites in PromptEngineer get mocked per-test. This keeps every conditional branch in
+    NLU reachable. The fixture seeds a User action turn so Phase 1c (last_user_turn.turn_type
+    == 'action') is exercisable by default; tests that need an utterance turn override it."""
+    from backend.components.world import World
+    from backend.components.ambiguity_handler import AmbiguityHandler
     engineer = PromptEngineer(minimal_config)
-    world = MagicMock()
-    world.context.compile_history.return_value = ''
-    # Contract: current_state() always returns a DialogueState.
-    world.current_state.return_value = DialogueState(intent=None, dax=None, turn_count=0)
-    world.flow_stack.find_by_name.return_value = None
-    world.flow_stack._stack = []
+    ambiguity = AmbiguityHandler(minimal_config, engineer=engineer)
+    world = World(minimal_config)
+    world.context.add_turn('User', '', turn_type='action')
     return NLU(minimal_config, ambiguity, engineer, world)
 
 
@@ -201,9 +201,6 @@ class TestReact:
         assert state.confidence == 0.99
 
     def test_utterance_calls_fill_slots(self, nlu):
-        real_flow = flow_classes['create']()
-        nlu.flow_stack.find_by_name.return_value = None
-        nlu.flow_stack.stackon.return_value = real_flow
         with patch.object(nlu, '_fill_slots') as mock_fill:
             state = nlu.react('{05A}', {'topic': 'SEO'})
         mock_fill.assert_called_once()
@@ -211,22 +208,20 @@ class TestReact:
 
     def test_snippet_payload_fills_entity_slot(self, nlu):
         # Phase 1a: snippet + post + section land in SourceSlot entity dict.
-        real_flow = flow_classes['refine']()
-        nlu.flow_stack.find_by_name.return_value = None
-        nlu.flow_stack.stackon.return_value = real_flow
         nlu.react('{02B}', {'snippet': 'matrix mult', 'post': 'post_abc', 'section': 'sec_xyz'})
-        entity = real_flow.slots['source'].values[0]
+        flow = nlu.flow_stack.get_flow()
+        assert flow.name() == 'refine'
+        entity = flow.slots['source'].values[0]
         assert entity['snip'] == 'matrix mult'
         assert entity['post'] == 'post_abc'
         assert entity['sec'] == 'sec_xyz'
 
     def test_snippet_payload_fills_exact_slot(self, nlu):
         # Phase 1b: snippet lands in find.query via SNIPPET_EXACT_SLOTS registry.
-        real_flow = flow_classes['find']()
-        nlu.flow_stack.find_by_name.return_value = None
-        nlu.flow_stack.stackon.return_value = real_flow
         nlu.react('{001}', {'snippet': 'matrix mult'})
-        assert real_flow.slots['query'].value == 'matrix mult'
+        flow = nlu.flow_stack.get_flow()
+        assert flow.name() == 'find'
+        assert flow.slots['query'].value == 'matrix mult'
 
     def test_all_action_dax_codes_resolve(self):
         from utils.helper import dax2flow
@@ -236,10 +231,56 @@ class TestReact:
             assert resolved == flow_name, \
                 f'dax2flow({dax!r}) returned {resolved!r}, expected {flow_name!r}'
 
+    def test_context_only_payload_skips_per_flow_dispatch(self, nlu):
+        """FE attaches active post/section as context to every action. _fill_slots must
+        skip unpack_user_actions when the payload is purely entity-context or slice keys —
+        per-flow dispatch is for real click data only."""
+        with patch.object(nlu, 'unpack_user_actions') as mock_dispatch:
+            nlu.react('{05A}', {'post': '17be00f6'})  # create has no source/target slot
+        mock_dispatch.assert_not_called()
+
+    def test_refine_steps_unpacks_dict_kwargs(self):
+        """Regression: under the old generic dispatch, slot.add_one(item) bound the whole
+        {name, description} dict to the positional `name` arg, producing nested
+        {name: {name: '...'}}. The per-flow refactor uses slot.add_one(**item)."""
+        flow = flow_classes['refine']()
+        flow.fill_slot_values({
+            'source': [{'post': 'abc12345'}],
+            'steps': [{'name': "Remove X", 'description': 'why'}],
+        })
+        assert flow.slots['steps'].steps[0] == {'name': "Remove X", 'description': 'why', 'checked': False}
+
 
 # ═══════════════════════════════════════════════════════════════════
-# Service tests — fixtures and helpers
+# Agent.take_turn — full keep_going loop integration
 # ═══════════════════════════════════════════════════════════════════
+
+class TestAgent:
+    """End-to-end coverage of the agent.take_turn round trip with mocked LLM calls and
+    stubbed PostService. Exercises the keep_going loop's interaction with res.start /
+    res.respond — the agent-level orchestration that policy_evals and unit-NLU tests skip."""
+
+    def test_create_action_completes_round_one_without_crash(self, mock_agent, monkeypatch):
+        """A flow that completes in round 1 with keep_going=False must leave its just-completed
+        flow on the stack so res.respond's `completed_flows[-1]` can render it. Regression for
+        the bug where agent.py popped flows mid-loop and crashed at `flow.intent` on None."""
+        from backend.utilities.services import PostService
+        monkeypatch.setattr(PostService, 'create_post',
+            lambda self, **kw: {'_success': True, 'post_id': 'cafef00d',
+                                'title': kw.get('title', ''), 'status': kw.get('type', 'draft')})
+
+        # Stub fill_slots to populate CreateFlow's required slots without invoking the LLM.
+        from backend.modules.nlu import NLU
+        def stub_fill(self, flow, payload=None):
+            flow.fill_slot_values({'title': 'Cute Cheetahs', 'type': 'draft', 'topic': 'cheetahs'})
+        monkeypatch.setattr(NLU, '_fill_slots', stub_fill)
+
+        result = mock_agent.take_turn(
+            'Make a post about cheetahs', dax='{05A}', payload={'post': '17be00f6'})
+        assert result['frame'] is not None, 'agent.py must not return the fallback payload'
+        assert result['frame']['origin'] == 'create'
+        block_types = [b['type'] for b in result['frame']['blocks']]
+        assert block_types == ['card']
 
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):

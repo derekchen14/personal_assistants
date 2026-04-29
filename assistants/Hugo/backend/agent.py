@@ -69,12 +69,13 @@ class Agent:
             frame, keep_going = self.pex.execute(state, self.world.context)
             rounds += 1
             log.info('  pex round=%d  keep_going=%s', rounds, keep_going)
-            
+
             flow = self.world.flow_stack.get_flow('Active')
             if not flow:
                 keep_going = False
 
             if keep_going:
+                self.res.start()  # pop just-completed flows
                 new_state = DialogueState(intent=flow.intent, dax=flow2dax(flow.name()),
                     turn_count=state.turn_count + 1, confidence=1.0)
                 new_state.has_plan = state.has_plan

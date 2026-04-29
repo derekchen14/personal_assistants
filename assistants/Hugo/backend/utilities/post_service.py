@@ -327,7 +327,10 @@ class PostService(ToolService):
         )
 
     def delete_post(self, post_id:str) -> dict:
-        ent, entries = self._require_entry(post_id)
+        entries = self._load_metadata()
+        ent = next((e for e in entries if e['post_id'] == post_id), None)
+        if ent is None:
+            return self._success()
         entries.remove(ent)
         self._save_metadata(entries)
         filepath = self._content_dir / ent['filename']

@@ -130,7 +130,7 @@ STEPS_VISION = [
         'expected_tools': ['read_metadata'],
         'expected_block_type': 'selection',
         'max_message_chars': 300,
-        'expected_block_data_keys': {'selection': ['candidates']},
+        'expected_block_data_keys': {'selection': ['options', 'title']},
     },
     {
         # Button-click path: user clicks "Pick" on Option 1 in step 2's selection block. Mirrors
@@ -325,7 +325,7 @@ STEPS_OBSERVABILITY = [
         'expected_tools': ['read_metadata'],
         'expected_block_type': 'selection',
         'max_message_chars': 300,
-        'expected_block_data_keys': {'selection': ['candidates']},
+        'expected_block_data_keys': {'selection': ['options', 'title']},
     },
     {
         'step': 3,
@@ -513,7 +513,7 @@ STEPS_VOICE = [
         'expected_tools': ['read_metadata'],
         'expected_block_type': 'selection',
         'max_message_chars': 300,
-        'expected_block_data_keys': {'selection': ['candidates']},
+        'expected_block_data_keys': {'selection': ['options', 'title']},
     },
     {
         'step': 3,
@@ -772,6 +772,27 @@ def _check_level1(step_def, result, tool_log, agent):
     if expected_bt:
         if expected_bt not in block_types:
             issues.append(f'expected block_type={expected_bt}, got {block_types}')
+
+    # Renderability check for option-shaped blocks. The frontend SelectionBlock and
+    # ChecklistBlock iterate `data.options` and render each option's `label` + `body`.
+    # An empty options list, or options missing label/body, surfaces as a blank UI
+    # — which the prior assertions here would have rated PASS. Catch that class of
+    # bug at the trace level so the eval matches what the user actually sees.
+    if expected_bt in ('selection', 'checklist'):
+        matching = [b for b in blocks if b.get('type') == expected_bt]
+        for b in matching:
+            opts = (b.get('data') or {}).get('options') or []
+            if not opts:
+                issues.append(f'{expected_bt} block has empty options — user would see no picks')
+                continue
+            for idx, opt in enumerate(opts):
+                label = (opt.get('label') or '').strip() if isinstance(opt, dict) else ''
+                body = (opt.get('body') or '').strip() if isinstance(opt, dict) else ''
+                payload = opt.get('payload') if isinstance(opt, dict) else None
+                if not label:
+                    issues.append(f'{expected_bt} option [{idx}] has empty label')
+                if not body and not payload:
+                    issues.append(f'{expected_bt} option [{idx}] has neither body nor payload')
 
     if max_chars and len(message) > max_chars:
         issues.append(f'message too long ({len(message)} > {max_chars} chars) — should be in block data, not utterance')
@@ -1041,7 +1062,10 @@ def _run_with_retry_on_flake(tester, step_def, request):
     - Fail on first run but pass on retry: write a flake dump and pass.
     - Fail on both runs: write a dump and re-raise the second failure.
     """
-    from utils.tests.playwright_evals.dump import write_failure_dump
+    try:
+        from utils.tests.playwright_evals.dump import write_failure_dump
+    except ImportError:
+        write_failure_dump = None
 
     first_error = None
     try:
@@ -1093,8 +1117,26 @@ def _run_with_retry_on_flake(tester, step_def, request):
 
     if second_error is None:
         # Flake: first run failed, second run passed. Log the divergence and pass.
+        if write_failure_dump:
+            dump_path = write_failure_dump(
+                step_num=f'{step_label:02d}_flake' if isinstance(step_label, int) else f'{step_label}_flake',
+                flow_name=flow_name,
+                expected=expected,
+                actual=actual,
+                rubric=rubric,
+                state_snapshot=state_snapshot,
+                reproducer=reproducer,
+                run_id=run_id,
+            )
+            print(f'\n  [retry-with-diagnostic] step {step_label} flaked; passed on retry. Dump: {dump_path}')
+        else:
+            print(f'\n  [retry-with-diagnostic] step {step_label} flaked; passed on retry. (dump module unavailable)')
+        return
+
+    # Both runs failed — write a dump and re-raise so pytest marks the test failed.
+    if write_failure_dump:
         dump_path = write_failure_dump(
-            step_num=f'{step_label:02d}_flake' if isinstance(step_label, int) else f'{step_label}_flake',
+            step_num=step_label,
             flow_name=flow_name,
             expected=expected,
             actual=actual,
@@ -1103,21 +1145,9 @@ def _run_with_retry_on_flake(tester, step_def, request):
             reproducer=reproducer,
             run_id=run_id,
         )
-        print(f'\n  [retry-with-diagnostic] step {step_label} flaked; passed on retry. Dump: {dump_path}')
-        return
-
-    # Both runs failed — write a dump and re-raise so pytest marks the test failed.
-    dump_path = write_failure_dump(
-        step_num=step_label,
-        flow_name=flow_name,
-        expected=expected,
-        actual=actual,
-        rubric=rubric,
-        state_snapshot=state_snapshot,
-        reproducer=reproducer,
-        run_id=run_id,
-    )
-    print(f'\n  [retry-with-diagnostic] step {step_label} failed twice. Dump: {dump_path}')
+        print(f'\n  [retry-with-diagnostic] step {step_label} failed twice. Dump: {dump_path}')
+    else:
+        print(f'\n  [retry-with-diagnostic] step {step_label} failed twice. (dump module unavailable)')
     raise second_error
 
 
@@ -1188,12 +1218,17 @@ class _BaseScenarioE2E:
         """Seed agent state for part 2 (steps 8-14) from the disk snapshot.
 
         Finds the test post on disk, sets active_post, and injects synthetic
-        conversation history so the LLM has context about prior work.
+        conversation history so the LLM has context about prior work. Returns
+        without seeding when the post is missing — letting `_assert_step` see
+        the failure rather than bypassing the consecutive-failure abort gate.
         """
         agent = cls._get_agent()
-        from backend.utilities.services import PostService
+        from backend.utilities.services import PostService, PostNotFoundError
         svc = PostService()
-        meta = svc.read_metadata(cls._test_post_id)
+        try:
+            meta = svc.read_metadata(cls._test_post_id)
+        except PostNotFoundError:
+            return
         if not meta.get('_success'):
             return
         cls._post_id = cls._test_post_id
@@ -1497,10 +1532,15 @@ class _BaseScenarioE2E:
         _run_with_retry_on_flake(self, self._steps[12], request)
 
     def test_step_14_release(self, request):
-        """Reset post status to draft before attempting release."""
-        from backend.utilities.services import PostService
+        """Reset post status to draft before attempting release. Skip the reset
+        when the post is missing (prior steps failed) so the consecutive-failure
+        abort gate sees this turn rather than being bypassed by a setup raise."""
+        from backend.utilities.services import PostService, PostNotFoundError
         svc = PostService()
-        svc.update_post(self._test_post_id, {'status': 'draft'})
+        try:
+            svc.update_post(self._test_post_id, {'status': 'draft'})
+        except PostNotFoundError:
+            pass
         self._assert_step(self._steps[13], request)
 
 

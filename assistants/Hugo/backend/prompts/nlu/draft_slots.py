@@ -5,15 +5,15 @@ OUTLINE_PROMPT = {
         'flow runs in two modes downstream, and slot-filling decides which: when the user supplies named '
         'section headings, fill `sections` (direct mode); when they only supply an angle, fill `topic` and '
         'leave `sections` null (propose mode — downstream generates candidate headings). Populate `depth` '
-        'only when the user mentions nesting or levels (not counts). At least one of `topic` or `sections` '
-        'must be filled for the flow to proceed.'
+        'only when the user mentions nesting or levels (not counts). Fill `topic` or `sections` only when '
+        'there is a clear signal about what the post should be about.'
     ),
     'rules': (
         '1. `topic` is a short descriptive sentence, not a single word. Only fill when the user supplies '
         'more information than the post title already carries. A bare restatement of the title '
         '("regularization methods" on a post titled *Regularization Techniques*) → `topic=null`. A '
         'full angle sentence ("why batch beats streaming for small teams") → populate.\n'
-        '2. `sections` needs named headings, not a count. "With 4 sections" → `sections=null`. "Cover X, '
+        '2. `sections` needs named headings, not a count. "With 5 sections" → `sections=null`. "Cover X, '
         'Y, Z" → fill with those items. Each item is `{"name": <Proper Case heading>, "description": "", '
         '"checked": false}`. Drop filler words like "their" that break heading consistency.\n'
         '3. `depth` is nesting depth only: 1 = top-level headings, 2 = headings + bullets, 3 = bullets + '

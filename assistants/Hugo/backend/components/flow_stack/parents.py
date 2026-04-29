@@ -70,70 +70,10 @@ class BaseFlow(object):
     return self.is_filled()
 
   def fill_slot_values(self, values: dict):
-    """Transfer prediction values onto slot objects."""
-    if not values:
-      return
-    # Alias mapping: LLM may use common names that differ from slot names
-    _ALIASES = {'title': 'target', 'post': 'source', 'post_id': 'source'}
-    for slot_name, value in values.items():
-      slot = self.slots.get(slot_name)
-      if not slot:
-        # Try alias
-        alias = _ALIASES.get(slot_name)
-        if alias:
-          slot = self.slots.get(alias)
-      if not slot or not value:
-        continue
-      # Dispatch based on value type and slot type
-      st = getattr(slot, 'slot_type', '')
-      if isinstance(value, list) and st in ('source', 'target', 'removal'):
-        for item in value:
-          if not item:
-            continue
-          if isinstance(item, dict):
-            if not item.get('post'):
-              continue
-            slot.add_one(**item)
-          else:
-            slot.add_one(post=str(item))
-      elif isinstance(value, list) and hasattr(slot, 'add_one') and st not in ('dictionary', 'range'):
-        for item in value:
-          slot.add_one(item)
-      elif isinstance(value, dict) and st == 'dictionary':
-        predefined = set(slot.value.keys()) if hasattr(slot, 'value') and isinstance(slot.value, dict) else set()
-        if predefined == {'key', 'value'} and not any(k in predefined for k in value):
-          # LLM returned {actual_key: actual_value} instead of {key: ..., value: ...}
-          for k, v in value.items():
-            slot.add_one(key='key', val=str(k))
-            slot.add_one(key='value', val=str(v))
-            break  # only first entry
-        else:
-          for k, v in value.items():
-            slot.add_one(key=str(k), val=str(v))
-      elif isinstance(value, dict) and hasattr(slot, 'add_one'):
-        try:
-          slot.add_one(**value)
-        except TypeError:
-          # Unknown keys in dict — extract post/sec if possible
-          post = value.get('post', value.get('title', str(value)))
-          sec = value.get('sec', value.get('section', ''))
-          if st in ('source', 'target', 'removal'):
-            slot.add_one(post=str(post), sec=str(sec))
-          else:
-            slot.add_one(str(post))
-      elif hasattr(slot, 'assign_one'):
-        slot.assign_one(value)
-      elif hasattr(slot, 'add_one'):
-        if st in ('source', 'target', 'removal'):
-          slot.add_one(post=str(value))
-        elif st == 'dictionary':
-          slot.add_one(key=str(value), val='')
-        elif st == 'range' and isinstance(value, str):
-          slot.add_one(start=value)
-        else:
-          slot.add_one(value)
-      else:
-        slot.value = str(value)
+    """Each concrete flow implements its own. The flow knows which slots it has and
+    how each is shaped (per slot.json_schema and the slot-filling prompt), so it can
+    drive each slot's existing API directly without generic dispatch."""
+    raise NotImplementedError(f'{type(self).__name__} must implement fill_slot_values')
 
   def slot_values_dict(self) -> dict:
     """Read filled slot values as a flat dict (for prompt serialization)."""

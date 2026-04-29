@@ -158,7 +158,7 @@ tools:
   update_post:
     tool_id: update_post
     name: "Update post"
-    description: "Update post metadata. Valid keys in `updates`: title, category, tags, color, status, sections. The `sections` value is a list of section headings in order, used to rename one or more H2s — the list length must match the post's existing section count, and any entry that differs from the current title triggers a rename. Pass any subset of valid keys; omitted keys are unchanged."
+    description: "Update post metadata. Valid keys in `updates`: title, category, tags, color, status, sections. The `sections` value is a list that renames the section headers — the list length must match the post's existing section count, and any entry that differs from the current title triggers a rename. Pass any subset of valid keys; omitted keys are unchanged."
     input_schema:
       type: object
       properties:

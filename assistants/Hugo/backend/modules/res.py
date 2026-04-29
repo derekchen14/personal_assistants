@@ -106,6 +106,9 @@ class RES(object):
 
         completed = [flow for flow in popped if flow.status == 'Completed']
         for flow in completed:
+            # TODO: emit an async progress notification per completion (e.g. "polish complete,
+            # moving on to audit summary…") so multi-flow runs surface progress in real time.
+            # Wire through the WebSocket path; keep best-effort so it never blocks the loop.
             if flow.intent == Intent.PLAN:
                 state = self.world.current_state()
                 state.has_plan = False

@@ -241,6 +241,9 @@ class ChecklistSlot(GroupSlot):
     self.filled = self.size > 0 and len(self.steps) >= self.size
     return self.filled
 
+  def to_dict(self):
+    return list(self.steps)
+
   def add_one(self, name, description='', checked=False):
     step = {'name': name, 'description': description, 'checked': checked}
     current_names = [s['name'] for s in self.steps]

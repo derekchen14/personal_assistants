@@ -25,6 +25,12 @@ class BrowseFlow(ResearchParentFlow):
     }
     self.tools = ['find_posts', 'brainstorm_ideas', 'search_notes']
 
+  def fill_slot_values(self, values):
+    for item in values.get('tags', []):
+      self.slots['tags'].add_one(item)
+    if 'target' in values:
+      self.slots['target'].assign_one(values['target'])
+
 class SummarizeFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
@@ -37,6 +43,13 @@ class SummarizeFlow(ResearchParentFlow):
     }
     self.tools = ['read_metadata', 'read_section', 'summarize_text']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'length' in values:
+      self.slots['length'].level = int(values['length'])
+      self.slots['length'].check_if_filled()
+
 class CheckFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
@@ -48,6 +61,10 @@ class CheckFlow(ResearchParentFlow):
       'source': SourceSlot(1, priority='optional'),
     }
     self.tools = ['find_posts', 'channel_status']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
 
 class InspectFlow(ResearchParentFlow):
   def __init__(self):
@@ -64,6 +81,14 @@ class InspectFlow(ResearchParentFlow):
     # Deterministic flow — the policy calls inspect_post directly; no skill delegation.
     self.tools = ['inspect_post']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'aspect' in values:
+      self.slots['aspect'].assign_one(values['aspect'])
+    if 'threshold' in values:
+      self.slots['threshold'].assign_one(values['threshold'])
+
 class FindFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
@@ -78,6 +103,13 @@ class FindFlow(ResearchParentFlow):
     }
     self.tools = ['find_posts']
 
+  def fill_slot_values(self, values):
+    if 'query' in values:
+      self.slots['query'].add_one(values['query'])
+    if 'count' in values:
+      self.slots['count'].level = int(values['count'])
+      self.slots['count'].check_if_filled()
+
 class CompareFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
@@ -89,6 +121,10 @@ class CompareFlow(ResearchParentFlow):
       'source': SourceSlot(2),
     }
     self.tools = ['read_metadata', 'read_section', 'compare_style']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
 
 class DiffFlow(ResearchParentFlow):
   def __init__(self):
@@ -103,6 +139,14 @@ class DiffFlow(ResearchParentFlow):
       'mapping': DictionarySlot(priority='elective'),
     }
     self.tools = ['find_posts', 'read_metadata', 'read_section', 'diff_section']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'lookback' in values:
+      self.slots['lookback'].assign_one(values['lookback'])
+    for k, v in values.get('mapping', {}).items():
+      self.slots['mapping'].add_one(k, v)
 
 # ── Draft (7 flows) ─────────────────────────────────────────────────────────
 
@@ -120,6 +164,14 @@ class BrainstormFlow(DraftParentFlow):
     }
     self.tools = ['brainstorm_ideas', 'find_posts', 'search_notes', 'read_section']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'topic' in values:
+      self.slots['topic'].add_one(values['topic'])
+    for item in values.get('ideas', []):
+      self.slots['ideas'].add_one(item)
+
 class CreateFlow(DraftParentFlow):
   def __init__(self):
     super().__init__()
@@ -133,6 +185,14 @@ class CreateFlow(DraftParentFlow):
       'topic': ExactSlot(priority='optional'),
     }
     self.tools = ['create_post']
+
+  def fill_slot_values(self, values):
+    if 'title' in values:
+      self.slots['title'].add_one(values['title'])
+    if 'type' in values:
+      self.slots['type'].assign_one(values['type'])
+    if 'topic' in values:
+      self.slots['topic'].add_one(values['topic'])
 
 class OutlineFlow(DraftParentFlow):
   def __init__(self):
@@ -149,6 +209,17 @@ class OutlineFlow(DraftParentFlow):
     }
     self.tools = ['find_posts', 'brainstorm_ideas', 'generate_outline']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('sections', []):
+      self.slots['sections'].add_one(**item)
+    if 'topic' in values:
+      self.slots['topic'].add_one(values['topic'])
+    if 'depth' in values:
+      self.slots['depth'].level = int(values['depth'])
+      self.slots['depth'].check_if_filled()
+
 class RefineFlow(DraftParentFlow):
   def __init__(self):
     super().__init__()
@@ -161,6 +232,14 @@ class RefineFlow(DraftParentFlow):
       'feedback': FreeTextSlot(priority='elective'),  # open-ended feedback on how to improve the outline
     }
     self.tools = ['find_posts', 'read_metadata', 'read_section', 'update_post', 'insert_section', 'revise_content', 'remove_content', 'write_text']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('steps', []):
+      self.slots['steps'].add_one(**item)
+    for item in values.get('feedback', []):
+      self.slots['feedback'].add_one(item)
 
 class CiteFlow(DraftParentFlow):
   def __init__(self):
@@ -175,6 +254,12 @@ class CiteFlow(DraftParentFlow):
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'web_search']
 
+  def fill_slot_values(self, values):
+    for item in values.get('target', []):
+      self.slots['target'].add_one(**item)
+    if 'url' in values:
+      self.slots['url'].add_one(values['url'])
+
 class ComposeFlow(DraftParentFlow):
   def __init__(self):
     super().__init__()
@@ -187,6 +272,14 @@ class ComposeFlow(DraftParentFlow):
       'guidance': FreeTextSlot(priority='elective')
     }
     self.tools = ['read_metadata', 'read_section', 'convert_to_prose', 'write_text', 'revise_content']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('steps', []):
+      self.slots['steps'].add_one(**item)
+    for item in values.get('guidance', []):
+      self.slots['guidance'].add_one(item)
 
 class AddFlow(DraftParentFlow):
   def __init__(self):
@@ -204,6 +297,18 @@ class AddFlow(DraftParentFlow):
     }
     self.tools = ['read_metadata', 'read_section', 'insert_section', 'revise_content', 'insert_media']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('points', []):
+      self.slots['points'].add_one(**item)
+    for k, v in values.get('additions', {}).items():
+      self.slots['additions'].add_one(k, v)
+    if 'image' in values:
+      self.slots['image'].assign_one(**values['image'])
+    if 'position' in values:
+      self.slots['position'].assign_one(values['position'])
+
 # ── Revise (7 flows) ────────────────────────────────────────────────────────
 
 class ReworkFlow(ReviseParentFlow):
@@ -220,6 +325,16 @@ class ReworkFlow(ReviseParentFlow):
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'insert_section', 'remove_content']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('remove', []):
+      self.slots['remove'].add_one(**item)
+    for item in values.get('changes', []):
+      self.slots['changes'].add_one(item)
+    for item in values.get('suggestions', []):
+      self.slots['suggestions'].add_one(**item)
+
 class PolishFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
@@ -233,6 +348,16 @@ class PolishFlow(ReviseParentFlow):
       'suggestions': ChecklistSlot(priority='elective'),
     }
     self.tools = ['read_metadata', 'read_section', 'write_text', 'revise_content']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('style_notes', []):
+      self.slots['style_notes'].add_one(item)
+    if 'image' in values:
+      self.slots['image'].assign_one(**values['image'])
+    for item in values.get('suggestions', []):
+      self.slots['suggestions'].add_one(**item)
 
 class ToneFlow(ReviseParentFlow):
   def __init__(self):
@@ -257,6 +382,16 @@ class ToneFlow(ReviseParentFlow):
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'channel_status']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'custom_tone' in values:
+      self.slots['custom_tone'].add_one(values['custom_tone'])
+    if 'chosen_tone' in values:
+      self.slots['chosen_tone'].assign_one(values['chosen_tone'])
+    for item in values.get('suggestions', []):
+      self.slots['suggestions'].add_one(**item)
+
 class AuditFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
@@ -270,6 +405,17 @@ class AuditFlow(ReviseParentFlow):
       'delegates': ChecklistSlot(priority='optional'),
     }
     self.tools = ['find_posts', 'compare_style', 'editor_review', 'inspect_post', 'read_section']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'reference_count' in values:
+      self.slots['reference_count'].level = int(values['reference_count'])
+      self.slots['reference_count'].check_if_filled()
+    if 'threshold' in values:
+      self.slots['threshold'].assign_one(values['threshold'])
+    for item in values.get('delegates', []):
+      self.slots['delegates'].add_one(**item)
 
 class SimplifyFlow(ReviseParentFlow):
   def __init__(self):
@@ -285,6 +431,16 @@ class SimplifyFlow(ReviseParentFlow):
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'remove_content', 'write_text']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'image' in values:
+      self.slots['image'].assign_one(**values['image'])
+    for item in values.get('guidance', []):
+      self.slots['guidance'].add_one(item)
+    for item in values.get('suggestions', []):
+      self.slots['suggestions'].add_one(**item)
+
 class RemoveFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
@@ -298,6 +454,14 @@ class RemoveFlow(ReviseParentFlow):
     }
     self.tools = ['delete_post', 'remove_content', 'read_metadata']
 
+  def fill_slot_values(self, values):
+    for item in values.get('target', []):
+      self.slots['target'].add_one(**item)
+    if 'image' in values:
+      self.slots['image'].assign_one(**values['image'])
+    if 'type' in values:
+      self.slots['type'].assign_one(values['type'])
+
 class TidyFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
@@ -310,6 +474,14 @@ class TidyFlow(ReviseParentFlow):
       'image': ImageSlot(priority='optional'),
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'check_links']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for k, v in values.get('settings', {}).items():
+      self.slots['settings'].add_one(k, v)
+    if 'image' in values:
+      self.slots['image'].assign_one(**values['image'])
 
 # ── Publish (7 flows) ───────────────────────────────────────────────────────
 
@@ -325,6 +497,12 @@ class ReleaseFlow(PublishParentFlow):
     }
     self.tools = ['read_metadata', 'channel_status', 'release_post']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('channel', []):
+      self.slots['channel'].add_one(item)
+
 class SyndicateFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
@@ -336,6 +514,12 @@ class SyndicateFlow(PublishParentFlow):
       'source': SourceSlot(1),
     }
     self.tools = ['read_metadata', 'read_section', 'channel_status', 'release_post']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('channel', []):
+      self.slots['channel'].add_one(item)
 
 class ScheduleFlow(PublishParentFlow):
   def __init__(self):
@@ -350,6 +534,14 @@ class ScheduleFlow(PublishParentFlow):
     }
     self.tools = ['list_channels', 'channel_status', 'release_post', 'update_post']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('channel', []):
+      self.slots['channel'].add_one(item)
+    if 'datetime' in values:
+      self.slots['datetime'].add_one(**values['datetime'])
+
 class PreviewFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
@@ -362,6 +554,12 @@ class PreviewFlow(PublishParentFlow):
     }
     self.tools = ['read_metadata', 'read_section']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('channel', []):
+      self.slots['channel'].add_one(item)
+
 class PromoteFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
@@ -373,6 +571,12 @@ class PromoteFlow(PublishParentFlow):
       'channel': CategorySlot(['pin', 'feature', 'announce', 'social'], priority='optional'),
     }
     self.tools = ['read_metadata', 'promote_post']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'channel' in values:
+      self.slots['channel'].assign_one(values['channel'])
 
 class CancelFlow(PublishParentFlow):
   def __init__(self):
@@ -387,6 +591,12 @@ class CancelFlow(PublishParentFlow):
     }
     self.tools = ['read_metadata', 'cancel_release', 'update_post']
 
+  def fill_slot_values(self, values):
+    for item in values.get('remove', []):
+      self.slots['remove'].add_one(**item)
+    if 'reason' in values:
+      self.slots['reason'].add_one(values['reason'])
+
 class SurveyFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
@@ -398,6 +608,10 @@ class SurveyFlow(PublishParentFlow):
       'channel': ChannelSlot(priority='optional'),
     }
     self.tools = ['list_channels', 'channel_status']
+
+  def fill_slot_values(self, values):
+    for item in values.get('channel', []):
+      self.slots['channel'].add_one(item)
 
 # ── Converse (7 flows) ──────────────────────────────────────────────────────
 
@@ -413,6 +627,12 @@ class ExplainFlow(ConverseParentFlow):
     }
     self.tools = ['explain_action']
 
+  def fill_slot_values(self, values):
+    if 'turn_id' in values:
+      self.slots['turn_id'].assign_one(values['turn_id'])
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+
 class ChatFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
@@ -421,6 +641,9 @@ class ChatFlow(ConverseParentFlow):
     self.goal = 'open-ended conversation; general Q&A about writing craft, blogging strategy, SEO, audience engagement, or any topic not tied to a specific post action'
     self.slots = {}
     self.tools = []
+
+  def fill_slot_values(self, values):
+    return  # no slots
 
 class PreferenceFlow(ConverseParentFlow):
   def __init__(self):
@@ -433,6 +656,10 @@ class PreferenceFlow(ConverseParentFlow):
     }
     self.tools = []
 
+  def fill_slot_values(self, values):
+    for k, v in values.get('setting', {}).items():
+      self.slots['setting'].add_one(k, v)
+
 class SuggestFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
@@ -441,6 +668,9 @@ class SuggestFlow(ConverseParentFlow):
     self.goal = 'Hugo proactively suggests a next step based on current context; what to write next, which section needs attention, a new angle to explore, or an improvement to try'
     self.slots = {}
     self.tools = ['brainstorm_ideas', 'find_posts']
+
+  def fill_slot_values(self, values):
+    return  # no slots
 
 class UndoFlow(ConverseParentFlow):
   def __init__(self):
@@ -454,6 +684,13 @@ class UndoFlow(ConverseParentFlow):
     }
     self.tools = ['rollback_post']
 
+  def fill_slot_values(self, values):
+    if 'turn' in values:
+      self.slots['turn'].level = int(values['turn'])
+      self.slots['turn'].check_if_filled()
+    if 'action' in values:
+      self.slots['action'].add_one(values['action'])
+
 class EndorseFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
@@ -465,6 +702,10 @@ class EndorseFlow(ConverseParentFlow):
     }
     self.tools = []
 
+  def fill_slot_values(self, values):
+    if 'action' in values:
+      self.slots['action'].add_one(values['action'])
+
 class DismissFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
@@ -473,6 +714,9 @@ class DismissFlow(ConverseParentFlow):
     self.goal = "decline Hugo's proactive suggestion without providing feedback; Hugo notes the preference and moves on without further prompting"
     self.slots = {}
     self.tools = []
+
+  def fill_slot_values(self, values):
+    return  # no slots
 
 # ── Plan (6 flows) ──────────────────────────────────────────────────────────
 
@@ -489,6 +733,12 @@ class BlueprintFlow(PlanParentFlow):
     }
     self.tools = []
 
+  def fill_slot_values(self, values):
+    if 'topic' in values:
+      self.slots['topic'].add_one(values['topic'])
+    for item in values.get('steps', []):
+      self.slots['steps'].add_one(**item)
+
 class TriageFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
@@ -501,6 +751,15 @@ class TriageFlow(PlanParentFlow):
       'count': LevelSlot(priority='optional', threshold=1),
     }
     self.tools = ['read_metadata', 'inspect_post']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'scope' in values:
+      self.slots['scope'].assign_one(values['scope'])
+    if 'count' in values:
+      self.slots['count'].level = int(values['count'])
+      self.slots['count'].check_if_filled()
 
 class CalendarFlow(PlanParentFlow):
   def __init__(self):
@@ -516,6 +775,15 @@ class CalendarFlow(PlanParentFlow):
     }
     self.tools = ['find_posts']
 
+  def fill_slot_values(self, values):
+    for item in values.get('target', []):
+      self.slots['target'].add_one(**item)
+    if 'timeframe' in values:
+      self.slots['timeframe'].add_one(**values['timeframe'])
+    if 'count' in values:
+      self.slots['count'].level = int(values['count'])
+      self.slots['count'].check_if_filled()
+
 class ScopeFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
@@ -527,6 +795,10 @@ class ScopeFlow(PlanParentFlow):
       'topic': ExactSlot(),
     }
     self.tools = ['find_posts', 'brainstorm_ideas']
+
+  def fill_slot_values(self, values):
+    if 'topic' in values:
+      self.slots['topic'].add_one(values['topic'])
 
 class DigestFlow(PlanParentFlow):
   def __init__(self):
@@ -541,6 +813,15 @@ class DigestFlow(PlanParentFlow):
     }
     self.tools = ['find_posts']
 
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'theme' in values:
+      self.slots['theme'].add_one(values['theme'])
+    if 'part_count' in values:
+      self.slots['part_count'].level = int(values['part_count'])
+      self.slots['part_count'].check_if_filled()
+
 class RememberFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
@@ -553,6 +834,12 @@ class RememberFlow(PlanParentFlow):
       'scope': CategorySlot(['session', 'user', 'global'], priority='elective'),
     }
     self.tools = []
+
+  def fill_slot_values(self, values):
+    if 'topic' in values:
+      self.slots['topic'].add_one(values['topic'])
+    if 'scope' in values:
+      self.slots['scope'].assign_one(values['scope'])
 
 # ── Internal (7 flows) ──────────────────────────────────────────────────────
 
@@ -567,6 +854,10 @@ class RecapFlow(InternalParentFlow):
     }
     self.tools = []
 
+  def fill_slot_values(self, values):
+    if 'key' in values:
+      self.slots['key'].add_one(values['key'])
+
 class StoreFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
@@ -578,6 +869,10 @@ class StoreFlow(InternalParentFlow):
     }
     self.tools = []
 
+  def fill_slot_values(self, values):
+    for k, v in values.get('entry', {}).items():
+      self.slots['entry'].add_one(k, v)
+
 class RecallFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
@@ -588,6 +883,10 @@ class RecallFlow(InternalParentFlow):
       'key': ExactSlot(priority='optional'),
     }
     self.tools = []
+
+  def fill_slot_values(self, values):
+    if 'key' in values:
+      self.slots['key'].add_one(values['key'])
 
 class RetrieveFlow(InternalParentFlow):
   def __init__(self):
@@ -601,6 +900,12 @@ class RetrieveFlow(InternalParentFlow):
     }
     self.tools = []
 
+  def fill_slot_values(self, values):
+    if 'topic' in values:
+      self.slots['topic'].add_one(values['topic'])
+    if 'context' in values:
+      self.slots['context'].add_one(values['context'])
+
 class SearchFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
@@ -611,6 +916,10 @@ class SearchFlow(InternalParentFlow):
       'query': ExactSlot(),
     }
     self.tools = ['find_posts']
+
+  def fill_slot_values(self, values):
+    if 'query' in values:
+      self.slots['query'].add_one(values['query'])
 
 class ReferenceFlow(InternalParentFlow):
   def __init__(self):
@@ -623,6 +932,10 @@ class ReferenceFlow(InternalParentFlow):
     }
     self.tools = []
 
+  def fill_slot_values(self, values):
+    if 'word' in values:
+      self.slots['word'].add_one(values['word'])
+
 class StudyFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
@@ -634,3 +947,9 @@ class StudyFlow(InternalParentFlow):
       'scope': CategorySlot(['voice', 'structure', 'vocabulary', 'full'], priority='optional'),
     }
     self.tools = ['read_metadata', 'read_section']
+
+  def fill_slot_values(self, values):
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    if 'scope' in values:
+      self.slots['scope'].assign_one(values['scope'])

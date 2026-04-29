@@ -52,7 +52,7 @@ class PublishPolicy(BasePolicy):
 
         # Default-commit: channel defaults to 'mt1t' when unset.
         if not flow.slots['channel'].filled:
-            flow.fill_slot_values({'channel': 'mt1t'})
+            flow.fill_slot_values({'channel': ['mt1t']})
 
         post_id, _ = self._resolve_source_ids(flow, state, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools)

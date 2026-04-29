@@ -166,9 +166,6 @@ SLOT_TYPE_GUIDES = {
     ),
 }
 
-ENTITY_SLOT_TYPES = ('source', 'target', 'removal', 'channel')
-
-
 def _build_type_guides(slot_types:set) -> str:
     guides = [SLOT_TYPE_GUIDES[st] for st in slot_types if st in SLOT_TYPE_GUIDES]
     return '\n\n'.join(guides)
@@ -213,9 +210,8 @@ def _render_input(active_post:dict|None) -> str:
     return '## Input\n\nActive post: None'
 
 
-def build_slot_filling_prompt(flow_name:str, flow, convo_history:str,
-                              active_post:dict=None, ent_needs_filling:set=None) -> str:
-    prompt_fields = get_prompt(flow_name)
+def build_slot_filling_prompt(flow, convo_history:str, active_post:dict) -> str:
+    prompt_fields = get_prompt(flow.name())
     instructions = prompt_fields['instructions'].strip()
     rules = prompt_fields['rules'].strip()
     slots_md = prompt_fields['slots'].strip()
@@ -224,17 +220,15 @@ def build_slot_filling_prompt(flow_name:str, flow, convo_history:str,
     slot_types = {type(slot).__name__ for slot in flow.slots.values()}
     type_guides = _build_type_guides(slot_types)
 
-    skip_names = set()
-    if ent_needs_filling is not None:
-        for name, slot in flow.slots.items():
-            if slot.slot_type in ENTITY_SLOT_TYPES and name not in ent_needs_filling:
-                skip_names.add(name)
+    # Already-filled slots are final — Phase 1a (FE payload) and Phase 2 (active_post grounding)
+    # have done their job, and re-asking the LLM only invites it to substitute worse data.
+    skip_names = {name for name, slot in flow.slots.items() if slot.filled}
     if slots_md:
         slots_md = _filter_slot_sections(slots_md, skip_names)
     else:
         slots_md = _procedural_slots_md(flow, skip_names)
 
-    flow_heading = f'{flow_name.title()} Slots'
+    flow_heading = f'{flow.name().title()} Slots'
     task_body = f'{BACKGROUND_STATIC}\n\n## Instructions\n\n{instructions}\n\n## Rules\n\n{rules}'
     slot_schema_body = (
         f'## {flow_heading}\n\n{slots_md}\n\n'

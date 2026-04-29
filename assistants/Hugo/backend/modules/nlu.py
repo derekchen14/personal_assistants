@@ -13,7 +13,7 @@ from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.flow_stack import flow_classes
 from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt, render_flow_catalog
-from backend.prompts.for_nlu import build_slot_filling_prompt, ENTITY_SLOT_TYPES
+from backend.prompts.for_nlu import build_slot_filling_prompt
 from backend.prompts.for_contemplate import build_contemplate_prompt as _build_contemplate_prompt_text
 from backend.utilities.services import PostService
 from schemas.ontology import FLOW_CATALOG, Intent
@@ -78,15 +78,18 @@ def _flow_detection_schema(candidate_flow_names:list[str]) -> dict:
 
 
 def _fill_slots_schema(flow) -> dict:
-    slot_names = list(flow.slots.keys())
+    """Only ask the LLM for slots that aren't already filled. Filled slots are final —
+    re-asking risks the LLM substituting worse data (e.g. post title for post_id) and
+    appending a duplicate entry on the slot."""
+    unfilled = {name: slot for name, slot in flow.slots.items() if not slot.filled}
     return {
         'type': 'object',
         'properties': {
             'reasoning': {'type': 'string'},
             'slots': {
                 'type': 'object',
-                'properties': {name: slot.json_schema() for name, slot in flow.slots.items()},
-                'required': slot_names,
+                'properties': {name: slot.json_schema() for name, slot in unfilled.items()},
+                'required': list(unfilled),
                 'additionalProperties': False,
             },
         },
@@ -170,14 +173,9 @@ class NLU:
         """Automatically create the flow since we know the correct DAX."""
         flow_name = dax2flow(gold_dax)
         flow = self._push_or_get(flow_name)
-        self._fill_slots(flow, payload)
         state = self._build_state(flow_name, confidence=0.99)
-
-        for slice_key in ['choices', 'channels', 'campaigns']:
-            if slice_key in payload:
-                for value in payload[slice_key]:
-                    # if value > 0: // can add guardrails in this line if desired
-                    state.slices[slice_key].append(value)
+        state, payload = self._fill_slices(state, payload)
+        self._fill_slots(flow, payload)
         return state
 
     def validate(self, state:DialogueState) -> DialogueState:
@@ -319,31 +317,16 @@ class NLU:
             return None
         return {'id': state.active_post, 'title': title}
 
-    def _fill_slot_prompt(self, flow, convo_history:str,
-                          ent_needs_filling:set|None=None) -> str:
-        return build_slot_filling_prompt(
-            flow.name(), flow, convo_history,
-            active_post=self._active_post_dict(),
-            ent_needs_filling=ent_needs_filling,
-        )
-
-    def grounding_entity_history(self, flow, prev) -> set[str]:
-        """Entity slots still open for the LLM to fill. Drops entity slots already grounded
-        deterministically against the prior-turn active_post — no new information for the LLM to
-        contribute on those."""
-        prev_post = prev.active_post if prev else None
-        needs = set()
-        for name, slot in flow.slots.items():
-            if slot.slot_type not in ENTITY_SLOT_TYPES:
-                continue
-            if not slot.filled:
-                needs.add(name)
-                continue
-            first = slot.values[0] if slot.values else ''
-            current_post = first.get('post') if isinstance(first, dict) else ''
-            if not prev_post or current_post != prev_post:
-                needs.add(name)
-        return needs
+    def _fill_slices(self, state, payload):
+        filtered = {}
+        for key, val in payload.items():
+            if key in ['choices', 'channels', 'campaigns']:
+                for slice_value in val:
+                    # if value > 0: // can add guardrails in this line if desired
+                    state.slices[key].append(slice_value)
+            else:
+                filtered[key] = val
+        return state, filtered
 
     def _contemplate_prompt(self, user_text:str, failed_flow:str, failure_reason:str,
                              candidates:list[str], convo_history:str) -> str:
@@ -362,11 +345,9 @@ class NLU:
 
     def _classify_intent(self, user_text:str) -> str:
         convo_history = self.world.context.compile_history()
-        prompt = build_intent_prompt(user_text, convo_history,
-                                     active_post=self._active_post_dict())
+        prompt = build_intent_prompt(user_text, convo_history, self._active_post_dict())
         try:
-            parsed = self.engineer(prompt, 'classify_intent', max_tokens=512,
-                                   schema=_intent_schema())
+            parsed = self.engineer(prompt, 'classify_intent', max_tokens=512, schema=_intent_schema())
             return parsed['intent']
         except Exception as ecp:
             log.warning('intent classification failed: %s', ecp)
@@ -417,27 +398,25 @@ class NLU:
 
     def _fill_slots(self, flow, payload:dict={}):
         snippet_exact_map = {'find': 'query', 'reference': 'word'}
-        entity_mapper = {'snippet': 'snip', 'post': 'post', 'section': 'sec', 'channel': 'chl'}
         last_turn = self.world.context.last_user_turn
 
         if payload:
-            snippet_text = payload.get('snippet')
             entity_slots = [s for s in flow.slots.values() if s.slot_type in ('source', 'target', 'removal')]
-            entity_kwargs = {entity_mapper[key]: val for key, val in payload.items() if key in entity_mapper}
+            entity_dict, filtered_payload = self._split_payload(payload)
 
             # Phase 1a: Fill entity slots
-            if entity_kwargs and entity_slots:
+            if entity_dict and entity_slots:
                 for slot in entity_slots:
-                    slot.add_one(**entity_kwargs)
+                    slot.add_one(**entity_dict)
             # Phase 1b: Fill ExactSlot with snippets. Only for FindFLow and ReferenceFlow.
-            elif snippet_text and flow.name() in snippet_exact_map:
+            elif 'snip' in entity_dict and flow.name() in snippet_exact_map:
                 target_name = snippet_exact_map[flow.name()]
                 slot = flow.slots.get(target_name)
                 if not slot.filled:
-                    slot.add_one(snippet_text)
-            # Phase 1c: Capture slot-values when a user clicks on a button or interacts with UI
-            elif last_turn.turn_type == 'action':
-                self.unpack_user_actions(flow, payload)
+                    slot.add_one(entity_dict['snip'])
+            # Phase 1c: Capture slot-values when a user clicks on a button or interacts with UI.
+            elif last_turn.turn_type == 'action' and filtered_payload:
+                self.unpack_user_actions(flow, filtered_payload)
 
         # Phase 2: Ground remaining source/target slots against the active post.
         prev = self.world.current_state()
@@ -445,41 +424,40 @@ class NLU:
             for slot_name, slot in flow.slots.items():
                 if slot.slot_type in ('source', 'target') and not slot.filled:
                     slot.add_one(post=prev.active_post)
-        ent_needs_filling = self.grounding_entity_history(flow, prev)
 
         # Phase 3: LLM slot-filling for anything still unfilled
         if not flow.is_filled():
             convo_history = self.world.context.compile_history()
-            before = {sn: slot.filled for sn, slot in flow.slots.items()}
-            log.info('  fill_slots pre: flow=%s filled=%s', flow.name(), before)
-            prompt = self._fill_slot_prompt(flow, convo_history, ent_needs_filling)
-            try:
-                pred_slots = self.engineer(prompt, 'fill_slots', schema=_fill_slots_schema(flow))
-                log.info('  fill_slots parsed: %s', pred_slots)
-                cleaned = _strip_nulls(pred_slots['slots'])
-                flow.fill_slot_values(cleaned)
-            except Exception as ecp:
-                log.warning('  fill_slots failed: %s', ecp)
-                self._raise_if_debug(ecp)
-            after = {sn: {'filled': slot.filled, 'preview': self._slot_preview(slot)}
-                     for sn, slot in flow.slots.items()}
-            log.info('  fill_slots post: %s', after)
+            prompt = build_slot_filling_prompt(flow, convo_history, self._active_post_dict())
+            pred_slots = self.engineer(prompt, 'fill_slots', schema=_fill_slots_schema(flow))
+            cleaned = _strip_nulls(pred_slots['slots'])
+            flow.fill_slot_values(cleaned)
 
     def unpack_user_actions(self, flow, payload:dict):
-        """Transfer a frontend action payload into flow slots. Per-flow dispatch trusting the
-        FE+flow shape contract. A missing case means the FE started sending a new action payload
-        that this layer hasn't registered yet — crash so we add the branch rather than silently
-        drop the click."""
+        """Transfer a frontend action payload into flow slots. Default is a generic
+        slot-name → value fill, which covers any click whose payload keys map directly to
+        slots (e.g. {type: 'draft'} → CreateFlow.type). Flows with nested/structured payloads
+        need an explicit case (currently only outline)."""
         match flow.name():
             case 'outline':
                 chosen = payload['proposals'][0]
                 for sec in chosen:
                     flow.slots['sections'].add_one(sec['name'], sec['description'])
                 flow.slots['proposals'].values = [chosen]
-            case 'audit':
-                pass  # picks live in state.slices['choices'] via react()'s slices passover
             case _:
-                raise ValueError(f'no action-payload handler for flow {flow.name()!r}: {payload}')
+                flow.fill_slot_values(payload)
+
+    def _split_payload(self, payload):
+        entity_mapper = {'snippet': 'snip', 'post': 'post', 'section': 'sec', 'channel': 'chl'}
+
+        entity_dict, filtered_payload = {}, {}
+        for key, val in payload.items():
+            if key in entity_mapper:
+                mapped_key = entity_mapper[key]
+                entity_dict[mapped_key] = val
+            else:
+                filtered_payload[key] = val
+        return entity_dict, filtered_payload
 
     def _check_routing(self, user_text:str, failed_flow:str|None,
                        failure_reason:str) -> dict:

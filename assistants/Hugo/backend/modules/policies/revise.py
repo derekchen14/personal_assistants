@@ -154,7 +154,9 @@ class RevisePolicy(BasePolicy):
             state.has_plan = False
             state.keep_going = False
             finish_msg = f'Audit completed with {len(flow.slots["delegates"].steps)} delegated flows.'
+            post_id, _ = self._resolve_source_ids(flow, state, tools)
             frame = DisplayFrame('audit', thoughts=finish_msg, metadata={'reports': reports})
+            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
         elif flow.stage == 'discovery' and len(state.slices['choices']) > 0:
             flow.stage = 'delegation'
@@ -210,10 +212,14 @@ class RevisePolicy(BasePolicy):
             suggestions = []
             for index in delegate['finding_idxs']:
                 finding = findings[index]
-                suggestions.append(f"[{finding['severity']}] {finding['issue']}: {finding['note']}")
+                suggestions.append({
+                    'name': f"[{finding['severity']}] {finding['issue']}",
+                    'description': finding['note'],
+                })
             child = self.flow_stack.stackon(delegate['flow_name'])
             child.fill_slot_values({'suggestions': suggestions})
-            flow.slots['delegates'].add_one(name=new_flow, description='; '.join(suggestions)[:200])
+            description = '; '.join(f"{s['name']}: {s['description']}" for s in suggestions)[:200]
+            flow.slots['delegates'].add_one(name=new_flow, description=description)
 
         state.has_plan = True
         state.keep_going = True
