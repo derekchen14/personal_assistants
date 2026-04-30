@@ -97,6 +97,8 @@ class BasePolicy:
         grounding = flow.slots[flow.entity_slot]
         if grounding.slot_type not in ('source', 'target', 'removal'):
             return None, None
+        if not grounding.values:
+            return None, None
         vals = grounding.values[0]
         if not isinstance(vals, dict):
             return None, None

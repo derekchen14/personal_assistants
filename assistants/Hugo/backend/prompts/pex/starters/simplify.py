@@ -45,21 +45,35 @@ def _format_parameters(flow) -> str:
     source = flow.slots['source']
     image = flow.slots['image']
     guidance = flow.slots['guidance']
+    suggestions = flow.slots['suggestions']
     if source.check_if_filled():
         lines.append(f'Source: {render_source(source)}')
     if image.check_if_filled():
         lines.append(f'Image: {_render_image(image)}')
     if guidance.check_if_filled():
         lines.append(f'Guidance: {render_freetext(guidance)}')
+    if suggestions.check_if_filled():
+        lines.append(f'Suggestions: {_render_suggestions(suggestions)}')
     return '\n'.join(lines) if lines else '(no entity parameters — declare ambiguity)'
 
 
 def _render_image(slot) -> str:
-    if not slot.values:
+    """ImageSlot stores image_type + value(=src) + position. NLU also passes `alt` but the slot doesn't store it (see `ImageSlot.assign_one`)."""
+    if not slot.image_type:
         return ''
-    val = slot.values[0]
-    if isinstance(val, dict):
-        sec = val.get('sec') or val.get('section') or ''
-        ref = val.get('ref') or val.get('id') or ''
-        return f'section={sec}, ref={ref}' if sec else f'ref={ref}'
-    return str(val)
+    parts = [f'type={slot.image_type}']
+    if slot.value:
+        parts.append(f'src={slot.value}')
+    return ', '.join(parts)
+
+
+def _render_suggestions(slot) -> str:
+    """ChecklistSlot from the audit-chain: name='[severity] issue', description='note'. Render both so the skill sees what to fix."""
+    parts = []
+    for step in slot.steps:
+        name, desc = step.get('name', ''), step.get('description', '')
+        if name and desc:
+            parts.append(f'{name}: {desc}')
+        else:
+            parts.append(name or desc)
+    return '; '.join(p for p in parts if p)

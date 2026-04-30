@@ -468,7 +468,7 @@ Step 8 adds:
 | 9 | polish | {3BD} | Edit | Tighten the opening paragraph of Motivation |
 | 10 | inspect | {1BD} | Analyze | Report metrics (word count, sections, read time) |
 | 11 | audit | {13A} | Analyze | Compare style against existing posts |
-| 12 | brainstorm | {29A} | Research | Generate alternative angles for the topic |
+| 12 | brainstorm | {39D} | Research | Generate alternative angles for the topic |
 | 13 | find | {001} | Research | Search for posts about data augmentation |
 | 14 | release | {04A} | Ship | Publish to Substack |
 

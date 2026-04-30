@@ -33,7 +33,7 @@
   },
   "tool_log": [
     {
-      "success": null,
+      "success": true,
       "tool": "create_post"
     }
   ],

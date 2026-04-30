@@ -274,7 +274,9 @@ STEPS_VISION = [
         'expected_tools': ['find_posts', 'compare_style'],
         'expected_errors': {'read_section'},
         'expected_scratchpad_keys': ['audit'],
-        'expected_block_data_keys': {'card': ['post_id', 'findings', 'summary']},
+        # Audit discovery emits a checklist block (one option per finding).
+        'expected_block_data_keys': {'checklist': ['options', 'title', 'submit_dax']},
+        'expected_metadata_keys': ['findings', 'summary'],
     },
     {
         # Polish — informed pass. LLM-judge retained — the core question is
@@ -334,11 +336,10 @@ STEPS_OBSERVABILITY = [
         'flow': 'outline',
         'dax': '{002}',
         'utterance': (
-            'Make an outline with 6 sections: Motivation, Latency Targets, '
-            'Token Accounting, Cost Modeling, Dashboards, and Takeaways. '
-            'Under Motivation, add bullets about why agents drift silently when '
-            'they run for hours, and how a billing surprise after a weekend '
-            'agent run kicked off this work.'
+            'Make an outline with 3 sections: Motivation, Cost Modeling, '
+            'and Dashboards. Under Motivation, add bullets about why agents '
+            'drift silently when they run for hours, and how a billing '
+            'surprise after a weekend agent run kicked off this work.'
         ),
         # Pop the stale OutlineFlow so NLU slot-filling actually runs on
         # this utterance (see _reset_outline_flow for the rationale).
@@ -347,25 +348,22 @@ STEPS_OBSERVABILITY = [
         'expected_block_type': 'card',
         'max_message_chars': 300,
         'expected_post_content': {
-            'sections_in_order': ['motivation', 'latency-targets', 'token-accounting',
-                                  'cost-modeling', 'dashboards', 'takeaways'],
+            'sections_in_order': ['motivation', 'cost-modeling', 'dashboards'],
             'bullet_count_min': 2,
         },
     },
     {
-        # Step 4 appends 3 latency + 3 token-accounting + 1 cost bullet on top
-        # of the ≥2 motivation bullets landed in step 3.
+        # Step 4 adds bullets to Cost Modeling and Dashboards on top of the ≥2
+        # motivation bullets landed in step 3.
         # See Vision step 4 for the LLM-quality-judge / partial-ambiguity note.
         'step': 4,
         'flow': 'refine',
         'dax': '{02B}',
         'utterance': (
-            'Add bullets to the outline. Under Latency Targets, add: p50 vs p99 '
-            'budget per turn, end-to-end vs per-tool-call breakdown, and a hard '
-            'ceiling that triggers a kill switch. Under Token Accounting, add: '
-            'per-turn input tokens, cache-hit rate, and tool-result tokens that '
-            'often dominate. Under Cost Modeling, add: cost-per-completed-task '
-            'as the headline metric.'
+            'Add bullets to the outline. Under Cost Modeling, add: '
+            'cost-per-completed-task as the headline metric, per-turn input '
+            'tokens, and tool-result tokens that often dominate. Under '
+            'Dashboards, add: latency-percentile views and per-tool token panels.'
         ),
         'expected_tools': ['revise_content'],
         'expected_ambiguity': {'partial'},
@@ -379,8 +377,7 @@ STEPS_OBSERVABILITY = [
         'expected_tools': ['convert_to_prose'],
         'expected_block_data_keys': {'card': ['post_id', 'title']},
         'expected_post_content': {
-            'sections_in_order': ['motivation', 'latency-targets', 'token-accounting',
-                                  'cost-modeling', 'dashboards', 'takeaways'],
+            'sections_in_order': ['motivation', 'cost-modeling', 'dashboards'],
         },
     },
     {
@@ -401,12 +398,11 @@ STEPS_OBSERVABILITY = [
         'step': 7,
         'flow': 'simplify',
         'dax': '{7BD}',
-        'utterance': 'The second paragraph of Token Accounting is too dense. Cut it down.',
+        'utterance': 'The second paragraph of Dashboards is too dense. Cut it down.',
         'expected_tools': ['read_section', 'revise_content'],
         'expected_block_data_keys': {'card': ['post_id', 'title']},
         'expected_post_content': {
-            'sections_in_order': ['motivation', 'latency-targets', 'token-accounting',
-                                  'cost-modeling', 'dashboards', 'takeaways'],
+            'sections_in_order': ['motivation', 'cost-modeling', 'dashboards'],
         },
     },
     {
@@ -416,13 +412,12 @@ STEPS_OBSERVABILITY = [
         'step': 8,
         'flow': 'add',
         'dax': '{005}',
-        'utterance': 'In the Dashboards section, add bullets about latency-percentile views and per-tool token panels',
+        'utterance': 'In the Dashboards section, add a paragraph about per-tool token panels and saturation alerts',
         'expected_tools': ['revise_content'],
         'expected_block_data_keys': {'card': ['post_id', 'title']},
         'expected_post_content': {
-            'sections_in_order': ['motivation', 'latency-targets', 'token-accounting',
-                                  'cost-modeling', 'dashboards', 'takeaways'],
-            'section_count_min': 6,
+            'sections_in_order': ['motivation', 'cost-modeling', 'dashboards'],
+            'section_count_min': 3,
         },
     },
     {
@@ -431,7 +426,7 @@ STEPS_OBSERVABILITY = [
         'step': 9,
         'flow': 'polish',
         'dax': '{3BD}',
-        'utterance': 'Tighten the opening paragraph of Latency Targets — make the p99 hook land sharper',
+        'utterance': 'Tighten the opening paragraph of Cost Modeling — make the cost-per-task hook land sharper',
         'expected_tools': ['read_section'],
         'expected_ambiguity': {'partial'},
         'expected_block_data_keys': {'card': ['post_id', 'title']},
@@ -465,7 +460,9 @@ STEPS_OBSERVABILITY = [
         'expected_tools': ['find_posts', 'compare_style'],
         'expected_errors': {'read_section'},
         'expected_scratchpad_keys': ['audit'],
-        'expected_block_data_keys': {'card': ['post_id', 'findings', 'summary']},
+        # Audit discovery emits a checklist block (one option per finding).
+        'expected_block_data_keys': {'checklist': ['options', 'title', 'submit_dax']},
+        'expected_metadata_keys': ['findings', 'summary'],
     },
     {
         # Polish — informed pass. Avoid naming prior flows ("audit") directly —
@@ -642,7 +639,9 @@ STEPS_VOICE = [
         'expected_tools': ['find_posts', 'compare_style'],
         'expected_errors': {'read_section'},
         'expected_scratchpad_keys': ['audit'],
-        'expected_block_data_keys': {'card': ['post_id', 'findings', 'summary']},
+        # Audit discovery emits a checklist block (one option per finding).
+        'expected_block_data_keys': {'checklist': ['options', 'title', 'submit_dax']},
+        'expected_metadata_keys': ['findings', 'summary'],
     },
     {
         # Polish-informed target: Takeaways. Avoid naming prior flows ("audit")

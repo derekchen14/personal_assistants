@@ -17,8 +17,8 @@ This skill adds in-depth content to existing sections of a blog post. When the c
 1. Read the user's guidance from the `<resolved_details>` block. Refer to `<recent_conversation>` for context. Only act on the latest utterance; prior turns have been addressed, so NEVER act on them.
 
 2. Decide the shape of the addition from what is filled:
-  a. When `points` is filled, add a list of bullet notes to a single section.
-  b. When `additions` is filled, apply the targeted changes it describes. The difference between `points` and `additions` is that `additions` provides more targeted guidance, so prefer `additions` over `points`. The changes from `additions` do not have to span multiple sections; if every entry targets one section, only that section needs editing.
+  a. When `points` is filled, add the bullet notes as-is to a single section. Each item is a concrete bullet copied nearly verbatim from the user.
+  b. When `suggestions` is filled, apply the natural-language change instructions. Each item describes a directed edit (the section name appears in the description, since suggestions are interpretive rather than slot-anchored).
   c. When `image` is filled, insert an image into a section.
   d. When the user is asking for a brand-new top-level section (not bullets within an existing section), use `insert_section` to slot it in at the right position.
 
@@ -63,11 +63,11 @@ Resolved Details:
 Trajectory:
 1. `revise_content(post_id=abcd0123, sec_id=architectures-of-the-past, content=<existing bullets plus two new ones>, snip_id=-1)`.
 
-### Example 2: Targeted changes via `additions`
+### Example 2: Natural-language directive via `suggestions`
 
 Resolved Details:
 - Source: post=abcd0123
-- additions: {"recent-innovations": "Mention the self-play breakthrough from DeepMind"}
+- suggestions: ["Mention the self-play breakthrough from DeepMind in recent-innovations"]
 
 Trajectory:
 1. `read_section(post_id=abcd0123, sec_id=recent-innovations)` → current bullets.
@@ -77,7 +77,7 @@ Trajectory:
 
 Resolved Details:
 - Source: post=abcd0123, section=cracking-the-problem-of-control
-- additions: {"<top-level>": "Add a section before 'Cracking the Problem of Control' describing what other inventors were attempting at the time"}
+- suggestions: ["Add a section before 'Cracking the Problem of Control' describing what other inventors were attempting at the time"]
 - section_ids (from resolved-entities): ["two-bicycle-mechanics-with-a-dream", "cracking-the-problem-of-control", "building-and-testing-the-flyer", ...]
 
 Trajectory:

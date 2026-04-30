@@ -22,7 +22,12 @@ Hierarchy:
   ├── ExactSlot            (specific term or phrase)
   ├── DictionarySlot       (key-value pairs)
   ├── RangeSlot            (time or value range)
-  └── ImageSlot            (hero image, diagram, picture) [domain-specific]"""
+  └── ImageSlot            (hero image, diagram, picture) [domain-specific]
+  
+The difference between assign_one and add_one is that:
+  * assignment is used when the slot can hold one value
+  * addition is used when the slot can hold multiple values (generally GroupSlots)
+"""
 
 class BaseSlot(object):
   def __init__(self, priority):
@@ -541,11 +546,13 @@ class ImageSlot(BaseSlot):
     self.slot_type = 'image'
     self.purpose = 'a hero image, diagram, or picture'
     self.image_type = ''
+    self.image_desc = ''
     self.position = -1
 
-  def assign_one(self, image_type, src='', alt='', position=-1):
+  def assign_one(self, img_type, src='', alt='', position=-1):
     self.value = src
-    self.image_type = image_type
+    self.image_type = img_type
+    self.image_desc = alt
     if position >= 0:
       self.position = position
     self.check_if_filled()
@@ -554,11 +561,11 @@ class ImageSlot(BaseSlot):
     return {
       'type': ['object', 'null'],
       'properties': {
-        'image_type': {'type': 'string'},
-        'src':        {'type': ['string', 'null']},
-        'alt':        {'type': ['string', 'null']},
-        'position':   {'type': ['integer', 'null']},
+        'img_type': {'type': 'string'},
+        'src':      {'type': ['string', 'null']},
+        'alt':      {'type': ['string', 'null']},
+        'position': {'type': ['integer', 'null']},
       },
-      'required': ['image_type', 'src', 'alt', 'position'],
+      'required': ['img_type', 'src', 'alt', 'position'],
       'additionalProperties': False,
     }

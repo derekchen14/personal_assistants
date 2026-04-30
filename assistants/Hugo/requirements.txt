@@ -20,3 +20,6 @@ google-genai>=1.0.0
 
 # WebSocket
 websockets>=13.0
+
+# Testing — property-based stateful FSM tests for FlowStack
+hypothesis>=6.0

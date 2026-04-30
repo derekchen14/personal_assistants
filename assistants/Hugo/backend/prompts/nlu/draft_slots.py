@@ -1357,24 +1357,25 @@ ADD_PROMPT = {
         'sub-section — anchored to a specific section. In contrast, Compose writes a full section '
         'based on the outline, and Rework changes existing section content.\n\n'
         'Extract the target (`source`, which post + section) and the new content items: `points` '
-        'for a list of notes going into a single section, `additions` for a dict mapping multiple '
-        'sections to their additions, `image` for image additions, and `position` when the user '
-        'specifies placement. Source typically inherits from active_post; at least one content slot '
-        'should fire.'
+        'for a list of bullets the user wants copied in nearly verbatim, `suggestions` for natural-'
+        'language change instructions (an item like "Mention X in section Y"), `image` for image '
+        'additions, and `position` when the user specifies placement. Source typically inherits '
+        'from active_post; at least one content slot should fire.'
     ),
     'rules': (
         "1. `source` always carries `post`; fill `sec` when the user names the target section. If "
-        "the user distributes content across multiple sections in one utterance, prefer the "
-        "`additions` dict and list all mentioned sections in `source.sec` as a list.\n"
+        "the user distributes content across multiple sections in one utterance, list all mentioned "
+        "sections in `source.sec` and put the natural-language directives in `suggestions`.\n"
         "2. Adding a wholly new top-level section to a post after the Compose phase is rare — "
         "sections should normally be added during the outline phase. When the user does ask for it, "
-        "fill source and points as if inserting a new section.\n"
-        "3. `points` is a ChecklistSlot — each item is a note or bulletpoint to insert into a single "
-        "section. Each item's `name` is an ordinal ('one', 'two', 'three', 'four', ...) and "
-        "`description` holds the actual content. Fill when all items target the same section.\n"
-        "4. `additions` is a DictionarySlot keyed by section name: `{'Methods': 'add a comparison "
-        "table', 'Conclusion': 'cite the recent paper'}`. Fill when the user maps items to "
-        "DIFFERENT sections in one utterance.\n"
+        "fill source and suggestions describing the new section.\n"
+        "3. `points` is a ChecklistSlot for explicit bullets points. The canonical case is when a user"
+        "enumerates of a list changes to make. Each item's `name` is an ordinal ('one', 'two', 'three',"
+        " ...) and `description` holds the literal content. Fill on numbered/bulleted lists where all "
+        "items target the same section.\n"
+        "4. `suggestions` is a ChecklistSlot for natural-language change directives, where each item "
+        "describes an interpretive edit. Fill when the user gives a free form instructions rather a "
+        "list of bullets points.\n"
         "5. `image` fires on explicit image-add language. Image type comes from phrasing: 'diagram' "
         "→ diagram, 'hero image' → hero, 'photo'/'screenshot' → photo.\n"
         "6. `position` fills only when the user specifies placement numerically or relatively. "
@@ -1388,15 +1389,15 @@ ADD_PROMPT = {
         '`sec` when the user names the target section (or list of sections when they distribute '
         'content across multiple). Inherits post from active_post on terse utterances.\n\n'
         '### points (elective)\n\n'
-        'Type: ChecklistSlot. Ordered list of notes to add inside one section. Each item is '
-        '`{name: <ordinal>, description: <content>}` — `name` counts up as \'one\', \'two\', '
-        '\'three\', ..., and `description` carries the actual note text. Leave null when the user '
-        'distributes content across multiple sections (use `additions` dict instead).\n\n'
-        '### additions (elective)\n\n'
-        'Type: DictionarySlot. Dict mapping section name → note content when the user adds items '
-        'to MULTIPLE different sections in one utterance. Example: `{\'Methods\': \'add a comparison '
-        'table\', \'Conclusion\': \'cite the recent paper\'}`. Leave null when all items target the '
-        'same section.\n\n'
+        'Type: ChecklistSlot. Ordered list of bullet notes copied nearly verbatim from the user. '
+        'Each item is `{name: <ordinal>, description: <content>}` — `name` counts up as \'one\', '
+        '\'two\', \'three\', ..., and `description` carries the literal bullet text. Fill when the '
+        'user gave a numbered or bulleted list and all items target the same section.\n\n'
+        '### suggestions (elective)\n\n'
+        'Type: ChecklistSlot. Natural-language change directives matching Polish/Rework\'s '
+        '`suggestions`. Each item describes an interpretive edit (e.g., "Mention the self-play '
+        'breakthrough in recent-innovations"). Fill when the user gave prose-level instructions, '
+        'including multi-section directives (the section name lives inside the description).\n\n'
         '### image (elective)\n\n'
         'Type: ImageSlot. An image reference to insert. Fills when the user asks to add or insert '
         'an image, diagram, or screenshot. Image type comes from the user\'s word (\'diagram\' → '
@@ -1418,11 +1419,11 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Single section named. Source fills post + sec. One note → points with a single item: name='one', description=the content.",
+  "reasoning": "Single section named with one verbatim bullet. Source fills post + sec. One bullet → points with a single item: name='one', description=the literal content.",
   "slots": {
     "source": {"post": "regularization", "sec": "Methods"},
     "points": [{"name": "one", "description": "validation tradeoffs"}],
-    "additions": null,
+    "suggestions": null,
     "image": null,
     "position": null
   }
@@ -1442,7 +1443,7 @@ Active post: My ML Post
 
 ```json
 {
-  "reasoning": "Three items all targeting the Conclusion section. Names count up as ordinals; descriptions carry content. Source post inherits from active_post.",
+  "reasoning": "Three explicit bulletpoints targeting one section → points. Names count up as ordinals; descriptions carry the literal bullets. Source post inherits from active_post.",
   "slots": {
     "source": {"post": "My ML Post", "sec": "Conclusion"},
     "points": [
@@ -1450,7 +1451,7 @@ Active post: My ML Post
       {"name": "two", "description": "note the limitations"},
       {"name": "three", "description": "link to the code repo"}
     ],
-    "additions": null,
+    "suggestions": null,
     "image": null,
     "position": null
   }
@@ -1473,11 +1474,11 @@ Sections (in order): intro, transportation, street food, temples
 
 ```json
 {
-  "reasoning": "Note from first turn. Current turn anchors placement 'right after the intro' → position=1 (the slot after index 0). Source post named in first turn; no section explicitly named, so sec stays null.",
+  "reasoning": "One verbatim bullet ('night markets') from first turn. Current turn anchors placement 'right after the intro' → position=1 (the slot after index 0). Source post named in first turn; no section explicitly named, so sec stays null.",
   "slots": {
     "source": {"post": "Bangkok"},
     "points": [{"name": "one", "description": "night markets"}],
-    "additions": null,
+    "suggestions": null,
     "image": null,
     "position": 1
   }
@@ -1503,8 +1504,8 @@ Active post: None
   "slots": {
     "source": {"post": "transformer"},
     "points": null,
-    "additions": null,
-    "image": {"image_type": "hero", "src": null, "alt": "self-attention mechanism", "position": null},
+    "suggestions": null,
+    "image": {"img_type": "hero", "src": null, "alt": "self-attention mechanism", "position": null},
     "position": null
   }
 }
@@ -1524,11 +1525,14 @@ Sections (in order): Intro, Methods, Results, Conclusion
 
 ```json
 {
-  "reasoning": "Two additions targeting different sections → `additions` dict. Source lists both sections per rule 1. `points` stays null (use additions when split across sections).",
+  "reasoning": "Two natural-language directives targeting different sections → suggestions ChecklistSlot, with the section name embedded in each description. Source lists both sections per rule 1. points stays null since the user didn't give verbatim bullets.",
   "slots": {
     "source": {"post": "My ML Post", "sec": ["Methods", "Conclusion"]},
     "points": null,
-    "additions": {"Methods": "comparison table is needed", "Conclusion": "cite the follow-up paper"},
+    "suggestions": [
+      {"name": "one", "description": "comparison table is needed in Methods"},
+      {"name": "two", "description": "cite the follow-up paper in Conclusion"}
+    ],
     "image": null,
     "position": null
   }
@@ -1549,11 +1553,11 @@ Sections (in order): intro, frameworks, case studies, tradeoffs
 
 ```json
 {
-  "reasoning": "'After the case studies' resolves via the Sections list — case studies is index 2, so 'after' inserts at position 3. The note is a disclaimer; one item in points.",
+  "reasoning": "'After the case studies' resolves via the Sections list — case studies is index 2, so 'after' inserts at position 3. The note is a verbatim disclaimer bullet → points.",
   "slots": {
     "source": {"post": "ethics"},
     "points": [{"name": "one", "description": "disclaimer"}],
-    "additions": null,
+    "suggestions": null,
     "image": null,
     "position": 3
   }
@@ -1577,7 +1581,7 @@ Active post: None
   "slots": {
     "source": {"post": "RL"},
     "points": null,
-    "additions": null,
+    "suggestions": null,
     "image": null,
     "position": null
   }
@@ -1599,11 +1603,11 @@ Active post: None
 
 ```json
 {
-  "reasoning": "User retracts the image request with 'scratch that...instead' — ignore the image slot from prior turn. Current turn adds a paragraph as a point. Source carried from the first turn.",
+  "reasoning": "User retracts the image request with 'scratch that...instead' — ignore the image slot from prior turn. 'A paragraph about self-attention' is a natural-language directive (not a verbatim bullet), so it goes in suggestions, not points.",
   "slots": {
     "source": {"post": "transformer"},
-    "points": [{"name": "one", "description": "a paragraph about self-attention"}],
-    "additions": null,
+    "points": null,
+    "suggestions": [{"name": "one", "description": "add a paragraph about self-attention"}],
     "image": null,
     "position": null
   }

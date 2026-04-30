@@ -34,35 +34,35 @@
   },
   "tool_log": [
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "revise_content"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "revise_content"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     }
   ],

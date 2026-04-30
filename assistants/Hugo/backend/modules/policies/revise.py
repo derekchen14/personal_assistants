@@ -37,12 +37,15 @@ class RevisePolicy(BasePolicy):
             self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
             return DisplayFrame(origin=flow.name())
 
-        if flow.slots['changes'].filled:
-            ideas = flow.slots['changes'].values
-        elif flow.slots['suggestions'].filled:
-            ideas = flow.slots['suggestions'].values
-        else:
-            self.ambiguity.declare('specific', metadata={'missing_slot': 'changes or suggestions'})
+        post_id, _ = self._resolve_source_ids(flow, state, tools)
+
+        # Category dispatch: each option resolves deterministically (move, fallback, or ambiguity).
+        if flow.slots['category'].check_if_filled():
+            return self._dispatch_rework_category(flow, state, post_id, tools)
+
+        # Null-category agentic path: skill handles itemized changes via `suggestions` / `remove`.
+        if not flow.slots['suggestions'].check_if_filled() and not flow.slots['remove'].check_if_filled():
+            self.ambiguity.declare('specific', metadata={'missing_slot': 'category_or_suggestions'})
             return DisplayFrame(origin=flow.name())
 
         text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
@@ -61,11 +64,76 @@ class RevisePolicy(BasePolicy):
                 audit.slots['delegates'].mark_as_complete(flow.name())
 
             flow.status = 'Completed'
-            post_id, _ = self._resolve_source_ids(flow, state, tools)
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         else:
             frame.set_frame(new_data={'violation': 'failed_to_save'})
 
+        return frame
+
+    def _dispatch_rework_category(self, flow, state, post_id, tools):
+        cat = flow.slots['category'].value
+        if cat == 'swap':
+            return self._rework_swap(flow, post_id, tools)
+        if cat in ('to_top', 'to_end'):
+            return self._rework_move(flow, post_id, tools, where=cat)
+        if cat == 'trim':
+            self.flow_stack.fallback('simplify')
+            state.keep_going = True
+            return DisplayFrame(flow.name(), thoughts='Trimming reads as Simplify, rerouting.')
+        if cat == 'sharpen':
+            self.flow_stack.fallback('add')
+            state.keep_going = True
+            return DisplayFrame(flow.name(), thoughts='Sharpening reads as Add, rerouting.')
+        # cat == 'reframe'
+        self.ambiguity.declare(
+            'confirmation',
+            observation='Reframing the post is broad. List the concrete changes you want as bullets.',
+            metadata={'naturalize': True, 'category': 'reframe'},
+        )
+        flow.slots['category'].reset()
+        return DisplayFrame(origin=flow.name())
+
+    def _rework_swap(self, flow, post_id, tools):
+        sec_ids = [e['sec'] for e in flow.slots['source'].values if e.get('sec')]
+        if len(sec_ids) < 2:
+            self.ambiguity.declare('specific', metadata={'missing_slot': 'second_section'})
+            return DisplayFrame(origin=flow.name())
+        section_ids = list(tools('read_metadata', {'post_id': post_id})['section_ids'])
+        sec_a, sec_b = sec_ids[0], sec_ids[1]
+        if section_ids.index(sec_a) > section_ids.index(sec_b):
+            sec_a, sec_b = sec_b, sec_a
+        idx_a, idx_b = section_ids.index(sec_a), section_ids.index(sec_b)
+        a = tools('read_section', {'post_id': post_id, 'sec_id': sec_a})
+        b = tools('read_section', {'post_id': post_id, 'sec_id': sec_b})
+        tools('remove_content', {'post_id': post_id, 'sec_id': sec_a})
+        tools('remove_content', {'post_id': post_id, 'sec_id': sec_b})
+        anchor_b = section_ids[idx_a - 1] if idx_a > 0 else ''
+        anchor_a = section_ids[idx_b - 1]  # idx_b > idx_a >= 0, so this is always defined
+        tools('insert_section', {'post_id': post_id, 'sec_id': anchor_b,
+            'section_title': b['title'], 'content': b['content']})
+        tools('insert_section', {'post_id': post_id, 'sec_id': anchor_a,
+            'section_title': a['title'], 'content': a['content']})
+        flow.status = 'Completed'
+        frame = DisplayFrame(flow.name(), thoughts=f'Swapped sections {sec_a} and {sec_b}.')
+        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        return frame
+
+    def _rework_move(self, flow, post_id, tools, where):
+        sec_ids = [e['sec'] for e in flow.slots['source'].values if e.get('sec')]
+        if not sec_ids:
+            self.ambiguity.declare('specific', metadata={'missing_slot': 'section'})
+            return DisplayFrame(origin=flow.name())
+        sec = sec_ids[0]
+        section_ids = list(tools('read_metadata', {'post_id': post_id})['section_ids'])
+        body = tools('read_section', {'post_id': post_id, 'sec_id': sec})
+        tools('remove_content', {'post_id': post_id, 'sec_id': sec})
+        remaining = [s for s in section_ids if s != sec]
+        anchor = '' if where == 'to_top' else (remaining[-1] if remaining else '')
+        tools('insert_section', {'post_id': post_id, 'sec_id': anchor,
+            'section_title': body['title'], 'content': body['content']})
+        flow.status = 'Completed'
+        frame = DisplayFrame(flow.name(), thoughts=f'Moved {sec} to {where}.')
+        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
 
     def polish_policy(self, flow, state, context, tools):

@@ -158,7 +158,7 @@ FLOW_CATALOG = {
         'policy_path': 'policies.draft.create',
     },
     'brainstorm': {
-        'dax': '{29A}',
+        'dax': '{39D}',
         'intent': Intent.DRAFT,
         'description': 'Come up with new ideas or angles for a given topic, word, or phrase. This may include hooks, opening lines, synonyms, or new perspectives the user can choose from',
         'output': 'list',

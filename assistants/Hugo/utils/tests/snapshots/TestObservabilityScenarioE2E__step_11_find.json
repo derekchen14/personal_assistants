@@ -32,19 +32,19 @@
   },
   "tool_log": [
     {
-      "success": null,
+      "success": true,
       "tool": "find_posts"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "find_posts"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "find_posts"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "find_posts"
     }
   ],

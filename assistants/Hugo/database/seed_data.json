@@ -50,7 +50,7 @@
     {"flow_id": "write", "dax": "{03B}", "intent_id": "draft", "description": "Write or rewrite a specific section"},
     {"flow_id": "add", "dax": "{05B}", "intent_id": "draft", "description": "Add a new section to the post"},
     {"flow_id": "create", "dax": "{05A}", "intent_id": "draft", "description": "Start a new post from scratch"},
-    {"flow_id": "brainstorm", "dax": "{29A}", "intent_id": "draft", "description": "Hugo brainstorms ideas for a topic"},
+    {"flow_id": "brainstorm", "dax": "{39D}", "intent_id": "draft", "description": "Hugo brainstorms ideas for a topic"},
     {"flow_id": "rework", "dax": "{03D}", "intent_id": "revise", "description": "Major revision of draft content based on feedback"},
     {"flow_id": "polish", "dax": "{3BD}", "intent_id": "revise", "description": "Polish and refine a specific section"},
     {"flow_id": "tone", "dax": "{38A}", "intent_id": "revise", "description": "Adjust tone or style across the post"},

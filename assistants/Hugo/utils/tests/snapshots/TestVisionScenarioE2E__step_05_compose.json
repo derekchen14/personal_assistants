@@ -34,87 +34,71 @@
   },
   "tool_log": [
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_section"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_section"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_section"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_section"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "convert_to_prose"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "convert_to_prose"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "convert_to_prose"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "convert_to_prose"
     },
     {
-      "success": null,
-      "tool": "read_section"
-    },
-    {
-      "success": null,
-      "tool": "read_section"
-    },
-    {
-      "success": null,
-      "tool": "read_section"
-    },
-    {
-      "success": null,
-      "tool": "read_section"
-    },
-    {
-      "success": null,
+      "success": true,
       "tool": "revise_content"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "revise_content"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "revise_content"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "revise_content"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     }
   ],

@@ -154,83 +154,19 @@ class TestEnsembleVoting:
 # NLU react()
 # ═══════════════════════════════════════════════════════════════════
 
-def _stub_phase3_engineer(nlu, monkeypatch, slots:dict|None=None):
-    """Replace nlu.engineer with a MagicMock that returns realistic Phase 3 LLM output.
-    `slots` is the flow-shaped dict the LLM would have emitted (it's the same shape
-    `flow.fill_slot_values` accepts). Pass an empty dict to simulate an LLM that
-    couldn't extract anything — that is itself a failure mode and there is a dedicated
-    test for it below.
-
-    apply_guardrails is preserved on the mock so other call sites that go through
-    `engineer.apply_guardrails(text, format='json')` still work."""
-    real_apply = nlu.engineer.apply_guardrails
-    mock = MagicMock(return_value={'slots': slots if slots is not None else {}})
-    mock.apply_guardrails = real_apply
-    monkeypatch.setattr(nlu, 'engineer', mock)
-
-
-class TestReact:
-    def test_action_turn_routes_flow(self, nlu, monkeypatch):
-        # Phase 3 fills the still-empty `title` slot with a realistic LLM output.
-        _stub_phase3_engineer(nlu, monkeypatch, slots={'title': 'My Draft Post'})
-        state = nlu.react('{05A}', {'type': 'draft'})
-        assert state.flow_name(string=True) == 'create'
-        assert state.confidence == 0.99
-        flow = nlu.flow_stack.get_flow()
-        assert flow.is_filled(), 'create flow should be filled after Phase 3 supplies title'
-        assert flow.slots['title'].value == 'My Draft Post'
-
-    def test_snippet_payload_fills_entity_slot(self, nlu, monkeypatch):
-        # Phase 1a: snippet + post + section land in SourceSlot entity dict.
-        # Phase 3 satisfies refine's elective requirement with a feedback value.
-        _stub_phase3_engineer(nlu, monkeypatch, slots={'feedback': ['tighten the prose']})
-        nlu.react('{02B}', {'snippet': 'matrix mult', 'post': 'post_abc', 'section': 'sec_xyz'})
-        flow = nlu.flow_stack.get_flow()
-        assert flow.name() == 'refine'
-        entity = flow.slots['source'].values[0]
-        assert entity['snip'] == 'matrix mult'
-        assert entity['post'] == 'post_abc'
-        assert entity['sec'] == 'sec_xyz'
-
-    def test_snippet_payload_fills_exact_slot(self, nlu, monkeypatch):
-        # Phase 1b: snippet lands in find.query via SNIPPET_EXACT_SLOTS registry.
-        _stub_phase3_engineer(nlu, monkeypatch, slots={'count': 5})
-        nlu.react('{001}', {'snippet': 'matrix mult'})
-        flow = nlu.flow_stack.get_flow()
-        assert flow.name() == 'find'
-        assert flow.slots['query'].value == 'matrix mult'
+class TestNLUSpecificRegressions:
+    """NLU regressions kept here separately from the module-level table in
+    test_nlu_module.py — these test specific historical bugs, not module contracts."""
 
     def test_all_action_dax_codes_resolve(self):
+        """FLOW_CATALOG dax codes must round-trip through dax2flow. Catches catalog
+        drift where a flow's dax doesn't match the dax2flow lookup."""
         from utils.helper import dax2flow
         for flow_name, cat in FLOW_CATALOG.items():
             dax = cat['dax']
             resolved = dax2flow(dax)
             assert resolved == flow_name, \
                 f'dax2flow({dax!r}) returned {resolved!r}, expected {flow_name!r}'
-
-    def test_context_only_payload_skips_per_flow_dispatch(self, nlu, monkeypatch):
-        """FE attaches active post/section as context to every action. _fill_slots must
-        skip unpack_user_actions when the payload is purely entity-context or slice keys —
-        per-flow dispatch is for real click data only."""
-        _stub_phase3_engineer(nlu, monkeypatch, slots={'title': 'Backfilled by Phase 3'})
-        with patch.object(nlu, 'unpack_user_actions') as mock_dispatch:
-            nlu.react('{05A}', {'post': '17be00f6'})  # create has no source/target slot
-        mock_dispatch.assert_not_called()
-
-    def test_phase3_empty_response_leaves_required_slots_unfilled(self, nlu, monkeypatch):
-        """Failure mode: when Phase 3's LLM returns an empty slots dict (parse failure,
-        hallucination, schema rejection), required slots stay empty. Downstream policy
-        is responsible for declaring ambiguity — NLU itself must not silently mark the
-        flow filled. Catches the regression where an empty dict was accepted as success."""
-        _stub_phase3_engineer(nlu, monkeypatch, slots={})
-        nlu.react('{05A}', {'type': 'draft'})
-        flow = nlu.flow_stack.get_flow()
-        assert flow.name() == 'create'
-        assert not flow.slots['title'].filled, (
-            'empty Phase 3 response must leave title unfilled; '
-            'the policy will then declare specific ambiguity'
-        )
-        assert not flow.is_filled()
 
     def test_refine_steps_unpacks_dict_kwargs(self):
         """Regression: under the old generic dispatch, slot.add_one(item) bound the whole
@@ -872,7 +808,7 @@ class TestContentService:
     def test_insert_media_no_key(self, tmp_db, monkeypatch):
         monkeypatch.delenv('GOOGLE_API_KEY', raising=False)
         svc = ContentService()
-        result = svc.insert_media('a cat')
+        result = svc.insert_media('post_x', 'sec_x', 'hero', 'a cat')
         assert result['_success'] is False
         assert result['_error'] == 'auth_error'
 

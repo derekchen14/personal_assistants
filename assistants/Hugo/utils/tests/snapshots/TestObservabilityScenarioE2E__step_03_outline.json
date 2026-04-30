@@ -34,23 +34,23 @@
   },
   "tool_log": [
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "call_flow_stack"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "generate_outline"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     }
   ],

@@ -1,47 +1,58 @@
 REWORK_PROMPT = {
     'instructions': (
-        'The Rework Flow is major revision of prose that already exists — restructuring a section, '
-        'replacing weak arguments, or rewriting a post-level passage after reviewer feedback.\n\n'
-        'Source is typically already pre-filled with the post (and possibly the section) being reworked. '
-        'Beyond that, the user usually adds a critique or directive that lands in `changes`, OR a '
-        'numbered/bulleted list of specific edits that lands in `suggestions`. The `remove` slot fires '
-        'only when the user explicitly calls out a specific piece to cut.'
+        'The Rework Flow is major revision of prose that already exists — restructuring sections, '
+        'replacing weak arguments, or weaving in itemized edits across more than one section. '
+        'Source can carry sections or a snippet target.\n\n'
+        'Source is typically pre-filled with the post; the user may add one or more section names. '
+        'Beyond that, the user usually fills exactly one of: `category` (a tightly-defined verb that '
+        'maps to a deterministic operation), `suggestions` (a numbered or bulleted list of specific '
+        'edits), or `remove` (an explicit piece to cut). When the request does not map cleanly, leave '
+        'all electives null so the flow can clarify.'
     ),
     'rules': (
-        '1. Source is pre-filled with the post; if the user names a section, fill `sec`. If the user names '
-        'a paragraph/sentence/phrase scope, fill `source.snip` instead and leave `post`/`sec` off — this '
+        '1. Source: post is pre-filled. If the user names a section, fill `sec`. For a swap utterance '
+        '("swap A and B"), source.values must carry BOTH section names. If the user names a '
+        'paragraph/sentence/phrase scope, fill `source.snip` instead and leave `post`/`sec` off — this '
         'triggers a re-route to Polish.\n'
-        '2. `remove` fires only on explicit cut/drop/delete language targeting a specific piece. Vague '
-        'dissatisfaction goes in `changes`.\n'
-        '3. `changes` is the user\'s critique or directive. Ambiguous verbs like "tighten" or "improve '
-        'flow" leave `changes` null so the flow can clarify.\n'
-        '4. `suggestions` fires on numbered or bulleted lists with at least 2 items. Each item is one '
-        'suggestion. Leave null on prose-only critique.\n'
-        '5. A single utterance most often fills `changes` OR `suggestions`, not both — bullets are '
-        'explicit, prose is interpretive. Both can fire when the user mixes a prose critique with a '
-        'separate numbered list.'
+        '2. `category` is a CategorySlot. Pick the closest option only when the verb maps cleanly. '
+        'Lean toward null on the fence.\n'
+        '   - `swap`: explicit "swap" / "interchange" / "switch the order of" with two named sections.\n'
+        '   - `to_top`: "move to top" / "make it first" / "promote to first".\n'
+        '   - `to_end`: "move to end" / "make it last" / "put at the bottom".\n'
+        '   - `trim`: "shorten" / "trim down" / "reduce length" applied to multiple sections.\n'
+        '   - `sharpen`: "add evidence" / "strengthen the arguments" / "more depth across the post".\n'
+        '   - `reframe`: "different angle" / "different audience" / "shift the lens".\n'
+        '3. `suggestions` fires on numbered or bulleted lists with at least 2 items. Each item is one '
+        'suggestion. Ambiguous verbs like "tighten" or "improve flow" leave this null.\n'
+        '4. `remove` fires only on explicit cut/drop/delete language targeting a specific piece. Vague '
+        'dissatisfaction does NOT fill this slot.\n'
+        '5. Most utterances fill ONE of category / suggestions / remove. They can co-fire (e.g., a '
+        'numbered list that includes one explicit deletion → `suggestions` + `remove`), but `category` '
+        'and `suggestions` rarely co-occur — categories are deterministic verbs, suggestions are '
+        'itemized prose.'
     ),
     'slots': (
         '### source (required)\n\n'
-        'Type: SourceSlot. References the target of the rework. Typically pre-filled with the post; the '
-        'user may add a section name. If the user names a paragraph/sentence/phrase scope, fill `snip` '
-        'instead (omit `post`/`sec`) — this triggers a re-route to Polish.\n\n'
+        'Type: SourceSlot. References the target of the rework. Typically pre-filled with the post; '
+        'the user may add one or more section names. For swap, BOTH section names must appear as two '
+        'separate entries in `source.values`. If the user names a paragraph/sentence/phrase scope, '
+        'fill `snip` instead — this triggers a re-route to Polish.\n\n'
+        '### category (elective)\n\n'
+        'Type: CategorySlot. Options: swap, to_top, to_end, trim, sharpen, reframe. Pick the closest '
+        'option only when the verb maps cleanly per rule 2; leave null on the fence.\n\n'
+        '### suggestions (elective)\n\n'
+        'Type: ChecklistSlot. A list of specific changes the user has itemized. Each item is one '
+        'suggestion. Fires on numbered or bulleted lists with at least 2 items. Leave null on '
+        'prose-only critique.\n\n'
         '### remove (optional)\n\n'
         'Type: RemovalSlot. A specific piece of content to cut during the rework. Fill only when the '
         'user clearly targets something to remove (\'drop the tangent\', \'cut the footnote\'). Vague '
-        'dissatisfaction does NOT fill this slot.\n\n'
-        '### changes (elective)\n\n'
-        'Type: FreeTextSlot. The user\'s critique or directive — what\'s wrong, what to improve. '
-        'Ambiguous verbs like "tighten" or "improve flow" leave this null so the flow can clarify.\n\n'
-        '### suggestions (elective)\n\n'
-        'Type: ChecklistSlot. A list of specific changes the user has itemized. Each item is one '
-        'suggestion. Fires on numbered or bulleted lists with at least 2 items. Leave null on prose-only '
-        'critique.'
+        'dissatisfaction does NOT fill this slot.'
     ),
     'examples': '''<positive_example>
 ## Conversation History
 
-User: "The Components of Dialogue Systems post needs a full rewrite — the argument is buried and the pacing drags."
+User: "Swap the order of the Process and Ideas sections in my agent design post."
 
 ## Input
 Active post: None
@@ -50,12 +61,12 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Whole-post rework with a prose critique. Source carries just the post. Critique becomes `changes`. No explicit removal, no itemized list.",
+  "reasoning": "Explicit 'swap' verb with two named sections → category=swap. Source must carry BOTH section names per rule 1.",
   "slots": {
-    "source": {"post": "Components of Dialogue Systems"},
-    "remove": null,
-    "changes": "the argument is buried and the pacing drags",
-    "suggestions": null
+    "source": {"post": "agent design", "sec": ["process", "ideas"]},
+    "category": "swap",
+    "suggestions": null,
+    "remove": null
   }
 }
 ```
@@ -64,7 +75,7 @@ Active post: None
 <positive_example>
 ## Conversation History
 
-User: "Rework the methods section of my regularization post."
+User: "Move the Limitations section to the bottom of my regularization post."
 
 ## Input
 Active post: None
@@ -73,12 +84,12 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Section-level rework, named section. Source fills both post and sec. No critique, no removal, no itemized list.",
+  "reasoning": "'Move to the bottom' maps cleanly to to_end. One named section in source.",
   "slots": {
-    "source": {"post": "regularization", "sec": "methods"},
-    "remove": null,
-    "changes": null,
-    "suggestions": null
+    "source": {"post": "regularization", "sec": "limitations"},
+    "category": "to_end",
+    "suggestions": null,
+    "remove": null
   }
 }
 ```
@@ -87,23 +98,21 @@ Active post: None
 <positive_example>
 ## Conversation History
 
-User: "Let's revise the introduction to my reinforcement learning post."
-Agent: "OK — what should I change?"
-User: "Cut the part about AlphaGo."
+User: "Promote the Findings section to the top of my eval post."
 
 ## Input
-Active post: reinforcement learning
+Active post: None
 
 ## Output
 
 ```json
 {
-  "reasoning": "Source resolves from the prior turn (post=reinforcement learning, sec=introduction). Current turn carries explicit removal language → fill `remove`. No critique text, no itemized list.",
+  "reasoning": "'Promote to the top' maps cleanly to to_top. Single named section.",
   "slots": {
-    "source": {"post": "reinforcement learning", "sec": "introduction"},
-    "remove": "the part about AlphaGo",
-    "changes": null,
-    "suggestions": null
+    "source": {"post": "eval", "sec": "findings"},
+    "category": "to_top",
+    "suggestions": null,
+    "remove": null
   }
 }
 ```
@@ -123,16 +132,85 @@ Active post: regularization
 
 ```json
 {
-  "reasoning": "Section comes from the first turn; post inherits from active_post. Numbered list of 3 items → `suggestions`. Item #2 is also explicit removal language → `remove` fires in addition. `changes` stays null since the bullets are explicit, not interpretive.",
+  "reasoning": "Section comes from the first turn; post inherits from active_post. Numbered list of 3 items → suggestions. Item #2 is also explicit removal language → remove fires alongside. category stays null since the verbs are itemized prose, not a single canonical operation.",
   "slots": {
     "source": {"post": "regularization", "sec": "methods"},
-    "remove": "the historical preamble",
-    "changes": null,
+    "category": null,
     "suggestions": [
       "lead with the experiment design",
       "cut the historical preamble",
       "add a comparison table"
-    ]
+    ],
+    "remove": "the historical preamble"
+  }
+}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "Strengthen the arguments throughout my agent design post — they need more concrete evidence."
+
+## Input
+Active post: None
+
+## Output
+
+```json
+{
+  "reasoning": "'Strengthen the arguments' / 'more concrete evidence' across the post → category=sharpen. No itemized list.",
+  "slots": {
+    "source": {"post": "agent design"},
+    "category": "sharpen",
+    "suggestions": null,
+    "remove": null
+  }
+}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "Trim the regularization post down — every section is too long."
+
+## Input
+Active post: None
+
+## Output
+
+```json
+{
+  "reasoning": "'Trim down' applied to multiple sections → category=trim. The policy will fall back to Simplify.",
+  "slots": {
+    "source": {"post": "regularization"},
+    "category": "trim",
+    "suggestions": null,
+    "remove": null
+  }
+}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "Reframe my agent design post for a business audience instead of researchers."
+
+## Input
+Active post: None
+
+## Output
+
+```json
+{
+  "reasoning": "Explicit 'reframe' with an audience shift → category=reframe. The policy will ask for concrete bullet points to capture as suggestions.",
+  "slots": {
+    "source": {"post": "agent design"},
+    "category": "reframe",
+    "suggestions": null,
+    "remove": null
   }
 }
 ```
@@ -150,37 +228,12 @@ Active post: None
 
 ```json
 {
-  "reasoning": "User named a paragraph scope ('the second paragraph'). Per rule 1, fill source.snip and leave post/sec off — this triggers a re-route to Polish. Critique fills `changes`.",
+  "reasoning": "User named a paragraph scope ('the second paragraph'). Per rule 1, fill source.snip and leave post/sec off — this triggers a re-route to Polish. No category fits.",
   "slots": {
     "source": {"snip": "the second paragraph in my methods section"},
-    "remove": null,
-    "changes": "it's too dense",
-    "suggestions": null
-  }
-}
-```
-</edge_case>
-
-<edge_case>
-## Conversation History
-
-User: "I want to rework two sections of my RL post."
-Agent: "Which ones?"
-User: "Intro and conclusion."
-
-## Input
-Active post: None
-
-## Output
-
-```json
-{
-  "reasoning": "Two section names supplied across turns. Sec becomes a list. Post pulled from the prior turn.",
-  "slots": {
-    "source": {"post": "RL", "sec": ["intro", "conclusion"]},
-    "remove": null,
-    "changes": null,
-    "suggestions": null
+    "category": null,
+    "suggestions": null,
+    "remove": null
   }
 }
 ```
@@ -200,12 +253,12 @@ Active post: My ML Paper
 
 ```json
 {
-  "reasoning": "User explicitly retracts the prior section choice with 'scratch that' and switches to intro — ignore the earlier 'methods' section. 'Tighten it' is an ambiguous directive (rule 3) → leave `changes` null so the flow can clarify what direction the user wants.",
+  "reasoning": "User retracts the prior section choice with 'scratch that' and switches to intro. 'Tighten' is ambiguous between trim and sharpen — per rule 2, lean toward null on the fence so the flow clarifies.",
   "slots": {
     "source": {"post": "My ML Paper", "sec": "intro"},
-    "remove": null,
-    "changes": null,
-    "suggestions": null
+    "category": null,
+    "suggestions": null,
+    "remove": null
   }
 }
 ```
@@ -214,23 +267,21 @@ Active post: My ML Paper
 <edge_case>
 ## Conversation History
 
-User: "Rework the conclusion."
-Agent: "Sure — anything specific?"
-User: "Tighten it up."
+User: "Rework the conclusion of my RL post."
 
 ## Input
-Active post: My ML Post
+Active post: None
 
 ## Output
 
 ```json
 {
-  "reasoning": "Source resolves from prior turn + active_post. 'Tighten it up' is an ambiguous verb → `changes` stays null per rule 3 so the flow can clarify what direction the user wants.",
+  "reasoning": "Bare rework directive — section named, no category verb, no itemized list. All electives stay null so the flow asks what direction.",
   "slots": {
-    "source": {"post": "My ML Post", "sec": "conclusion"},
-    "remove": null,
-    "changes": null,
-    "suggestions": null
+    "source": {"post": "RL", "sec": "conclusion"},
+    "category": null,
+    "suggestions": null,
+    "remove": null
   }
 }
 ```
@@ -381,11 +432,11 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Explicit image-level edit request → image slot fires with image_type='hero'. Source carries the post. No prose style direction → style_notes null.",
+  "reasoning": "Explicit image-level edit request → image slot fires with img_type='hero'. Source carries the post. No prose style direction → style_notes null.",
   "slots": {
     "source": {"post": "transformer"},
     "style_notes": null,
-    "image": {"image_type": "hero", "src": null, "alt": null, "position": null}
+    "image": {"img_type": "hero", "src": null, "alt": null, "position": null}
   }
 }
 ```
@@ -1100,7 +1151,7 @@ Active post: None
   "reasoning": "Both slots fill in one utterance — section simplify + image removal. Source carries sec; image carries the plot description; the 'streamline + scatter plot' directive goes into guidance.",
   "slots": {
     "source": {"sec": "Results"},
-    "image": {"image_type": "photo", "src": null, "alt": "scatter plot", "position": null},
+    "image": {"img_type": "photo", "src": null, "alt": "scatter plot", "position": null},
     "guidance": ["streamline and remove the scatter plot"]
   }
 }
@@ -1150,7 +1201,7 @@ REMOVE_PROMPT = {
         "2. `source` fills when the target is text-based. Section-level removals fill `sec`. "
         "Paragraph-level removals fill BOTH `sec` (the parent section, when named) AND `snip` (the "
         "paragraph description).\n"
-        "3. `image` fills when type='image'. Carries image_type from phrasing (diagram/hero/photo).\n"
+        "3. `image` fills when type='image'. Carries img_type from phrasing (diagram/hero/photo).\n"
         "4. On terse utterances ('delete it') with only active_post as context, infer type='post' "
         "from the active_post."
     ),
@@ -1251,7 +1302,7 @@ Active post: None
   "reasoning": "First turn references adding an image (not a remove flow). Current turn removes it. Source carries the post; image captures the hero reference; type='image'.",
   "slots": {
     "source": {"post": "transformer"},
-    "image": {"image_type": "hero", "src": null, "alt": null, "position": null},
+    "image": {"img_type": "hero", "src": null, "alt": null, "position": null},
     "type": "image"
   }
 }
@@ -1469,7 +1520,7 @@ Active post: None
   "slots": {
     "source": {"post": "calibration"},
     "settings": null,
-    "image": {"image_type": "diagram", "src": null, "alt": null, "position": null}
+    "image": {"img_type": "diagram", "src": null, "alt": null, "position": null}
   }
 }
 ```

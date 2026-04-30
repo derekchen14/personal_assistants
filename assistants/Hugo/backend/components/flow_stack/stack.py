@@ -19,7 +19,7 @@ class FlowStack:
 
     def stackon(self, flow_name:str, plan_id:str|None=None) -> BaseFlow:
         """Push a flow on top of the stack. The current flow stays below and resumes after the new flow completes.
-        Also carry over the grounding entity when parent flow and child flow share the same entity slot. """
+        Transfers filled slot values to the new flow when slot names match across parent and child."""
         curr_flow = self._stack[-1] if self._stack else None
         # No consecutive same-type stackon when the top is still in flight. The active
         # flow IS already that flow, so there is nothing to "push as a prerequisite".
@@ -28,18 +28,10 @@ class FlowStack:
         if curr_flow and curr_flow.flow_type == flow_name and curr_flow.status not in _terminal:
             return curr_flow
         new_flow = self._push(flow_name, plan_id)
-        if curr_flow and curr_flow.entity_slot == new_flow.entity_slot:
-            src = curr_flow.slots.get(curr_flow.entity_slot)
-            dst = new_flow.slots.get(new_flow.entity_slot)
-            # Carry-over is shaped for SourceSlot semantics (criteria='multiple', a list
-            # of {post, sec, snip, chl, ver} entity dicts). Other slot types (ExactSlot,
-            # FreeTextSlot, ChannelSlot...) carry their own scalar values that the new
-            # flow's slot-filling fills directly — no transfer machinery needed here.
-            if src and dst and src.criteria == 'multiple':
-                for entity in src.values:
-                    payload = entity.copy()
-                    if any(payload.get(k) for k in ('post', 'sec', 'snippet')):
-                        dst.add_one(**payload)
+        if curr_flow:
+            for slot_name, slot in curr_flow.slots.items():
+                if slot_name in new_flow.slots and slot.filled:
+                    new_flow.fill_slot_values({slot_name: slot.to_dict()})
         return new_flow
 
     def fallback(self, flow_name:str) -> BaseFlow:

@@ -19,6 +19,26 @@ def _count_bullets(outline:str) -> int:
     return total
 
 
+def _format_brainstorm(parsed:dict) -> str:
+    """Skill returns JSON in two shapes (topic mode / highlight mode). Render either as readable prose so RES doesn't ship raw JSON to the user."""
+    mode = parsed.get('mode')
+    if mode == 'topic':
+        topic = parsed.get('topic', '')
+        ideas = parsed.get('ideas') or []
+        header = f'Angles for "{topic}":' if topic else 'Angles:'
+        lines = [header]
+        for idea in ideas:
+            title, hook = idea.get('title', ''), idea.get('hook', '')
+            lines.append(f'- {title}: {hook}' if title and hook else f'- {title or hook}')
+        return '\n'.join(lines)
+    if mode == 'highlight':
+        original = parsed.get('original', '')
+        alts = parsed.get('alternatives') or []
+        header = f'Alternatives for "{original}":' if original else 'Alternatives:'
+        return '\n'.join([header] + [f'- {alt}' for alt in alts])
+    return ''
+
+
 def _has_removal_intent(flow) -> bool:
     steps_slot = flow.slots['steps']
     for step in steps_slot.steps:
@@ -280,10 +300,12 @@ class DraftPolicy(BasePolicy):
         return frame
 
     def brainstorm_policy(self, flow, state, context, tools):
-        if flow.slots['source'].check_if_filled():
+        if flow.slots['topic'].check_if_filled():
             text, _ = self.llm_execute(flow, state, context, tools)
-        elif flow.slots['topic'].check_if_filled():
-            flow.entity_slot = 'topic'
+        elif flow.slots['source'].check_if_filled():
+            entity = flow.slots['source'].values[0]
+            post_title = tools('read_metadata', {'post_id': entity['post']}).get('title', 'the post')
+            flow.slots['topic'].add_one(post_title) # use the title as a pseudo-topic
             text, _ = self.llm_execute(flow, state, context, tools)
         else:
             convo_history = context.compile_history(look_back=3)
@@ -298,4 +320,6 @@ class DraftPolicy(BasePolicy):
                 text, _ = self.llm_execute(flow, state, context, tools)
 
         flow.status = 'Completed'
-        return DisplayFrame(origin='brainstorm', thoughts=text)
+        parsed = self.engineer.apply_guardrails(text)
+        thoughts = _format_brainstorm(parsed) if isinstance(parsed, dict) else text
+        return DisplayFrame(origin='brainstorm', thoughts=thoughts)

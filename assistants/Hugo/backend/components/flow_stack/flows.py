@@ -153,7 +153,7 @@ class BrainstormFlow(DraftParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'brainstorm'
-    self.dax = '{29A}'
+    self.dax = '{39D}'
     self.goal = 'come up with new ideas or angles for a given topic, word, or phrase; may include hooks, opening lines, synonyms, or new perspectives the user can choose from'
 
     self.slots = {
@@ -286,11 +286,10 @@ class AddFlow(DraftParentFlow):
     self.flow_type = 'add'
     self.dax = '{005}'
     self.goal = 'add more in depth content, such as sub-sections or an image to an existing section; inserted at a specific position'
-    # 'Add' is about drilling down into more depth within a section, whereas 'Refine' is about shuffling sections around or even removing sections.
     self.slots = {
       'source': SourceSlot(1),
-      'points': ChecklistSlot(priority='elective'),
-      'additions': DictionarySlot(priority='elective'),  # key is the section name, value is the bulletpoint to add
+      'points': ChecklistSlot(priority='elective'),  # bullet items copied nearly verbatim
+      'suggestions': ChecklistSlot(priority='elective'),  # natural-language change instructions (matches Polish / Rework)
       'image': ImageSlot(priority='elective'),
       'position': PositionSlot(priority='optional'),
     }
@@ -301,8 +300,8 @@ class AddFlow(DraftParentFlow):
       self.slots['source'].add_one(**item)
     for item in values.get('points', []):
       self.slots['points'].add_one(**item)
-    for k, v in values.get('additions', {}).items():
-      self.slots['additions'].add_one(k, v)
+    for item in values.get('suggestions', []):
+      self.slots['suggestions'].add_one(**item)
     if 'image' in values:
       self.slots['image'].assign_one(**values['image'])
     if 'position' in values:
@@ -315,24 +314,24 @@ class ReworkFlow(ReviseParentFlow):
     super().__init__()
     self.flow_type = 'rework'
     self.dax = '{006}'
-    self.goal = 'major revision of draft content; restructures arguments, replaces weak sections, addresses reviewer comments. Scope can go across the whole post, or an entire section. For smaller changes, use polish'
+    self.goal = 'major revision of draft content; restructures arguments, replaces weak sections, addresses reviewer comments. Operates across more than one section, up to the whole post. For paragraph- or sentence-level edits, use polish'
     self.slots = {
       'source': SourceSlot(1, 'sec'),
-      'remove': RemovalSlot(priority='optional'),
-      'changes': FreeTextSlot(priority='elective'),
+      'category': CategorySlot(['swap', 'to_top', 'to_end', 'trim', 'sharpen', 'reframe'], priority='elective'),
       'suggestions': ChecklistSlot(priority='elective'),
+      'remove': RemovalSlot(priority='optional'),
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'insert_section', 'remove_content']
 
   def fill_slot_values(self, values):
     for item in values.get('source', []):
       self.slots['source'].add_one(**item)
-    for item in values.get('remove', []):
-      self.slots['remove'].add_one(**item)
-    for item in values.get('changes', []):
-      self.slots['changes'].add_one(item)
+    if 'category' in values:
+      self.slots['category'].assign_one(values['category'])
     for item in values.get('suggestions', []):
       self.slots['suggestions'].add_one(**item)
+    for item in values.get('remove', []):
+      self.slots['remove'].add_one(**item)
 
 class PolishFlow(ReviseParentFlow):
   def __init__(self):
@@ -425,7 +424,7 @@ class SimplifyFlow(ReviseParentFlow):
     self.slots = {
       'source': SourceSlot(1, 'sec', priority='elective'),
       'image': ImageSlot(priority='elective'),
-      'guidance': FreeTextSlot(priority='required'),
+      'guidance': FreeTextSlot(priority='optional'),
       'suggestions': ChecklistSlot(priority='elective'),
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'remove_content', 'write_text']

@@ -10,7 +10,7 @@ from backend.prompts.for_pex import (
 
 
 TEMPLATE = """<task>
-Rework "{post_title}". {tool_sequence}. End once the rework is saved.
+{tool_sequence} from '{post_title}' to meet the user's requests while avoiding common AI writing mannerisms.
 </task>
 
 <post_preview>
@@ -25,26 +25,22 @@ Rework "{post_title}". {tool_sequence}. End once the rework is saved.
 def build(flow, resolved:dict, user_text:str) -> str:
     has_remove = flow.slots['remove'].check_if_filled()
     if has_remove:
-        tool_sequence = 'Read each target section, then call `revise_content` twice — first to excise removed material, then to add new material on top'
+        tool_sequence = 'Remove content as needed'
     else:
-        tool_sequence = 'For section-scoped changes: read, revise, save via `revise_content`. For structural swaps / reorders: read_section each target, remove_content to cut, insert_section to re-insert, revise_content on adjacent sections to smooth transitions'
+        tool_sequence = 'Read and revise content'
 
-    preview = resolved.get('section_preview') or {}
     return TEMPLATE.format(
         post_title=resolved.get('post_title', 'this post'),
         tool_sequence=tool_sequence,
-        post_preview=render_section_preview(preview) or '(no preview available)',
+        post_preview=render_section_preview(resolved['section_preview']),
         parameters=_format_parameters(flow),
     )
 
 
 def _format_parameters(flow) -> str:
     lines = [f'Source: {render_source(flow.slots["source"])}']
-    changes = flow.slots['changes']
     suggestions = flow.slots['suggestions']
     remove = flow.slots.get('remove')
-    if changes.check_if_filled():
-        lines.append(f'Changes: {render_freetext(changes)}')
     if suggestions.check_if_filled():
         lines.append(f'Suggestions: {render_checklist(suggestions)}')
     if remove and remove.check_if_filled():

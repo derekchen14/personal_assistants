@@ -161,7 +161,7 @@ SLOT_TYPE_GUIDES = {
     ),
     'ImageSlot': (
         '#### ImageSlot\n'
-        'An image reference. Returns a dict with `image_type` (one of `hero`, `diagram`, `photo`) and a '
+        'An image reference. Returns a dict with `img_type` (one of `hero`, `diagram`, `photo`) and a '
         'short description of the image.'
     ),
 }

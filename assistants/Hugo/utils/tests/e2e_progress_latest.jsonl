@@ -1,3 +1,4 @@
-{"ts": "2026-04-29T06:47:05", "scenario": "TestVisionScenarioE2E", "step": 1, "flow": "create", "duration_sec": 2.9149186669965275, "l1_pass": true, "l2_pass": true, "l3_pass": true}
-{"ts": "2026-04-29T06:47:30", "scenario": "TestVisionScenarioE2E", "step": 2, "flow": "outline", "duration_sec": 24.838211291993503, "l1_pass": true, "l2_pass": true, "l3_pass": true}
-{"ts": "2026-04-29T06:47:47", "scenario": "TestVisionScenarioE2E", "step": 3, "flow": "outline", "duration_sec": 16.379190415987978, "l1_pass": true, "l2_pass": true, "l3_pass": true}
+{"ts": "2026-04-29T09:14:19", "scenario": "TestVisionScenarioE2E", "step": 1, "flow": "create", "duration_sec": 3.5482379159948323, "l1_pass": true, "l2_pass": true, "l3_pass": true}
+{"ts": "2026-04-29T09:14:40", "scenario": "TestVisionScenarioE2E", "step": 2, "flow": "outline", "duration_sec": 20.880985625000903, "l1_pass": true, "l2_pass": true, "l3_pass": true}
+{"ts": "2026-04-29T09:14:58", "scenario": "TestVisionScenarioE2E", "step": 3, "flow": "outline", "duration_sec": 17.284659915982047, "l1_pass": true, "l2_pass": true, "l3_pass": true}
+{"ts": "2026-04-29T09:15:12", "scenario": "TestVisionScenarioE2E", "step": 4, "flow": "refine", "duration_sec": 14.7286419160082, "l1_pass": true, "l2_pass": true, "l3_pass": true}

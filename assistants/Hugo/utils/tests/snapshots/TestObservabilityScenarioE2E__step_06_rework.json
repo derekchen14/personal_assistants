@@ -1,57 +1,26 @@
 {
-  "flow_stack": [
-    {
-      "flow_type": "rework",
-      "interjected": false,
-      "is_newborn": true,
-      "is_uncertain": false,
-      "parent_type": "Revise",
-      "slot_shape": {
-        "changes": {
-          "criteria": "multiple",
-          "filled": true,
-          "priority": "elective",
-          "value_count": 1
-        },
-        "remove": {
-          "criteria": "multiple",
-          "filled": false,
-          "priority": "optional",
-          "value_count": 0
-        },
-        "source": {
-          "criteria": "multiple",
-          "filled": true,
-          "priority": "required",
-          "value_count": 1,
-          "value_keys": [
-            "chl",
-            "post",
-            "sec",
-            "snip",
-            "ver"
-          ]
-        },
-        "suggestions": {
-          "criteria": "multiple",
-          "filled": false,
-          "priority": "elective",
-          "value_count": 0
-        }
-      },
-      "status": "Active"
-    }
-  ],
+  "flow_stack": [],
   "frame": {
-    "block_data_keys": [],
-    "block_locations": [],
-    "block_types": [],
+    "block_data_keys": [
+      [
+        "content",
+        "post_id",
+        "status",
+        "title"
+      ]
+    ],
+    "block_locations": [
+      "bottom"
+    ],
+    "block_types": [
+      "card"
+    ],
     "has_code": false,
-    "has_thoughts": false,
+    "has_thoughts": true,
     "metadata_keys": [],
     "missing_entity": null,
     "missing_slot": null,
-    "origin": null,
+    "origin": "rework",
     "violation": null
   },
   "state": {
@@ -65,26 +34,29 @@
   },
   "tool_log": [
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_section"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "revise_content"
+    },
+    {
+      "success": true,
+      "tool": "read_metadata"
+    },
+    {
+      "success": true,
+      "tool": "read_metadata"
     }
   ],
-  "top_flow": {
-    "entity_slot": "source",
-    "flow_type": "rework",
-    "is_filled": true,
-    "parent_type": "Revise"
-  }
+  "top_flow": {}
 }

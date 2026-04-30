@@ -32,31 +32,31 @@
   },
   "tool_log": [
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "channel_status"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "release_post"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "update_post"
     },
     {
-      "success": null,
+      "success": true,
       "tool": "read_metadata"
     }
   ],

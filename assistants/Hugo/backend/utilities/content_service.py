@@ -101,13 +101,17 @@ class ContentService(ToolService):
         file_content = self._read_content(ent['filename'])
         sections = self._extract_sections(file_content)
 
-        insert_idx = None
-        for idx, sec in enumerate(sections):
-            if sec['sec_id'] == sec_id:
-                insert_idx = idx + 1
-                break
-        if insert_idx is None:
-            return self._error('not_found', f'Section not found: {sec_id}')
+        # Empty sec_id means insert at the top.
+        if not sec_id:
+            insert_idx = 0
+        else:
+            insert_idx = None
+            for idx, sec in enumerate(sections):
+                if sec['sec_id'] == sec_id:
+                    insert_idx = idx + 1
+                    break
+            if insert_idx is None:
+                return self._error('not_found', f'Section not found: {sec_id}')
 
         new_slug = self._slugify(section_title)
         new_sec = {
@@ -302,7 +306,11 @@ class ContentService(ToolService):
             deletions=sum(1 for line in diff if line.startswith('-') and not line.startswith('---')),
         )
 
-    def insert_media(self, prompt:str, style:str|None=None) -> dict:
+    def insert_media(self, post_id:str, sec_id:str, image_type:str,
+                     description:str, position:int=-1) -> dict:
+        """Generate an image from `description` (the prompt) and insert a markdown reference into
+        `sec_id` at `position`. Returns `src` so the policy can record it on the ImageSlot —
+        a non-empty src signals the image step is done."""
         api_key = os.getenv('GOOGLE_API_KEY')
         if not api_key:
             return self._error('auth_error',
@@ -311,14 +319,26 @@ class ContentService(ToolService):
         self._images_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         image_path = self._images_dir / f'img_{timestamp}.png'
+        src = str(image_path)
 
-        return self._success(
-            image_path=str(image_path),
-            markdown_ref=f'![{prompt}]({image_path.name})',
-            prompt=prompt,
-            style=style,
-            _api_task='generate_image',
-        )
+        ent, entries = self._require_entry(post_id)
+        file_content = self._read_content(ent['filename'])
+        sections = self._extract_sections(file_content)
+
+        markdown_ref = f'![{description}]({image_path.name})'
+        for sec in sections:
+            if sec['sec_id'] == sec_id:
+                existing_text = '\n'.join(sec['lines'])
+                sentences = split_sentences(existing_text)
+                idx = len(sentences) if position < 0 else position
+                sentences.insert(idx, markdown_ref)
+                sec['lines'] = join_sentences(sentences).split('\n')
+                self._save_section_content(ent, sections)
+                self._save_metadata(entries)
+                return self._success(src=src, image_type=image_type,
+                    description=description, _api_task='generate_image')
+
+        return self._error('not_found', f'Section not found: {sec_id}')
 
     def web_search(self, query:str, limit:int=5) -> dict:
         api_key = os.getenv('TAVILY_API_KEY')
