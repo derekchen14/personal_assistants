@@ -272,13 +272,14 @@ class TestTemplateFill:
             frame.add_block({'type': block_type, 'data': data})
         return frame
 
-    def test_build_payload_frame_sets_panel(self, minimal_config):
+    def test_build_payload_serializes_frame(self, minimal_config):
         from backend.agent import Agent
         frame = self._make_frame(minimal_config, block_type='card',
                                  content='Hello', origin='compose')
         payload = Agent._build_payload(None, 'Some text', frame)
-        assert payload['panel'] == 'bottom'
+        assert 'panel' not in payload
         assert payload['frame']['blocks'][0]['type'] == 'card'
+        assert payload['frame']['blocks'][0]['panel'] == 'bottom'
         assert payload['frame']['blocks'][0]['data']['content'] == 'Hello'
 
     def test_audit_message_groups_findings_by_severity(self, minimal_config):

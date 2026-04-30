@@ -502,11 +502,10 @@ class PromptEngineer:
     @staticmethod
     def extract_tool_result(tool_log:list, tool_name:str) -> dict:
         for entry in tool_log:
-            if entry.get('tool') != tool_name:
+            if entry['tool'] != tool_name:
                 continue
-            result = entry.get('result', {})
-            if result.get('_success'):
-                return {k: v for k, v in result.items() if not k.startswith('_')}
+            if entry['result']['_success']:
+                return {k: v for k, v in entry['result'].items() if not k.startswith('_')}
         return {}
 
     @staticmethod
@@ -516,11 +515,10 @@ class PromptEngineer:
         Returns (True, last_result_dict) when the tool appears at least once in the log and every
         matching entry has _success=True; returns (False, {}) otherwise. The result dict strips
         underscore-prefixed control keys."""
-        calls = [tc for tc in tool_log if tc.get('tool') == tool_name]
+        calls = [tc for tc in tool_log if tc['tool'] == tool_name]
         if not calls:
             return False, {}
-        last = calls[-1].get('result', {})
-        if not all(tc.get('result', {}).get('_success') for tc in calls):
+        if not all(tc['result']['_success'] for tc in calls):
             return False, {}
-        return True, {k: v for k, v in last.items() if not k.startswith('_')}
+        return True, {k: v for k, v in calls[-1]['result'].items() if not k.startswith('_')}
 

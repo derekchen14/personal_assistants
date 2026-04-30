@@ -17,12 +17,12 @@ class AnalysisService(ToolService):
 
         if topic:
             result = post_svc.find_posts(query=topic, limit=4)
-            if result.get('_success'):
-                items.extend(result.get('items', []))
+            if result['_success']:
+                items.extend(result['items'])
 
             notes = post_svc.search_notes(query=topic, limit=4)
-            if notes.get('_success'):
-                for note_item in notes.get('items', []):
+            if notes['_success']:
+                for note_item in notes['items']:
                     items.append({
                         'post_id': note_item['post_id'],
                         'title': '',
@@ -155,7 +155,7 @@ class AnalysisService(ToolService):
 
     def compare_style(self, post_id:str, reference_ids:list|None=None) -> dict:
         target_metrics = self.inspect_post(post_id)
-        if not target_metrics.get('_success'):
+        if not target_metrics['_success']:
             return target_metrics
 
         entries = self._load_metadata()
@@ -169,7 +169,7 @@ class AnalysisService(ToolService):
         deltas = {}
         for ref_id in (reference_ids or []):
             ref_metrics = self.inspect_post(ref_id)
-            if not ref_metrics.get('_success'):
+            if not ref_metrics['_success']:
                 continue
             ref_ent = self._find_entry(entries, ref_id)
             ref_content = self._read_content(ref_ent['filename']) if ref_ent else ''

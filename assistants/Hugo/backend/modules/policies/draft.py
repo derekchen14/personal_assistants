@@ -159,7 +159,7 @@ class DraftPolicy(BasePolicy):
             self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
             return DisplayFrame(flow.name())
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
-        content = result.get('outline', '')
+        content = result['outline']
 
         # Stack-on: if the outline has no bullets yet, outline first so refine has something to
         # operate on.
@@ -187,7 +187,7 @@ class DraftPolicy(BasePolicy):
         # is strictly shorter AND the user did not request removal, the skill violated the contract.
         prior_bullets = _count_bullets(content)
         new_result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
-        new_outline = new_result.get('outline', '')
+        new_outline = new_result['outline']
         new_bullets = _count_bullets(new_outline)
         if new_bullets < prior_bullets and not _has_removal_intent(flow):
             thoughts = f'Outline shrunk from {prior_bullets} bullets to {new_bullets} without an explicit removal directive.'
@@ -276,7 +276,7 @@ class DraftPolicy(BasePolicy):
             state.active_post = new_id
             flow.status = 'Completed'
             frame = DisplayFrame(origin='create')
-            block_data = {'post_id': new_id, 'title': result.get('title', ''), 'status': result['status']}
+            block_data = {'post_id': new_id, 'title': result['title'], 'status': result['status']}
             frame.add_block({'type': 'card', 'data': block_data, 'expand': True})
             # If topic provided, chain into OutlineFlow to propose an initial outline.
             # if 'topic' in slots:
@@ -304,7 +304,7 @@ class DraftPolicy(BasePolicy):
             text, _ = self.llm_execute(flow, state, context, tools)
         elif flow.slots['source'].check_if_filled():
             entity = flow.slots['source'].values[0]
-            post_title = tools('read_metadata', {'post_id': entity['post']}).get('title', 'the post')
+            post_title = tools('read_metadata', {'post_id': entity['post']})['title']
             flow.slots['topic'].add_one(post_title) # use the title as a pseudo-topic
             text, _ = self.llm_execute(flow, state, context, tools)
         else:

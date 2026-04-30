@@ -56,7 +56,6 @@ else:
 
 
 # Probe 4: full Add starter — suggestions branch (multi-section, natural-language directives).
-# Replaced the old `additions` DictionarySlot in master.
 section('4. Add starter — suggestions filled (multi-section directives)')
 flow = AddFlow()
 flow.slots['source'].add_one(post='abcd0123', sec='methods')

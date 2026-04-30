@@ -15,12 +15,24 @@
     let title = $derived((data.title as string) || 'Choose one');
     let options = $derived((data.options as Option[]) ?? []);
 
+    function priorCardData(): Record<string, unknown> {
+        // Walk back through agent messages to find the most recent card frame. Selections land in
+        // the bottom panel and displace the prior card, so bottomFrame is no help by the time we
+        // click; the conversation log is the surviving record of what was on screen before.
+        const msgs = $conversation.messages;
+        for (let idx = msgs.length - 1; idx >= 0; idx--) {
+            const block = (msgs[idx].frame as any)?.blocks?.[0];
+            if (block?.type === 'card') return (block.data ?? {}) as Record<string, unknown>;
+        }
+        return {};
+    }
+
     function pick(idx: number) {
         const opt = options[idx];
         if (!opt) return;
         const proposals = opt.payload?.proposals as Array<{ name: string; description?: string }>[] | undefined;
         if (proposals && proposals.length) {
-            showChosenOutline(proposals[0]);
+            showChosenOutline(proposals[0], priorCardData());
         }
         conversation.action(opt.label, opt.dax, opt.payload, true);
     }

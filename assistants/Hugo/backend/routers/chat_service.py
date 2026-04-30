@@ -7,6 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from backend.manager import get_or_create_agent, cleanup_agent, reset_agent
 from backend.utilities.services import PostService
 from backend.components.dialogue_state import DialogueState
+from backend.components.display_frame import DisplayFrame, BuildingBlock
 
 chat_router = APIRouter()
 websocket_connections: dict = {}
@@ -22,26 +23,20 @@ def _get_queue(username:str) -> asyncio.Queue:
 
 async def reset(username:str, queue:asyncio.Queue, first_name:str=''):
     reset_agent(username)
-    post_service = PostService()
-    posts_r = post_service.list_preview()
-    items_r = posts_r.get('items', [])
-    reset_frame = None
-    if items_r:
-        welcome_block = {'type': 'list', 'location': 'top', 'data': {'title': 'Your Posts', 'items': items_r}} 
-        reset_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [welcome_block]}
-    
+    items_r = PostService().list_preview()['items']
+    block = BuildingBlock(type='list', data={'title': 'Your Posts', 'items': items_r, 'sectioned': True})
+    reset_frame = DisplayFrame(blocks=[block]).to_dict()
     start_message = f"Hey {first_name}! What are we writing today?"
-    reset_panel = {'message': start_message, 'raw_utterance': '', 'actions': [], 'frame': reset_frame}
-    await queue.put(reset_panel)
+    reset_msg = {'message': start_message, 'raw_utterance': '', 'actions': [], 'frame': reset_frame}
+    await queue.put(reset_msg)
 
 async def refresh_posts(body:dict, queue:asyncio.Queue):
-    post_service = PostService()
-    items = post_service.list_preview().get('items', [])
+    items = PostService().list_preview()['items']
     frame_type = body.get('frame_type', 'list')
-    welcome_block = {'type': frame_type, 'location': 'top', 'data': {'title': 'Your Posts', 'items': items}}
-    refresh_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [welcome_block]}
-    refresh_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': refresh_frame}
-    await queue.put(refresh_panel)
+    block = BuildingBlock(type=frame_type, data={'title': 'Your Posts', 'items': items, 'sectioned': True})
+    refresh_frame = DisplayFrame(blocks=[block]).to_dict()
+    refresh_msg = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': refresh_frame}
+    await queue.put(refresh_msg)
 
 async def create_post(body:dict, queue:asyncio.Queue):
     post_type = body.get('create_post')
@@ -58,21 +53,19 @@ async def create_post(body:dict, queue:asyncio.Queue):
         else:
             result = post_service.create_post(title, type=post_type)
             list_type = 'list'
-        if result.get('_success'):
-            all_items = post_service.list_preview().get('items', [])
-            page_block = {'type': list_type, 'location': 'top',
-                          'data': {'title': 'Your Posts', 'items': all_items}}
-            page_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [page_block]}
-            top_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': page_frame}
-            await queue.put(top_panel)
+        if result['_success']:
+            all_items = post_service.list_preview()['items']
+            list_block = BuildingBlock(type=list_type, data={'title': 'Your Posts', 'items': all_items, 'sectioned': True})
+            top_msg = {'message': '', 'raw_utterance': '', 'actions': [],
+                       'frame': DisplayFrame(blocks=[list_block]).to_dict()}
+            await queue.put(top_msg)
             if post_type == 'draft':
-                post_id, status = result.get('post_id', ''), result.get('status', '')
-                success_msg = f'Created "{result.get("title", title)}".'
-                draft_data = {'post_id': post_id, 'status': status, 'title': title, 'content': ''}
-                draft_block = {'type': 'card', 'location': 'bottom', 'expand': True, 'data': draft_data}
-                draft_frame = {'origin': 'create', 'panel': 'bottom', 'blocks': [draft_block]}
-                bottom_panel = {'message': success_msg, 'raw_utterance': '', 'actions': [], 'frame': draft_frame}
-                await queue.put(bottom_panel)
+                success_msg = f'Created "{result["title"]}".'
+                draft_block = BuildingBlock(type='card', expand=True,
+                    data={'post_id': result['post_id'], 'status': result['status'], 'title': title, 'content': ''})
+                draft_frame = DisplayFrame(origin='create', blocks=[draft_block]).to_dict()
+                bottom_msg = {'message': success_msg, 'raw_utterance': '', 'actions': [], 'frame': draft_frame}
+                await queue.put(bottom_msg)
         else:
             await queue.put({'message': result.get('_message', _ERROR_MESSAGE)})
     except Exception as ecp:
@@ -93,15 +86,15 @@ async def read_post(body:dict, agent, queue:asyncio.Queue):
     # through read_section would route the body through split_sentences,
     # which collapses whitespace (including \n) inside each paragraph.
     meta = post_service.read_metadata(post_id, include_outline=True)
-    if not meta.get('_success'):
+    if not meta['_success']:
         return
-    content = re.sub(r'^## _hidden_section_title\n', '', meta.get('outline', ''), flags=re.M)
-    view_data = {'post_id': post_id, 'title': meta.get('title', ''), 'status': meta.get('status', ''),
-                 'content': content, 'section_ids': meta.get('section_ids', [])}
-    view_block = {'type': 'card', 'location': 'bottom', 'data': view_data}
-    view_frame = {'origin': 'view', 'panel': 'bottom', 'blocks': [view_block]}
-    view_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': view_frame}
-    await queue.put(view_panel)
+    content = re.sub(r'^## _hidden_section_title\n', '', meta['outline'], flags=re.M)
+    view_block = BuildingBlock(type='card', data={
+        'post_id': post_id, 'title': meta['title'], 'status': meta['status'],
+        'content': content, 'section_ids': meta['section_ids']})
+    view_msg = {'message': '', 'raw_utterance': '', 'actions': [],
+                'frame': DisplayFrame(blocks=[view_block]).to_dict()}
+    await queue.put(view_msg)
 
 async def update_post(body:dict, queue:asyncio.Queue):
     post_id = body.get('update_post')
@@ -125,14 +118,14 @@ async def update_post(body:dict, queue:asyncio.Queue):
         # save→response roundtrip. read_section would route the body through
         # split_sentences and collapse whitespace inside each paragraph.
         meta = post_service.read_metadata(post_id, include_outline=True)
-        if meta.get('_success'):
-            content = re.sub(r'^## _hidden_section_title\n', '', meta.get('outline', ''), flags=re.M)
-            update_data = {'post_id': post_id, 'title': meta.get('title', ''),
-                           'status': meta.get('status', ''), 'content': content}
-            update_block = {'type': 'card', 'location': 'bottom', 'data': update_data}
-            update_frame = {'origin': 'update', 'panel': 'bottom', 'blocks': [update_block]}
-            update_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': update_frame}
-            await queue.put(update_panel)
+        if meta['_success']:
+            content = re.sub(r'^## _hidden_section_title\n', '', meta['outline'], flags=re.M)
+            update_block = BuildingBlock(type='card', data={
+                'post_id': post_id, 'title': meta['title'],
+                'status': meta['status'], 'content': content})
+            update_msg = {'message': '', 'raw_utterance': '', 'actions': [],
+                          'frame': DisplayFrame(blocks=[update_block]).to_dict()}
+            await queue.put(update_msg)
         else:
             await queue.put({'message': meta.get('_message', _ERROR_MESSAGE)})
     except Exception as ecp:
@@ -144,27 +137,27 @@ async def delete_post(body:dict, queue:asyncio.Queue):
     try:
         post_service = PostService()
         pre_meta = post_service.read_metadata(post_id)
-        was_note = pre_meta.get('status') == 'note' if pre_meta.get('_success') else False
+        was_note = pre_meta['_success'] and pre_meta['status'] == 'note'
         list_type = 'grid' if was_note else 'list'
         result = post_service.delete_post(post_id)
-        if result.get('_success'):
-            items = post_service.list_preview().get('items', [])
-            page_block = {'type': list_type, 'location': 'top', 'data': {'title': 'Your Posts', 'items': items}}
-            page_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [page_block]}
-            top_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': page_frame}
+        if result['_success']:
+            items = post_service.list_preview()['items']
+            list_block = BuildingBlock(type=list_type, data={'title': 'Your Posts', 'items': items, 'sectioned': True})
+            top_msg = {'message': '', 'raw_utterance': '', 'actions': [],
+                       'frame': DisplayFrame(blocks=[list_block]).to_dict()}
         else:
-            top_panel = {'message': result.get('_message', _ERROR_MESSAGE)}
-        await queue.put(top_panel)
+            top_msg = {'message': result['_message']}
+        await queue.put(top_msg)
     except Exception as ecp:
         print(f'Delete error: {ecp}\n{traceback.format_exc()}')
         await queue.put({'message': _ERROR_MESSAGE})
 
 
 async def _send_grid_refresh(queue:asyncio.Queue):
-    items = PostService().list_preview().get('items', [])
-    grid_block = {'type': 'grid', 'location': 'top', 'data': {'title': 'Your Posts', 'items': items}}
-    frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [grid_block]}
-    await queue.put({'message': '', 'raw_utterance': '', 'actions': [], 'frame': frame})
+    items = PostService().list_preview()['items']
+    grid_block = BuildingBlock(type='grid', data={'title': 'Your Posts', 'items': items, 'sectioned': True})
+    await queue.put({'message': '', 'raw_utterance': '', 'actions': [],
+                     'frame': DisplayFrame(blocks=[grid_block]).to_dict()})
 
 
 async def create_note(body:dict, queue:asyncio.Queue):
@@ -175,10 +168,10 @@ async def create_note(body:dict, queue:asyncio.Queue):
         return
     try:
         result = PostService().create_post('', type='note', topic=body_text)
-        if result.get('_success'):
+        if result['_success']:
             await _send_grid_refresh(queue)
         else:
-            await queue.put({'message': result.get('_message', _ERROR_MESSAGE)})
+            await queue.put({'message': result['_message']})
     except Exception as ecp:
         print(f'Create note error: {ecp}\n{traceback.format_exc()}')
         await queue.put({'message': _ERROR_MESSAGE})
@@ -210,10 +203,10 @@ async def delete_note(body:dict, queue:asyncio.Queue):
     note_id = body.get('delete_note')
     try:
         result = PostService().delete_post(note_id)
-        if result.get('_success'):
+        if result['_success']:
             await _send_grid_refresh(queue)
         else:
-            await queue.put({'message': result.get('_message', _ERROR_MESSAGE)})
+            await queue.put({'message': result['_message']})
     except Exception as ecp:
         print(f'Delete note error: {ecp}\n{traceback.format_exc()}')
         await queue.put({'message': _ERROR_MESSAGE})
@@ -238,11 +231,10 @@ async def chat(websocket:WebSocket):
 
         post_service = PostService()
         sync = post_service.sync_check()
-        posts_result = post_service.list_preview()
-        post_items = posts_result.get('items', [])
+        post_items = post_service.list_preview()['items']
 
-        welcome_block = {'type': 'list', 'location': 'top', 'data': {'title': 'Your Posts', 'items': post_items}}
-        welcome_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [welcome_block]} if post_items else None
+        welcome_block = BuildingBlock(type='list', data={'title': 'Your Posts', 'items': post_items, 'sectioned': True})
+        welcome_frame = DisplayFrame(blocks=[welcome_block]).to_dict()
 
         if sync['missing']:
             titles = ', '.join(f'"{item["title"]}"' for item in sync['missing'])
@@ -263,8 +255,8 @@ async def chat(websocket:WebSocket):
         else:
             welcome_message = f"Hey {first_name}! What are we writing today?"
 
-        welcome_panel = {'message': welcome_message, 'raw_utterance': '', 'actions': [], 'frame': welcome_frame}
-        await queue.put(welcome_panel)
+        welcome_msg = {'message': welcome_message, 'raw_utterance': '', 'actions': [], 'frame': welcome_frame}
+        await queue.put(welcome_msg)
 
         async def sender(queue:asyncio.Queue):
             while True:
@@ -317,22 +309,22 @@ async def chat(websocket:WebSocket):
                     frame = result.get('frame') or {}
                     # Phase-2 logging: WS handoff snapshot — what we're about
                     # to put on the wire to the frontend.
+                    block_panels = [b.get('panel') for b in (frame.get('blocks') or [])]
                     print(
                         f'WS-HANDOFF: msg_len={len(result.get("message", ""))} '
-                        f'panel={result.get("panel")!r} '
                         f'frame_origin={frame.get("origin")!r} '
                         f'frame_blocks={[b.get("type") for b in (frame.get("blocks") or [])]} '
+                        f'block_panels={block_panels} '
                         f'frame_metadata_keys={sorted((frame.get("metadata") or {}).keys())}',
                         flush=True,
                     )
                     first_block_data = (frame.get('blocks') or [{}])[0].get('data') or {}
                     if frame.get('origin') == 'create' and first_block_data.get('status') == 'note':
-                        all_items = PostService().list_preview().get('items', [])
-                        if all_items:
-                            note_block = {'type': 'grid', 'location': 'top', 'data': {'items': all_items}}
-                            note_frame = {'origin': 'welcome', 'panel': 'top', 'blocks': [note_block]}
-                            note_panel = {'message': '', 'raw_utterance': '', 'actions': [], 'frame': note_frame}
-                            await queue.put(note_panel)
+                        all_items = PostService().list_preview()['items']
+                        note_block = BuildingBlock(type='grid', data={'title': 'Your Posts', 'items': all_items, 'sectioned': True})
+                        note_msg = {'message': '', 'raw_utterance': '', 'actions': [],
+                                    'frame': DisplayFrame(blocks=[note_block]).to_dict()}
+                        await queue.put(note_msg)
                     await queue.put(result)
                 except Exception as turn_error:
                     print(f'Turn error: {turn_error}\n{traceback.format_exc()}')

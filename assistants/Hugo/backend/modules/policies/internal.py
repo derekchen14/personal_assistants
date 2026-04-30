@@ -48,18 +48,15 @@ class InternalPolicy:
         return DisplayFrame(flow.name())
 
     def store_policy(self, flow, tools):
-        key_slot = flow.slots.get('key')
-        val_slot = flow.slots.get('value')
-        key = key_slot.to_dict() if key_slot and key_slot.filled else ''
-        value = val_slot.to_dict() if val_slot and val_slot.filled else ''
-        if key and value:
-            self.memory.write_scratchpad(key, value)
+        entry = flow.slots['entry']
+        if entry.filled:
+            self.memory.write_scratchpad(entry.value['key'], entry.value['value'])
         flow.status = 'Completed'
         return DisplayFrame(flow.name())
 
     def retrieve_policy(self, flow, tools):
         result = tools('manage_memory', {'action': 'read_scratchpad'})
-        if result.get('_success'):
+        if result['_success']:
             payload = result.get('scratchpad', result.get('result', ''))
             self.memory.write_scratchpad('retrieve:last', str(payload))
         flow.status = 'Completed'
@@ -70,9 +67,8 @@ class InternalPolicy:
         if query_slot.check_if_filled():
             query = str(query_slot.to_dict())
             result = tools('find_posts', {'query': query})
-            if result.get('_success'):
-                items = result.get('items', [])
-                self.memory.write_scratchpad(f'search:{query}', str(items))
+            if result['_success']:
+                self.memory.write_scratchpad(f'search:{query}', str(result['items']))
         flow.status = 'Completed'
         return DisplayFrame(flow.name())
 
@@ -84,10 +80,10 @@ class InternalPolicy:
         grounding = flow.slots[flow.entity_slot]
         post_id = grounding.values[0]['post'] if grounding.check_if_filled() else ''
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
-        if result.get('_success'):
+        if result['_success']:
             self.memory.write_scratchpad(
                 f'post:{post_id}',
-                f'{result.get("title", "")}: {result.get("outline", "")[:500]}',
+                f'{result["title"]}: {result["outline"][:500]}',
             )
         flow.status = 'Completed'
         return DisplayFrame(flow.name())

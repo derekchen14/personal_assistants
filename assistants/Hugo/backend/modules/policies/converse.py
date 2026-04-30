@@ -65,10 +65,10 @@ class ConversePolicy(BasePolicy):
             summary_parts.append(f'Session notes: {str(scratchpad)[:300]}')
 
         result = tools('find_posts', {})
-        if result.get('_success'):
-            items = result.get('items', [])
+        if result['_success']:
+            items = result['items']
             if items:
-                titles = [it.get('title', 'Untitled') for it in items[:5]]
+                titles = [it['title'] for it in items[:5]]
                 summary_parts.append(f'Recent posts: {", ".join(titles)}')
 
         convo_history = context.compile_history()
@@ -86,11 +86,10 @@ class ConversePolicy(BasePolicy):
             params['turn_id'] = str(turn_slot.to_dict())
         result = tools('explain_action', params)
         flow.status = 'Completed'
-        if not result.get('_success'):
-            reason = result.get('_error', '') or 'unknown'
+        if not result['_success']:
             return self.error_frame(flow, 'tool_error',
-                thoughts=f'explain_action failed: {reason}.',
-                code=result.get('_message', ''),
+                thoughts=f'explain_action failed: {result["_error"]}.',
+                code=result['_message'],
                 failed_tool='explain_action')
         return DisplayFrame(origin='explain', thoughts=result.get('explanation', ''))
 
@@ -119,11 +118,10 @@ class ConversePolicy(BasePolicy):
                 pass
         result = tools('rollback_post', params)
         flow.status = 'Completed'
-        if not result.get('_success'):
-            reason = result.get('_error', '') or 'unknown'
+        if not result['_success']:
             return self.error_frame(flow, 'tool_error',
-                thoughts=f'rollback_post failed: {reason}.',
-                code=result.get('_message', ''),
+                thoughts=f'rollback_post failed: {result["_error"]}.',
+                code=result['_message'],
                 failed_tool='rollback_post')
         message = result.get('message') or f"Rolled back to version {params.get('version', 1)}."
         return DisplayFrame(origin='undo', thoughts=message)

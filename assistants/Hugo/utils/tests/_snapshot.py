@@ -74,7 +74,7 @@ def project_state(agent, result:dict, tool_log:list) -> dict:
             'missing_entity': metadata.get('missing_entity'),
             'block_types': [b.get('type') for b in blocks],
             'block_data_keys': [sorted((b.get('data') or {}).keys()) for b in blocks],
-            'block_locations': [b.get('location') for b in blocks],
+            'block_panels': [b.get('panel') for b in blocks],
             'has_thoughts': bool(frame_data.get('thoughts')),
             'has_code': bool(frame_data.get('code')),
         },

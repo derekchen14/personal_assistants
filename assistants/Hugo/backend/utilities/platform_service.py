@@ -35,7 +35,7 @@ class PlatformService(ToolService):
         from backend.utilities.post_service import PostService
         post_svc = PostService()
         post_result = post_svc.read_metadata(post_id, include_outline=True)
-        if not post_result.get('_success'):
+        if not post_result['_success']:
             return post_result
 
         entries = self._load_metadata()
@@ -43,7 +43,7 @@ class PlatformService(ToolService):
         content = self._read_content(ent['filename']) if ent else ''
         post = {
             'post_id': post_id,
-            'title': post_result.get('title', ''),
+            'title': post_result['title'],
             'content': content,
             'metadata': {'tags': post_result.get('tags', []), 'color': post_result.get('color', '')},
         }
@@ -168,7 +168,7 @@ class SubstackPublisher(PlatformPublisher):
 
     def schedule(self, post:dict, scheduled_at:str) -> dict:
         result = self.publish(post)
-        if result.get('_success'):
+        if result['_success']:
             result['scheduled_at'] = scheduled_at
             result['action'] = 'schedule'
         return result
@@ -592,10 +592,10 @@ class MT1TPublisher(PlatformPublisher):
         from backend.utilities.post_service import PostService
         post_svc = PostService()
         post_result = post_svc.read_metadata(post_id)
-        if not post_result.get('_success'):
+        if not post_result['_success']:
             return post_result
 
-        slug = self._slugify(post_result.get('title', ''))
+        slug = self._slugify(post_result['title'])
         posts_dir = self._posts_dir()
         matches = list(posts_dir.glob(f'*-{slug}.md'))
 

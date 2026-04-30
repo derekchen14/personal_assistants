@@ -7,7 +7,7 @@ from backend.prompts.for_pex import render_source
 
 
 TEMPLATE = """<task>
-Audit "{post_title}" for voice + style consistency against the user's previous published posts. {tool_sequence}. End by emitting the structured findings JSON described in the skill — do NOT edit the post.
+Audit "{post_title}" for voice + style consistency. {tool_sequence}. End by calling `save_findings` with the structured findings — do NOT edit the post.
 </task>
 
 <resolved_details>
@@ -17,8 +17,10 @@ Audit "{post_title}" for voice + style consistency against the user's previous p
 
 def build(flow, resolved:dict, user_text:str) -> str:
     tool_sequence = (
-        'Call `find_posts(status=published)` for references, '
-        'then `compare_style`, `editor_review`, and `inspect_post` to gather metrics'
+        'Run `editor_review` and `inspect_post` by default; only chain `find_posts` + `compare_style` '
+        'when the user explicitly asks for comparison against prior posts or `Reference count` is shown '
+        'below. Honor explicit exclusions ("just the editor part", "skip structure") by running only the '
+        'requested tools'
     )
     return TEMPLATE.format(
         post_title=resolved.get('post_title', 'this post'),

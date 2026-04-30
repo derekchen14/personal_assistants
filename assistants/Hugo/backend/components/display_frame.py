@@ -1,24 +1,28 @@
 from types import MappingProxyType
 
 VALID_BLOCK_TYPES = frozenset(('card', 'checklist', 'confirmation', 'toast', 'default', 'selection', 'list', 'compare'))
-_TOP_TYPES = frozenset(('confirmation', 'toast'))
+_TOP_BLOCK_TYPES = frozenset(('confirmation', 'toast', 'list', 'grid', 'selection', 'checklist'))
 
 class BuildingBlock:
 
-    def __init__(self, block_type:str, data:dict, location:str, expand:bool=False):
-        self.block_type = block_type
+    def __init__(self, type:str, data:dict, panel:str|None=None, expand:bool=False):
+        self.block_type = type
         self.data = data
-        self.location = location
+        if panel is not None:
+            self.panel = panel
+        elif type in _TOP_BLOCK_TYPES:
+            self.panel = 'top'
+        else:
+            self.panel = 'bottom'
         self.expand = expand
 
     def to_dict(self) -> dict:
-        block_dict = {
+        return {
             'type': self.block_type,
             'data': self.data,
-            'location': self.location,
+            'panel': self.panel,
             'expand': self.expand,
         }
-        return block_dict
 
 class DisplayFrame:
 
@@ -37,19 +41,7 @@ class DisplayFrame:
         self.metadata.update(new_data)
 
     def add_block(self, block_data:dict):
-        block_type = block_data['type']
-        data = block_data['data']
-
-        if 'location' in block_data:
-            location = block_data['location']
-        elif block_type in _TOP_TYPES:
-            location = 'top'
-        else:
-            location = 'bottom'
-
-        expand = block_data.get('expand', False)
-        block = BuildingBlock(block_type, data, location, expand)
-        self.blocks.append(block)
+        self.blocks.append(BuildingBlock(**block_data))
 
     def clear(self):
         self.origin = None

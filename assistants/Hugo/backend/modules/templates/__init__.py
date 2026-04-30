@@ -9,10 +9,9 @@ from backend.modules.templates.plan import fill_plan_template
 _MODULES = {'Research':research, 'Draft':draft, 'Revise':revise, 'Publish':publish, 'Converse':converse, 'Plan':plan}
 
 def get_template(flow_name:str, intent:str) -> dict:
-    """Look up template by flow name within the intent module, else fallback."""
-    module = _MODULES[intent]
-    entry = module.TEMPLATES.get(flow_name)
-    info = {'template': entry.get('template', '{message}'),
+    """Look up the template entry for `flow_name` in the intent module. Crashes loudly when the
+    flow has no registered template — every non-Internal flow must have one in its intent module."""
+    entry = _MODULES[intent].TEMPLATES[flow_name]
+    return {'template': entry.get('template', '{message}'),
             'block_hint': entry.get('block_hint'),
             'skip_naturalize': entry.get('skip_naturalize', False)}
-    return info

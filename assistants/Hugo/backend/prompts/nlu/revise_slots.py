@@ -760,10 +760,12 @@ AUDIT_PROMPT = {
         "3. Vague descriptors like 'strict' or 'loose' do NOT fill `threshold` — leave null so the "
         "policy can default.\n"
         "4. `reference_count` fills on explicit count language: 'compare against my last 5 posts' → "
-        "5; 'against my previous post' (singular) → 1. Leave null on qualitative phrasing ('my "
-        "recent stuff', 'a few past posts') — the policy defaults to 10.\n"
-        "5. Bare audit with no explicit numbers → source fills, threshold null, reference_count "
-        "null — the policy applies defaults."
+        "5; 'against my previous post' (singular) → 1.\n"
+        "5. If the user mentions comparing style against prior posts but does not give a count "
+        "('against my recent posts', 'compare to past stuff', 'check it against my old drafts'), fill "
+        "`reference_count` with 5 as a sensible default.\n"
+        "6. Bare audit with no comparison language → `reference_count` stays null. The skill will "
+        "default to running editor + structural checks only, without comparison."
     ),
     'slots': (
         '### source (required)\n\n'
@@ -771,8 +773,10 @@ AUDIT_PROMPT = {
         'explicitly when the user names a different post.\n\n'
         '### reference_count (optional)\n\n'
         'Type: LevelSlot (threshold=1). Number of prior posts to reference as voice samples. Fires '
-        'only on explicit integers (\'last 5 posts\' → 5; \'against my previous post\' → 1). Leave '
-        'null on qualitative phrasing — the policy defaults to 10.\n\n'
+        'on explicit integers (\'last 5 posts\' → 5; \'against my previous post\' → 1) and on '
+        'qualitative comparison language (\'against my recent posts\' → 5 as a default). Leave null '
+        'only when the user makes no comparison ask at all — non-null `reference_count` is the '
+        'signal that tells the skill to run `compare_style`.\n\n'
         '### threshold (optional)\n\n'
         'Type: ProbabilitySlot. AI-likelihood cutoff in [0, 1] — sections with a score above this '
         'are flagged. Fill on explicit probability language; percentages convert (\'80%\' → 0.8). '
@@ -812,7 +816,7 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Indirect audit request — source is explicit, but no threshold or reference count supplied. Both optional slots stay null for the policy to default.",
+  "reasoning": "Indirect audit request — source is explicit, no comparison ask (\"sounds like GPT\" is editorial-style, not a comparison against prior posts). Both optional slots stay null; the skill will run editor + structural checks only.",
   "slots": {
     "source": {"post": "RL primer"},
     "reference_count": null,
@@ -880,7 +884,7 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Bare audit — source fills, no numbers given. Both optional slots stay null; the policy defaults.",
+  "reasoning": "Bare audit — source fills, no comparison ask, no threshold. Both optional slots stay null; the skill will run editor + structural checks only.",
   "slots": {
     "source": {"post": "intro"},
     "reference_count": null,
@@ -926,10 +930,10 @@ Active post: My Post
 
 ```json
 {
-  "reasoning": "Source inherits from active_post. 'Recent stuff' is vague → reference_count null. 'Strict' is vague → threshold null. All defaults handled by the policy.",
+  "reasoning": "Source inherits from active_post. 'Against my recent stuff' is comparison language without an explicit count → reference_count fills with 5 per rule 5. 'Strict' is vague → threshold null.",
   "slots": {
     "source": {"post": "My Post"},
-    "reference_count": null,
+    "reference_count": 5,
     "threshold": null
   }
 }

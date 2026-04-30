@@ -51,11 +51,10 @@ class BasePolicy:
         meta = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
 
         post = {}
-        if meta.get('_success'):
+        if meta['_success']:
             # Strip the hidden-section sentinel heading so prose-only posts display cleanly without the marker
-            content = re.sub(r'^## _hidden_section_title\n', '', meta.get('outline', ''), flags=re.M)
-            post_title, post_status = meta.get('title', ''), meta.get('status', '')
-            post = {'post_id': post_id, 'title': post_title, 'status': post_status, 'content': content}
+            content = re.sub(r'^## _hidden_section_title\n', '', meta['outline'], flags=re.M)
+            post = {'post_id': post_id, 'title': meta['title'], 'status': meta['status'], 'content': content}
         return post
 
     # -- Post helpers -------------------------------------------------------
@@ -67,7 +66,7 @@ class BasePolicy:
         # If it looks like a UUID, use it directly
         if len(identifier) == 8 or '-' in identifier:
             result = tools('read_metadata', {'post_id': identifier})
-            if result.get('_success'):
+            if result['_success']:
                 return identifier
 
         # Try with and without status suffixes
@@ -79,14 +78,14 @@ class BasePolicy:
 
         for query in candidates:
             result = tools('find_posts', {'query': query})
-            if not result.get('_success'):
+            if not result['_success']:
                 continue
-            items = result.get('items', [])
+            items = result['items']
             for item in items:
-                if item.get('title', '').lower() == query.lower():
-                    return item.get('post_id')
+                if item['title'].lower() == query.lower():
+                    return item['post_id']
             if items:
-                return items[0].get('post_id')
+                return items[0]['post_id']
         return None
 
     # -- Persistence helpers ------------------------------------------------
@@ -119,12 +118,12 @@ class BasePolicy:
         if not post_id:
             return None
         meta = tools('read_metadata', {'post_id': post_id, 'include_preview': include_preview})
-        if not meta.get('_success'):
+        if not meta['_success']:
             return {'post_id': post_id}
         resolved = {
             'post_id': post_id,
-            'post_title': meta.get('title', ''),
-            'section_ids': meta.get('section_ids', []),
+            'post_title': meta['title'],
+            'section_ids': meta['section_ids'],
         }
         if include_preview and meta.get('preview'):
             resolved['section_preview'] = meta['preview']
@@ -171,7 +170,7 @@ class BasePolicy:
         failures."""
         result = tools(tool_name, params)
         attempts = 1
-        while not result.get('_success') and attempts < max_attempts:
+        while not result['_success'] and attempts < max_attempts:
             result = tools(tool_name, params)
             attempts += 1
         return result

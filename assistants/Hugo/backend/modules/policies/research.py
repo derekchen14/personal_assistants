@@ -44,9 +44,9 @@ class ResearchPolicy(BasePolicy):
         if target == 'note':
             params['status'] = 'note'
         result = tools('find_posts', params)
-        items = result.get('items', []) if result.get('_success') else []
+        items = result['items'] if result['_success'] else []
 
-        titles = [it.get('title', 'Untitled') for it in items[:10]]
+        titles = [it['title'] for it in items[:10]]
         summary = f"Found {len(items)} item(s) tagged {', '.join(tags)} (target='{target}')."
         if titles:
             summary += ' Titles: ' + ', '.join(titles)
@@ -67,7 +67,7 @@ class ResearchPolicy(BasePolicy):
             return DisplayFrame(flow.name())
 
         flow_metadata = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
-        if not flow_metadata.get('_success'):
+        if not flow_metadata['_success']:
             frame = self.error_frame(flow, 'missing_reference',
                 thoughts='Could not find the specified post.',
                 missing_entity='post')
@@ -77,8 +77,8 @@ class ResearchPolicy(BasePolicy):
 
             convo_history = context.compile_history()
             history_with_data = (
-                f"{convo_history}\n\n[Post content]\nTitle: {flow_metadata.get('title', '')}\n"
-                f"Content: {flow_metadata.get('outline', '')}"
+                f"{convo_history}\n\n[Post content]\nTitle: {flow_metadata['title']}\n"
+                f"Content: {flow_metadata['outline']}"
             )
             skill_prompt = self.engineer.load_skill_template(flow.name()) + length_hint
             text = self.engineer.skill_call(
@@ -89,7 +89,7 @@ class ResearchPolicy(BasePolicy):
             frame = DisplayFrame(flow.name())
             frame.add_block({'type': 'card', 'data': {
                 'post_id': post_id,
-                'title': flow_metadata.get('title', ''),
+                'title': flow_metadata['title'],
                 'content': text,
             }})
         return frame
@@ -100,19 +100,19 @@ class ResearchPolicy(BasePolicy):
         grounding = flow.slots[flow.entity_slot]
         status = None
         if grounding.check_if_filled():
-            tab = grounding.values[0].get('post', '')
+            tab = grounding.values[0]['post']
             status = self._TAB_TO_STATUS.get(tab.lower())
 
         params = {'status': status} if status else {}
         result = tools('find_posts', params)
-        items = result.get('items', []) if result.get('_success') else []
+        items = result['items'] if result['_success'] else []
 
         summary = f"Found {len(items)} item(s)"
         if status:
             summary += f" with status '{status}'"
         summary += '.'
         if items:
-            titles = [it.get('title', 'Untitled') for it in items[:10]]
+            titles = [it['title'] for it in items[:10]]
             summary += ' Titles: ' + ', '.join(titles)
 
         convo_history = context.compile_history()
@@ -141,9 +141,9 @@ class ResearchPolicy(BasePolicy):
             params['metrics'] = [str(aspect_slot.to_dict())]
 
         result = tools('inspect_post', params)
-        if not result.get('_success'):
+        if not result['_success']:
             frame = self.error_frame(flow, 'tool_error',
-                thoughts=result.get('_message', 'Could not inspect the post.'),
+                thoughts=result['_message'],
                 failed_tool='inspect_post')
         else:
             metrics = {key: val for key, val in result.items() if key != '_success'}
@@ -173,18 +173,18 @@ class ResearchPolicy(BasePolicy):
         if query:
             for term in self._expand_query(query):
                 result = tools('find_posts', {'query': term})
-                for item in (result.get('items', []) if result.get('_success') else []):
+                for item in (result['items'] if result['_success'] else []):
                     if item['post_id'] not in seen_ids:
                         seen_ids.add(item['post_id'])
                         items.append(item)
         else:
             result = tools('find_posts', {})
-            items = result.get('items', []) if result.get('_success') else []
+            items = result['items'] if result['_success'] else []
         if limit:
             items = items[:limit]
 
-        post_count = sum(1 for it in items if it.get('status') == 'published')
-        draft_count = sum(1 for it in items if it.get('status') == 'draft')
+        post_count = sum(1 for it in items if it['status'] == 'published')
+        draft_count = sum(1 for it in items if it['status'] == 'draft')
         page = 'posts' if post_count >= draft_count else 'drafts'
 
         list_data = {'items': items, 'page': page}
@@ -235,11 +235,11 @@ class ResearchPolicy(BasePolicy):
 
         posts = []
         for entry in grounding.values[:2]:
-            identifier = entry.get('post', '')
+            identifier = entry['post']
             post_id = self.resolve_post_id(identifier, tools) if identifier else None
             if post_id:
                 result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
-                if result.get('_success'):
+                if result['_success']:
                     posts.append(result)
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
@@ -262,13 +262,15 @@ class ResearchPolicy(BasePolicy):
         frame = DisplayFrame(flow.name(), thoughts=text)
         # Diff compares two code versions — users need to SEE the diff visually, not just hear it
         # narrated. Surface the structured diff via a compare block so the frontend can render it.
+        # extract_tool_result returns the success payload (with _* keys stripped) or {} if the
+        # tool wasn't called or its call failed. Non-empty dict = success path.
         diff_result = self.engineer.extract_tool_result(tool_log, 'diff_section')
-        if diff_result.get('_success'):
+        if diff_result:
             frame.add_block({'type': 'compare', 'data': {
-                'source': diff_result.get('source', ''),
-                'target': diff_result.get('target', ''),
-                'additions': diff_result.get('additions', 0),
-                'deletions': diff_result.get('deletions', 0),
-                'diff': diff_result.get('diff', []),
+                'source': diff_result['source'],
+                'target': diff_result['target'],
+                'additions': diff_result['additions'],
+                'deletions': diff_result['deletions'],
+                'diff': diff_result['diff'],
             }})
         return frame

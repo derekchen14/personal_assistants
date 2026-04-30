@@ -94,7 +94,7 @@ class RevisePolicy(BasePolicy):
         return DisplayFrame(origin=flow.name())
 
     def _rework_swap(self, flow, post_id, tools):
-        sec_ids = [e['sec'] for e in flow.slots['source'].values if e.get('sec')]
+        sec_ids = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if len(sec_ids) < 2:
             self.ambiguity.declare('specific', metadata={'missing_slot': 'second_section'})
             return DisplayFrame(origin=flow.name())
@@ -119,7 +119,7 @@ class RevisePolicy(BasePolicy):
         return frame
 
     def _rework_move(self, flow, post_id, tools, where):
-        sec_ids = [e['sec'] for e in flow.slots['source'].values if e.get('sec')]
+        sec_ids = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if not sec_ids:
             self.ambiguity.declare('specific', metadata={'missing_slot': 'section'})
             return DisplayFrame(origin=flow.name())
@@ -210,8 +210,6 @@ class RevisePolicy(BasePolicy):
         if not flow.slots['source'].filled:
             self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
             return DisplayFrame(origin=flow.name())
-        if not flow.slots['reference_count'].filled:
-            flow.fill_slot_values({'reference_count': 5})
 
         if flow.slots['delegates'].is_verified():
             flow.status = 'Completed'
@@ -308,8 +306,8 @@ class RevisePolicy(BasePolicy):
         extra = {}
         if post_id and sec_id:
             sec = tools('read_section', {'post_id': post_id, 'sec_id': sec_id})
-            if sec.get('_success'):
-                extra['section_content'] = sec.get('content', '')
+            if sec['_success']:
+                extra['section_content'] = sec['content']
 
         text, tool_log = self.llm_execute(flow, state, context, tools, extra_resolved=extra or None)
 
@@ -356,18 +354,18 @@ class RevisePolicy(BasePolicy):
         post_id, _ = self._resolve_source_ids(flow, state, tools)
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True}) if post_id else {'_success': False}
 
-        if not result.get('_success'):
+        if not result['_success']:
             frame = self.error_frame(flow, 'missing_reference',
                 thoughts='Could not find the specified post.',
                 missing_entity='post')
         else:
-            content = result.get('outline', '')
+            content = result['outline']
             settings_slot = flow.slots['settings']
             settings = settings_slot.to_dict() if settings_slot.filled else {}
 
             convo_history = context.compile_history()
             history_with_data = (
-                f"{convo_history}\n\n[Post content]\nTitle: {result.get('title', '')}\n"
+                f"{convo_history}\n\n[Post content]\nTitle: {result['title']}\n"
                 f"Content ({len(content)} chars): {content[:500]}\n\n"
                 f"[Settings] {settings if settings else 'default normalization'}"
             )
@@ -377,7 +375,7 @@ class RevisePolicy(BasePolicy):
             frame = DisplayFrame(flow.name(), thoughts=text)
             frame.add_block({'type': 'card', 'data': {
                 'post_id': post_id,
-                'title': result.get('title', ''),
+                'title': result['title'],
                 'content': text,
             }})
         return frame

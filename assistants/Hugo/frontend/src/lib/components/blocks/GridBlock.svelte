@@ -1,7 +1,7 @@
 <script lang="ts">
     import { marked } from 'marked';
     import { conversation } from '$lib/stores/conversation';
-    import { expandList, bottomFrame } from '$lib/stores/display';
+    import { expandList, bottomPanel } from '$lib/stores/display';
     import IconTrash from '$lib/assets/IconTrash.svelte';
     import IconDocumentCheck from '$lib/assets/IconDocumentCheck.svelte';
     import IconDocumentPlus from '$lib/assets/IconDocumentPlus.svelte';
@@ -336,7 +336,7 @@
                     onclick={() => {
                         if (id) {
                             conversation.deleteNote(id);
-                            bottomFrame.set(null);
+                            bottomPanel.set(null);
                         }
                         confirmDeleteItem = null;
                     }}

@@ -1,7 +1,6 @@
 <script lang="ts">
     import CardBlock from './CardBlock.svelte';
     import ListBlock from './ListBlock.svelte';
-    import ToastBlock from './ToastBlock.svelte';
     import ConfirmationBlock from './ConfirmationBlock.svelte';
     import CompareBlock from './CompareBlock.svelte';
     import GridBlock from './GridBlock.svelte';
@@ -9,11 +8,11 @@
     import ChecklistBlock from './ChecklistBlock.svelte';
     import type { FrameData } from '$lib/stores/display';
 
-    let { frame, location = 'bottom' }:
-        { frame: FrameData; location?: 'top' | 'bottom' } = $props();
+    let { frame, panel = 'bottom' }:
+        { frame: FrameData; panel?: 'top' | 'bottom' } = $props();
 
     let renderable = $derived(
-        (frame?.blocks ?? []).filter(b => (b.location ?? 'bottom') === location),
+        (frame?.blocks ?? []).filter(b => (b.panel ?? 'bottom') === panel),
     );
 </script>
 
@@ -22,8 +21,6 @@
         <CardBlock data={block.data} origin={frame.origin ?? ''} />
     {:else if block.type === 'list'}
         <ListBlock data={block.data} origin={frame.origin ?? ''} />
-    {:else if block.type === 'toast'}
-        <ToastBlock data={block.data} />
     {:else if block.type === 'confirmation'}
         <ConfirmationBlock data={block.data} />
     {:else if block.type === 'compare'}

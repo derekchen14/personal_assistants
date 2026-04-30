@@ -1,6 +1,6 @@
 <script lang="ts">
     import { conversation } from '$lib/stores/conversation';
-    import { activePage, searchQuery, expandPost, expandList, bottomFrame, activeTag, showTagPage, goBack, creatingPost } from '$lib/stores/display';
+    import { activePage, searchQuery, expandPost, expandList, bottomPanel, activeTag, showTagPage, goBack, creatingPost } from '$lib/stores/display';
     import IconTrash from '$lib/assets/IconTrash.svelte';
     import IconGripVertical from '$lib/assets/IconGripVertical.svelte';
     import IconArrowUturnLeft from '$lib/assets/IconArrowUturnLeft.svelte';
@@ -85,7 +85,7 @@
     }
 
     // ── Sectioned list helpers ─────────────────────────────────────────────────
-    let isSectioned = $derived(origin === 'welcome' || items.some(
+    let isSectioned = $derived(Boolean(data.sectioned) || items.some(
         (it) => typeof it === 'object' && it !== null && 'status' in (it as Record<string, unknown>)
     ));
 
@@ -458,7 +458,7 @@
                         if (id) {
                             conversation.deletePost(id);
                             expandedIds.delete(id); expandedIds = new Set(expandedIds);
-                            bottomFrame.set(null);
+                            bottomPanel.set(null);
                         }
                         confirmDeleteItem = null;
                     }}

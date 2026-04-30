@@ -1,8 +1,9 @@
 <script lang="ts">
     import { conversation, type Message } from '$lib/stores/conversation';
-    import { setFrame, clearFrames, showPage, topFrame, bottomFrame, displayLayout, activePage, searchQuery, activeHighlight, activeSection, activePost, creatingPost, initTheme, setRefreshCallback, type ActivePage } from '$lib/stores/display';
+    import { setPanel, clearPanels, showPage, topPanel, bottomPanel, displayLayout, activePage, searchQuery, activeHighlight, activeSection, activePost, creatingPost, initTheme, setRefreshCallback, type ActivePage } from '$lib/stores/display';
     import FlowMenu from '$lib/components/FlowMenu.svelte';
     import BlockRenderer from '$lib/components/blocks/BlockRenderer.svelte';
+    import Drawer from '$lib/components/blocks/Drawer.svelte';
     import IconMagnifyingGlass from '$lib/assets/IconMagnifyingGlass.svelte';
     import { tick, onMount } from 'svelte';
 
@@ -73,12 +74,12 @@
 
     function onReset() {
         conversation.reset();
-        clearFrames();
+        clearPanels();
     }
 
     function handleLogout() {
         conversation.disconnect();
-        clearFrames();
+        clearPanels();
     }
 
     let lastFrameMsgId = $state('');
@@ -87,7 +88,10 @@
         const last = msgs[msgs.length - 1];
         if (last?.frame && last.role === 'agent' && last.id !== lastFrameMsgId) {
             lastFrameMsgId = last.id;
-            setFrame(last.frame as any);
+            // setPanel walks blocks: toast-typed blocks divert to the drawer, others land in
+            // top/bottom panels by their `panel` field. Card/list in the persistent containers
+            // survive when the new frame doesn't target their panel.
+            setPanel(last.frame as any);
         }
     });
 
@@ -178,7 +182,7 @@
         </div>
 
         <!-- Main content area -->
-        <div class="flex-1 flex gap-3 overflow-hidden bg-[var(--panel)] p-3">
+        <div class="flex-1 flex gap-3 overflow-hidden bg-indigo-50 dark:bg-slate-800 p-3">
             <!-- Chat section -->
             <div class="flex flex-col w-1/3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
                 <!-- Messages -->
@@ -227,18 +231,19 @@
                 </div>
             </div>
 
-            <!-- Display panel -->
-            <div class="flex flex-col flex-1 gap-3">
-                <!-- Top container (ListBlock) -->
+            <!-- Display container: holds top panel, bottom panel, and the transient drawer -->
+            <div class="flex flex-col flex-1 gap-3 relative">
+                <Drawer />
+                <!-- Top panel -->
                 {#if $displayLayout === 'top' || $displayLayout === 'split'}
                     <div class="flex flex-col grow-[2] h-0 overflow-y-auto p-4 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                        {#if $topFrame}
-                            <BlockRenderer frame={$topFrame} location="top" />
+                        {#if $topPanel}
+                            <BlockRenderer frame={$topPanel} panel="top" />
                         {/if}
                     </div>
                 {/if}
 
-                <!-- Bottom container (CardBlock) -->
+                <!-- Bottom panel -->
                 {#if $displayLayout === 'bottom' || $displayLayout === 'split' || $creatingPost}
                     <div class="flex flex-col grow-[2] h-0 min-h-0 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
                         {#if $creatingPost}
@@ -253,8 +258,8 @@
                                 />
                                 <p class="text-sm text-[var(--muted)] italic">Press 'Enter' to save your draft, or 'Esc' to cancel.</p>
                             </div>
-                        {:else if $bottomFrame}
-                            <BlockRenderer frame={$bottomFrame} location="bottom" />
+                        {:else if $bottomPanel}
+                            <BlockRenderer frame={$bottomPanel} panel="bottom" />
                         {:else}
                             <div class="flex items-center justify-center h-full text-[var(--muted)] text-sm">
                                 Blocks will appear here

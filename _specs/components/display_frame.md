@@ -26,28 +26,25 @@ The primary goal of the frame is to hold onto all the information that RES needs
 
 These are the base attributes every domain shares.
 
-### Data
-- The core payload. Shape varies by domain (dataframe for data analysis, file tree for coding, markdown for blogging, etc.).
+### Origin
+- The flow name that produced the frame (e.g. `compose`, `audit`, `release`). Empty string for system-emitted frames that don't run a flow (sidebar refresh, post view).
+- Used by RES to pick the response template and by the frontend to drive flow-specific UI behavior.
+
+### Blocks
+- A list of building blocks. Each block carries its own `data` payload, `panel` target, block `type`, and optional `expand` flag.
+- Frames may carry multiple blocks targeting different panels (e.g. a selection on top + a card on bottom).
+- Block-level `panel` attribute (`'top' | 'bottom'`) — auto-derived from block type when not explicitly set: `confirmation`, `toast`, `list`, `grid`, `selection`, `checklist` default to `top`; `card`, `compare` default to `bottom`.
+
+### Metadata
+- Domain- and flow-specific classification keys (violation codes, missing-slot names, finding summaries, etc.). Sparse — flow identity goes in `origin`, not metadata.
+- Replaces what earlier drafts called "display name", "display type", and "chart type."
 
 ### Code
 - The generated code (SQL query, Python script, etc.) that produced the data.
 - Top-level attribute so RES can display it to the user alongside the result.
 
-### Source
-- Where the data came from — the type of code or tool (SQL, Python, API, file system, etc.).
-- Metadata about the execution method, not the code itself (code is stored separately above).
-
-### Display Name
-- Human-readable label for the entity being displayed.
-- Table name for data analysis, file path for coding, post title for blogging.
-
-### Display Type
-- Governs how RES renders the frame content.
-- Each domain defines its own set of display types. Common Attributes declares that every frame has a display type; the specific values are enumerated in Domain Attributes.
-
-### Chart Type
-- Optional. Visualization style: area, bar, stack, scatter, line.
-- Cross-domain (schedulers chart time allocation, job hunters chart application funnels).
+### Thoughts
+- User-facing prose attached to the frame. Goes through RES naturalization. No em-dashes (hard to read on small screens).
 
 ## Domain Attributes
 
@@ -86,22 +83,23 @@ Other domains define their own extension attributes when built. Display types ar
 
 ## Panel Attribute
 
-Frames carry a `panel` property: `'top'` or `'bottom'` (default: `'bottom'`).
+The `panel` attribute lives on **each block**, not on the frame. A frame can carry blocks targeting different panels at the same time (e.g. a selection on top while a card stays on bottom). Values: `'top'` or `'bottom'` (default: derived from block type).
 
-- `'bottom'` — grounding entity (blog draft, data table, outlines) — the artifact
-- `'top'` — feedback/interaction (forms, confirmations, toasts, status summaries)
+- `'bottom'` — grounding entity (blog draft, data table, outlines) — the artifact users keep their attention on
+- `'top'` — feedback, interaction, navigation (forms, confirmations, lists, grids, selections, checklists, status summaries)
 
-`DisplayFrame.set_frame()` auto-derives the panel from the block type when not explicitly provided: `form`, `confirmation`, `toast` → `'top'`; all others → `'bottom'`. FLOW_CATALOG entries can override with an explicit `panel` field.
+`BuildingBlock.__init__` auto-derives the panel from the block type when not explicitly provided: `confirmation`, `toast`, `list`, `grid`, `selection`, `checklist` → `'top'`; `card`, `compare` → `'bottom'`.
 
-The frontend derives `displayLayout` from which frames are populated:
+The frontend derives `displayLayout` from which panel stores are populated:
 - Both top + bottom → `'split'`
 - Top only → `'top'`
 - Bottom only (or neither) → `'bottom'` (default)
 
+Toast-type blocks bypass the persistent panels entirely and render in a transient drawer overlay above the display container — a frontend-side render choice that lets the underlying card/list survive the notification.
+
 ## Rendering Pipeline
 
 - After PEX populates the frame, RES reads it and maps attributes to [Building Blocks](../utilities/blocks.md).
-- Display types map directly to atomic blocks — no intermediate composite layer. Mapping is driven by display type and chart type. RES selects the appropriate block category (data display, input collection, navigation, feedback).
-- **One frame = one block**: Each frame maps to exactly one block per turn. If a turn needs two visuals, use `keep_going` for multi-flow — each flow gets its own frame and block.
+- Frames carry a list of pre-built blocks; the policy attaches as many as the turn needs (a selection block on top + a card on bottom is a normal pattern). Each block is self-describing: type, panel, data, and optional expand flag.
 - Frame declares *what* to show; RES and Blocks decide *how*. Policy stays fully decoupled from rendering.
-- The selected block type determines where it renders (right panel or inline) based on the type's baked-in `inline` attribute. Reference: [Building Blocks — Rendering Model](../utilities/blocks.md#rendering-model)
+- Each block routes to its declared panel (`top` or `bottom`); transient block types (currently `toast`) divert to a drawer overlay instead of a persistent panel slot. Reference: [Building Blocks — Rendering Model](../utilities/blocks.md#rendering-model)

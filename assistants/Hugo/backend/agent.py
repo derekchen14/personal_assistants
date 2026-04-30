@@ -98,7 +98,7 @@ class Agent:
         # summary surface the data shape that RES emits — diff this against what the frontend
         # console.log shows for "[frame] received" to find serialization gaps.
         block_summary = [
-            {'type': b.block_type, 'data_keys': sorted((b.data or {}).keys()), 'location': b.location}
+            {'type': b.block_type, 'data_keys': sorted((b.data or {}).keys()), 'panel': b.panel}
             for b in frame.blocks
         ]
         log.info(
@@ -124,17 +124,8 @@ class Agent:
         payload = {'message': message, 'actions': [], 'frame': None, 'block': 'default'}
         return payload
 
-    def _build_payload(self, utterance: str, frame: DisplayFrame) -> dict:       
-        frame_data = frame.to_dict()
-        payload = {'message': utterance, 'actions': [], 'frame': frame_data}
-
-        # Add a panel key when we aren't just using a 'default' block type
-        if len(frame_data['blocks']) > 0:
-            block_type = frame_data['blocks'][-1]['type']
-            panel = 'top' if block_type in ('confirmation', 'toast') else 'bottom'
-            payload['panel'] = panel   # top / bottom / split
-
-        return payload
+    def _build_payload(self, utterance: str, frame: DisplayFrame) -> dict:
+        return {'message': utterance, 'actions': [], 'frame': frame.to_dict()}
 
     # ── Session management ────────────────────────────────────────────
 

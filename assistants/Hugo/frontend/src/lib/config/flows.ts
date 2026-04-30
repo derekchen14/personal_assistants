@@ -27,12 +27,12 @@ export const FLOW_MENU: IntentGroup[] = [
         label: 'Draft',
         flows: [
             { name: 'outline', dax: '002', description: 'Generate outline options for a topic' },
-            { name: 'compose', dax: '003', description: 'Write a section from scratch' },
             { name: 'refine', dax: '02B', description: 'Refine a specific section of the outline' },
+            { name: 'compose', dax: '003', description: 'Write a section from scratch' },
             { name: 'expand', dax: '03A', description: 'Expand bullet points or notes into full prose' },
             { name: 'add', dax: '005', description: 'Add a new section to the post' },
+            { name: 'brainstorm', dax: '39D', description: 'Hugo brainstorms ideas for a topic' },
             { name: 'create', dax: '05A', description: 'Start a new post from scratch' },
-            { name: 'brainstorm', dax: '29A', description: 'Hugo brainstorms ideas for a topic' },
         ],
     },
     {

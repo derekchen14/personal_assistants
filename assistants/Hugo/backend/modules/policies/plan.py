@@ -60,7 +60,7 @@ class PlanPolicy(BasePolicy):
         text, tool_log = self.llm_execute(flow, state, context, tools)
         freeform, structured_plan = self._parse_dual_output(text, tool_log)
 
-        for sub_flow in structured_plan.get('sub_flows', []):
+        for sub_flow in structured_plan['sub_flows']:
             sub_flow.setdefault('status', 'pending')
 
         flow.structured_plan = structured_plan
@@ -89,7 +89,7 @@ class PlanPolicy(BasePolicy):
 
     def _verify_and_continue(self, flow, state, context, tools):
         structured_plan = flow.structured_plan
-        sub_flows = structured_plan.get('sub_flows', [])
+        sub_flows = structured_plan['sub_flows']
 
         last_completed = None
         for sf in sub_flows:
@@ -100,7 +100,7 @@ class PlanPolicy(BasePolicy):
         if last_completed:
             scratchpad = self.memory.read_scratchpad()
             result_key = f"flow:{last_completed['flow_name']}"
-            result_data = scratchpad.get(result_key, '') if isinstance(scratchpad, dict) else ''
+            result_data = scratchpad.get(result_key, '')
 
             if result_data:
                 last_completed['status'] = 'completed'
@@ -116,7 +116,7 @@ class PlanPolicy(BasePolicy):
         if all_done:
             self.flow_stack.get_flow().status = 'Completed'
             state.keep_going=False
-            summary = f'Plan completed: {structured_plan.get("description", flow.name())}'
+            summary = f'Plan completed: {structured_plan["description"]}'
             return DisplayFrame(origin=flow.name(), thoughts=summary)
 
         plan_id = self.flow_stack.get_flow().flow_id
@@ -128,7 +128,7 @@ class PlanPolicy(BasePolicy):
     # -- Helpers ------------------------------------------------------------
 
     def _push_next_sub_flow(self, plan_flow, plan_id):
-        sub_flows = plan_flow.structured_plan.get('sub_flows', [])
+        sub_flows = plan_flow.structured_plan['sub_flows']
 
         for sf in sub_flows:
             if sf['status'] != 'pending':
@@ -149,8 +149,8 @@ class PlanPolicy(BasePolicy):
 
     def _parse_dual_output(self, text, tool_log):
         for entry in tool_log:
-            result = entry.get('result', {})
-            if result.get('_success'):
+            result = entry['result']
+            if result['_success']:
                 # Check all non-underscore keys for sub_flows
                 for k, v in result.items():
                     if k.startswith('_'):

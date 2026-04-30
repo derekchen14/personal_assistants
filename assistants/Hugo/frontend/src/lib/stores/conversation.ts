@@ -51,12 +51,11 @@ function createConversationStore() {
             const blocks = (frame.blocks as Array<Record<string, unknown>>) || [];
             console.log('[frame] received:', {
                 origin: frame.origin,
-                panel: data.panel || frame.panel,
                 metadata_keys: Object.keys((frame.metadata as object) || {}),
                 blocks: blocks.map((b) => ({
                     type: b.type,
                     data_keys: Object.keys((b.data as object) || {}),
-                    location: b.location,
+                    panel: b.panel,
                 })),
                 msg_len: ((data.message as string) || '').length,
             });

@@ -136,7 +136,7 @@ class SourceSlot(GroupSlot):
     self.check_if_filled()
 
   def check_if_filled(self):
-    valid = [e for e in self.values if e.get('post')]
+    valid = [e for e in self.values if e['post']]
     self.filled = len(valid) >= self.size
     return self.filled
 
@@ -182,7 +182,7 @@ class TargetSlot(SourceSlot):
 
   def check_if_filled(self):
     """A target is considered filled if any entity part (post/sec/snip/chl) is present."""
-    valid = [e for e in self.values if any(e.get(k) for k in ('post', 'sec', 'snip', 'chl'))]
+    valid = [e for e in self.values if any(e[k] for k in ('post', 'sec', 'snip', 'chl'))]
     self.filled = len(valid) >= self.size
     return self.filled
 
