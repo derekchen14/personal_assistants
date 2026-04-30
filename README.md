@@ -1,8 +1,8 @@
-# Agent Architecture Specs
+# [Assistant Factory](www.assistantfactory.io) 🤖🏭
 
 ## Introduction
 
-Soleda is an Agent Factory that builds custom AI agents for specific personal and business needs at the click of a button. Our onboarding assistant is called Kalli, who will guide you through the process of building your own agent. She will ask you a few questions about your needs and help you build your agent. Once your agent is built, you can invite your team members to use it by simply sharing the agent's URL. Our agents are powerful and reliable due to three key innovations:
+Assistant Factory is a generator that builds custom AI agents for specific personal and business needs at the click of a button. Our onboarding assistant is called Kalli, who will guide you through the process of building your own agent. She will ask you a few questions about your needs and help you build your agent. Once your agent is built, you can invite your team members to use it by simply sharing the agent's URL. Our agents are powerful and reliable due to three key innovations:
   1. **Explicit Understanding**: Our assistants follow a POMDP-based architecture that models user interaction as a sequence of flows where observations are user utterances and hidden state is the user intent. This neuro-symbolic structure explicitly predicts and tracks user beliefs over time, taking advantage of traditional symbolic AI planning along with modern LLM-based deep learning.
   2. **Ambiguity Handling**: Real-life conversations are often ambiguous due to conflicting information, incomplete specification, or simply the complexity of human language. Our assistants treat ambiguity as a first-class citizen by directly measuring confidence, recognizing levels of uncertainty, and asking for clarifications when needed.
   3. **Synthetic Data Augmentation**: Our assistants are trained using a combination of real and synthetic data to improve their performance in handling rare events and improving generalization. This allows our assistants for customization to any specific user needs without the need for extensive real data.
