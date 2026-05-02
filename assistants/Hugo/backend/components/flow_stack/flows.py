@@ -16,18 +16,18 @@ class BrowseFlow(ResearchParentFlow):
     super().__init__()
     self.flow_type = 'browse'
     self.dax = '{012}'
-    self.entity_slot = 'tags'
+    self.entity_slot = 'query'
     self.goal = 'browse the user\'s tagged content and saved notes for trending subjects, ideas, and content gaps; excludes drafts and posts which use the "find" flow instead'
 
     self.slots = {
-      'tags': FreeTextSlot(priority='required'),
+      'query': FreeTextSlot(priority='required'),
       'target': CategorySlot(['tag', 'note', 'both'], priority='required'),
     }
     self.tools = ['find_posts', 'brainstorm_ideas', 'search_notes']
 
   def fill_slot_values(self, values):
-    for item in values.get('tags', []):
-      self.slots['tags'].add_one(item)
+    for item in values.get('query', []):
+      self.slots['query'].add_one(item)
     if 'target' in values:
       self.slots['target'].assign_one(values['target'])
 
@@ -118,6 +118,7 @@ class CompareFlow(ResearchParentFlow):
 
     self.slots = {
       'source': SourceSlot(2),
+      'category': CategorySlot(['inspect', 'check', 'tone'])
     }
     self.tools = ['read_metadata', 'read_section', 'compare_style']
 
@@ -342,7 +343,7 @@ class PolishFlow(ReviseParentFlow):
     self.slots = {
       'source': SourceSlot(1, 'sec'),
       'style_notes': FreeTextSlot(priority='optional'),
-      'image': ImageSlot(priority='optional'),
+      'image': ImageSlot(priority='elective'),
       'suggestions': ChecklistSlot(priority='elective'),
     }
     self.tools = ['read_metadata', 'read_section', 'write_text', 'revise_content']
@@ -422,7 +423,7 @@ class SimplifyFlow(ReviseParentFlow):
     self.dax = '{7BD}'
     self.goal = 'reduce complexity of a section or note; shorten paragraphs, simplify sentence structure, remove redundancy; image simplification means replacing with a simpler alternative or removing entirely'
     self.slots = {
-      'source': SourceSlot(1, 'sec', priority='elective'),
+      'source': SourceSlot(1, 'sec'),
       'image': ImageSlot(priority='elective'),
       'guidance': FreeTextSlot(priority='optional'),
       'suggestions': ChecklistSlot(priority='elective'),
@@ -443,6 +444,7 @@ class RemoveFlow(ReviseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'remove'
+    self.entity_slot = 'target'
     self.dax = '{007}'
     self.goal = 'remove a section from the post, delete a draft or note'
     self.slots = {
@@ -491,15 +493,12 @@ class ReleaseFlow(PublishParentFlow):
     self.goal = 'publish the post to the primary blog; makes the post live immediately on the main channel. Use syndicate to cross-post, promote to amplify reach after publishing'
     self.slots = {
       'source': SourceSlot(1),
-      'channel': ChannelSlot(priority='required'),
     }
     self.tools = ['read_metadata', 'channel_status', 'release_post']
 
   def fill_slot_values(self, values):
     for item in values.get('source', []):
       self.slots['source'].add_one(**item)
-    for item in values.get('channel', []):
-      self.slots['channel'].add_one(item)
 
 class SyndicateFlow(PublishParentFlow):
   def __init__(self):
@@ -580,18 +579,18 @@ class CancelFlow(PublishParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'cancel'
-    self.entity_slot = 'remove'
+    self.entity_slot = 'target'
     self.dax = '{04F}'
     self.goal = 'cancel a scheduled publication or unpublish a live post; reverts to draft status or removes from the channel entirely'
     self.slots = {
-      'remove': RemovalSlot(1),
+      'target': RemovalSlot(1),
       'reason': ExactSlot(priority='optional'),
     }
     self.tools = ['read_metadata', 'cancel_release', 'update_post']
 
   def fill_slot_values(self, values):
-    for item in values.get('remove', []):
-      self.slots['remove'].add_one(**item)
+    for item in values.get('target', []):
+      self.slots['target'].add_one(**item)
     if 'reason' in values:
       self.slots['reason'].add_one(values['reason'])
 
@@ -620,12 +619,15 @@ class ExplainFlow(ConverseParentFlow):
     self.dax = '{009}'
     self.goal = 'Hugo explains what it did or plans to do; transparency into the writing process and recent actions'
     self.slots = {
+      'topic': ExactSlot(priority='elective'),
       'turn_id': PositionSlot(priority='elective'),
-      'source': SourceSlot(1, priority='elective'),
+      'source': SourceSlot(1, priority='optional'),
     }
     self.tools = ['explain_action']
 
   def fill_slot_values(self, values):
+    if 'topic' in values:
+      self.slots['topic'].add_one(values['topic'])
     if 'turn_id' in values:
       self.slots['turn_id'].assign_one(values['turn_id'])
     for item in values.get('source', []):
@@ -637,26 +639,30 @@ class ChatFlow(ConverseParentFlow):
     self.flow_type = 'chat'
     self.dax = '{000}'
     self.goal = 'open-ended conversation; general Q&A about writing craft, blogging strategy, SEO, audience engagement, or any topic not tied to a specific post action'
-    self.slots = {}
+    self.slots = {
+      'topic': FreeTextSlot(priority='optional'),
+    }
     self.tools = []
 
   def fill_slot_values(self, values):
-    return  # no slots
+    for item in values.get('topic', []):
+      self.slots['topic'].add_one(item)
 
 class PreferenceFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'preference'
+    self.entity_slot = 'target'
     self.dax = '{08A}'
     self.goal = 'set a persistent writing preference stored in Memory Manager (L2); preferred tone, default post length, heading style, Oxford comma usage, or channel defaults'
     self.slots = {
-      'setting': DictionarySlot(['key', 'value']),
+      'target': DictionarySlot(['key', 'value']),
     }
     self.tools = []
 
   def fill_slot_values(self, values):
-    for k, v in values.get('setting', {}).items():
-      self.slots['setting'].add_one(k, v)
+    for k, v in values.get('target', {}).items():
+      self.slots['target'].add_one(k, v)
 
 class SuggestFlow(ConverseParentFlow):
   def __init__(self):
@@ -664,21 +670,25 @@ class SuggestFlow(ConverseParentFlow):
     self.flow_type = 'suggest'
     self.dax = '{29B}'
     self.goal = 'Hugo proactively suggests a next step based on current context; what to write next, which section needs attention, a new angle to explore, or an improvement to try'
-    self.slots = {}
+    self.slots = {
+      'topic': ExactSlot(priority='optional'),
+    }
     self.tools = ['brainstorm_ideas', 'find_posts']
 
   def fill_slot_values(self, values):
-    return  # no slots
+    if 'topic' in values:
+      self.slots['topic'].add_one(values['topic'])
 
 class UndoFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'undo'
+    self.entity_slot = 'target'
     self.dax = '{08F}'
     self.goal = 'reverse the most recent writing action; rolls back the last edit, addition, deletion, or formatting change and restores the previous version of the affected section'
     self.slots = {
       'turn': LevelSlot(priority='elective', threshold=1),
-      'action': ExactSlot(priority='elective'),
+      'target': TargetSlot(1, entity_part='action', priority='elective'),
     }
     self.tools = ['rollback_post']
 
@@ -686,35 +696,40 @@ class UndoFlow(ConverseParentFlow):
     if 'turn' in values:
       self.slots['turn'].level = int(values['turn'])
       self.slots['turn'].check_if_filled()
-    if 'action' in values:
-      self.slots['action'].add_one(values['action'])
+    for item in values.get('target', []):
+      self.slots['target'].add_one(**item)
 
 class EndorseFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'endorse'
+    self.entity_slot = 'target'
     self.dax = '{09E}'
     self.goal = "accept Hugo's proactive suggestion and trigger the corresponding action; e.g., a recommended edit, topic idea, or next step that Hugo offered via suggest"
     self.slots = {
-      'action': ExactSlot(),
+      'target': TargetSlot(1, entity_part='action', priority='optional'),
     }
     self.tools = []
 
   def fill_slot_values(self, values):
-    if 'action' in values:
-      self.slots['action'].add_one(values['action'])
+    for item in values.get('target', []):
+      self.slots['target'].add_one(**item)
 
 class DismissFlow(ConverseParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'dismiss'
+    self.entity_slot = 'target'
     self.dax = '{09F}'
     self.goal = "decline Hugo's proactive suggestion without providing feedback; Hugo notes the preference and moves on without further prompting"
-    self.slots = {}
+    self.slots = {
+      'target': TargetSlot(1, entity_part='action', priority='optional'),
+    }
     self.tools = []
 
   def fill_slot_values(self, values):
-    return  # no slots
+    for item in values.get('target', []):
+      self.slots['target'].add_one(**item)
 
 # ── Plan (6 flows) ──────────────────────────────────────────────────────────
 
@@ -722,7 +737,6 @@ class BlueprintFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'blueprint'
-    self.entity_slot = 'topic'
     self.dax = '{25A}'
     self.goal = 'plan the full post creation workflow from idea to publication; orchestrates Research, Draft, Revise, and Publish flows into a sequenced checklist with dependencies'
     self.slots = {
@@ -741,18 +755,19 @@ class TriageFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'triage'
+    self.entity_slot = 'target'
     self.dax = '{23A}'
     self.goal = 'plan a revision sequence; examines a draft and prioritizes which sections need rework, polish, or restructuring; produces an ordered checklist of revision tasks'
     self.slots = {
-      'source': RemovalSlot(1, 'sec'),
+      'target': RemovalSlot(1, 'sec'),
       'scope': CategorySlot(['content', 'structure', 'style', 'seo', 'full'], priority='optional'),
       'count': LevelSlot(priority='optional', threshold=1),
     }
     self.tools = ['read_metadata', 'inspect_post']
 
   def fill_slot_values(self, values):
-    for item in values.get('source', []):
-      self.slots['source'].add_one(**item)
+    for item in values.get('target', []):
+      self.slots['target'].add_one(**item)
     if 'scope' in values:
       self.slots['scope'].assign_one(values['scope'])
     if 'count' in values:
@@ -786,7 +801,6 @@ class ScopeFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'scope'
-    self.entity_slot = 'topic'
     self.dax = '{12A}'
     self.goal = 'plan topic research before writing; defines what information to gather, which previous posts to reference, and what questions to answer before drafting begins'
     self.slots = {
@@ -802,6 +816,7 @@ class DigestFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'digest'
+    self.entity_slot = 'source'
     self.dax = '{25B}'
     self.goal = 'plan a multi-part blog series; splits a broad theme into installments, defines the narrative arc, assigns subtopics to each part, and sets a suggested publication sequence'
     self.slots = {
@@ -824,7 +839,6 @@ class RememberFlow(PlanParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'remember'
-    self.entity_slot = 'topic'
     self.dax = '{19B}'
     self.goal = 'plan a memory operation; determines whether information should be stored (L1 scratchpad), saved as a preference (L2), or retrieved from business context (L3), then orchestrates the appropriate internal flows'
     self.slots = {
@@ -848,28 +862,31 @@ class RecapFlow(InternalParentFlow):
     self.dax = '{018}'
     self.goal = 'read back a previously noted fact from the current session scratchpad (L1); a decision, constraint, topic preference, or reference the agent stored earlier via store'
     self.slots = {
-      'key': ExactSlot(priority='optional'),
+      'topic': FreeTextSlot(priority='optional'),
     }
     self.tools = []
 
   def fill_slot_values(self, values):
-    if 'key' in values:
-      self.slots['key'].add_one(values['key'])
+    for item in values.get('topic', []):
+      self.slots['topic'].add_one(item)
 
 class StoreFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'store'
     self.dax = '{058}'
-    self.goal = 'save a key-value pair to the session scratchpad (L1) for later use in the same session; topic preferences, user corrections, interim decisions, or reference snippets'
+    self.goal = 'save a natural-language snippet to the session scratchpad (L1) for later use in the same session; reflective summaries of decisions, constraints, topic preferences, or interim findings'
     self.slots = {
-      'entry': DictionarySlot(['key', 'value']),
+      'target': FreeTextSlot(),
+      'origin': ExactSlot(priority='optional'),
     }
     self.tools = []
 
   def fill_slot_values(self, values):
-    for k, v in values.get('entry', {}).items():
-      self.slots['entry'].add_one(k, v)
+    for item in values.get('target', []):
+      self.slots['target'].add_one(item)
+    if 'origin' in values:
+      self.slots['origin'].add_one(values['origin'])
 
 class RecallFlow(InternalParentFlow):
   def __init__(self):
@@ -878,13 +895,16 @@ class RecallFlow(InternalParentFlow):
     self.dax = '{289}'
     self.goal = 'look up persistent user preferences from Memory Manager (L2); default tone, word count targets, stylistic rules, or channel credentials set via the preference flow'
     self.slots = {
-      'key': ExactSlot(priority='optional'),
+      'target': TargetSlot(1, entity_part='preference key'),
+      'preference': FreeTextSlot(priority='optional')
     }
     self.tools = []
 
   def fill_slot_values(self, values):
-    if 'key' in values:
-      self.slots['key'].add_one(values['key'])
+    for item in values.get('target', []):
+      self.slots['target'].add_one(**item)
+    for item in values.get('preference', []):
+      self.slots['preference'].add_one(item)
 
 class RetrieveFlow(InternalParentFlow):
   def __init__(self):
@@ -926,13 +946,13 @@ class ReferenceFlow(InternalParentFlow):
     self.dax = '{139}'
     self.goal = 'look up word definitions, synonyms, antonyms, or usage examples via dictionary and thesaurus; e.g., "synonym for important", "definition of ephemeral", "formal alternatives to good"'
     self.slots = {
-      'word': ExactSlot(),
+      'target': TargetSlot(1, entity_part='word'),
     }
     self.tools = []
 
   def fill_slot_values(self, values):
-    if 'word' in values:
-      self.slots['word'].add_one(values['word'])
+    for item in values.get('target', []):
+      self.slots['target'].add_one(**item)
 
 class StudyFlow(InternalParentFlow):
   def __init__(self):

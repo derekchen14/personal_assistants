@@ -82,8 +82,8 @@ User: "Help me plan my next post"
 </positive_example>''',
     },
     'triage': {
-        'instructions': 'Examine a draft and prioritize revision tasks — which sections need rework, polish, or restructuring.',
-        'rules': '''- source (required): The draft to examine.
+        'instructions': 'Examine a draft and prioritize revision tasks — which sections need rework, polish, or restructuring. Triage is destructive (it identifies content to remove or rework), so the draft is grounded as `target` (RemovalSlot), not `source`.',
+        'rules': '''- target (required): The draft to examine. Emit as a list of post dicts.
 - scope (optional): Which dimension to focus on. Choose from: content, structure, style, seo, full.
 - count (optional): Maximum number of issues to surface. Only extract if the user states a specific number.''',
         'slots': '',
@@ -95,11 +95,9 @@ User: "What needs fixing in my Deep NLP draft?"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "destructive review — grounded as target (RemovalSlot)",
   "slots": {
-    "source": {
-      "post": "Deep NLP"
-    },
+    "target": [{"post": "Deep NLP"}],
     "scope": null,
     "count": null
   }
@@ -115,9 +113,9 @@ User: "Give me the top 3 structural issues in my latest post"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "structural scope, count=3, no specific post named",
   "slots": {
-    "source": null,
+    "target": null,
     "scope": "structure",
     "count": 3
   }
@@ -133,11 +131,9 @@ User: "Do a full review of the Conversational AI Revolution post"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "named post + full scope",
   "slots": {
-    "source": {
-      "post": "Conversational AI Revolution"
-    },
+    "target": [{"post": "Conversational AI Revolution"}],
     "scope": "full",
     "count": null
   }
@@ -278,7 +274,7 @@ User: "Split my deep learning overview into a multi-part series, maybe 3 parts"
     },
     'remember': {
         'instructions': 'Route a memory operation — determine whether to store (L1 session), save as preference (L2), or retrieve from knowledge (L3).',
-        'rules': '''- key (elective): What to remember or look up.
+        'rules': '''- topic (elective): What to remember or look up.
 - scope (elective): Where to store or retrieve. Choose from: session (current session only), user (persistent preferences), global (business knowledge).''',
         'slots': '',
         'examples': '''<positive_example>
@@ -289,9 +285,9 @@ User: "Remember that I prefer technical tone for all tutorial posts"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "user-scope preference about tone",
   "slots": {
-    "key": "technical tone for tutorials",
+    "topic": "technical tone for tutorials",
     "scope": "user"
   }
 }
@@ -306,9 +302,9 @@ User: "Keep in mind we're targeting the methods section for this session"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "session-scope note about current focus",
   "slots": {
-    "key": "targeting methods section",
+    "topic": "targeting methods section",
     "scope": "session"
   }
 }

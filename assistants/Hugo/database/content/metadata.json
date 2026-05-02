@@ -47,9 +47,9 @@
       ],
       "color": "",
       "created_at": "2026-03-12T05:47:32.625914+00:00",
-      "updated_at": "2026-04-16T00:29:17.421720+00:00",
-      "preview": "- Brief history of sequence models before attention (RNNs, LSTMs)\n- The core problem: information bottleneck in encoder-decoder architectures\n- What attention promises: dynamic, context-aware focus\n- Thesis: attention doesn't just help models \u2014 it fundamentally changes how they \"think\"",
-      "word_count": 212,
+      "updated_at": "2026-05-01T06:37:26.962948+00:00",
+      "preview": "For most of the 2010s, the dominant approach to sequence modeling was the recurrent neural network. RNNs, and their more capable variants like LSTMs, processed text one token at a time, passing a hidden state forward through the sequence. This worked well for short inputs, but as sequences grew...",
+      "word_count": 837,
       "filename": "drafts/insights-around-attention-mechanism.md"
     },
     {
@@ -951,9 +951,9 @@
       "tags": [],
       "color": "",
       "created_at": "2026-04-30T17:07:15.383220+00:00",
-      "updated_at": "2026-04-30T17:07:15.383220+00:00",
+      "updated_at": "2026-05-02T02:57:16.292359+00:00",
       "preview": "Global data traffic has roughly doubled every few years, and the physical infrastructure behind it has had to keep pace. Unlike most industrial machines, datacenter servers don't really get a break. They run at or near full load around the clock, so their energy draw is constant rather than...",
-      "word_count": 818,
+      "word_count": 981,
       "filename": "drafts/energy-needs-of-datacenters.md"
     }
   ]

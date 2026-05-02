@@ -1,7 +1,7 @@
 PROMPTS = {
     'recap': {
-        'instructions': 'Read back facts from the current session scratchpad (L1) — decisions, constraints, or references stored earlier.',
-        'rules': '- key (optional): A specific topic to recall. If omitted, returns everything from the session.',
+        'instructions': 'Read back facts from the current session scratchpad (L1) — decisions, constraints, or references stored earlier. The scratchpad holds natural-language snippets, so the lookup is a free-text topic, not a structured key.',
+        'rules': '- topic (optional): A free-text description of what to recall. If omitted, returns everything from the session.',
         'slots': '',
         'examples': '''<positive_example>
 ## Conversation History
@@ -11,9 +11,9 @@ User: "What did we decide about the post topic earlier?"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "the user is asking about a prior decision around the post's topic",
   "slots": {
-    "key": "post topic"
+    "topic": ["post topic"]
   }
 }
 ```
@@ -27,17 +27,18 @@ User: "Recap everything from this session"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "no specific topic — return all snippets",
   "slots": {
-    "key": null
+    "topic": null
   }
 }
 ```
 </positive_example>''',
     },
     'store': {
-        'instructions': 'Save a key-value pair to the session scratchpad (L1) for later use in this session.',
-        'rules': '- entry (required): A dict with "key" and "value". Parse the statement into a structured pair: "focus on introduction" → {"key": "focus", "value": "introduction"}.',
+        'instructions': 'Save a natural-language snippet to the session scratchpad (L1) for later use in this session. L1 stores reflective summaries (per memory_manager spec), not structured key-value pairs — extract the user\'s statement as a single sentence.',
+        'rules': '''- target (required): The snippet to save, as a natural-language sentence. Quote/paraphrase the salient observation rather than splitting into key/value.
+- origin (optional): The flow_name that produced this snippet, if the user mentions one (e.g., "from outline", "after the audit"). Usually omitted.''',
         'slots': '',
         'examples': '''<positive_example>
 ## Conversation History
@@ -47,12 +48,10 @@ User: "Note that the user wants to focus on the introduction next"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "save the user's stated focus as a free-text snippet for L1",
   "slots": {
-    "entry": {
-      "key": "focus",
-      "value": "introduction"
-    }
+    "target": ["The user wants to focus on the introduction next."],
+    "origin": null
   }
 }
 ```
@@ -66,20 +65,19 @@ User: "Save that the target audience is intermediate ML practitioners"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "narrative snippet about audience — no producing flow named",
   "slots": {
-    "entry": {
-      "key": "target_audience",
-      "value": "intermediate ML practitioners"
-    }
+    "target": ["The target audience is intermediate ML practitioners."],
+    "origin": null
   }
 }
 ```
 </positive_example>''',
     },
     'recall': {
-        'instructions': 'Look up persistent user preferences from long-term memory (L2) — default tone, word count targets, stylistic rules.',
-        'rules': '- key (optional): Which preference to look up. If omitted, returns all saved preferences.',
+        'instructions': 'Look up persistent user preferences from long-term memory (L2) — default tone, word count targets, stylistic rules. L2 keys are short specific words (e.g., "default_tone", "word_count_target"); use `target` for the key. The `preference` slot captures any free-text descriptor when the user is fuzzy ("my style preferences").',
+        'rules': '''- target (required): The specific preference key to look up. A short word or phrase (e.g., "default tone", "post length"). If the user is fuzzy and doesn't name a key, leave null and rely on `preference`.
+- preference (optional): Free-text description of what the user is asking for, when the key is not specific.''',
         'slots': '',
         'examples': '''<positive_example>
 ## Conversation History
@@ -89,9 +87,10 @@ User: "What's my preferred default tone?"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "specific preference key named",
   "slots": {
-    "key": "default tone"
+    "target": [{"snip": "default tone"}],
+    "preference": null
   }
 }
 ```
@@ -105,9 +104,10 @@ User: "Look up my writing preferences"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "fuzzy ask — no specific key, use preference for free-text",
   "slots": {
-    "key": null
+    "target": null,
+    "preference": ["writing preferences"]
   }
 }
 ```
@@ -189,8 +189,8 @@ User: "Look up our FAQ on heading style"
 </positive_example>''',
     },
     'reference': {
-        'instructions': 'Dictionary and thesaurus lookup — definitions, synonyms, antonyms, or usage examples.',
-        'rules': '- word (required): The word to look up. Extract just the target word.',
+        'instructions': 'Dictionary and thesaurus lookup — definitions, synonyms, antonyms, or usage examples. The word being looked up is grounded as `target`; store the bare string in the `snip` field.',
+        'rules': '- target (required): The word to look up. Emit as a single-element list with the word in `snip`.',
         'slots': '',
         'examples': '''<positive_example>
 ## Conversation History
@@ -200,9 +200,9 @@ User: "What's a synonym for important?"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "lookup target = important",
   "slots": {
-    "word": "important"
+    "target": [{"snip": "important"}]
   }
 }
 ```
@@ -216,9 +216,9 @@ User: "Give me formal alternatives to the word good"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "lookup target = good",
   "slots": {
-    "word": "good"
+    "target": [{"snip": "good"}]
   }
 }
 ```

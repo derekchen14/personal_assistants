@@ -12,7 +12,7 @@ This skill removes a section from a post, or deletes an entire draft / note. Pub
 
 ## Process
 
-1. Read `<resolved_details>` for `source` (post target) and `type` (one of: `section`, `draft`, `note`, `post`, `paragraph`).
+1. Read `<resolved_details>` for `target` (the entity to remove) and `type` (one of: `section`, `draft`, `note`, `post`, `paragraph`).
 2. Call `read_metadata(post_id)` to confirm the target exists and check its `status`.
 3. **Section removal** (`type=section` or `type=paragraph`): call `remove_content(post_id, sec_id, target=...)`.
 4. **Draft / note deletion** (`type=draft` or `type=note`): verify `status` is `draft` or `note`, then call `delete_post(post_id)`.

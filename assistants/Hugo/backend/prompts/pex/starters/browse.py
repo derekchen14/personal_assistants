@@ -22,10 +22,10 @@ def build(flow, resolved:dict, user_text:str) -> str:
 
 def _format_parameters(flow, resolved:dict) -> str:
     lines = []
-    tags = flow.slots.get('tags')
+    query = flow.slots.get('query')
     target = flow.slots.get('target')
-    if tags and tags.check_if_filled():
-        lines.append(f'Tags: {render_freetext(tags)}')
+    if query and query.check_if_filled():
+        lines.append(f'Tags: {render_freetext(query)}')
     if target and target.check_if_filled():
         val = target.values[0] if target.values else ''
         lines.append(f'Target: {val}')

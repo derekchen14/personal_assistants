@@ -30,16 +30,16 @@ class ResearchPolicy(BasePolicy):
                 return DisplayFrame()
 
     def browse_policy(self, flow, state, context, tools):
-        tags_slot = flow.slots['tags']
-        if not tags_slot.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'tags'})
+        query_slot = flow.slots['query']
+        if not query_slot.check_if_filled():
+            self.ambiguity.declare('partial', metadata={'missing_entity': 'query'})
             return DisplayFrame(flow.name())
 
         target_slot = flow.slots['target']
         # Default-commit: target is elective; commit 'note' when unset.
         target = str(target_slot.to_dict()) if target_slot.check_if_filled() else 'note'
 
-        tags = tags_slot.to_dict()
+        tags = query_slot.to_dict()
         params = {'tags': tags}
         if target == 'note':
             params['status'] = 'note'

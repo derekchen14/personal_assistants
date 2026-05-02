@@ -14,8 +14,12 @@ This skill narrates a side-by-side comparison of two posts. The policy has resol
 
 1. Read both post summaries from the `<resolved_details>` block.
 2. Call `compare_style(left=<post_id_1>, right=<post_id_2>)` to get structural metrics (heading depth, paragraph length, vocabulary overlap).
-3. Call `read_section` for any specific section the user named, on whichever side needs deeper detail.
-4. Summarize the differences in plain prose. Lead with the biggest divergence (e.g., "Left runs 30% shorter; right uses far more H3 sub-sections.") and note one similarity.
+3. Only if needed, call `read_section` for any specific section the user named, on whichever side needs deeper detail. It should be relatively rare that you need to do this.
+4. Summarize the differences in plain prose. Lead with the biggest divergences:
+  a. the most critical callout occurs if a post makes conflicting arguments or different stance on the same subject
+  b. the next level is if the posts have noticeably different styles, as if written by different people
+  c. fall back on technical differences, like length or number of tokens, if there is nothing else to discuss
+  d. also note any continuations in a theme or nuanced patterns between both posts
 
 ## Error Handling
 

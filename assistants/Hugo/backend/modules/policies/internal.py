@@ -24,12 +24,12 @@ class InternalPolicy:
             case _: return DisplayFrame(self.config)
 
     def recap_policy(self, flow, tools):
-        slot = flow.slots['key']
-        if slot.check_if_filled():
-            key = slot.to_dict()
-            val = self.memory.read_scratchpad(key)
+        topic = flow.slots['topic']
+        if topic.check_if_filled():
+            query = topic.to_dict()
+            val = self.memory.read_scratchpad(query)
             if val:
-                self.memory.write_scratchpad(f'recap:{key}', val)
+                self.memory.write_scratchpad(f'recap:{query}', val)
         flow.status = 'Completed'
         return DisplayFrame(flow.name())
 
@@ -38,9 +38,9 @@ class InternalPolicy:
         return DisplayFrame(flow.name())
 
     def recall_policy(self, flow, tools):
-        slot = flow.slots['key']
-        if slot.check_if_filled():
-            key = slot.to_dict()
+        target = flow.slots['target']
+        if target.check_if_filled():
+            key = target.values[0].get('snip', '')
             val = self.memory.read_preference(key)
             if val:
                 self.memory.write_scratchpad(f'recall:{key}', str(val))
@@ -48,9 +48,12 @@ class InternalPolicy:
         return DisplayFrame(flow.name())
 
     def store_policy(self, flow, tools):
-        entry = flow.slots['entry']
-        if entry.filled:
-            self.memory.write_scratchpad(entry.value['key'], entry.value['value'])
+        target = flow.slots['target']
+        if target.check_if_filled():
+            origin_slot = flow.slots['origin']
+            origin = origin_slot.value if origin_slot.check_if_filled() else flow.flow_type
+            for snippet in target.values:
+                self.memory.write_scratchpad(origin, snippet)
         flow.status = 'Completed'
         return DisplayFrame(flow.name())
 
@@ -77,8 +80,8 @@ class InternalPolicy:
         return DisplayFrame(flow.name())
 
     def study_policy(self, flow, tools):
-        grounding = flow.slots[flow.entity_slot]
-        post_id = grounding.values[0]['post'] if grounding.check_if_filled() else ''
+        source = flow.slots['source']
+        post_id = source.values[0]['post'] if source.check_if_filled() else ''
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         if result['_success']:
             self.memory.write_scratchpad(

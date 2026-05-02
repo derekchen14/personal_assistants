@@ -93,6 +93,8 @@ class BasePolicy:
     def _resolve_source_ids(self, flow, state, tools):
         """Extract (post_id, sec_id) from entity slot. Syncs state.active_post
         as a side-effect so downstream turns can rely on the dialogue state."""
+        if flow.entity_slot is None:
+            return None, None
         grounding = flow.slots[flow.entity_slot]
         if grounding.slot_type not in ('source', 'target', 'removal'):
             return None, None

@@ -40,7 +40,10 @@ OUTLINE_PROMPT = {
         '`null`.\n\n'
         '### depth (optional)\n\n'
         'Type: LevelSlot (integer 1-3). 1 = headings only, 2 = headings + bullets, 3 = bullets + '
-        'sub-bullets. Section counts never fill this slot.'
+        'sub-bullets. Section counts never fill this slot.\n\n'
+        '### proposals (optional)\n\n'
+        'Type: ProposalSlot. System-managed — populated by the policy when the agent presents '
+        'outline options for the user to pick from. Do NOT fill from user utterance; emit `null`.'
     ),
     'examples': '''<positive_example>
 ## Conversation History

@@ -130,6 +130,7 @@ Moreover we also have guarantees for different components:
   - active_post attribute - the value may be None, but the attribute always exists
   - booleans for `keep_going`, `has_issues`, `has_plan`, `natural_birth`
   - access to the predicted flows and intent
+  - The world always starts with a valid state, so we don't need to check if a previous state exists
 - **DisplayFrame invariants** — a frame always has:
   - `origin: str` (may be empty)
   - `blocks: list` (may be empty)

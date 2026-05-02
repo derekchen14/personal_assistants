@@ -112,6 +112,7 @@ class InternalParentFlow(BaseFlow):
     self.parent_type = 'Internal'
     self.interjected = True
     self.origin = ''
+    self.entity_slot = None
 
 
 # ── Domain Parents ───────────────────────────────────────────────────────
@@ -144,10 +145,12 @@ class ConverseParentFlow(BaseFlow):
   def __init__(self):
     super().__init__()
     self.parent_type = 'Converse'
+    self.entity_slot = 'topic'
 
 
 class PlanParentFlow(BaseFlow):
   def __init__(self):
     super().__init__()
     self.parent_type = 'Plan'
+    self.entity_slot = 'topic'
     self.structured_plan: dict = {}

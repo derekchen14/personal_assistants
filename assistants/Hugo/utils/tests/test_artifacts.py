@@ -10,6 +10,8 @@ All checks are offline. No API keys required, no network, no LLM. Run:
 """
 from __future__ import annotations
 
+import inspect
+import json
 import re
 from pathlib import Path
 
@@ -17,10 +19,12 @@ import pytest
 import yaml
 
 from backend.components.flow_stack import flow_classes
+from backend.components.flow_stack.slots import ExactSlot
 from backend.components.prompt_engineer import PromptEngineer
 from backend.modules.nlu import (
     _intent_schema, _flow_detection_schema, _fill_slots_schema,
 )
+from backend.prompts.nlu import PROMPTS as _SLOT_FILL_PROMPTS
 
 
 SKILL_DIR = Path(__file__).resolve().parents[2] / 'backend' / 'prompts' / 'pex' / 'skills'
@@ -218,3 +222,127 @@ def test_lint_detects_rule_B():
 def test_lint_detects_rule_C():
     bad = {'type': 'object', 'additionalProperties': {'type': 'string'}}
     assert any(rule == 'C' for _, rule, _ in _lint_schema(bad))
+
+
+# ── 4. Flow declaration invariants ───────────────────────────────────────
+# Catch slot-name drift between flow.entity_slot, flow.slots dict keys,
+# fill_slot_values reads, and the NLU prompt's hand-authored slot headings.
+# Surfaced after a RemoveFlow crash where entity_slot defaulted to 'source'
+# but the slot dict declared 'target' — the kind of bug that's invisible
+# until the flow is actually exercised end-to-end.
+
+@pytest.mark.parametrize('flow_name', sorted(flow_classes.keys()))
+def test_entity_slot_is_a_declared_slot(flow_name):
+    flow = flow_classes[flow_name]()
+    if flow.parent_type == 'Internal':
+        return  # Internal flows opt out of grounding by family — no entity required.
+    assert flow.entity_slot in flow.slots, (
+        f'{flow_name}: entity_slot={flow.entity_slot!r} but flow.slots keys are '
+        f'{sorted(flow.slots.keys())!r}. Either set self.entity_slot in __init__ '
+        f'or rename the slot dict key to match.'
+    )
+
+
+@pytest.mark.parametrize('flow_name', sorted(flow_classes.keys()))
+def test_target_slot_is_not_an_exact_slot(flow_name):
+    """Rule: the `'target'` dict key must never pair with `ExactSlot`. ExactSlot is
+    shape-anonymous; `'target'` carries an entity-grounding role that needs structured
+    payload (TargetSlot/RemovalSlot) or another shape-explicit class. Bare strings live
+    in TargetSlot's `snip` field — same pattern cite uses for snippet-citation targets."""
+    flow = flow_classes[flow_name]()
+    if 'target' not in flow.slots:
+        return
+    slot = flow.slots['target']
+    assert not isinstance(slot, ExactSlot), (
+        f"{flow_name}: slots['target'] is ExactSlot. Use TargetSlot (with entity_part) for "
+        f"bare-string targets, RemovalSlot for destructive targets, or DictionarySlot for "
+        f"key-value writes. ExactSlot under 'target' is shape-anonymous and forbidden."
+    )
+
+
+_VALUES_PATTERNS = (
+    re.compile(r"values\.get\(\s*['\"]([a-z_]+)['\"]"),    # values.get('x', ...)
+    re.compile(r"values\[\s*['\"]([a-z_]+)['\"]\s*\]"),     # values['x']
+    re.compile(r"['\"]([a-z_]+)['\"]\s+in\s+values"),       # 'x' in values
+)
+
+
+def _fill_slot_keys(src:str) -> set[str]:
+    keys:set[str] = set()
+    for pattern in _VALUES_PATTERNS:
+        keys.update(pattern.findall(src))
+    return keys
+
+
+@pytest.mark.parametrize('flow_name', sorted(flow_classes.keys()))
+def test_fill_slot_values_reads_declared_keys(flow_name):
+    flow = flow_classes[flow_name]()
+    src = inspect.getsource(flow.fill_slot_values)
+    keys_read = _fill_slot_keys(src)
+    declared = set(flow.slots.keys())
+    bogus = keys_read - declared
+    assert not bogus, (
+        f'{flow_name}.fill_slot_values reads {sorted(bogus)!r} from `values`, '
+        f'but declared slot keys are {sorted(declared)!r}. NLU output for those '
+        f'keys will be silently dropped.'
+    )
+
+
+_HEADING_PATTERN = re.compile(r'^###\s+([a-z_]+)\s+\(', re.MULTILINE)
+
+
+@pytest.mark.parametrize('flow_name', sorted(flow_classes.keys()))
+def test_prompt_slot_headings_match_flow_slots(flow_name):
+    """Each `### name (priority)` heading in the NLU slot-fill prompt must
+    name a real slot AND every declared slot must have a heading. The auto-generated
+    JSON schema is built from flow.slots.keys() so it can't drift, but the prompt's
+    hand-authored prose can — silently confusing the LLM about which key to fill."""
+    if flow_name not in _SLOT_FILL_PROMPTS:
+        pytest.skip(f'{flow_name}: no NLU slot-fill prompt registered')
+    slots_md = _SLOT_FILL_PROMPTS[flow_name].get('slots', '') or ''
+    if not slots_md.strip():
+        pytest.skip(f'{flow_name}: prompt uses procedural slot rendering')
+    flow = flow_classes[flow_name]()
+    headings = set(_HEADING_PATTERN.findall(slots_md))
+    declared = set(flow.slots.keys())
+    bogus = headings - declared
+    missing = declared - headings
+    assert not bogus, (
+        f'{flow_name} PROMPTS slot block declares headings {sorted(bogus)!r} '
+        f'that are not in flow.slots ({sorted(declared)!r}). Rename the heading '
+        f'or the slot dict key so they match.'
+    )
+    assert not missing, (
+        f'{flow_name} PROMPTS slot block is missing headings for {sorted(missing)!r} '
+        f'(declared in flow.slots but absent from the prose). Add `### {{name}} (priority)` '
+        f'headings or switch to procedural rendering by setting slots="".'
+    )
+
+
+_FENCED_JSON = re.compile(r'```json\s*(\{.*?\})\s*```', re.DOTALL)
+
+
+@pytest.mark.parametrize('flow_name', sorted(flow_classes.keys()))
+def test_few_shot_example_keys_match_flow_slots(flow_name):
+    """Top-level `slots` keys in fenced ```json``` blocks inside `examples` must be
+    declared in `flow.slots`. Catches CANCEL_PROMPT-style drift where prose examples
+    name a stale slot key while the schema (auto-generated) emits the canonical one."""
+    if flow_name not in _SLOT_FILL_PROMPTS:
+        pytest.skip(f'{flow_name}: no NLU slot-fill prompt registered')
+    examples = _SLOT_FILL_PROMPTS[flow_name].get('examples', '') or ''
+    if not examples.strip():
+        pytest.skip(f'{flow_name}: no examples')
+    declared = set(flow_classes[flow_name]().slots.keys())
+    bogus = set()
+    for block in _FENCED_JSON.findall(examples):
+        try:
+            payload = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        slots_obj = payload.get('slots') or {}
+        if isinstance(slots_obj, dict):
+            bogus |= (set(slots_obj.keys()) - declared)
+    assert not bogus, (
+        f'{flow_name} examples reference top-level slot keys {sorted(bogus)!r} that are not in '
+        f'flow.slots ({sorted(declared)!r}). Update the example JSON to match the canonical keys.'
+    )

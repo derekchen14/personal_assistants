@@ -113,8 +113,8 @@ def _setup_undo_no_slots(flow):
 
 
 def _setup_cancel_with_source(flow, post_id):
-    # CancelFlow's entity_slot is 'remove' (RemovalSlot, SourceSlot subclass)
-    flow.slots['remove'].add_one(post=post_id)
+    # CancelFlow's entity_slot is 'target' (RemovalSlot, SourceSlot subclass)
+    flow.slots['target'].add_one(post=post_id)
 
 
 def _setup_cancel_no_source(flow):
@@ -396,7 +396,6 @@ def _setup_audit_with_post(flow, post_id):
 
 def _setup_release_happy(flow, post_id):
     flow.slots['source'].add_one(post=post_id)
-    flow.slots['channel'].add_one('medium')
 
 
 def _setup_syndicate_no_channel(flow, post_id):

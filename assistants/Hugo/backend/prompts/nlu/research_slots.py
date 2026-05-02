@@ -250,9 +250,9 @@ BROWSE_PROMPT = {
         'note-leaning phrasing points at the saved notes, and explicit catch-alls cover both.'
     ),
     'rules': (
-        '1. `tags` is a list of canonical tags. Set: ai, agents, ambiguity, conference, data-strategy, '
-        'dialogue, explainer, gpu, lists, machine-learning, modeling, nlp, product-strategy, research, '
-        'rl, startups, trends.\n'
+        '1. `query` is a list of canonical tags forming the search filter. Tag set: ai, agents, '
+        'ambiguity, conference, data-strategy, dialogue, explainer, gpu, lists, machine-learning, '
+        'modeling, nlp, product-strategy, research, rl, startups, trends.\n'
         '2. Map close synonyms conservatively: "AI/ML" → ai; "reinforcement learning" → rl; "NLP topics" '
         '→ nlp; "agent stuff" → agents. Drop phrases without a clean match.\n'
         '3. `target` defaults to inference from wording: "topics", "tags", "subjects" → \'tag\'; "notes", '
@@ -262,11 +262,11 @@ BROWSE_PROMPT = {
         '5. Utterances about specific posts, drafts, or titles do NOT belong here — leave both slots null.'
     ),
     'slots': (
-        '### tags (required)\n\n'
-        'Type: FreeTextSlot. List of canonical tags. Set: ai, agents, ambiguity, conference, '
-        'data-strategy, dialogue, explainer, gpu, lists, machine-learning, modeling, nlp, '
-        'product-strategy, research, rl, startups, trends. Map close synonyms conservatively. Empty '
-        'list means no tag filter.\n\n'
+        '### query (required)\n\n'
+        'Type: FreeTextSlot. List of canonical tags forming the search filter. Set: ai, agents, '
+        'ambiguity, conference, data-strategy, dialogue, explainer, gpu, lists, machine-learning, '
+        'modeling, nlp, product-strategy, research, rl, startups, trends. Map close synonyms '
+        'conservatively. Empty list means no tag filter.\n\n'
         '### target (required)\n\n'
         'Type: CategorySlot. Options: tag, note, both. Tells the agent where to search. Tag-leaning '
         'phrasing → \'tag\'; note-leaning → \'note\'; explicit catch-alls → \'both\'. When the user is '
@@ -287,7 +287,7 @@ Active post: None
 {
   "reasoning": "Open-ended discovery, no specific tag named. 'Topics' phrasing leans toward tag-level discovery. Tags is empty (no filter); target is 'tag'.",
   "slots": {
-    "tags": [],
+    "query": [],
     "target": "tag"
   }
 }
@@ -308,7 +308,7 @@ Active post: None
 {
   "reasoning": "'Explainer' is a canonical tag. 'Ideas' phrasing leans toward note.",
   "slots": {
-    "tags": ["explainer"],
+    "query": ["explainer"],
     "target": "note"
   }
 }
@@ -331,7 +331,7 @@ Active post: None
 {
   "reasoning": "Tag carries from prior turn ('RL' → 'rl'). Current turn supplies the target via 'my notes' → 'note'.",
   "slots": {
-    "tags": ["rl"],
+    "query": ["rl"],
     "target": "note"
   }
 }
@@ -354,7 +354,7 @@ Active post: None
 {
   "reasoning": "Two canonical tags supplied in current turn. Explicit 'notes and tags' phrasing → target='both'.",
   "slots": {
-    "tags": ["agents", "dialogue"],
+    "query": ["agents", "dialogue"],
     "target": "both"
   }
 }
@@ -375,7 +375,7 @@ Active post: None
 {
   "reasoning": "'Productivity' does not cleanly map to any canonical tag — drop it rather than forcing a closest match. 'Angles' leans tag.",
   "slots": {
-    "tags": [],
+    "query": [],
     "target": "tag"
   }
 }
@@ -396,7 +396,7 @@ Active post: None
 {
   "reasoning": "'AI' maps to canonical 'ai'. 'Stuff' is too vague to lean tag or note — fall back to 'note' per rule 4 (notes are the more common browse object when not clearly tag-level).",
   "slots": {
-    "tags": ["ai"],
+    "query": ["ai"],
     "target": "note"
   }
 }
@@ -419,7 +419,7 @@ Active post: regularization
 {
   "reasoning": "Prior turn was a Find on a specific post. Current turn switches intent with 'actually...instead' to browsing notes by tag. Active post 'regularization' is irrelevant to the new browse — ignore it. Tag = 'agents'; target = 'note'.",
   "slots": {
-    "tags": ["agents"],
+    "query": ["agents"],
     "target": "note"
   }
 }
@@ -442,7 +442,7 @@ Active post: None
 {
   "reasoning": "Tags accumulate across turns: 'modeling' from the first turn, 'nlp' and 'research' from the third. 'Saved under' phrasing leans toward note-level discovery.",
   "slots": {
-    "tags": ["modeling", "nlp", "research"],
+    "query": ["modeling", "nlp", "research"],
     "target": "note"
   }
 }

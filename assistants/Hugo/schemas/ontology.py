@@ -8,7 +8,7 @@ class Intent:
     RESEARCH = 'Research'     # browse, summarize, check, inspect, find, compare, diff
     DRAFT = 'Draft'           # outline, refine, cite, compose, add, create, brainstorm
     REVISE = 'Revise'         # rework, polish, tone, audit, simplify, remove, tidy
-    PUBLISH = 'Publish'       # release, syndicate, schedule, preview, confirm, cancel, survey
+    PUBLISH = 'Publish'       # release, syndicate, schedule, preview, promote, cancel, survey
 
 
 class FlowLifecycle(str, Enum):
@@ -103,7 +103,7 @@ FLOW_CATALOG = {
         'intent': Intent.RESEARCH,
         'description': 'Compare two versions of a section side by side — shows additions, deletions, and modifications highlighted so the user can evaluate what changed',
         'output': 'card',
-        'edge_flows': ['polish', 'amend'],
+        'edge_flows': ['polish', 'remove'],
         'policy_path': 'policies.research.diff',
     },
 
@@ -114,7 +114,7 @@ FLOW_CATALOG = {
         'intent': Intent.DRAFT,
         'description': 'Generate an outline including section headings, key bullet points, estimated word counts, and suggested reading order',
         'output': 'list',
-        'edge_flows': ['refine', 'brainstorm', 'write'],
+        'edge_flows': ['refine', 'brainstorm', 'compose'],
         'policy_path': 'policies.draft.outline',
     },
     'refine': {
@@ -146,7 +146,7 @@ FLOW_CATALOG = {
         'intent': Intent.DRAFT,
         'description': 'Add a new section to the post — creates an empty section placeholder with a heading, inserted at a specific position in the post structure',
         'output': 'toast',
-        'edge_flows': ['write', 'refine'],
+        'edge_flows': ['compose', 'refine'],
         'policy_path': 'policies.draft.add',
     },
     'create': {
@@ -181,7 +181,7 @@ FLOW_CATALOG = {
         'intent': Intent.REVISE,
         'description': 'Editing of a specific paragraph, sentence or phrase — improves word choice, tightens sentences, fixes transitions, and smooths flow without changing meaning or structure. The scope is within a single paragraph or image, not across the whole post',
         'output': 'card',
-        'edge_flows': ['rework', 'write', 'refine'],
+        'edge_flows': ['rework', 'compose', 'refine'],
         'policy_path': 'policies.revise.polish',
     },
     'tone': {
@@ -214,7 +214,7 @@ FLOW_CATALOG = {
         'description': 'Remove a section from the post, delete a draft or note',
         'output': 'toast',
         'edge_flows': ['audit', 'rework'],
-        'policy_path': 'policies.revise.amend',
+        'policy_path': 'policies.revise.remove',
     },
     'tidy': {
         'dax': '{3AB}',
@@ -323,7 +323,7 @@ FLOW_CATALOG = {
         'intent': Intent.CONVERSE,
         'description': 'Reverse the most recent writing action — rolls back the last edit, addition, deletion, or formatting change and restores the previous version of the affected section',
         'output': 'toast',
-        'edge_flows': ['chat', 'amend'],
+        'edge_flows': ['chat', 'remove'],
         'policy_path': 'policies.converse.undo',
     },
     'endorse': {
@@ -331,7 +331,7 @@ FLOW_CATALOG = {
         'intent': Intent.CONVERSE,
         'description': "Accept Hugo's proactive suggestion and trigger the corresponding action — e.g., a recommended edit, topic idea, or next step that Hugo offered via suggest",
         'output': 'toast',
-        'edge_flows': ['amend', 'suggest'],
+        'edge_flows': ['remove', 'suggest'],
         'policy_path': 'policies.converse.endorse',
     },
     'dismiss': {
@@ -339,7 +339,7 @@ FLOW_CATALOG = {
         'intent': Intent.CONVERSE,
         'description': "Decline Hugo's proactive suggestion without providing feedback — Hugo notes the preference and moves on without further prompting",
         'output': 'toast',
-        'edge_flows': ['amend', 'chat', 'cancel'],
+        'edge_flows': ['remove', 'chat', 'cancel'],
         'policy_path': 'policies.converse.dismiss',
     },
 
@@ -394,7 +394,7 @@ FLOW_CATALOG = {
         'policy_path': 'policies.plan.remember',
     },
 
-    # ── Internal (7 flows: -tidy) ───────────────────────────────────
+    # ── Internal (7 flows) ─────────────────────────────────────────
 
     'recap': {
         'dax': '{018}',

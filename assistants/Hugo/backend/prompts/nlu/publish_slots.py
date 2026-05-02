@@ -1,35 +1,27 @@
 RELEASE_PROMPT = {
     'instructions': (
-        'The Release Flow immediately publishes a finished post to its primary channel as the terminal '
-        'step in the drafting lifecycle. It typically comes after other flows, such as Compose, Rework, '
-        'and Polish.\n\n'
-        'Identify the post being released and, if named, the channel(s). The post is usually pre-filled '
-        'from the active post; the user may name a different one or several. The channel slot is always '
-        'a list — one item per channel mentioned, empty list when none. Capture channels even when '
-        'misspelled or merely implied.'
+        'The Release Flow publishes a finished post to its primary blog channel as the terminal step in '
+        'the drafting lifecycle. It typically comes after other flows, such as Compose, Rework, and '
+        'Polish.\n\n'
+        'Release always goes to the primary channel — there is no `channel` slot. If the user names a '
+        'specific non-primary channel ("publish to Medium", "post on LinkedIn"), the flow_detection step '
+        'should have routed to syndicate instead. Within release, just identify which post(s) are being '
+        'released. Source is usually pre-filled from the active post; the user may name a different one '
+        'or several.'
     ),
     'rules': (
         '1. Pull `source` from the utterance or carry over from the grounded active post when the '
         'utterance is terse ("publish it"). Strip trailing status words from titles ("draft", "post", '
         '"article", "note").\n'
-        '2. Fill `channel` on any channel mention — explicit name, misspelling, or implied. Map common '
-        'surfaces: "X" / "twitter" → Twitter/X; "lnkdin" → LinkedIn; "my blog" → MoreThanOneTurn.\n'
-        '3. `channel` is always a list of channel name strings. One mention → one-item list. Multiple '
-        'mentions → multi-item list. No mention → empty list `[]`.\n'
-        '4. When the user names multiple posts to release, `source` returns a list of post dicts.\n'
-        '5. Future-time language ("publish tomorrow at 9am") leaves both slots null — the schedule flow '
+        '2. When the user names multiple posts to release, `source` returns a list of post dicts.\n'
+        '3. Future-time language ("publish tomorrow at 9am") leaves source null — the schedule flow '
         'handles that.'
     ),
     'slots': (
         '### source (required)\n\n'
         'Type: SourceSlot. References the post (or list of posts) to publish. Always carries '
         '`{post: <title>}`. If the user says "publish it" with an active post in context, source is '
-        'inherited from `state.active_post`.\n\n'
-        '### channel (required)\n\n'
-        'Type: ChannelSlot. Always a list of channel name strings: `["Substack", ...]`. One channel → '
-        'one-item list. Multiple → multi-item list. None mentioned → empty list `[]`. Common values: '
-        'blog (the user\'s primary, MoreThanOneTurn), Substack, Medium, LinkedIn, Twitter/X, dev.to. '
-        'Fill on misspellings and implied references.'
+        'inherited from `state.active_post`.'
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -43,10 +35,9 @@ Active post: Attention is All You Need
 
 ```json
 {
-  "reasoning": "Terse release after a preview-style turn. Source inherits from active_post. No channel named → empty list.",
+  "reasoning": "Terse release. Source inherits from active_post.",
   "slots": {
-    "source": {"post": "Attention is All You Need"},
-    "channel": []
+    "source": {"post": "Attention is All You Need"}
   }
 }
 ```
@@ -55,7 +46,7 @@ Active post: Attention is All You Need
 <positive_example>
 ## Conversation History
 
-User: "Push the History of Seq2Seq draft live on Substack."
+User: "Push the History of Seq2Seq draft live."
 
 ## Input
 Active post: None
@@ -64,10 +55,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Explicit post + channel. Strip the trailing 'draft' status word from the title. Single channel → one-item list.",
+  "reasoning": "Explicit post; strip trailing 'draft' status word.",
   "slots": {
-    "source": {"post": "History of Seq2Seq"},
-    "channel": ["Substack"]
+    "source": {"post": "History of Seq2Seq"}
   }
 }
 ```
@@ -85,33 +75,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Title given, no channel named. 'Now' is emphasis, not schedule. Channel stays empty.",
+  "reasoning": "Title given. 'Now' is emphasis, not schedule.",
   "slots": {
-    "source": {"post": "crypto investing"},
-    "channel": []
-  }
-}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "Let's publish my regularization post."
-Agent: "Which channel?"
-User: "Substack."
-
-## Input
-Active post: None
-
-## Output
-
-```json
-{
-  "reasoning": "Source from the first turn; channel from the third. Single channel → one-item list.",
-  "slots": {
-    "source": {"post": "regularization"},
-    "channel": ["Substack"]
+    "source": {"post": "crypto investing"}
   }
 }
 ```
@@ -120,51 +86,7 @@ Active post: None
 <edge_case>
 ## Conversation History
 
-User: "Time to publish."
-Agent: "Which channels?"
-User: "Substack and LinkedIn."
-
-## Input
-Active post: Calibrating LLM Judges
-
-## Output
-
-```json
-{
-  "reasoning": "Source inherits from active_post. Two channels in current turn → two-item list.",
-  "slots": {
-    "source": {"post": "Calibrating LLM Judges"},
-    "channel": ["Substack", "LinkedIn"]
-  }
-}
-```
-</edge_case>
-
-<edge_case>
-## Conversation History
-
-User: "Publish on substak."
-
-## Input
-Active post: Trustworthy AI
-
-## Output
-
-```json
-{
-  "reasoning": "Misspelled channel — still fill it. Map 'substak' to canonical 'Substack'. Source inherits from active_post.",
-  "slots": {
-    "source": {"post": "Trustworthy AI"},
-    "channel": ["Substack"]
-  }
-}
-```
-</edge_case>
-
-<edge_case>
-## Conversation History
-
-User: "Release my regularization post and my batch norm draft on my blog."
+User: "Release my regularization post and my batch norm draft."
 
 ## Input
 Active post: None
@@ -173,10 +95,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Two posts in one utterance → source returns a list. 'My blog' maps to the user's primary blog channel (MoreThanOneTurn). Strip 'draft' status word from the second title.",
+  "reasoning": "Two posts in one utterance → source returns a list. Strip 'draft' status word from the second title.",
   "slots": {
-    "source": [{"post": "regularization"}, {"post": "batch norm"}],
-    "channel": ["MoreThanOneTurn"]
+    "source": [{"post": "regularization"}, {"post": "batch norm"}]
   }
 }
 ```
@@ -187,7 +108,7 @@ Active post: None
 
 User: "I'm working on my RL primer."
 Agent: "Should I help you draft a section?"
-User: "Hold off — publish my data augmentation post on Medium instead."
+User: "Hold off — publish my data augmentation post instead."
 
 ## Input
 Active post: RL primer
@@ -196,10 +117,9 @@ Active post: RL primer
 
 ```json
 {
-  "reasoning": "Active post is 'RL primer', but the user explicitly redirects to a different post ('data augmentation post') with 'instead'. Ignore active_post here and use the explicitly named post. Channel is 'Medium' (one-item list).",
+  "reasoning": "Active post is 'RL primer', but the user explicitly redirects to a different post with 'instead'. Use the named post.",
   "slots": {
-    "source": {"post": "data augmentation"},
-    "channel": ["Medium"]
+    "source": {"post": "data augmentation"}
   }
 }
 ```
@@ -1090,8 +1010,8 @@ PROMPTS = {
     'preview': PREVIEW_PROMPT,
     'promote': PROMOTE_PROMPT,
     'cancel': {
-        'instructions': 'Cancel a scheduled publication or unpublish a live post.',
-        'rules': '''- source (required): The post to cancel or unpublish.
+        'instructions': 'Cancel a scheduled publication or unpublish a live post. Cancel is a destructive action, so the post being cancelled is grounded as `target` (RemovalSlot), not `source`.',
+        'rules': '''- target (required): The post to cancel or unpublish. Emit as a list of post dicts.
 - reason (optional): Why it's being cancelled. Only extract if the user provides a reason.''',
         'slots': '',
         'examples': '''<positive_example>
@@ -1102,11 +1022,9 @@ User: "Cancel the scheduled publication of my AI roundup post"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "destructive action — grounded as target (RemovalSlot)",
   "slots": {
-    "source": {
-      "post": "AI roundup"
-    },
+    "target": [{"post": "AI roundup"}],
     "reason": null
   }
 }
@@ -1121,11 +1039,9 @@ User: "Unpublish the crypto post — I found an error in the data"
 
 ```json
 {
-  "reasoning": "(auto-ported from legacy exemplar)",
+  "reasoning": "destructive action with stated reason",
   "slots": {
-    "source": {
-      "post": "crypto"
-    },
+    "target": [{"post": "crypto"}],
     "reason": "found an error in the data"
   }
 }

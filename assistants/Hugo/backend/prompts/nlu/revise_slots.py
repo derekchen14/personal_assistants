@@ -326,7 +326,10 @@ POLISH_PROMPT = {
         'less academic", "shorter". Leave null on vague single-word directives like "better".\n\n'
         '### image (optional)\n\n'
         'Type: ImageSlot. Fires only when the user asks to add or edit an image caption or to '
-        'regenerate the current image. Leave null when a picture is not present and not mentioned.'
+        'regenerate the current image. Leave null when a picture is not present and not mentioned.\n\n'
+        '### suggestions (elective)\n\n'
+        'Type: ChecklistSlot. System-managed — populated by the policy when the agent proposes polish '
+        'options. Do NOT fill from user utterance; emit `null`.'
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -555,7 +558,10 @@ TONE_PROMPT = {
         '### custom_tone (elective)\n\n'
         'Type: ExactSlot. A free-form tone description when the user\'s phrasing doesn\'t match a '
         'canonical option. Also filled when the user names a channel that maps to multiple canonicals '
-        '— store the channel phrase here so the policy can resolve.'
+        '— store the channel phrase here so the policy can resolve.\n\n'
+        '### suggestions (elective)\n\n'
+        'Type: ChecklistSlot. System-managed — populated by the policy after the agent proposes tone '
+        'options. Do NOT fill from user utterance; emit `null`.'
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -780,7 +786,10 @@ AUDIT_PROMPT = {
         '### threshold (optional)\n\n'
         'Type: ProbabilitySlot. AI-likelihood cutoff in [0, 1] — sections with a score above this '
         'are flagged. Fill on explicit probability language; percentages convert (\'80%\' → 0.8). '
-        'Leave null on vague qualifiers like \'strict\' so the policy can default.'
+        'Leave null on vague qualifiers like \'strict\' so the policy can default.\n\n'
+        '### delegates (optional)\n\n'
+        'Type: ChecklistSlot. System-managed — populated by the policy after sub-flows return audit '
+        'findings. Do NOT fill from user utterance; emit `null`.'
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -1000,7 +1009,10 @@ SIMPLIFY_PROMPT = {
         '### guidance (optional)\n\n'
         'Type: FreeTextSlot. A list of specific user directives about what to cut or how to '
         'simplify. Captures phrases like "strip the academic hedging", "cut the historical '
-        'preamble", "remove every other adjective". Leave null on bare simplify requests.'
+        'preamble", "remove every other adjective". Leave null on bare simplify requests.\n\n'
+        '### suggestions (elective)\n\n'
+        'Type: ChecklistSlot. System-managed — populated by the policy when the agent proposes '
+        'simplification options. Do NOT fill from user utterance; emit `null`.'
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -1193,8 +1205,8 @@ REMOVE_PROMPT = {
         'correct delete tool. Remove is distinct from Rework (which edits in place) and from '
         'Simplify: **Simplify operates at paragraph or sentence scale (shortening inside a '
         'section); Remove operates at section or post scale, a larger unit of deletion.**\n\n'
-        'Extract the target (`source` for text-based entities or `image` for images) and the '
-        'removal type (`type`, required). Source and image are elective; type is required so the '
+        'Extract the target (`target` for text-based entities or `image` for images) and the '
+        'removal type (`type`, required). Target and image are elective; type is required so the '
         'policy knows which tool to call. Map the user\'s noun to the closest of six type '
         'categories.'
     ),
@@ -1202,7 +1214,7 @@ REMOVE_PROMPT = {
         "1. `type` is required. Map user nouns to the closest category: 'article' / 'post' → post; "
         "'draft' → draft; 'section' → section; 'paragraph' / 'sentence' → paragraph; 'note' / "
         "'snippet' → note; 'image' / 'photo' / 'diagram' → image.\n"
-        "2. `source` fills when the target is text-based. Section-level removals fill `sec`. "
+        "2. `target` fills when removing a text-based entity. Section-level removals fill `sec`. "
         "Paragraph-level removals fill BOTH `sec` (the parent section, when named) AND `snip` (the "
         "paragraph description).\n"
         "3. `image` fills when type='image'. Carries img_type from phrasing (diagram/hero/photo).\n"
@@ -1210,8 +1222,8 @@ REMOVE_PROMPT = {
         "from the active_post."
     ),
     'slots': (
-        '### source (elective)\n\n'
-        'Type: SourceSlot. The text-based target of removal. Always includes `post`; fills `sec` '
+        '### target (elective)\n\n'
+        'Type: RemovalSlot. The text-based target of removal. Always includes `post`; fills `sec` '
         'for section removal and `snip` for paragraph/sentence/note removal. Paragraph-level '
         'removals fill BOTH sec and snip when both are named.\n\n'
         '### image (elective)\n\n'
@@ -1235,7 +1247,7 @@ Active post: None
 {
   "reasoning": "'Kill' removes the whole draft; 'draft' triggers type='draft'. Strip the trailing 'draft' status word from the title.",
   "slots": {
-    "source": {"post": "RL primer"},
+    "target": {"post": "RL primer"},
     "image": null,
     "type": "draft"
   }
@@ -1257,9 +1269,9 @@ Active post: My Paper
 
 ```json
 {
-  "reasoning": "First turn is a Rework. User pivots to removing the section that was just reworked. Source.sec carries 'Methods' from the prior turn; post inherits from active_post.",
+  "reasoning": "First turn is a Rework. User pivots to removing the section that was just reworked. Target.sec carries 'Methods' from the prior turn; post inherits from active_post.",
   "slots": {
-    "source": {"post": "My Paper", "sec": "Methods"},
+    "target": {"post": "My Paper", "sec": "Methods"},
     "image": null,
     "type": "section"
   }
@@ -1279,9 +1291,9 @@ Active post: My Post
 
 ```json
 {
-  "reasoning": "Paragraph-level removal inside a named section. Source fills post + sec (Conclusion) + snip (third paragraph). Type='paragraph'.",
+  "reasoning": "Paragraph-level removal inside a named section. Target fills post + sec (Conclusion) + snip (third paragraph). Type='paragraph'.",
   "slots": {
-    "source": {"post": "My Post", "sec": "Conclusion", "snip": "third paragraph"},
+    "target": {"post": "My Post", "sec": "Conclusion", "snip": "third paragraph"},
     "image": null,
     "type": "paragraph"
   }
@@ -1303,9 +1315,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "First turn references adding an image (not a remove flow). Current turn removes it. Source carries the post; image captures the hero reference; type='image'.",
+  "reasoning": "First turn references adding an image (not a remove flow). Current turn removes it. Target carries the post; image captures the hero reference; type='image'.",
   "slots": {
-    "source": {"post": "transformer"},
+    "target": {"post": "transformer"},
     "image": {"img_type": "hero", "src": null, "alt": null, "position": null},
     "type": "image"
   }
@@ -1327,9 +1339,9 @@ Active post: RL primer
 
 ```json
 {
-  "reasoning": "First turn is Compose. User pivots to removing a different section than the one just composed. Source.sec switches to 'methods'; type='section'. Post inherits from active_post.",
+  "reasoning": "First turn is Compose. User pivots to removing a different section than the one just composed. Target.sec switches to 'methods'; type='section'. Post inherits from active_post.",
   "slots": {
-    "source": {"post": "RL primer", "sec": "methods"},
+    "target": {"post": "RL primer", "sec": "methods"},
     "image": null,
     "type": "section"
   }
@@ -1349,9 +1361,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "'Snippet' maps to type='note'. Source carries the snippet description.",
+  "reasoning": "'Snippet' maps to type='note'. Target carries the snippet description.",
   "slots": {
-    "source": {"snip": "attention dropout"},
+    "target": {"snip": "attention dropout"},
     "image": null,
     "type": "note"
   }
@@ -1371,9 +1383,9 @@ Active post: My Old Draft
 
 ```json
 {
-  "reasoning": "Terse removal with only active_post as context. Per rule 4, infer type='post' from the active_post — source carries the post title.",
+  "reasoning": "Terse removal with only active_post as context. Per rule 4, infer type='post' from the active_post — target carries the post title.",
   "slots": {
-    "source": {"post": "My Old Draft"},
+    "target": {"post": "My Old Draft"},
     "image": null,
     "type": "post"
   }
@@ -1395,7 +1407,7 @@ Active post: My Post
 {
   "reasoning": "Paragraph-level removal with a multi-paragraph description in snip. Sec names the parent section ('intro'); post inherits.",
   "slots": {
-    "source": {"post": "My Post", "sec": "intro", "snip": "last two paragraphs"},
+    "target": {"post": "My Post", "sec": "intro", "snip": "last two paragraphs"},
     "image": null,
     "type": "paragraph"
   }

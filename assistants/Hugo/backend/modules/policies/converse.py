@@ -30,19 +30,19 @@ class ConversePolicy(BasePolicy):
         return DisplayFrame(origin='chat', thoughts=raw_output)
 
     def preference_policy(self, flow, state, context, tools):
-        if not flow.slots['setting'].check_if_filled():
+        if not flow.slots['target'].check_if_filled():
             convo_history = context.compile_history(look_back=3)
             prompt = f'{convo_history}\n\nExtract the preference key and value. Reply with JSON: {{"key": "...", "value": "..."}}.'
             raw_output = self.engineer(prompt, 'fill_slots')
             parsed = self.engineer.apply_guardrails(raw_output)
             if parsed:
-                flow.fill_slots_by_label({'setting': parsed})
-            if not flow.slots['setting'].check_if_filled():
-                self.ambiguity.declare('specific', metadata={'missing_slot': 'setting'})
+                flow.fill_slots_by_label({'target': parsed})
+            if not flow.slots['target'].check_if_filled():
+                self.ambiguity.declare('specific', metadata={'missing_slot': 'target'})
                 return DisplayFrame(flow.name())
 
         slots = flow.slot_values_dict()
-        setting = slots.get('setting', {})
+        setting = slots.get('target', {})
         if isinstance(setting, dict):
             key = setting.get('key', '')
             value = setting.get('value', '')
@@ -84,6 +84,9 @@ class ConversePolicy(BasePolicy):
         turn_slot = flow.slots['turn_id']
         if turn_slot.check_if_filled():
             params['turn_id'] = str(turn_slot.to_dict())
+        topic_slot = flow.slots['topic']
+        if topic_slot.check_if_filled():
+            params['topic'] = str(topic_slot.to_dict())
         result = tools('explain_action', params)
         flow.status = 'Completed'
         if not result['_success']:

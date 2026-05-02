@@ -50,10 +50,6 @@ class PublishPolicy(BasePolicy):
             self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
             return DisplayFrame(flow.name())
 
-        # Default-commit: channel defaults to 'mt1t' when unset.
-        if not flow.slots['channel'].filled:
-            flow.fill_slot_values({'channel': ['mt1t']})
-
         post_id, _ = self._resolve_source_ids(flow, state, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
@@ -72,9 +68,7 @@ class PublishPolicy(BasePolicy):
                 self.retry_tool(tools, 'update_post',
                     {'post_id': post_id, 'updates': {'status': 'published'}})
             title = tools('read_metadata', {'post_id': post_id})['title'] if post_id else 'the post'
-            channels = list(flow.slots['channel'].values)
-            message = f'Published "{title}" to {", ".join(channels)}.' if channels else f'Published "{title}".'
-            frame.add_block({'type': 'toast', 'data': {'message': message, 'level': 'success'}})
+            frame.add_block({'type': 'toast', 'data': {'message': f'Published "{title}".', 'level': 'success'}})
         return frame
 
     @staticmethod
