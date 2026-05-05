@@ -323,6 +323,26 @@ A policy may self-recurse only if the recursive call enters a different branch �
 
 **Anti-pattern:** treating any self-recursion as dangerous. Some flows naturally recurse ("propose 3 candidates, user picks one, refine if needed") — the contract is the safety, not extra machinery. `OutlineFlow` may NOT `stackon('outline')` itself; other flows may.
 
+### Yield-when-stacked (Converse on top of an active flow)
+
+When a Converse intent pushes onto an already-active flow — typically because the user replied "yes" / "no" / "do option 2" to that flow's `confirmation` ambiguity — the Converse policy should **yield** rather than respond with its own chit-chat skill output. The underlying flow's resolution turn consumes the accept/decline.
+
+```python
+def endorse_policy(self, flow, state, context, tools):
+    if self.flow_stack.stack_size() > 1:
+        flow.status = 'Completed'
+        state.keep_going = True
+        # Optional: write a scratchpad note so the resumed flow knows the
+        # user accepted (rather than re-deriving from convo history alone).
+        self.memory.write_scratchpad(flow.name(), {'accepted': True})
+        return DisplayFrame(flow.name())  # empty yield-frame
+    # ...fall through to the normal chit-chat path
+```
+
+**Why.** Without yielding, the user's "yes" gets answered by Converse with a generic acknowledgement, the underlying flow stays paused, and the originally-promised work never lands. Applies to `endorse` and `dismiss` — the flows that consume explicit accept/decline. Other Converse flows (`chat`, `suggest`, `explain`, `preference`, `undo`) don't carry an accept/decline contract and should not yield.
+
+**Empty yield-frame caveat.** `PEX._validate_frame` allows empty frames when `state.keep_going=True` — the empty frame here is intentional, not a bug for the retry mechanism to chase.
+
 ## 5. Output Budget
 
 Per-flow `max_response_tokens` (set on `BaseFlow.__init__`, default 4096). This is a flow-design decision — it directly constrains what the prompt and skill can produce, so the output shape must be designed against the cap.

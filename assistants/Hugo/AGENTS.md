@@ -115,6 +115,7 @@ Any non-trivial task begins with a plan. While designing the plan, default to **
 - `flow.intent` is a property (no parens); `state.pred_intent` is NLU's guess — past NLU, trust `flow.intent`.
 - Recompute slot fill at policy entry with `slot.check_if_filled()`; `.filled` is stale after earlier turns.
 - Sub-flows pushed via `flow_stack.stackon()` or `fallback()` exit to the user for review unless `state.has_plan` is set — no silent chaining outside a plan.
+- Converse intents that consume accept/decline (`endorse`, `dismiss`) yield to the underlying flow when `flow_stack.stack_size() > 1` — they set `state.keep_going=True` and return an empty frame instead of running their chit-chat skill. See `LESSONS.md` Part II.4 "Yield-when-stacked".
 - One `SourceSlot` per flow maximum. Hugo entity parts: `post`, `sec`, `snip`, `chl`, `ver`.
 - 48 flows across Research(7) / Draft(7) / Revise(7) / Publish(7) / Converse(7) / Plan(6) / Internal(7). Catalog: `flow_stack/flows.py`.
 
