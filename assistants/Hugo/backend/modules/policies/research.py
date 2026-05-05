@@ -1,4 +1,3 @@
-from __future__ import annotations
 from backend.modules.policies.base import BasePolicy
 from backend.components.display_frame import DisplayFrame
 
@@ -11,11 +10,11 @@ class ResearchPolicy(BasePolicy):
         'notes': 'note', 'note': 'note',
     }
 
-    def __init__(self, components:dict):
+    def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
 
-    def execute(self, state, context, tools) -> 'DisplayFrame':
+    def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
 
         match flow.name():
@@ -32,7 +31,7 @@ class ResearchPolicy(BasePolicy):
     def browse_policy(self, flow, state, context, tools):
         query_slot = flow.slots['query']
         if not query_slot.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'query'})
+            self.ambiguity.declare('partial', metadata={'missing': 'query'})
             return DisplayFrame(flow.name())
 
         target_slot = flow.slots['target']
@@ -61,10 +60,9 @@ class ResearchPolicy(BasePolicy):
         return frame
 
     def summarize_policy(self, flow, state, context, tools):
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
-        if not post_id:
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(flow.name())
+        if frame := self._guard_entity(flow): return frame
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
 
         flow_metadata = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         if not flow_metadata['_success']:
@@ -124,15 +122,10 @@ class ResearchPolicy(BasePolicy):
         return DisplayFrame(flow.name(), thoughts=text)
 
     def inspect_policy(self, flow, state, context, tools):
-        grounding = flow.slots[flow.entity_slot]
-        if not grounding.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(flow.name())
+        if frame := self._guard_entity(flow): return frame
 
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
-        if not post_id:
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(flow.name())
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
 
         # Elective-with-default: limit metrics when aspect is filled.
         params = {'post_id': post_id}
@@ -228,34 +221,39 @@ class ResearchPolicy(BasePolicy):
         return [query]
 
     def compare_policy(self, flow, state, context, tools):
-        grounding = flow.slots[flow.entity_slot]
-        if not grounding.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+        if frame := self._guard_entity(flow): return frame
+
+        # Comparison kind drives both the metrics surfaced and the prose framing.
+        # Ask before dispatching when none was named.
+        if not flow.slots['category'].check_if_filled():
+            self.ambiguity.declare('specific',
+                observation='Should I compare metrics, metadata, or tone?',
+                metadata={'missing': 'category'})
             return DisplayFrame(flow.name())
 
-        posts = []
-        for entry in grounding.values[:2]:
-            identifier = entry['post']
-            post_id = self.resolve_post_id(identifier, tools) if identifier else None
-            if post_id:
-                result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
-                if result['_success']:
-                    posts.append(result)
+        grounding = flow.slots[flow.entity_slot]
+        posts = [self._read_post_content(self.resolve_post_id(e['post'], tools), tools)
+                 for e in grounding.values[:2]]
+        if not (posts[0] and posts[1]):
+            named = [e['post'] for e in grounding.values[:2]]
+            return self.error_frame(flow, 'missing_reference',
+                thoughts=f"Could not find one or both posts: {named}.",
+                missing_entity='post')
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
-        left = posts[0] if len(posts) > 0 else {}
-        right = posts[1] if len(posts) > 1 else {}
+        # Skill may declare ambiguity (e.g. missing category); leave flow Active so the
+        # next turn can resolve rather than treating completion as final.
+        if self.ambiguity.present():
+            return DisplayFrame(flow.name())
+
         flow.status = 'Completed'
         frame = DisplayFrame(flow.name(), thoughts=text)
-        frame.add_block({'type': 'compare', 'data': {'left': left, 'right': right}})
+        frame.add_block({'type': 'compare', 'data': {'left': posts[0], 'right': posts[1]}, 'expand': True})
         return frame
 
     def diff_policy(self, flow, state, context, tools):
-        grounding = flow.slots[flow.entity_slot]
-        if not grounding.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(flow.name())
+        if frame := self._guard_entity(flow): return frame
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
@@ -267,10 +265,8 @@ class ResearchPolicy(BasePolicy):
         diff_result = self.engineer.extract_tool_result(tool_log, 'diff_section')
         if diff_result:
             frame.add_block({'type': 'compare', 'data': {
-                'source': diff_result['source'],
-                'target': diff_result['target'],
-                'additions': diff_result['additions'],
-                'deletions': diff_result['deletions'],
-                'diff': diff_result['diff'],
+                'left':    {'title': 'Original', 'content': diff_result['source']},
+                'right':   {'title': 'Updated',  'content': diff_result['target']},
+                'content': diff_result['diff'],
             }})
         return frame
