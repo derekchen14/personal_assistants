@@ -134,36 +134,44 @@ Every domain defines exactly **16 slot types**: 12 universal types shared across
 #### Universal Slots (12)
 
 ```
-BaseSlot
-├── GroupSlot            # multiple items in a list
-│   ├── SourceSlot       # references existing entities (grounding)
-│   │   ├── TargetSlot   # new entities being created
-│   │   └── RemovalSlot  # entities being removed
-│   ├── FreeTextSlot     # free-form text or operations
-│   ├── ChecklistSlot    # ordered steps to check off
-│   └── ProposalSlot     # options to select from
-├── LevelSlot            # single numeric value
-│   ├── PositionSlot     # non-negative integer position
-│   ├── ProbabilitySlot  # 0-1 range [domain-specific, common option]
-│   └── ScoreSlot        # any numeric value [domain-specific, common option]
-├── CategorySlot         # exactly one from a predefined set (8 max, mutually exclusive)
-├── ExactSlot            # specific token or phrase
-├── DictionarySlot       # key-value pairs
-└── RangeSlot            # start/stop interval (often date range)
+BaseSlot                  # abstract base — never instantiated directly
+├── GroupSlot             # holds a list of items
+│   ├── SourceSlot        # references existing entities (grounding)
+│   │   ├── TargetSlot    # new entities being created
+│   │   └── RemovalSlot   # entities being removed
+│   ├── FreeTextSlot      # free-form text or operations
+│   ├── ChecklistSlot     # ordered steps to check off
+│   └── ProposalSlot      # candidate options for confirmation
+├── LevelSlot             # single numeric value with range constraints
+│   ├── PositionSlot      # non-negative integer position
+│   ├── ProbabilitySlot   # 0–1 range [domain-specific, common option]
+│   └── ScoreSlot         # any numeric value [domain-specific, common option]
+├── CategorySlot          # exactly one from a predefined set (≤8, mutually exclusive)
+├── ExactSlot             # specific token or phrase
+├── DictionarySlot        # key-value pairs
+└── RangeSlot             # start/stop interval (often date range)
 ```
+
+`BaseSlot` is the shared abstract parent — it is never used directly. Concrete single-value behavior lives on the specific subclasses (`ExactSlot`, `CategorySlot`, `LevelSlot` and its descendants).
 
 #### Grounding Slots
 
-**SourceSlot** references existing entities. Each entity is `{tab, col, row, ver, rel}` — the hierarchy is built into a single slot. The `entity_part` parameter is optional; when omitted, the slot accepts any entity type.
+**SourceSlot** references existing entities. Each entity is a dict whose fields are domain-specific, matching the domain's `KEY_ENTITIES`. The hierarchy is built into a single slot.
 
-Each domain defines its own grounding entities:
+Each domain defines its own grounding entity vocabulary:
 
-| Domain | Grounding entities |
-|--------|-------------|
-| Dana (Data Analysis) | table, column, row |
-| Hugo (Blog Writing) | post, section, note, platform |
+| Domain | Entity fields |
+|--------|---------------|
+| Dana (Data Analysis) | `{tab, col, row, ver, rel}` — tab=table, col=column, row=row |
+| Hugo (Blog Writing) | `{post, sec, snip, chl, ver}` — post=post, sec=section, snip=snippet, chl=channel |
 
-A flow's grounding slot should be named **`'source'`** (matching `BaseFlow.entity_slot`). One SourceSlot handles the full entity hierarchy — do not split entity parts into separate slots, since a single entity `{tab, col, row}` already encodes the full reference. Not every flow requires a grounding slot (e.g., `chat`, `brainstorm`).
+`ver` is a **verified bool**, not a version int — it flags whether the entity was user-approved vs. agent-predicted. NLU does not predict `ver`; it is set by the grounding layer.
+
+**Canonical name.** A flow's grounding slot is always named `'source'` (matching `BaseFlow.entity_slot`). One SourceSlot per flow — do not split entity parts into separate slots. Not every flow requires a grounding slot (e.g., `chat`, `brainstorm`).
+
+**`entity_part` is optional.** `SourceSlot(min_size=1, entity_part='', priority='required')` accepts any entity type. Setting `entity_part='post'` constrains the slot to that single field.
+
+When a flow needs both a SourceSlot and a FreeTextSlot, name the FreeText something other than `'source'` (e.g., `'context'`).
 
 **TargetSlot → SourceSlot**: Entities being created (new columns, new rows, new posts).
 
@@ -171,34 +179,34 @@ A flow's grounding slot should be named **`'source'`** (matching `BaseFlow.entit
 
 #### Domain-Specific Slots (4 per domain)
 
-Each domain selects 4 additional slot types. Some are common options (like ProbabilitySlot, ScoreSlot) that most domains will include; others are truly unique to the domain. All are real `BaseSlot` subclasses.
+Each domain selects 4 additional slot types. Two are typically common options (`ProbabilitySlot`, `ScoreSlot`) that most domains include; the remaining two are truly unique to the domain. All are real `BaseSlot` subclasses.
 
 | Domain | Common options | Domain-unique |
 |--------|---------------|---------------|
 | Dana | ProbabilitySlot, ScoreSlot | **ChartSlot** (chart reference), **FunctionSlot** (executable code) |
-| Hugo | ProbabilitySlot, ScoreSlot | **PlatformSlot** (publishing destination), **ImageSlot** (hero image, diagram) |
+| Hugo | ProbabilitySlot, ScoreSlot | **ChannelSlot** (publishing destination), **ImageSlot** (hero image, diagram) |
 
 This 12+4 pattern is the scalable architecture for adding new domains. When creating a new assistant:
-1. Copy the 12 universal slot classes from any existing domain's `slots.py`
-2. Select common options (ProbabilitySlot, ScoreSlot) if the domain needs them
-3. Define domain-unique slot types as `BaseSlot` subclasses (total domain-specific = 4)
-4. Define the domain's grounding entity vocabulary
+1. Copy the 12 universal slot classes from any existing domain's `slots.py`.
+2. Select common options (ProbabilitySlot, ScoreSlot) if the domain needs them.
+3. Define domain-unique slot types as `BaseSlot` subclasses (total domain-specific = 4).
+4. Define the domain's grounding entity vocabulary.
 
-### Elective Rule
+### Slot Priority
 
 A slot's priority is one of: `required`, `optional`, `elective`.
 
-- **required** — must be filled before execution
-- **optional** — enhances execution but not needed
-- **elective** — at least one elective slot must be filled (choice among alternatives)
+- **required** — must be filled before execution. Missing → `specific` ambiguity with `metadata={'missing_slot': '<name>'}`.
+- **elective** — at least one of N elective slots must be filled (choice among alternatives). A flow with elective slots must have ≥2 elective options — single-elective is invalid (convert to required or optional).
+- **optional** — nice-to-have. With a defensible default, commit it inline at policy entry. Without, treat absence as OK.
 
-**The elective constraint**: A flow with elective slots must have ≥2 elective options. A single elective is meaningless — convert it to `required` (if the flow needs it) or `optional` (if it doesn't). The `summarize` flow with `chart` and `table` as electives is valid (pick at least one artifact to summarize). A flow with only `format: elective` is invalid — make it `required` or `optional`.
+`flow.is_filled()` already encodes "all required filled AND ≥1 elective filled (if any)." Trust it; don't re-derive.
 
 ### CategorySlot Constraints
 
 A CategorySlot's options list must be:
-- **Mutually exclusive** — selecting one option rules out all others
-- **At most 8 options** — if you need more than 8, the taxonomy is too fine-grained for a slot; consider grouping or using FreeTextSlot instead
+- **Mutually exclusive** — selecting one option rules out all others.
+- **At most 8 options** — if you need more than 8, the taxonomy is too fine-grained; consider grouping or using FreeTextSlot instead.
 
 ### ExactSlot as Category Extension
 
@@ -211,7 +219,7 @@ self.slots = {
 }
 ```
 
-This preserves the structured options for NLU prediction while allowing open-ended input when needed.
+This preserves structured options for NLU prediction while allowing open-ended input when needed.
 
 ## Data Structure
 
@@ -283,24 +291,61 @@ For complex decomposition decisions, the Plan policy can use Language Agent Tree
 
 ---
 
-## Fallback
+## Transitions
 
-Fallbacks may (rarely) occur during policy execution when there are hard-coded fallbacks. The process is:
+Three transition channels, each with different UX. Always set `state.keep_going = True` when chaining so PEX continues to the next flow on the same turn — but **`keep_going` is only valid inside an active Plan**. Outside a Plan, sub-flows pushed by stack-on exit for user review.
 
-1. A new flow is created for the fallback target
-2. **Best-effort slot mapping** transfers slot values where slot names match between the old and new flow; unmatched slots are discarded
-3. Flow metadata is transferred to the new flow
-4. The previous flow is marked as **Invalid** and popped
-5. The new flow is pushed on top of the stack
+### Stack On (prerequisite setup)
+
+The current flow needs another flow's output before it can run. Push the prerequisite, resume after.
+
+```python
+self.flow_stack.stackon('<prereq_flow>')
+state.keep_going = True
+frame = DisplayFrame(flow.name(), thoughts='<reason — surfaces to user via RES>')
+```
+
+### Fallback (re-route to sibling)
+
+The user's intent maps to a different flow than NLU detected. Pop current, push sibling.
+
+```python
+self.flow_stack.fallback('<sibling_flow>')
+state.keep_going = True
+frame = DisplayFrame(flow.name(), thoughts='<why we re-routed>')
+```
+
+The fallback process: a new flow is created for the target; best-effort slot mapping transfers slot values where names match (unmatched slots are discarded); flow metadata transfers; the previous flow is marked Invalid and popped; the new flow is pushed on top.
+
+Use only when the intent genuinely belongs elsewhere — never for skill errors (use error frames) or tool failures (use error frames).
+
+### Yield-When-Stacked (Converse on top of an active flow)
+
+When a Converse intent (`endorse`, `dismiss`) pushes onto an already-active flow during a confirmation resolution turn, the Converse policy should **yield** rather than respond with its own chit-chat skill output. The underlying flow's resolution turn consumes the user's accept/decline.
+
+```python
+def endorse_policy(self, flow, state, context, tools):
+    if self.flow_stack.stack_size() > 1:
+        flow.status = 'Completed'
+        state.keep_going = True
+        # Optional scratchpad note so the resumed flow knows the user accepted.
+        self.memory.write_scratchpad(flow.name(), {'accepted': True})
+        return DisplayFrame(flow.name())  # empty yield-frame
+    # ...fall through to the normal chit-chat path
+```
+
+Without yielding, the user's "yes" gets answered by Converse with a generic acknowledgement, the underlying flow stays paused, and the originally-promised work never lands. Applies to `endorse` and `dismiss` — the flows that consume explicit accept/decline. Other Converse flows (`chat`, `suggest`, `explain`, `preference`, `undo`) don't carry an accept/decline contract and should not yield.
+
+PEX `_validate_frame` allows empty frames when `keep_going=True` — the empty frame here is intentional, not a bug for the retry mechanism to chase.
 
 ## Failure Recovery
 
-Failure recovery is owned by the Agent, not the flow stack itself. When a flow encounters a failure, the following process applies:
+Failure recovery is owned by the Agent, not the flow stack itself. The flow of recovery:
 
-1. **Policy recovery** — The policy in PEX first tries flow-specific recovery (retry, alternative tool call, etc.)
-2. **Declare ambiguity** — If recovery fails, the policy declares an ambiguity at the relevant level via the ambiguity handler
-3. **Agent decides** — The Agent inspects the ambiguity and chooses one of:
-   - **Re-route**: Send to NLU `contemplate` to re-detect and find a fallback flow
-   - **Skip**: Skip the failed step and continue to the next flow in the plan (sets `keep_going`)
-4. **Resolution** — If either method succeeds, the ambiguity is resolved
-5. **Escalate** — If neither works, or if the Agent decides there is no recourse (often when the ambiguity level is `general`), go straight to RES to ask the user for clarification
+1. **Policy classifies the failure** — tool-call failure → error frame with `metadata={'violation': 'tool_error', ...}`; ambiguous user intent → `ambiguity.declare(level, observation=, metadata=)`; malformed skill output → error frame with `metadata={'violation': 'parse_failure'}`.
+2. **Agent decides** based on what was returned:
+   - Tool error and transient → retry once via `BasePolicy.retry_tool(tools, name, params, max_attempts=2)`.
+   - Ambiguity that may indicate the wrong flow → `NLU.contemplate()` to re-route; mark current flow Invalid; best-effort slot mapping to the new flow.
+   - Otherwise → escalate to RES so the user can clarify.
+
+Tool failures are infrastructure, not user-facing questions — never declare ambiguity for them. Ambiguity is the only channel that produces a clarification question. Conflating the two channels hides root cause.

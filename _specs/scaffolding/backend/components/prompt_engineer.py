@@ -1,17 +1,13 @@
-from __future__ import annotations
-
 import json
 import os
 import time
-from types import MappingProxyType
-from typing import Any
-
 import logging
+from types import MappingProxyType
 
 import anthropic
 
 # Domain-specific: import from backend.prompts
-# from backend.prompts.general import build_system, SLOT_7_REMINDER
+# from backend.prompts.general import build_system
 # from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt
 # from backend.prompts.for_nlu import build_slot_filling_prompt
 # from backend.prompts.for_pex import build_skill_system, build_skill_messages
@@ -23,89 +19,78 @@ from backend.modules.templates import get_template as _get_template
 
 log = logging.getLogger(__name__)
 
+# Provider-agnostic dispatch. Swap families with a single token. Per-family
+# tiers map the abstract `low | med | high` levels to concrete model IDs.
+ACTIVE_FAMILY = 'claude'
+FAMILY_TIERS = {
+    'claude':   ('claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-7'),
+    'gemini':   ('gemma-3-27b-it',           'gemini-2.5-flash',  'gemini-2.5-pro'),
+    'gpt':      ('gpt-5-nano',               'gpt-5-mini',        'gpt-5.2'),
+    'together': ('Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen3-80B',    'Qwen/Qwen3-235B-Instruct'),
+}
+_TIERS = ('low', 'med', 'high')
+
 
 class PromptEngineer:
+    """Provider-agnostic prompt interface. Owns model dispatch (via
+    ACTIVE_FAMILY + FAMILY_TIERS), prompt caching, retry/backoff, and
+    structured-output parsing. Exposes `skill_call` (no tools) and
+    `tool_call` (agentic loop) as siblings."""
 
     VERSION = 'v1'
 
-    def __init__(self, config: MappingProxyType):
+    def __init__(self, config:MappingProxyType):
         self.config = config
-        self._models = config.get('models', {})
         self._persona = config.get('persona', {})
         self._resilience = config.get('resilience', {})
         self._api_key = os.getenv('ANTHROPIC_API_KEY')
-        self._client: anthropic.Anthropic | None = None
+        self._client:anthropic.Anthropic|None = None
 
     @property
     def client(self) -> anthropic.Anthropic:
         if self._client is None:
             if not self._api_key:
-                raise RuntimeError(
-                    'ANTHROPIC_API_KEY not set. Set it in .env or environment.'
-                )
+                raise RuntimeError('ANTHROPIC_API_KEY not set. Set it in .env or environment.')
             self._client = anthropic.Anthropic(api_key=self._api_key)
         return self._client
 
-    # ── Model selection ──────────────────────────────────────────────
+    # ── Model selection (tier → family → concrete ID) ───────────────
 
-    def get_model_id(self, call_site: str = 'default') -> str:
-        overrides = self._models.get('overrides', {})
-        if call_site in overrides:
-            mid = overrides[call_site].get('model_id')
-            if mid:
-                return mid
-        return self._models.get('default', {}).get(
-            'model_id', 'claude-sonnet-4-5-20250929'
-        )
-
-    def _get_temperature(self, call_site: str = 'default') -> float:
-        overrides = self._models.get('overrides', {})
-        if call_site in overrides:
-            t = overrides[call_site].get('temperature')
-            if t is not None:
-                return t
-        return self._models.get('default', {}).get('temperature', 0.0)
+    def resolve_model(self, tier:str='med') -> str:
+        """Map an abstract tier (`low | med | high`) to a concrete model ID
+        through the active family. Call sites never reference IDs directly."""
+        if tier not in _TIERS:
+            raise ValueError(f"Unknown tier: {tier!r}. Must be one of {_TIERS}.")
+        return FAMILY_TIERS[ACTIVE_FAMILY][_TIERS.index(tier)]
 
     # ── Core LLM call ────────────────────────────────────────────────
 
-    def call(
-        self,
-        system: str,
-        messages: list[dict],
-        call_site: str = 'default',
-        tools: list[dict] | None = None,
-        max_tokens: int = 4096,
-    ) -> anthropic.types.Message:
+    def call(self, system:str, messages:list[dict], tier:str='med',
+             tools:list[dict]|None=None, max_tokens:int=4096):
+        """Provider-aware single-shot call. Stable system prompt + tools tail
+        get a 1-hour ephemeral cache marker so prompt caching kicks in."""
         llm_cfg = self._resilience.get('llm_retries', {})
         max_attempts = llm_cfg.get('max_attempts', 2)
         backoff_base = llm_cfg.get('backoff_base_ms', 500) / 1000
         backoff_max = llm_cfg.get('backoff_max_ms', 10000) / 1000
 
-        kwargs: dict[str, Any] = {
-            'model': self.get_model_id(call_site),
+        kwargs:dict = {
+            'model': self.resolve_model(tier),
             'max_tokens': max_tokens,
-            'system': system,
+            'system': [{'type': 'text', 'text': system, 'cache_control': {'type': 'ephemeral'}}],
             'messages': messages,
         }
-        temp = self._get_temperature(call_site)
-        if temp > 0:
-            kwargs['temperature'] = temp
         if tools:
-            kwargs['tools'] = tools
+            tail = {**tools[-1], 'cache_control': {'type': 'ephemeral'}}
+            kwargs['tools'] = [*tools[:-1], tail]
 
-        model_id = kwargs['model']
-        log.info('  llm call_site=%s  model=%s', call_site, model_id)
-
+        log.info('  llm tier=%s  family=%s  model=%s', tier, ACTIVE_FAMILY, kwargs['model'])
         last_error = None
         for attempt in range(max_attempts):
             try:
                 return self.client.messages.create(**kwargs)
-            except (
-                anthropic.RateLimitError,
-                anthropic.APITimeoutError,
-                anthropic.InternalServerError,
-            ) as e:
-                last_error = e
+            except (anthropic.RateLimitError, anthropic.APITimeoutError, anthropic.InternalServerError) as ecp:
+                last_error = ecp
                 if attempt < max_attempts - 1:
                     delay = min(backoff_base * (2 ** attempt), backoff_max)
                     time.sleep(delay)
@@ -113,21 +98,39 @@ class PromptEngineer:
                 raise
         raise last_error
 
-    def call_with_tools(
-        self,
-        system: str,
-        messages: list[dict],
-        tools: list[dict],
-        tool_dispatcher,
-        call_site: str = 'skill',
-        max_rounds: int = 10,
-        max_tokens: int = 4096,
-    ) -> tuple[str, list[dict]]:
+    def __call__(self, prompt:str, task:str='default', tier:str='med', max_tokens:int=2048) -> str:
+        """One-shot convenience: `engineer(prompt, task=...)` returns the text
+        from a single call at the requested tier."""
+        system = self.build_system_prompt()
+        messages = [{'role': 'user', 'content': prompt}]
+        response = self.call(system, messages, tier=tier, max_tokens=max_tokens)
+        return ''.join(b.text for b in response.content if b.type == 'text')
+
+    # ── Skill entry points: skill_call vs tool_call ─────────────────
+
+    def skill_call(self, flow, convo_history:str, scratchpad:dict, skill_name:str|None=None,
+                   skill_prompt:str|None=None, resolved:dict|None=None, max_tokens:int=2048) -> str:
+        """Skill execution WITHOUT tools — single-shot LLM call. Returns text.
+        Sibling of tool_call; both load the per-flow skill body and starter."""
+        system, messages = self.build_skill_prompt(flow.name(), getattr(flow, '__dict__', {}),
+                                                   resolved or {}, [], scratchpad, skill_prompt)
+        response = self.call(system, messages, tier='med', max_tokens=max_tokens)
+        return ''.join(b.text for b in response.content if b.type == 'text')
+
+    def tool_call(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict],
+                  tool_dispatcher, skill_name:str|None=None, skill_prompt:str|None=None,
+                  resolved:dict|None=None, max_tokens:int=4096, max_rounds:int=8) -> tuple[str, list[dict]]:
+        """Skill execution WITH tools — agentic loop, 8-iteration cap by default.
+        Returns (text, tool_log). Policies read tool_log via tool_succeeded /
+        extract_tool_result, never walk it directly."""
+        system, messages = self.build_skill_prompt(flow.name(), getattr(flow, '__dict__', {}),
+                                                   resolved or {}, [], scratchpad, skill_prompt)
         msgs = list(messages)
-        tool_log: list[dict] = []
+        tool_log:list[dict] = []
+        text_parts:list[str] = []
 
         for _ in range(max_rounds):
-            response = self.call(system, msgs, call_site, tools, max_tokens)
+            response = self.call(system, msgs, tier='med', tools=tool_defs, max_tokens=max_tokens)
 
             text_parts = []
             tool_uses = []
@@ -144,19 +147,29 @@ class PromptEngineer:
             tool_results = []
             for tu in tool_uses:
                 result = tool_dispatcher(tu.name, tu.input)
-                tool_log.append({
-                    'tool': tu.name,
-                    'input': tu.input,
-                    'result': result,
-                })
-                tool_results.append({
-                    'type': 'tool_result',
-                    'tool_use_id': tu.id,
-                    'content': json.dumps(result, default=str),
-                })
+                tool_log.append({'tool': tu.name, 'input': tu.input, 'result': result})
+                tool_results.append({'type': 'tool_result', 'tool_use_id': tu.id,
+                                     'content': json.dumps(result, default=str)})
             msgs.append({'role': 'user', 'content': tool_results})
 
         return '\n'.join(text_parts) if text_parts else '', tool_log
+
+    # ── Tool-log readers (canonical interface for policies) ─────────
+
+    def tool_succeeded(self, tool_log:list[dict], tool_name:str) -> tuple[bool, dict|None]:
+        """Returns (success, last_result) for the named tool. Policies use
+        this instead of walking tool_log directly."""
+        for entry in reversed(tool_log):
+            if entry['tool'] == tool_name:
+                result = entry.get('result', {})
+                return bool(result.get('_success')), result
+        return False, None
+
+    def extract_tool_result(self, tool_log:list[dict], tool_name:str) -> dict|None:
+        for entry in reversed(tool_log):
+            if entry['tool'] == tool_name:
+                return entry.get('result')
+        return None
 
     # ── Prompt assembly ──────────────────────────────────────────────
 

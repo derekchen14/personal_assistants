@@ -34,14 +34,14 @@ Specific checks:
 
 ### Step 1 — Intent Prediction
 
-Single call to Claude Sonnet. Predicts one of 6 user-facing intents:
+Single LLM call at the `med` tier. Predicts one of 6 user-facing intents:
 
 - **2 universal**: Plan, Converse
-- **4 domain-specific** (verb forms): Read, Prepare, Transform, Schedule
+- **4 domain-specific** (verb forms): each domain defines its own four intent names
 
 The **Internal** intent is never predicted by NLU — it is triggered directly by the Agent for system housekeeping.
 
-### Step 2 — Flow Detection (Majority Vote)
+### Step 2 — Flow Detection (Tiered Ensemble)
 
 Every intent (including Converse and Plan) has flows. Each flow has a standardized name (**dact** — dialog act) and a 3-digit hex ID (**dax**). Dacts and dax codes are defined in domain config (see [Configuration](../utilities/configuration.md)).
 
@@ -54,17 +54,17 @@ Every intent (including Converse and Plan) has flows. Each flow has a standardiz
 - Active flow state (strong signal to continue current flow)
 - Domain context from config
 
-**Multi-model majority vote** (3 escalating rounds). Each model returns a ranked top-N list of dact names. Models within each round run in parallel; if a model fails or times out, skip it and check majority among the rest.
+**Provider-agnostic tiered ensemble** (3 escalating rounds). Voters are addressed by abstract tier (`low`, `med`, `high`); the [Prompt Engineer](../components/prompt_engineer.md) resolves them through `ACTIVE_FAMILY` to concrete model IDs. Voters within each round run in parallel; if a voter fails or times out, skip it and check majority among the rest.
 
-| Round | Models | Agreement needed |
+| Round | Voters | Agreement needed |
 |---|---|---|
-| 1 | Claude Sonnet + Gemini Flash | 2/2 agree on top-1 |
-| 2 | + Claude Opus + Gemini Pro | 3/4 agree on top-1 |
-| 3 | + Claude Opus (extended thinking) | 3/5 agree on top-1 |
+| 1 | 2 × `med` voters | 2/2 agree on top-1 |
+| 2 | + 1 × `high` voter, + 1 alternate `med` | 3/4 agree on top-1 |
+| 3 | + 1 × `high` voter with extended thinking | 3/5 agree on top-1 |
 
 If no majority after round 3 → declare **General** ambiguity via the ambiguity handler.
 
-> **Note**: If Gemini API integration exceeds 1 day of Prompt Engineer work, replace Gemini models (Flash, Pro) with ChatGPT equivalents.
+Swapping providers (Claude → Gemini → GPT → open-source via Together) is a one-line change to `ACTIVE_FAMILY` — no NLU code changes.
 
 #### Flow Deduplication
 
@@ -102,7 +102,7 @@ Re-routes when the initial detection fails. Called by the Agent after a flow enc
 - **Input**: Context coordinator, dialogue state (with filled slots from failed flow), ambiguity handler (with declared ambiguity level + metadata), domain config
 - **Output**: Mutated dialogue state pointing to a different flow
 
-**Single Claude Opus call** with a narrowed search space:
+**Single `high`-tier call** with a narrowed search space:
 
 - **Exclude** the failed flow
 - **Restrict** to related flows using the ambiguity metadata

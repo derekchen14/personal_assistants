@@ -58,7 +58,7 @@ class PEX:
                 context: 'ContextCoordinator') -> tuple[DisplayFrame, bool]:
         active_flow = self.flow_stack.get_active_flow()
         if not active_flow:
-            frame = DisplayFrame(self.config)
+            frame = DisplayFrame()
             return frame, False
 
         flow_name = active_flow.name()
@@ -69,7 +69,7 @@ class PEX:
 
         if flow_name in _UNSUPPORTED:
             self.flow_stack.mark_complete(result={'unsupported': True})
-            frame = self.world.latest_frame() or DisplayFrame(self.config)
+            frame = self.world.latest_frame() or DisplayFrame()
             return frame, False
 
         policy = self._policies.get(active_flow.intent)
@@ -78,19 +78,20 @@ class PEX:
                 active_flow, state, context, self._dispatch_tool,
             )
         else:
-            frame = DisplayFrame(self.config)
+            frame = DisplayFrame()
 
         if active_flow.intent != Intent.PLAN:
             self.flow_stack.mark_complete(result={'flow_name': flow_name})
         self.world.insert_frame(frame)
 
-        if frame.has_content():
-            text_summary = frame.data.get('content', '')
-            if text_summary:
-                self.memory.write_scratchpad(
-                    f'flow:{flow_name}',
-                    f'{flow_name}: {text_summary[:200]}',
-                )
+        if frame.thoughts or frame.blocks:
+            payload = {
+                'version': 1,
+                'turn_number': self.world.context.turn_id,
+                'used_count': 0,
+                'thoughts': frame.thoughts[:200],
+            }
+            self.memory.write_scratchpad(flow_name, payload)
 
         self._verify()
 
@@ -119,12 +120,11 @@ class PEX:
         if required_missing:
             self.ambiguity.declare(
                 'specific',
-                metadata={'missing_slots': required_missing},
                 observation=f'I need the following to proceed: {", ".join(required_missing)}',
+                metadata={'missing_slot': required_missing[0] if len(required_missing) == 1
+                          else '_or_'.join(required_missing)},
             )
-            frame = DisplayFrame(self.config)
-            frame.set_frame('default', {'message': self.ambiguity.ask()})
-            return frame
+            return DisplayFrame(origin=flow.name())
 
         tools = self.get_tools_for_flow(flow)
         for tool in tools:
@@ -134,19 +134,19 @@ class PEX:
                     and caps.get('communicates_externally')):
                 self.ambiguity.declare(
                     'confirmation',
-                    metadata={'tool': tool['name'], 'reason': 'lethal_trifecta'},
                     observation=(
                         f'This action requires your approval because '
                         f'"{tool["name"]}" accesses private data, accepts '
                         f'user input, and communicates externally.'
                     ),
+                    metadata={'reason': 'lethal_trifecta', 'failed_tool': tool['name']},
                 )
-                frame = DisplayFrame(self.config)
-                frame.set_frame('confirmation', {
+                frame = DisplayFrame(origin=flow.name())
+                frame.add_block({'type': 'confirmation', 'data': {
                     'prompt': self.ambiguity.ask(),
                     'confirm_label': 'Approve',
                     'cancel_label': 'Cancel',
-                })
+                }})
                 return frame
 
         return None
@@ -177,10 +177,7 @@ class PEX:
             elif tool_name == 'context_coordinator':
                 return self._dispatch_context_tool(tool_input)
             elif tool_name == 'memory_manager':
-                return self.memory.dispatch_tool(
-                    tool_input.get('action', ''),
-                    tool_input,
-                )
+                return self.memory.dispatch_tool(tool_input.get('action', ''), tool_input)
             elif tool_name == 'flow_stack':
                 return self._dispatch_flow_stack_tool(tool_input)
             else:
@@ -278,13 +275,16 @@ class PEX:
             },
             {
                 'name': 'memory_manager',
-                'description': 'Read/write session scratchpad and user preferences. Actions: read_scratchpad, write_scratchpad, read_preferences',
+                'description': ('Read/write structured session scratchpad and user preferences. '
+                                'Scratchpad keys are flow names; payloads are dicts with envelope '
+                                '{version, turn_number, used_count}. Actions: read_scratchpad, '
+                                'write_scratchpad, read_preferences'),
                 'input_schema': {
                     'type': 'object',
                     'properties': {
                         'action': {'type': 'string', 'enum': ['read_scratchpad', 'write_scratchpad', 'read_preferences']},
-                        'key': {'type': 'string'},
-                        'value': {'type': 'string'},
+                        'name': {'type': 'string'},
+                        'payload': {'type': 'object'},
                     },
                     'required': ['action'],
                 },

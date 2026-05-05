@@ -88,8 +88,8 @@ RES is flow-agnostic at this stage — it only reads the intent from dialogue st
 **Single-flow case** (most common):
 
 **Phase 1 — Template fill**:
-- Look up template: domain override (by dact) → base template (by intent)
-- Fill template slots from: the completed flow object (dact, intent, slot values, tool result), display frame attributes (if present), session scratchpad (metadata gathered by policy, especially for Converse), block metadata (panel_ref — so text can reference the visual, e.g., "preview it on the right")
+- Look up template: domain override (by flow name) → base template (by intent)
+- Fill template slots from: the completed flow object (name, intent, slot values), display frame's five attributes (`origin`, `metadata`, `blocks`, `code`, `thoughts`), session scratchpad findings, and block-type hints (so text can reference the visual, e.g., "preview it on the right")
 - Result: a filled template string (structured but not yet natural-sounding)
 
 **Phase 2 — Naturalize** (skipped if template has `skip_naturalize: true`):
@@ -154,54 +154,43 @@ Called by `respond()` after `generate()`. No-op if no display frame exists on th
 
 ### Pre-Hook: Frame Validation
 
-4 checks:
+3 checks:
 
-1. **Frame exists**: Display frame is present and non-empty.
-2. **Required attributes**: `data` and `display_type` are set.
-3. **Chart type valid**: If `chart_type` specified, it's a supported type in domain config.
-4. **Pagination resolvable**: If `table_id` present, the reference is resolvable.
+1. **Frame exists**: Display frame is present.
+2. **Block payloads well-formed**: each `frame.blocks[i]` carries `type` and `data` consistent with that type's expected shape (e.g., `card` blocks have `post_id`, `title`, `content`; `selection` blocks have `options`).
+3. **Pagination resolvable**: If a block carries a pagination reference, the reference is resolvable.
 
-On failure: set graceful degradation metadata on the frame — generate() already produced a text summary, so the user gets something even if the visual fails.
+On failure: attach a `violation` to `frame.metadata` — generate() already produced a text summary, so the user gets something even if the visual fails.
 
-### Step 1 — Frame-to-Block Mapping
+### Step 1 — Block Routing
 
-- Map `display_type` directly to an atomic block type (table, chart, card, list, etc.) — no intermediate composite layer
-- If the active template includes a `block_hint`, use it as the default mapping; override if frame attributes (data shape, chart type) require a different block
-- The selected block type determines placement: panel (default) or inline (based on the type's baked-in `inline` attribute). Reference: [Building Blocks — Rendering Model](../utilities/blocks.md#rendering-model)
-- Configure the block with frame attributes: `data`, `display_name`, `source`, `chart_type` (optional)
-- Domain-specific display types: each domain defines its own enum of display types; mapping loaded from domain config
-- If graceful degradation metadata exists (set by PEX recover()), attach limitation indicator to the block
-- Coordinate with generate() output to avoid duplicating information already in the text response
-- Reference: [Building Blocks](../utilities/blocks.md), [Display Frame](../components/display_frame.md)
+The frame's `blocks` list is already typed and shaped by the policy. RES's job is to route each block to its panel and pass it through to the frontend.
+
+- Each block self-declares its `type` (closed vocab: `card`, `selection`, `list`, `grid`, `compare`, `checklist`, `confirmation`, `toast`) and `panel` (`'top'` | `'bottom'`, auto-derived from type when not set).
+- `toast` blocks bypass panels and divert to a transient drawer overlay.
+- The frontend derives layout from which panels are populated (top only / bottom only / split).
+- Coordinate with `generate()` output to avoid duplicating information already in the text response.
+- Reference: [Building Blocks — Rendering Model](../utilities/blocks.md#rendering-model), [Display Frame](../components/display_frame.md)
 
 ### Step 2 — Data Rendering
 
-- Render the building block with the data payload
-- **Tables**: first page (default 512 rows), pagination controls if `table_id` exists
-- **Charts**: configure axes, labels, colors from frame metadata
-- **Large data**: truncation indicator with "load more" via `table_id` pagination reference
-- **Multi-turn flows**: if frame was updated (not created fresh), render the update rather than recreating from scratch
+- Render each block with its declared `data` payload.
+- **Lists / grids**: first page (default 512 rows), pagination controls if a reference is present.
+- **Cards**: render the grounding entity with edit affordances driven by frame `metadata`.
+- **Compare**: render side-by-side with the block's `left` / `right` payload.
+- **Multi-turn flows**: if the frame supersedes a prior frame, the frontend renders the new block; the previous block falls out of the panel.
 
 ### Post-Hook: Render Validation
 
-3 checks:
+2 checks:
 
-1. **Block rendered**: No empty containers — data was actually rendered.
-2. **Truncation bounded**: Data not silently truncated beyond configured limits.
-3. **Degradation visible**: If graceful degradation metadata was set, limitation indicator is rendered for the user.
+1. **Blocks rendered**: No empty containers — block data was actually rendered.
+2. **Violation surfaced**: If `frame.metadata['violation']` is set, the matching limitation indicator is visible to the user.
 
 ---
 
 ## Response Output Structure
 
-`respond()` assembles and returns a structured response payload. Blocks within the payload can be streamed to the frontend for faster perceived responses.
+`respond()` returns `tuple[str, DisplayFrame]` — the naturalized text response and the routed display frame. The frame's `blocks` list (with each block's panel routing) is what the frontend consumes for rendering. Blocks may stream to the frontend for faster perceived responses.
 
-| Field | Type | Description |
-|---|---|---|
-| `message` | `str` | HTML-formatted text response (from `generate()`) |
-| `raw_utterance` | `str` | Pre-formatting text (for logging / CC storage) |
-| `actions` | `list` | Reply suggestion pills for the user |
-| `interaction` | `dict \| null` | Interactive panel JSON (e.g., measure config, column picker) |
-| `code_snippet` | `dict` | `{source, snippet}` — generated code to display |
-| `frame` | `dict \| null` | Rendered block data (table, chart, etc.) |
-| `properties` | `dict` | Schema metadata and display properties (includes tab type if applicable) |
+The text response is HTML-formatted; the pre-naturalization template fill is logged separately for diagnostics.

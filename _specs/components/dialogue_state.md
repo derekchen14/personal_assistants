@@ -32,31 +32,34 @@ Each flow defines slots that must be resolved before the policy can execute.
 | Priority | Description |
 |---|---|
 | Required | Must be filled before taking action |
-| Elective | At least one of *N* elective slots must be filled. If an elective slot exists in a flow, at least 2 must be present. Multiple can be filled if desired |
-| Optional | Not required, but helpful. Typically has a reasonable default |
+| Elective | At least one of *N* elective slots must be filled. A flow with elective slots must have ≥2 — single-elective is invalid (convert to required or optional) |
+| Optional | Not required, but helpful. Typically has a defensible default that policies commit at entry |
 
 ### Slot Type Hierarchy
 
-Each domain has exactly **16 slot types** — approximately 12 universal types shared across all domains, plus 4 domain-specific types. During domain creation, estimate the 4 novel slots needed; these can be refined during development.
+Each domain has exactly **16 slot types** — 12 universal types shared across all domains, plus 4 domain-specific types. During domain creation, estimate the 4 novel slots needed; these can be refined during development. Full tree, grounding rules, and domain-specific examples live in [flow_stack.md § Slot Type Hierarchy](./flow_stack.md).
 
-**Universal slot types** (generic foundation):
+**Universal slot types (12)** — `BaseSlot` is the abstract parent (never instantiated directly):
 
-| Type | Criteria | Description |
+| Type | Parent | Description |
 |---|---|---|
-| `BaseSlot` | single | Single value slot (base class) |
-| `GroupSlot` | multiple | Holds a list of values (e.g., multiple columns) |
-| `SourceSlot` | multiple | Group slot with `min_size`; filled when `len(values) >= min_size` |
-| `TargetSlot` | multiple | Destination entity (extends SourceSlot) |
-| `RemovalSlot` | multiple | Entity to remove (extends SourceSlot) |
-| `FreeTextSlot` | multiple | Open-ended text input |
-| `LevelSlot` | numeric | Numeric value with range constraints |
-| `RangeSlot` | range | Min/max range pair |
-| `ExactSlot` | exact | Must match precisely (e.g., specific ID) |
-| `DictionarySlot` | dictionary | Key-value pairs |
-| `CategorySlot` | category | Value from a predefined category set |
-| `ChecklistSlot` | multiple | Multi-select from a list |
+| `GroupSlot` | BaseSlot | Holds a list of items |
+| `SourceSlot` | GroupSlot | References existing entities (grounding); `entity_part` optional |
+| `TargetSlot` | SourceSlot | New entities being created |
+| `RemovalSlot` | SourceSlot | Entities being removed |
+| `FreeTextSlot` | GroupSlot | Open-ended text or operations |
+| `ChecklistSlot` | GroupSlot | Ordered steps to check off |
+| `ProposalSlot` | GroupSlot | Candidate options for confirmation |
+| `LevelSlot` | BaseSlot | Single numeric value with range constraints |
+| `PositionSlot` | LevelSlot | Non-negative integer position |
+| `CategorySlot` | BaseSlot | Exactly one from a predefined set (≤8, mutually exclusive) |
+| `ExactSlot` | BaseSlot | Specific token or phrase |
+| `DictionarySlot` | BaseSlot | Key-value pairs |
+| `RangeSlot` | BaseSlot | Start/stop interval (often date range) |
 
-**Domain-specific examples** (data analysis): `FormulaSlot` (expression trees for metric definitions), `ChartSlot` (visualization parameters), `ProposalSlot` (candidate values for confirmation), `ScoreSlot` (numeric with negative support).
+`ProbabilitySlot` and `ScoreSlot` are common LevelSlot subclasses included in most domains' 4 domain-specific picks.
+
+**Domain-specific examples**: Dana (data analysis) — `ChartSlot`, `FunctionSlot`. Hugo (blog writing) — `ChannelSlot`, `ImageSlot`.
 
 Validation happens at the dialogue state level — a slot is not marked as filled until its value passes type validation.
 

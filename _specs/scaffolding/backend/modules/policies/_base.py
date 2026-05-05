@@ -1,59 +1,47 @@
-from __future__ import annotations
-
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from backend.components.dialogue_state import DialogueState
-    from backend.components.display_frame import DisplayFrame
+from backend.components.display_frame import DisplayFrame
 
 
-_SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'skills'
+_SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'pex' / 'skills'
 
-_BATCH_1: set[str] = set()   # Domain-specific: flows implemented in batch 1
-_BATCH_2: set[str] = set()   # Domain-specific: flows deferred to batch 2
+_BATCH_1:set[str] = set()   # Domain-specific: flows implemented in batch 1
+_BATCH_2:set[str] = set()   # Domain-specific: flows deferred to batch 2
 
 
 class BasePolicy:
+    """Hugo-style policy orchestrator. Each domain subclasses this with the
+    per-intent policy methods. The base demonstrates the agentic dispatch
+    via `llm_execute`; deterministic flows skip the skill entirely and call
+    `tools(name, params)` directly."""
 
-    def __init__(self, components: dict):
+    def __init__(self, components:dict):
         self.engineer = components['engineer']
         self.memory = components['memory']
         self.world = components['world']
         self._get_tools_fn = components['get_tools']
 
-    def execute(self, flow_name: str, flow_info: dict,
-                state: 'DialogueState', tool_dispatcher) -> 'DisplayFrame':
-        from backend.components.display_frame import DisplayFrame
+    def execute(self, flow, state, tool_dispatcher) -> DisplayFrame:
+        if flow.name() in _BATCH_2:
+            return DisplayFrame(origin=flow.name(),
+                                thoughts="That feature is coming soon — stay tuned!")
+        return self.llm_execute(flow, state, self.world.context, tool_dispatcher)
 
-        if flow_name in _BATCH_2:
-            frame = DisplayFrame(self.world.config)
-            frame.set_frame('default', {'content': "That feature is coming soon — stay tuned!"})
-            return frame
+    def llm_execute(self, flow, state, context, tool_dispatcher) -> tuple[str, list[dict]]:
+        """Agentic dispatch — loads the per-flow skill, runs the tool loop,
+        returns (text, tool_log). Policies inspect tool_log to build the frame."""
+        skill_prompt = self._load_skill_template(flow.name())
+        convo_history = context.compile_history(turns=5)
+        scratchpad = self.memory.read_scratchpad()
+        tool_defs = self._get_tools_fn(flow)
 
-        return self._llm_execute(flow_name, flow_info, state, tool_dispatcher)
-
-    def _llm_execute(self, flow_name, flow_info, state, tool_dispatcher):
-        from backend.components.display_frame import DisplayFrame
-
-        skill_prompt = self._load_skill_template(flow_name)
-        system, messages = self.engineer.build_skill_prompt(
-            flow_name, flow_info, state.slots,
-            self.world.context.compile_history(turns=5),
-            self.memory.read_scratchpad(),
-            skill_prompt=skill_prompt,
-        )
-        tools = self._get_tools_fn(flow_name, flow_info)
-
-        text, tool_log = self.engineer.call_with_tools(
-            system, messages, tools, tool_dispatcher, call_site='skill',
+        return self.engineer.tool_call(
+            flow, convo_history, scratchpad, tool_defs, tool_dispatcher,
+            skill_name=flow.name(), skill_prompt=skill_prompt,
+            resolved=getattr(flow, 'resolved', {}),
         )
 
-        frame = DisplayFrame(self.world.config)
-        frame.set_frame('default', {'content': text})
-        return frame
-
-    def _load_skill_template(self, flow_name: str) -> str | None:
+    def _load_skill_template(self, flow_name:str) -> str|None:
         path = _SKILL_DIR / f'{flow_name}.md'
         if path.exists():
             return path.read_text(encoding='utf-8')

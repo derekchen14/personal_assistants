@@ -238,10 +238,7 @@ class NLU:
             )
             messages = [{'role': 'user', 'content': value}]
             try:
-                response = self.engineer.call(
-                    system=system, messages=messages,
-                    call_site='nlu_repair_slot', max_tokens=64,
-                )
+                response = self.engineer.call(system, messages, tier='low', max_tokens=64)
                 text = self._extract_text(response).strip()
                 if text in candidates:
                     return text
@@ -294,10 +291,7 @@ class NLU:
     def _classify_intent(self, user_text: str) -> str:
         history = self.world.context.compile_history(turns=5)
         system, messages = self.engineer.build_nlu_prompt(user_text, history)
-        response = self.engineer.call(
-            system=system, messages=messages,
-            call_site='nlu_intent', max_tokens=256,
-        )
+        response = self.engineer.call(system, messages, tier='med', max_tokens=256)
         parsed = self._parse_json(self._extract_text(response))
         if parsed and parsed.get('intent'):
             return parsed['intent']
@@ -311,10 +305,7 @@ class NLU:
 
         def _call_voter() -> dict | None:
             try:
-                response = self.engineer.call(
-                    system=system, messages=messages,
-                    call_site='nlu_vote', max_tokens=512,
-                )
+                response = self.engineer.call(system, messages, tier='med', max_tokens=512)
                 text = self._extract_text(response)
                 return self._parse_json(text)
             except Exception as e:
@@ -339,13 +330,8 @@ class NLU:
 
     def _fill_slots(self, user_text: str, flow_name: str) -> dict:
         history = self.world.context.compile_history(turns=5)
-        system, messages = self.engineer.build_slot_filling_prompt(
-            user_text, flow_name, history,
-        )
-        response = self.engineer.call(
-            system=system, messages=messages,
-            call_site='nlu_slots', max_tokens=512,
-        )
+        system, messages = self.engineer.build_slot_filling_prompt(user_text, flow_name, history)
+        response = self.engineer.call(system, messages, tier='med', max_tokens=512)
         parsed = self._parse_json(self._extract_text(response))
         if parsed and isinstance(parsed.get('slots'), dict):
             return parsed['slots']
@@ -361,13 +347,9 @@ class NLU:
 
         history = self.world.context.compile_history(turns=5)
         system, messages = self.engineer.build_contemplate_prompt(
-            user_text, failed_flow or 'unknown', failure_reason,
-            candidates, history,
+            user_text, failed_flow or 'unknown', failure_reason, candidates, history,
         )
-        response = self.engineer.call(
-            system=system, messages=messages,
-            call_site='nlu_contemplate', max_tokens=512,
-        )
+        response = self.engineer.call(system, messages, tier='high', max_tokens=512)
         parsed = self._parse_json(self._extract_text(response))
         if parsed and parsed.get('flow_name') in FLOW_CATALOG:
             return {

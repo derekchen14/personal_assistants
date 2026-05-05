@@ -117,10 +117,7 @@ class RES:
         )
 
         try:
-            response = self.engineer.call(
-                system=system, messages=messages,
-                call_site='naturalize', max_tokens=max_len,
-            )
+            response = self.engineer.call(system, messages, tier='low', max_tokens=max_len)
             text = ''
             for block in response.content:
                 if block.type == 'text':

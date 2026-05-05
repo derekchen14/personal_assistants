@@ -1,62 +1,67 @@
-from __future__ import annotations
+VALID_BLOCK_TYPES = frozenset((
+    'card', 'compare', 'selection', 'list', 'grid',
+    'checklist', 'confirmation', 'toast', 'default',
+))
+_TOP_BLOCK_TYPES = frozenset(('confirmation', 'toast', 'list', 'grid', 'selection', 'checklist'))
 
-from types import MappingProxyType
+
+class BuildingBlock:
+
+    def __init__(self, type:str, data:dict, panel:str|None=None, expand:bool=False):
+        self.block_type = type
+        self.data = data
+        if panel is not None:
+            self.panel = panel
+        elif type in _TOP_BLOCK_TYPES:
+            self.panel = 'top'
+        else:
+            self.panel = 'bottom'
+        self.expand = expand
+
+    def to_dict(self) -> dict:
+        return {'type': self.block_type, 'data': self.data, 'panel': self.panel, 'expand': self.expand}
 
 
 class DisplayFrame:
+    """Five-attribute frame: origin, metadata, blocks, code, thoughts.
 
-    def __init__(self, config: MappingProxyType):
-        self.config = config
-        self._display_config = config.get('display', {})
-        self._page_size = self._display_config.get('page_size', 512)
+    No new top-level attributes without explicit approval. Domain-specific data
+    lives inside `blocks[].data`. RES routes blocks to panels based on each
+    block's `type` (closed vocabulary above)."""
 
-        self.block_type: str = 'default'
-        self.data: dict = {}
-        self.source: str | None = None
-        self.display_name: str | None = None
-        self.code: str | None = None
-        self.panel: str = 'bottom'
-
-    _TOP_TYPES = frozenset(('form', 'confirmation', 'toast'))
-
-    def set_frame(self, block_type: str, data: dict,
-                  source: str | None = None,
-                  display_name: str | None = None,
-                  code: str | None = None,
-                  panel: str | None = None):
-        self.block_type = block_type
-        self.data = data
-        self.source = source
-        self.display_name = display_name
+    def __init__(self, origin:str='', metadata:dict={}, blocks:list=[], code:str='', thoughts:str=''):
+        self.origin = origin
+        self.metadata = dict(metadata)
+        self.blocks = list(blocks)
         self.code = code
-        if panel is not None:
-            self.panel = panel
-        else:
-            self.panel = 'top' if block_type in self._TOP_TYPES else 'bottom'
+        self.thoughts = thoughts
+
+    def set_frame(self, origin:str='', blocks:list=[], new_data:dict={}):
+        if len(origin) > 0:
+            self.origin = origin
+        for new_block in blocks:
+            self.add_block(new_block)
+        self.metadata.update(new_data)
+
+    def add_block(self, block_data:dict):
+        self.blocks.append(BuildingBlock(**block_data))
 
     def clear(self):
-        self.block_type = 'default'
-        self.data = {}
-        self.source = None
-        self.display_name = None
-        self.code = None
-        self.panel = 'bottom'
+        self.origin = ''
+        self.blocks = []
+        self.metadata = {}
+        self.code = ''
+        self.thoughts = ''
 
-    def has_content(self) -> bool:
-        return self.block_type != 'default' and bool(self.data)
-
-    def compose(self, block_type: str, data: dict) -> dict:
-        return {
-            'type': block_type,
-            'show': block_type != 'default',
-            'data': data,
-        }
+    def compose(self, block:str, data:dict) -> dict:
+        return {'type': block, 'show': block != 'default', 'data': data}
 
     def to_dict(self) -> dict:
-        return {
-            'block_type': self.block_type,
-            'data': self.data,
-            'source': self.source,
-            'display_name': self.display_name,
-            'code': self.code,
+        frame_dict = {
+            'origin': self.origin,
+            'metadata': self.metadata,
+            'blocks': [block.to_dict() for block in self.blocks],
         }
+        if self.code:     frame_dict['code'] = self.code
+        if self.thoughts: frame_dict['thoughts'] = self.thoughts
+        return frame_dict

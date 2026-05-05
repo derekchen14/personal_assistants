@@ -1,105 +1,86 @@
 # Display Frame
 
-Decouples transforming the data (the policy's job) from displaying the data (RES's job). A frame holds the core entities for the active flow that RES needs to render the correct views.
+Decouples transforming the data (the policy's job) from displaying the data (RES's job). A frame holds the building blocks RES needs to render the active flow's output, plus a small fixed set of metadata attributes for routing and naturalization.
 
-## Core Concept
+## The Five-Attribute Lock
 
-The primary goal of the frame is to hold onto all the information that RES needs to display the correct views. The "core entity" depends on the domain:
-
-| Domain | Core Entities |
-|---|---|
-| Data analysis | Table, row, column |
-| Coding | Folder, file, function |
-| Blogging | Post, section, draft |
-| Job hunting | Listing, application, resume |
-| Scheduling | Event, calendar, time block |
-
-## Frame Lifecycle
-
-- **Created** by the policy during PEX execution. Each policy decides which core entities to extract and what attributes to set.
-- **Scope**: One frame per flow (not per turn). A flow can span multiple turns, and the frame persists for the duration of that flow. The policy can update the frame on subsequent turns within the same flow (e.g., user says "filter that to Q4" → policy updates the existing frame's data).
-- **Discarded** when the flow completes or is popped from the flow stack.
-- **Consumed** by RES after each PEX execution. RES reads the current frame state and maps it to Building Blocks. RES never modifies the frame.
-- The frame is not part of the dialogue state. Dialogue state tracks beliefs and intent; the frame tracks what to display.
-
-## Common Attributes
-
-These are the base attributes every domain shares.
-
-### Origin
-- The flow name that produced the frame (e.g. `compose`, `audit`, `release`). Empty string for system-emitted frames that don't run a flow (sidebar refresh, post view).
-- Used by RES to pick the response template and by the frontend to drive flow-specific UI behavior.
-
-### Blocks
-- A list of building blocks. Each block carries its own `data` payload, `panel` target, block `type`, and optional `expand` flag.
-- Frames may carry multiple blocks targeting different panels (e.g. a selection on top + a card on bottom).
-- Block-level `panel` attribute (`'top' | 'bottom'`) — auto-derived from block type when not explicitly set: `confirmation`, `toast`, `list`, `grid`, `selection`, `checklist` default to `top`; `card`, `compare` default to `bottom`.
-
-### Metadata
-- Domain- and flow-specific classification keys (violation codes, missing-slot names, finding summaries, etc.). Sparse — flow identity goes in `origin`, not metadata.
-- Replaces what earlier drafts called "display name", "display type", and "chart type."
-
-### Code
-- The generated code (SQL query, Python script, etc.) that produced the data.
-- Top-level attribute so RES can display it to the user alongside the result.
-
-### Thoughts
-- User-facing prose attached to the frame. Goes through RES naturalization. No em-dashes (hard to read on small screens).
-
-## Domain Attributes
-
-Each domain extends the common attributes with domain-specific fields. Data analysis is the primary detailed example; other domains will define their own display types and attribute sets when those agents are built.
-
-### Data Analysis
-
-Display types for data analysis frames:
-
-| Type | Description |
-|---|---|
-| Default | Shows underlying data with pagination beyond 1K lines |
-| Derived | A subset of a table, resulting from a SQL query |
-| Dynamic | User can dynamically expand/collapse rows, including nested components |
-| Decision | Allows user to pick certain columns or cells to indicate a value |
-| Pivot | Multiple forms of grouping and breakdowns |
-
-Additional domain-specific attributes for data analysis:
+Every `DisplayFrame` has exactly five attributes — no more. Domain-specific data lives inside `blocks[].data`, never as new top-level fields. **Never add a new DisplayFrame attribute without explicit user approval.**
 
 | Attribute | Type | Purpose |
 |---|---|---|
-| `shadow` | `dict` | Display transformations (formatting, column visibility, sort order) |
-| `visual` | chart object | Chart/visualization if applicable (e.g., Plotly figure) |
-| `issues_entity` | `dict` | `{tab, col, flow}` — tracks which entity has data quality issues |
-| `resolved_rows` | `list` | Row IDs that were corrected during issue resolution |
-| `active_conflicts` | `list` | Conflict cards for interactive resolution (e.g., deduplication) |
+| `origin` | `str` | Flow name that produced the frame (e.g. `compose`, `audit`, `release`). Empty string for system-emitted frames (sidebar refresh, post view). RES uses this to pick the response template. |
+| `metadata` | `dict` | Sparse classification keys — `violation`, `missing_slot`, `missing_entity`, `missing_reference`, `failed_tool`, `candidate`. Flow identity goes in `origin`, not metadata. Specifics go in `thoughts`, not nested-underscore tokens. |
+| `blocks` | `list` | Building blocks targeting display panels. Each block self-describes its `type`, `data`, `panel`, and optional `expand` flag. May be empty. |
+| `code` | `str` | Generated code or raw payload (SQL query, Python script, tool error stack). Machine-consumable, copy-paste shaped. |
+| `thoughts` | `str` | User-facing prose attached to the frame. Goes through RES naturalization. No em-dashes (hard to read on small screens). |
 
-Other domains define their own extension attributes when built. Display types are also domain-specific — most domains will not need the table-oriented types above.
+Frame invariants: every attribute exists on every frame; values may be empty (`''`, `[]`, `{}`) but never `None`. Check `frame.blocks` (truthy) when you need a non-empty list — never `hasattr` or `is not None`.
 
-## Pagination
+## Frame Lifecycle
 
-- Frames always transmit full state — no diffing or incremental updates.
-- When underlying data is too large, the `data` attribute holds only the first page (default: 512 rows). A reference ID (`table_id`) points to the full data source. The page size is configurable per domain.
-- Additional pages are fetched via paginated calls to the underlying source, not stored in the frame.
-- When using a reference, display name is set to `<reference>` to signal it's a pointer, not a literal label.
+- **Created** by the policy during PEX execution. The policy decides which blocks to attach, what classification to set in `metadata`, and what prose to place in `thoughts`.
+- **Scope**: One frame per turn. Multi-turn flows produce a new frame each turn; if a turn carries no new visual, the previous frame stays on screen by default.
+- **Discarded** when superseded by a newer frame from the same flow, or when the flow completes.
+- **Consumed** by RES after PEX execution. RES reads the frame, picks a template via `origin`, and routes blocks to panels. RES never modifies the frame's structural attributes.
+- The frame is not part of the dialogue state. Dialogue state tracks beliefs and intent; the frame tracks what to display.
 
-## Panel Attribute
+## Blocks
 
-The `panel` attribute lives on **each block**, not on the frame. A frame can carry blocks targeting different panels at the same time (e.g. a selection on top while a card stays on bottom). Values: `'top'` or `'bottom'` (default: derived from block type).
+Frames carry a list of pre-built building blocks. Each block is self-describing — type, panel, data, optional expand flag.
 
-- `'bottom'` — grounding entity (blog draft, data table, outlines) — the artifact users keep their attention on
-- `'top'` — feedback, interaction, navigation (forms, confirmations, lists, grids, selections, checklists, status summaries)
+### Closed Block-Type Vocabulary
 
-`BuildingBlock.__init__` auto-derives the panel from the block type when not explicitly provided: `confirmation`, `toast`, `list`, `grid`, `selection`, `checklist` → `'top'`; `card`, `compare` → `'bottom'`.
+Block types are a closed set. Adding a new type requires explicit approval — most "new" rendering needs are met by reusing an existing type with different `data`.
+
+| Type | Used for | Default panel |
+|---|---|---|
+| `card` | Updates the active grounding entity (post draft, table view, calendar view) | `bottom` |
+| `compare` | Side-by-side comparison of two entities or revisions | `bottom` |
+| `selection` | Candidate options the user picks from (proposals, audit findings) | `top` |
+| `list` | Search results, browse output, multi-entity listings | `top` |
+| `grid` | Tabular browsing — rows × columns | `top` |
+| `checklist` | Ordered steps to accept / reject | `top` |
+| `confirmation` | Single-question accept/decline UI | `top` |
+| `toast` | Lightweight notification | overlay (Drawer) |
+
+A frame may carry multiple blocks targeting different panels at the same time (e.g. a `selection` on top + a `card` on bottom). Chat-only flows attach no block — whatever was on screen stays.
+
+### Panel Attribute
+
+The `panel` attribute lives on **each block**, not on the frame. Values: `'top'` or `'bottom'` (default: derived from block type — `BuildingBlock.__init__` auto-derives when not explicitly set).
+
+- `'bottom'` — the grounding artifact (post draft, data table, outline) the user keeps attention on
+- `'top'` — feedback, navigation, interaction (selections, lists, grids, confirmations, checklists, status)
 
 The frontend derives `displayLayout` from which panel stores are populated:
 - Both top + bottom → `'split'`
 - Top only → `'top'`
 - Bottom only (or neither) → `'bottom'` (default)
 
-Toast-type blocks bypass the persistent panels entirely and render in a transient drawer overlay above the display container — a frontend-side render choice that lets the underlying card/list survive the notification.
+`toast` blocks bypass the persistent panels entirely and render in a transient drawer overlay above the display container — this lets the underlying card/list survive the notification.
+
+### Pagination
+
+When underlying data is too large for a single block, the block's `data` holds only the first page (default 512 rows). A reference ID points to the full source. Additional pages are fetched via paginated calls, not stored in the block. Frames always transmit full state — no diffing or incremental updates.
+
+## Frame Construction Patterns
+
+Build `metadata` and `thoughts` first, then instantiate the frame in a single line. Empty guard frames shorten to `DisplayFrame(origin=flow.name())`.
+
+```python
+DisplayFrame(origin=flow.name())                                                # empty guard
+frame = DisplayFrame(flow.name(), thoughts='No outline yet, outlining first.')  # stack-on
+frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'},     # error
+                     thoughts='Outline shrunk from 5 bullets to 3 without an explicit removal directive.')
+frame = DisplayFrame(flow.name(), thoughts=text)                                # success
+frame.add_block({'type': 'card', 'data': {...}})                                # attach a block
+```
+
+`origin` is **always** the flow name. Error-ness lives in `metadata` (`'violation' in frame.metadata`), not in `origin`. The only exception is frames built outside the policy layer — e.g., `Agent.take_turn`'s outer try/catch may use `origin='system'`.
 
 ## Rendering Pipeline
 
-- After PEX populates the frame, RES reads it and maps attributes to [Building Blocks](../utilities/blocks.md).
-- Frames carry a list of pre-built blocks; the policy attaches as many as the turn needs (a selection block on top + a card on bottom is a normal pattern). Each block is self-describing: type, panel, data, and optional expand flag.
-- Frame declares *what* to show; RES and Blocks decide *how*. Policy stays fully decoupled from rendering.
-- Each block routes to its declared panel (`top` or `bottom`); transient block types (currently `toast`) divert to a drawer overlay instead of a persistent panel slot. Reference: [Building Blocks — Rendering Model](../utilities/blocks.md#rendering-model)
+- After PEX populates the frame, RES picks an intent / domain template by `origin`, fills it with data from the completed flow + frame, and routes each block to its declared panel.
+- Frame declares *what* to show; RES and the frontend Blocks decide *how*.
+- Each block routes to its declared panel (`top` or `bottom`); transient block types (currently `toast`) divert to a drawer overlay instead of a persistent panel slot.
+- Reference: [Building Blocks — Rendering Model](../utilities/blocks.md#rendering-model)
