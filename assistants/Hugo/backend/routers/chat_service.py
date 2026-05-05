@@ -96,7 +96,7 @@ async def read_post(body:dict, agent, queue:asyncio.Queue):
                 'frame': DisplayFrame(blocks=[view_block]).to_dict()}
     await queue.put(view_msg)
 
-async def update_post(body:dict, queue:asyncio.Queue):
+async def update_post(body:dict, agent, queue:asyncio.Queue):
     post_id = body.get('update_post')
     updates = body.get('updates', {})
     try:
@@ -110,6 +110,16 @@ async def update_post(body:dict, queue:asyncio.Queue):
             entries = post_service._load_metadata()
             ent = post_service._find_entry(entries, post_id)
             if ent and sections:
+                # Snapshot pre-edit state so the user can undo their own manual save
+                # the same way they undo agent-driven mutations.
+                current_sections = post_service._extract_sections(
+                    post_service._read_content(ent['filename']))
+                if current_sections:
+                    post_service.take_snapshot(
+                        post_id=post_id, turn_id=agent.world.context.turn_id,
+                        flow_name='manual', summary='manual edit',
+                        sections=[{'sec_id': sec['sec_id'], 'lines': sec['lines']}
+                                  for sec in current_sections])
                 post_service._save_section_content(ent, sections)
                 post_service._save_metadata(entries)
         if updates:
@@ -291,7 +301,7 @@ async def chat(websocket:WebSocket):
                     match api_category:
                         case 'create_post': await create_post(body, queue)
                         case 'read_post': await read_post(body, agent, queue)
-                        case 'update_post': await update_post(body, queue)
+                        case 'update_post': await update_post(body, agent, queue)
                         case 'delete_post': await delete_post(body, queue)
                     continue
                 elif api_category.endswith('note'):

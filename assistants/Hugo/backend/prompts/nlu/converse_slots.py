@@ -176,22 +176,24 @@ User: "Suggest something for me"
 </positive_example>''',
     },
     'undo': {
-        'instructions': 'Reverse a recent writing action — roll back an edit, addition, deletion, or formatting change. The grounding `target` is the action being undone.',
-        'rules': '''- turn (elective): How many actions back to undo. "Last edit" or "undo that" → 1. Extract only if the user indicates a number.
-- target (elective): Which type of action to undo. Emit a single-element list with the user's description in `snip`: "tone change" → [{"snip": "tone change"}], "the deletion" → [{"snip": "the deletion"}].''',
+        'instructions': 'Reverse a recent writing mutation — roll back the most recent K edits on a post. K defaults to 1 ("undo that"). The user can name a specific post via `target`, otherwise the active post is implicit.',
+        'rules': '''- rewind (required): How many mutations back to undo. "last edit" / "undo that" / bare "undo" → 1. "back two" / "undo my last 3 changes" → 2 / 3. Always emit a number; default 1 when the user does not name one.
+- target (required): The post to undo on. Copy the post_id from the `Active post` line in the input into a single-entry list `[{"post": "<post_id>"}]`. If the input shows `Active post: None`, leave target as an empty list — the policy will declare ambiguity and ask which post.''',
         'slots': '',
         'examples': '''<positive_example>
 ## Conversation History
 
-User: "Undo that last edit"
-## Output
+User: "Go back to that last edit"
 
+Active post: **The Joy of Riding a Bike** (id: `1234abcd`)
+
+## Output
 ```json
 {
-  "reasoning": "temporal — last action",
+  "reasoning": "bare undo — default to 1; copy active post id into target",
   "slots": {
-    "turn": 1,
-    "target": null
+    "rewind": 1,
+    "target": [{"post": "1234abcd"}]
   }
 }
 ```
@@ -200,15 +202,18 @@ User: "Undo that last edit"
 <positive_example>
 ## Conversation History
 
-User: "Revert the tone change you just made"
+User: "Revert my last two changes on the Substack draft"
+
+Active post: None
+
 ## Output
 
 ```json
 {
-  "reasoning": "named action to reverse",
+  "reasoning": "K=2 with reference to a post by name, but no post_id available",
   "slots": {
-    "turn": null,
-    "target": [{"snip": "tone change"}]
+    "rewind": 2,
+    "target": []
   }
 }
 ```

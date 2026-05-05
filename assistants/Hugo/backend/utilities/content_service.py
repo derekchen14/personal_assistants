@@ -132,8 +132,6 @@ class ContentService(ToolService):
 
         for sec in sections:
             if sec['sec_id'] == sec_id:
-                self._take_snapshot(post_id, sec_id, sec['lines'])
-
                 if snip_id is None:
                     sec['lines'] = content.split('\n')
                 else:
@@ -182,7 +180,6 @@ class ContentService(ToolService):
         if snip_id is None:
             for idx, sec in enumerate(sections):
                 if sec['sec_id'] == sec_id:
-                    self._take_snapshot(post_id, sec_id, sec['lines'])
                     sections.pop(idx)
                     self._save_section_content(ent, sections)
                     self._save_metadata(entries)
@@ -191,7 +188,6 @@ class ContentService(ToolService):
 
         for sec in sections:
             if sec['sec_id'] == sec_id:
-                self._take_snapshot(post_id, sec_id, sec['lines'])
                 existing_text = '\n'.join(sec['lines'])
                 sentences = split_sentences(existing_text)
 
@@ -264,7 +260,7 @@ class ContentService(ToolService):
         return self._success()
 
     def diff_section(self, post_id:str, source_section:str,
-                     target_section:str|None=None, version:int=0) -> dict:
+                     target_section:str|None=None, snapshot_id:str|None=None) -> dict:
         import difflib
 
         ent, _ = self._require_entry(post_id)
@@ -283,14 +279,18 @@ class ContentService(ToolService):
                 return self._error('not_found', f'Section not found: {target_section}')
             target_lines = tgt['lines']
             compare_label = f'section:{target_section}'
-        elif version > 0:
-            snapshot = self._read_snapshot(post_id, source_section, version)
-            if snapshot is None:
-                return self._error('not_found', f'No snapshot at version {version}')
-            target_lines = snapshot.split('\n')
-            compare_label = f'snapshot-{version}'
+        elif snapshot_id:
+            bundle = self.read_snapshot(snapshot_id)
+            if bundle is None:
+                return self._error('not_found', f'Snapshot not found: {snapshot_id}')
+            saved = next((s for s in bundle['content'] if s['sec_id'] == source_section), None)
+            if saved is None:
+                return self._error('not_found',
+                    f"Section '{source_section}' is not in snapshot {snapshot_id}")
+            target_lines = saved['lines']
+            compare_label = f'snapshot:{snapshot_id}'
         else:
-            return self._error('validation', 'Provide target_section or version > 0')
+            return self._error('validation', 'Provide target_section or snapshot_id')
 
         diff = list(difflib.unified_diff(
             target_lines, source_lines,

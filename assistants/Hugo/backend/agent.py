@@ -40,9 +40,7 @@ class Agent:
             return self._take_turn(text, dax, payload)
         except Exception as ecp:  # noqa: BLE001 — top-level safety net
             log.exception('take_turn crashed: %s', ecp)
-            return self._fallback_response(
-                "Something went wrong on my end. Please try again."
-            )
+            return self._fallback_response("Something went wrong on my end. Please try again.")
 
     def _take_turn(self, text:str, dax:str|None=None, payload:dict|None=None) -> dict:
         turn_type = 'action' if dax else 'utterance'

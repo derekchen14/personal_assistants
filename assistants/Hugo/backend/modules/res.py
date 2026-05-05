@@ -30,12 +30,20 @@ class RES(object):
             return '', frame
         if flow.intent == Intent.PLAN and state.keep_going:
             self.finish('', frame, flow)
+            self._save_turn_checkpoint()
             return '', frame
 
         agent_utt = self.generate(frame, state, flow)
 
         self.finish(agent_utt, frame, flow)
+        self._save_turn_checkpoint()
         return agent_utt, frame
+
+    def _save_turn_checkpoint(self):
+        """Single end-of-turn checkpoint. Future conversation-rewind correlates to a
+        snapshot via `content.list_snapshots()` + matching turn_id from the bundle."""
+        turn_id = self.world.context.turn_id
+        self.world.context.save_checkpoint(f'turn_{turn_id}', data={})
 
     # ── Helpers ──────────────────────────────────────────────────────
 
@@ -91,12 +99,6 @@ class RES(object):
             if flow.intent == Intent.PLAN:
                 state = self.world.current_state()
                 state.has_plan = False
-
-        if len(completed) > 1:
-            self.world.context.save_checkpoint(
-                'multi_flow_completion',
-                data={'completed_count': len(completed)},
-            )
 
         return completed
 

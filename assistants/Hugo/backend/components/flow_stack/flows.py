@@ -689,15 +689,15 @@ class UndoFlow(ConverseParentFlow):
     self.dax = '{08F}'
     self.goal = 'reverse the most recent writing action; rolls back the last edit, addition, deletion, or formatting change and restores the previous version of the affected section'
     self.slots = {
-      'turn': LevelSlot(priority='elective', threshold=1),
-      'target': TargetSlot(1, entity_part='action', priority='elective'),
+      'target': TargetSlot(1, entity_part='post', priority='required'),
+      'rewind': PositionSlot(priority='required', threshold=1)
     }
     self.tools = ['rollback_post']
 
   def fill_slot_values(self, values):
-    if 'turn' in values:
-      self.slots['turn'].level = int(values['turn'])
-      self.slots['turn'].check_if_filled()
+    if 'rewind' in values:
+      self.slots['rewind'].level = int(values['rewind'])
+      self.slots['rewind'].check_if_filled()
     for item in values.get('target', []):
       self.slots['target'].add_one(**item)
 

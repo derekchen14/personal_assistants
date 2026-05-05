@@ -8,33 +8,41 @@ tools:
   - revise_content
 ---
 
-This skill polishes a paragraph, sentence, or text snippet by rephrasing sentences, improving word choice, and fixing transitions. The main goal is to eliminate any signs of AI slop while preserving meaning and structure.
+This skill polishes a paragraph, sentence, or text snippet by rephrasing, adding, or removing sentences within the target section. The scope is **always within one section** — but the operation is flexible: edit existing prose, append or insert a new sentence, swap word choice, fix transitions, drop filler. The constant is "stay inside the section." The variable is what you do there.
 
 ## Process
 
 1. Find the target section and read it. Look at the user's utterance and the `<resolved_details>` block.
    a. Read the target section with `read_section(post_id, sec_id=<matched>, include_sentence_ids=True)`. The returned content prepends each sentence with its 0-based index so you can name spans reliably. Do not read any other section; polish scope is intentionally narrow.
-   b. Identify the sentence or range of sentences the user named. When no span is named, polish the whole matched section.
+   b. Identify the operation: **edit** an existing sentence/range, **add** a new sentence at a position, or **remove** a sentence/range. When no span is named, polish the whole matched section.
 
 2. Check the scratchpad and/or context coordinator for prior findings.
    a. When entries exist under the keys `audit`, `inspect`, or `check` read them to see if there is anything relevant for the current context.
    b. List the keys you used in the output JSON's `used` array. When you consumed nothing, set `used` to an empty array. Never list a key you did not actually use.
 
-3. Polish the span: rephrase sentences, improve word choice, fix transitions, remove filler. 
-   a. Preserve meaning and paragraph structure.
-   b. When a style hint is provided in the resolved details, treat it as the priority signal over style inferred from the current prose; the user is saying the current style is not what they want.
+3. Apply the operation:
+   - **Edit**: rephrase sentences, improve word choice, fix transitions, swap voice. Preserve technical content.
+   - **Add**: compose a new sentence consistent with the surrounding prose's voice and content. Insert at the position the user named (e.g. "at the end" → append, "after sentence 2" → insert at index 3).
+   - **Remove**: drop the named sentence/range. (Pure removal also routes via `simplify`, but polish handles it when paired with other edits in the same span.)
+   - When a style hint or `suggestions` slot is provided in the resolved details, treat it as the priority signal — the user is telling you what they want.
 
-4. Save with `revise_content(post_id, sec_id, content, snip_id=<int|[start, end]>)`. For whole-section polish, call it without `snip_id`. For a specific span, pass a start and end range for `snip_id` to replace the previous content.
+4. Save with `revise_content(post_id, sec_id, content, snip_id=<int|[start, end]>)`:
+   - Whole-section rewrite → omit `snip_id`.
+   - Replace a span → pass `[start, end]` (end-exclusive) and the new prose.
+   - Insert at a position → pass an integer `snip_id` (`-1` appends to the end) and the new sentence as `content`.
 
 ## Handling Ambiguity and Errors
 
 If the named span cannot be located within the section ("second paragraph" in a one-paragraph section), call `handle_ambiguity(level='specific', metadata={'missing': 'span', 'reason': 'invalid_value'})`.
 
-**Default to CONFIRMATION when the user's direction is soft.** Soft directions name a goal but not specific edits — "flow better", "sound better", "clean it up", "punchier", "tighter", "smoother", "nicer". On a soft direction, do NOT polish directly. Instead, read the target span, decide on 2-3 concrete edits you'd consider, then call `handle_ambiguity(level='confirmation', metadata={'missing': 'polish_direction', 'question': '<concrete question listing the 2-3 specific edits as options the user can pick from or accept wholesale>'})`. The skill's job here is to surface the options, not to act on a guess.
+**Default to CONFIRMATION when the user's direction is soft.** Soft directions name a goal but not specific edits — "flow better", "sound better", "clean it up", "punchier", "tighter", "smoother", "nicer". On a soft direction, do NOT act directly. Read the target span, decide on 2-3 concrete options that span the operation space (mix of edits, additions, removals as the prose invites), then call `handle_ambiguity(level='confirmation', metadata={'missing': 'polish_direction', 'question': '<concrete question listing 2-3 specific options the user can pick from>'})`. Don't anchor every option on the same operation — if the user asked for an addition, your options should include addition variants, not three flavors of trim.
 
-Polish DIRECTLY (skip confirmation) only when the user named a concrete edit — e.g. "cut sentence 3", "replace passive voice with active in the second sentence", "add a transition between sentences 1 and 2". A specific edit is one a reader could verify against the prose without having to reinterpret the user's intent.
+Polish DIRECTLY (skip confirmation) only when the user named a concrete operation — e.g. "cut sentence 3", "replace passive voice with active in the second sentence", "add a transition between sentences 1 and 2", "add a concluding sentence about scale". A specific op is one a reader could verify against the prose without reinterpreting intent.
 
-If the user's request implies substantive revision (expand, restructure, weave in suggestions) rather than word-level polish, emit a fallback to `rework`. If the request is about trimming or shortening, emit a fallback to `simplify`.
+Fallbacks:
+- **`rework`** — when the request crosses sections or asks for substantive restructuring of the post-level argument.
+- **`simplify`** — when the request is unambiguously "trim/shorten only" with no edits or additions.
+- **`add`** — when the addition is structural (a new sub-section or image), not a single sentence within the existing prose.
 
 ## Tools
 
@@ -53,7 +61,7 @@ If the user's request implies substantive revision (expand, restructure, weave i
 
 ## Few-shot examples
 
-### Example 1: Soft direction → confirmation
+### Example 1: Soft direction → confirmation (mixed operations)
 
 Resolved Details:
 - Source: post=abcd0123, section=architectures-of-the-past
@@ -61,13 +69,24 @@ Resolved Details:
 
 Trajectory:
 1. `read_section(post_id=abcd0123, sec_id=architectures-of-the-past, include_sentence_ids=True)` → opening paragraph spans sentences 0-2.
-2. The direction "flow better" is soft — name three concrete fixes the prose actually invites:
-   - merge sentences 0-1 to drop a redundant transition;
-   - flip passive in sentence 1 ("was used by") to active;
-   - tighten sentence 2 by replacing "the way that we" with "we".
-3. `handle_ambiguity(level='confirmation', metadata={'missing': 'polish_direction', 'question': "Three options for flow: (1) merge sentences 0-1 to remove the redundant transition, (2) flip the passive voice in sentence 1 to active, (3) tighten sentence 2's 'the way that we' to 'we'. Pick any subset, or 'all three'."})`. End turn.
+2. The direction "flow better" is soft. Name three concrete options spanning the operation space:
+   - merge sentences 0-1 to drop a redundant transition (edit);
+   - flip passive in sentence 1 to active (edit);
+   - add a one-sentence hook at the start to set up the timeline (add).
+3. `handle_ambiguity(level='confirmation', metadata={'missing': 'polish_direction', 'question': "Three options for flow: (1) merge sentences 0-1 to remove the redundant transition, (2) flip sentence 1's passive voice to active, (3) add a one-sentence hook at the start to set up the timeline. Pick any subset, or 'all three'."})`. End turn.
 
-### Example 2: Specific edit → direct polish
+### Example 2: Direct addition
+
+Resolved Details:
+- Source: post=abcd0123, section=hungry-for-power
+- User asked: "Add a concluding sentence at the end about what happens at scale."
+
+Trajectory:
+1. `read_section(post_id=abcd0123, sec_id=hungry-for-power, include_sentence_ids=True)` → 5 sentences. Last sentence (idx 4) talks about hyperscale operators.
+2. Compose a closer that picks up the scale thread: e.g. "At grid scale, these dynamics turn from cost lines into siting decisions for entire regions."
+3. `revise_content(post_id=abcd0123, sec_id=hungry-for-power, content="At grid scale, these dynamics turn from cost lines into siting decisions for entire regions.", snip_id=-1)` — `-1` appends to the end.
+
+### Example 3: Specific edit → direct polish
 
 Resolved Details:
 - Source: post=abcd0123, section=the-need-for-data
@@ -77,7 +96,7 @@ Trajectory:
 1. `read_section(post_id=abcd0123, sec_id=the-need-for-data, include_sentence_ids=True)` → sentence 1 contains the phrase.
 2. `revise_content(post_id=abcd0123, sec_id=the-need-for-data, content=<sentence 1 with 'the way that we' → 'we'>, snip_id=1)`.
 
-### Example 3: Informed polish with an audit finding
+### Example 4: Informed polish with an audit finding
 
 Resolved Details:
 - Source: post=abcd0123, section=the-need-for-data
@@ -90,7 +109,7 @@ Trajectory:
 
 Final reply: lists `{used: ['audit']}`.
 
-### Example 4: Fallback to rework
+### Example 5: Fallback to rework
 
 Resolved Details:
 - Source: post=abcd0123, section=recent-innovations

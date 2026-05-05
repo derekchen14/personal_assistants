@@ -951,9 +951,9 @@
       "tags": [],
       "color": "",
       "created_at": "2026-04-30T17:07:15.383220+00:00",
-      "updated_at": "2026-05-05T05:10:28.863864+00:00",
-      "preview": "Global data traffic has roughly doubled every few years, and the physical infrastructure behind it has had to keep pace. Unlike most industrial machines, datacenter servers don't really get a break. They run at or near full load around the clock, so their energy draw is constant rather than...",
-      "word_count": 777,
+      "updated_at": "2026-05-05T23:45:56.484081+00:00",
+      "preview": "Global traffic doubles every few years, forcing physical infrastructure to keep pace. Unlike most industrial machines, datacenter servers run near full load around the clock, creating a constant energy draw. AI has intensified this: training models requires significantly more power per rack than...",
+      "word_count": 696,
       "filename": "drafts/energy-needs-of-datacenters.md"
     }
   ]

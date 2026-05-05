@@ -95,7 +95,7 @@ class ToolService:
         self._metadata_file = _DB_DIR / 'content' / 'metadata.json'
         self._snap_root = _DB_DIR / '.snapshots'
         self._guides_dir = _DB_DIR / 'guides'
-        self.max_snapshots = 4
+        self.max_snapshots = 8
 
     def _success(self, **data):
         return {'_success': True, **data}
@@ -327,34 +327,62 @@ class ToolService:
         return f'notes/{base_slug}-{num}.md'
 
     # -- Snapshot helpers ---------------------------------------------------
+    # Snapshot files at `_snap_root/snap_<n>.json` carry the pre-state of a single mutating
+    # event. Filesystem-as-FIFO: take_snapshot writes a new file, GC keeps only the
+    # `max_snapshots` most recent. Cross-post boundary fires at write-time — switching post
+    # and then mutating clears prior snapshots. Payload shape:
+    # `{post_id, turn_id, flow_name, summary, content: [{sec_id, content}, ...]}`.
 
-    def _snapshot_dir(self, post_id:str) -> Path:
-        return self._snap_root / post_id
+    def take_snapshot(self, post_id:str, turn_id:int, flow_name:str,
+                      summary:str, sections:list[dict]) -> str:
+        """Persist a snapshot bundle. Returns the new snapshot_id."""
+        self._snap_root.mkdir(parents=True, exist_ok=True)
+        existing = self._snapshot_files()
+        if existing:
+            prev = json.loads(existing[0].read_text(encoding='utf-8'))
+            if prev['post_id'] != post_id:
+                for stale in existing:
+                    stale.unlink()
+                existing = []
 
-    def _take_snapshot(self, post_id:str, sec_id:str, content_lines:list[str]):
-        """Rotate and save a new snapshot for a section."""
-        sdir = self._snapshot_dir(post_id) / sec_id
-        sdir.mkdir(parents=True, exist_ok=True)
+        next_id = max((self._parse_id(p) for p in existing), default=0) + 1
+        snapshot_id = f'snap_{next_id}'
+        payload = {
+            'post_id': post_id,
+            'turn_id': turn_id,
+            'flow_name': flow_name,
+            'summary': summary,
+            'content': sections,
+        }
+        (self._snap_root / f'{snapshot_id}.json').write_text(
+            json.dumps(payload, indent=2), encoding='utf-8')
+        self._gc_snapshots()
+        return snapshot_id
 
-        oldest = sdir / f'snapshot-{self.max_snapshots}.txt'
-        if oldest.exists():
-            oldest.unlink()
-        for idx in range(self.max_snapshots, 1, -1):
-            src = sdir / f'snapshot-{idx - 1}.txt'
-            dst = sdir / f'snapshot-{idx}.txt'
-            if src.exists():
-                src.rename(dst)
-
-        (sdir / 'snapshot-1.txt').write_text('\n'.join(content_lines), encoding='utf-8')
-
-    def _read_snapshot(self, post_id:str, sec_id:str, version:int) -> str | None:
-        """Read a snapshot. `version=0` is current (not stored here); 1-4 are historical."""
-        if version < 1 or version > self.max_snapshots:
+    def read_snapshot(self, snapshot_id:str) -> dict | None:
+        path = self._snap_root / f'{snapshot_id}.json'
+        if not path.exists():
             return None
-        path = self._snapshot_dir(post_id) / sec_id / f'snapshot-{version}.txt'
-        if path.exists():
-            return path.read_text(encoding='utf-8')
-        return None
+        return json.loads(path.read_text(encoding='utf-8'))
+
+    def list_snapshots(self) -> list[str]:
+        """Return snapshot_ids sorted most-recent-first."""
+        return [p.stem for p in self._snapshot_files()]
+
+    @staticmethod
+    def _parse_id(path:Path) -> int:
+        return int(path.stem.split('_')[1])
+
+    def _snapshot_files(self) -> list[Path]:
+        """Existing snapshot files, sorted most-recent-first by parsed integer id."""
+        if not self._snap_root.exists():
+            return []
+        return sorted(self._snap_root.glob('snap_*.json'),
+                      key=self._parse_id, reverse=True)
+
+    def _gc_snapshots(self):
+        for stale in self._snapshot_files()[self.max_snapshots:]:
+            stale.unlink()
 
 
 # ── Re-exports (so pex.py import doesn't change) ─────────────────────

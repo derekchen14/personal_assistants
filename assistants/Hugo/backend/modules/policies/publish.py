@@ -46,7 +46,7 @@ class PublishPolicy(BasePolicy):
     def release_policy(self, flow, state, context, tools):
         if frame := self._guard_entity(flow): return frame
 
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
@@ -110,7 +110,7 @@ class PublishPolicy(BasePolicy):
     def preview_policy(self, flow, state, context, tools):
         if frame := self._guard_entity(flow): return frame
 
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
@@ -121,7 +121,7 @@ class PublishPolicy(BasePolicy):
     def promote_policy(self, flow, state, context, tools):
         if frame := self._guard_entity(flow): return frame
 
-        source_id, _, error = self._resolve_source_ids(flow, state, tools)
+        source_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
@@ -133,7 +133,7 @@ class PublishPolicy(BasePolicy):
     def cancel_policy(self, flow, state, context, tools):
         if frame := self._guard_entity(flow): return frame
 
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         result = tools('update_post', {
             'post_id': post_id,

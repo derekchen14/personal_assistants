@@ -5,6 +5,7 @@
     import { onDestroy } from 'svelte';
     import IconArrowsPointingOut from '$lib/assets/IconArrowsPointingOut.svelte';
     import IconArrowsPointingIn from '$lib/assets/IconArrowsPointingIn.svelte';
+    import IconArrowUturnLeft from '$lib/assets/IconArrowUturnLeft.svelte';
     import IconDocumentCheck from '$lib/assets/IconDocumentCheck.svelte';
     import IconPencilSquare from '$lib/assets/IconPencilSquare.svelte';
     import IconLink from '$lib/assets/IconLink.svelte';
@@ -235,6 +236,15 @@
 <div class="flex flex-col flex-1 p-6 relative min-h-0">
     <!-- Top-right icon row -->
     <div class="absolute top-4 right-4 flex items-center gap-2 z-10">
+        {#if postId && status === 'draft'}
+            <button
+                onclick={() => conversation.action('Undo last edit', '{08F}', { rewind: 1, target: [{ post: postId }] })}
+                class="text-[var(--muted)] hover:text-[var(--accent)] cursor-pointer transition-colors"
+                title="Undo last edit"
+            >
+                <IconArrowUturnLeft size={18} />
+            </button>
+        {/if}
         {#if editable}
             <button
                 onclick={saveAndExit}

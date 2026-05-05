@@ -61,6 +61,7 @@ class DraftPolicy(BasePolicy):
     def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
+        self.content = components['content_service']
 
     def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
@@ -87,6 +88,7 @@ class DraftPolicy(BasePolicy):
             flow.stage = 'direct'
             post_id = state.active_post
 
+            self.record_snapshot(self.content, flow, context, post_id)
             text, tool_log = self.llm_execute(flow, state, context, tools,
                 extra_resolved={'depth': depth})
             saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_outline')
@@ -154,7 +156,7 @@ class DraftPolicy(BasePolicy):
                 self.ambiguity.declare('specific', metadata={'missing': 'refine_details'})
             return DisplayFrame(flow.name())
 
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         content = result['outline']
@@ -166,6 +168,7 @@ class DraftPolicy(BasePolicy):
             state.keep_going = True
             return DisplayFrame(thoughts='No bullets in the outline yet, outlining first.')
 
+        self.record_snapshot(self.content, flow, context, post_id)
         text, tool_log = self.llm_execute(flow, state, context, tools,
             extra_resolved={'current_outline': content})
         revised, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
@@ -211,6 +214,11 @@ class DraftPolicy(BasePolicy):
             self.ambiguity.declare('specific', metadata={'missing': 'target'})
             return DisplayFrame()
 
+        if state.active_post:
+            sec_id = target_slot.values[0].get('sec') if target_slot.check_if_filled() else None
+            self.record_snapshot(self.content, flow, context, state.active_post,
+                sec_ids=[sec_id] if sec_id else None)
+
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
         return DisplayFrame(origin='cite', thoughts=text)
@@ -222,7 +230,7 @@ class DraftPolicy(BasePolicy):
             return DisplayFrame()
 
         # Stack-on: compose needs an outline only when the post has no structure yet.
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         result = tools('read_metadata', {'post_id': post_id})
         if result['_success'] and not result.get('section_ids'):
@@ -232,6 +240,7 @@ class DraftPolicy(BasePolicy):
 
         # Preload title + section preview into resolved-entities so the skill plans without re-fetching.
         # Skill owns persistence (calls revise_content per section); the post-read below refreshes the card.
+        self.record_snapshot(self.content, flow, context, post_id)
         text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
         flow.status = 'Completed'
         frame = DisplayFrame(origin='compose', thoughts=text)
@@ -244,8 +253,9 @@ class DraftPolicy(BasePolicy):
             self.ambiguity.declare('specific', metadata={'missing': flow.entity_slot})
             return DisplayFrame(flow.name())
 
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
+        self.record_snapshot(self.content, flow, context, post_id)
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
         frame = DisplayFrame(origin='add', thoughts=text)

@@ -7,6 +7,7 @@ class RevisePolicy(BasePolicy):
     def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
+        self.content = components['content_service']
 
     def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
@@ -24,18 +25,19 @@ class RevisePolicy(BasePolicy):
 
     def rework_policy(self, flow, state, context, tools):
         if frame := self._guard_entity(flow): return frame
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
 
         # Category dispatch: each option resolves deterministically (move, fallback, or ambiguity).
         if flow.slots['category'].check_if_filled():
-            return self._dispatch_rework_category(flow, state, post_id, tools)
+            return self._dispatch_rework_category(flow, state, post_id, context, tools)
 
         # Null-category agentic path: skill handles itemized changes via `suggestions` / `remove`.
         if not flow.slots['suggestions'].check_if_filled() and not flow.slots['remove'].check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing': 'category_or_suggestions'})
             return DisplayFrame(origin=flow.name())
 
+        self.record_snapshot(self.content, flow, context, post_id)
         text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
         parsed = self.engineer.apply_guardrails(text)
         saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
@@ -58,12 +60,12 @@ class RevisePolicy(BasePolicy):
 
         return frame
 
-    def _dispatch_rework_category(self, flow, state, post_id, tools):
+    def _dispatch_rework_category(self, flow, state, post_id, context, tools):
         cat = flow.slots['category'].value
         if cat == 'swap':
-            return self._rework_swap(flow, post_id, tools)
+            return self._rework_swap(flow, context, post_id, tools)
         if cat in ('to_top', 'to_end'):
-            return self._rework_move(flow, post_id, tools, where=cat)
+            return self._rework_move(flow, context, post_id, tools, where=cat)
         if cat == 'trim':
             self.flow_stack.fallback('simplify')
             state.keep_going = True
@@ -84,7 +86,7 @@ class RevisePolicy(BasePolicy):
         flow.slots['category'].reset()
         return DisplayFrame(origin=flow.name())
 
-    def _rework_swap(self, flow, post_id, tools):
+    def _rework_swap(self, flow, context, post_id, tools):
         sec_ids = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if len(sec_ids) < 2:
             self.ambiguity.declare('specific', metadata={'missing': 'second_section'})
@@ -96,6 +98,8 @@ class RevisePolicy(BasePolicy):
         idx_a, idx_b = section_ids.index(sec_a), section_ids.index(sec_b)
         a = tools('read_section', {'post_id': post_id, 'sec_id': sec_a})
         b = tools('read_section', {'post_id': post_id, 'sec_id': sec_b})
+        # Reorder is a structural change; snapshot the whole post pre-mutation.
+        self.record_snapshot(self.content, flow, context, post_id)
         tools('remove_content', {'post_id': post_id, 'sec_id': sec_a})
         tools('remove_content', {'post_id': post_id, 'sec_id': sec_b})
         anchor_b = section_ids[idx_a - 1] if idx_a > 0 else ''
@@ -109,7 +113,7 @@ class RevisePolicy(BasePolicy):
         frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
 
-    def _rework_move(self, flow, post_id, tools, where):
+    def _rework_move(self, flow, context, post_id, tools, where):
         sec_ids = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if not sec_ids:
             self.ambiguity.declare('specific', metadata={'missing': 'section'})
@@ -117,6 +121,8 @@ class RevisePolicy(BasePolicy):
         sec = sec_ids[0]
         section_ids = list(tools('read_metadata', {'post_id': post_id})['section_ids'])
         body = tools('read_section', {'post_id': post_id, 'sec_id': sec})
+        # Reorder is a structural change; snapshot the whole post pre-mutation.
+        self.record_snapshot(self.content, flow, context, post_id)
         tools('remove_content', {'post_id': post_id, 'sec_id': sec})
         remaining = [s for s in section_ids if s != sec]
         anchor = '' if where == 'to_top' else (remaining[-1] if remaining else '')
@@ -129,8 +135,10 @@ class RevisePolicy(BasePolicy):
 
     def polish_policy(self, flow, state, context, tools):
         if frame := self._guard_entity(flow): return frame
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, sec_id, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
+        self.record_snapshot(self.content, flow, context, post_id,
+            sec_ids=[sec_id] if sec_id else None)
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
         # Skill may declare ambiguity (e.g. confirmation on vague direction); leave flow
@@ -180,8 +188,9 @@ class RevisePolicy(BasePolicy):
             pref = self.memory.read_preference('tone')
             flow.fill_slot_values({'chosen_tone': pref or 'natural'})
 
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
+        self.record_snapshot(self.content, flow, context, post_id)
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
         flow.status = 'Completed'
@@ -211,7 +220,7 @@ class RevisePolicy(BasePolicy):
             state.has_plan = False
             state.keep_going = False
             finish_msg = f'Audit completed with {len(flow.slots["delegates"].steps)} delegated flows.'
-            post_id, _, error = self._resolve_source_ids(flow, state, tools)
+            post_id, _, error = self.resolve_source_ids(flow, state, tools)
             if error: return error
             frame = DisplayFrame('audit', thoughts=finish_msg, metadata={'reports': reports})
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
@@ -221,7 +230,7 @@ class RevisePolicy(BasePolicy):
             frame = self._audit_dispatch(flow, state)
 
         else:
-            self._resolve_source_ids(flow, state, tools)
+            self.resolve_source_ids(flow, state, tools)
             _, tool_log = self.llm_execute(flow, state, context, tools)
             saved = self.engineer.extract_tool_result(tool_log, 'save_findings')
             if saved:
@@ -289,7 +298,7 @@ class RevisePolicy(BasePolicy):
     def simplify_policy(self, flow, state, context, tools):
         if frame := self._guard_entity(flow): return frame
 
-        post_id, sec_id, error = self._resolve_source_ids(flow, state, tools)
+        post_id, sec_id, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         if not sec_id:
             self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'section'})
@@ -305,6 +314,7 @@ class RevisePolicy(BasePolicy):
         sec = tools('read_section', {'post_id': post_id, 'sec_id': sec_id})
         if sec['_success']:
             extra['section_content'] = sec['content']
+        self.record_snapshot(self.content, flow, context, post_id, sec_ids=[sec_id])
         text, tool_log = self.llm_execute(flow, state, context, tools, extra_resolved=extra or None)
 
         if self.ambiguity.present():
@@ -331,8 +341,9 @@ class RevisePolicy(BasePolicy):
             return DisplayFrame(flow.name())
 
         if flow.slots['type'].check_if_filled():
-            post_id, _, error = self._resolve_source_ids(flow, state, tools)
+            post_id, _, error = self.resolve_source_ids(flow, state, tools)
             if error: return error
+            self.record_snapshot(self.content, flow, context, post_id)
             text, tool_log = self.llm_execute(flow, state, context, tools)
             flow.status = 'Completed'
             frame = DisplayFrame(flow.name(), thoughts=text)
@@ -352,8 +363,9 @@ class RevisePolicy(BasePolicy):
                 metadata={'missing': 'settings'})
             return DisplayFrame(flow.name())
 
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
+        self.record_snapshot(self.content, flow, context, post_id)
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         content = result['outline']
         settings = flow.slots['settings'].to_dict()

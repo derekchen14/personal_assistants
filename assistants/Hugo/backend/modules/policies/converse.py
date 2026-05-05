@@ -7,6 +7,7 @@ class ConversePolicy(BasePolicy):
     def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
+        self.content = components['content_service']
 
     def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
@@ -124,22 +125,37 @@ class ConversePolicy(BasePolicy):
         return frame
 
     def undo_policy(self, flow, state, context, tools):
-        if not state.active_post:
-            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
-            return DisplayFrame(flow.name())
-        params = {'post_id': state.active_post}
-        turn_slot = flow.slots['turn']
-        if turn_slot.check_if_filled():
-            try:
-                params['version'] = int(turn_slot.level)
-            except (TypeError, ValueError):
-                pass
-        result = tools('rollback_post', params)
-        flow.status = 'Completed'
-        if not result['_success']:
-            return self.error_frame(flow, 'tool_error',
-                thoughts=f'rollback_post failed: {result["_error"]}.',
-                code=result['_message'],
-                failed_tool='rollback_post')
-        message = result.get('message') or f"Rolled back to version {params.get('version', 1)}."
-        return DisplayFrame(origin='undo', thoughts=message)
+        if frame := self._guard_entity(flow): return frame
+        post_id = flow.slots['target'].values[0]['post']
+
+        rewind = flow.slots['rewind']
+        if not rewind.check_if_filled():
+            self.ambiguity.declare('specific', metadata={'missing': 'rewind'})
+            return DisplayFrame(origin='undo')
+
+        snapshot_ids = self.content.list_snapshots()
+        max_steps = min(self.content.max_snapshots, len(snapshot_ids))
+        if rewind.level > max_steps:
+            error_msg = f"Undo can only go back {max_steps} steps; got {rewind.level}."
+            return self.toast_error(flow, 'invalid_input', error_msg)
+
+        snap_id = snapshot_ids[rewind.level - 1]
+        bundle = self.content.read_snapshot(snap_id)
+        if bundle['post_id'] != post_id:
+            error_msg = f'No content history for post: {post_id}.'
+            return self.toast_error(flow, 'missing_reference', error_msg)
+
+        result = tools('rollback_post', {'snapshot_id': snap_id})
+        if result['_success']:
+            # delete the snapshots we just consumed
+            for consumed_id in snapshot_ids[:rewind.level]:
+                (self.content._snap_root / f'{consumed_id}.json').unlink()
+
+            state.active_post = post_id
+            flow.status = 'Completed'
+            frame = DisplayFrame(origin='undo', thoughts='Reverted your change.')
+            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            frame.add_block({'type': 'toast', 'data': {'message': 'Undo successful', 'level': 'success'}})
+            return frame
+        error_msg = f"rollback_post {post_id} failed: {result['_message']}"
+        return self.toast_error(flow, 'tool_error', error_msg)

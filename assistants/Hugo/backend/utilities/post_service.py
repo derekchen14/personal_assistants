@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import json
 import re
-import shutil
 import uuid
 from pathlib import Path
 
@@ -336,9 +336,10 @@ class PostService(ToolService):
         filepath = self._content_dir / ent['filename']
         if filepath.exists():
             filepath.unlink()
-        sdir = self._snapshot_dir(post_id)
-        if sdir.exists():
-            shutil.rmtree(sdir)
+        for path in self._snapshot_files():
+            bundle = json.loads(path.read_text(encoding='utf-8'))
+            if bundle['post_id'] == post_id:
+                path.unlink()
         return self._success()
 
     def summarize_text(self, post_id:str|None=None, sec_id:str|None=None,
@@ -367,23 +368,29 @@ class PostService(ToolService):
             _llm_task='summarize',
         )
 
-    def rollback_post(self, post_id:str, version:int=1) -> dict:
-        if version < 1 or version > self.max_snapshots:
-            return self._error('validation', f'Version must be 1-{self.max_snapshots}')
+    def rollback_post(self, snapshot_id:str) -> dict:
+        bundle = self.read_snapshot(snapshot_id)
+        if bundle is None:
+            return self._error('not_found', f'Snapshot not found: {snapshot_id}')
 
+        post_id = bundle['post_id']
         ent, entries = self._require_entry(post_id)
-        content = self._read_content(ent['filename'])
-        sections = self._extract_sections(content)
-        restored_any = False
+        file_content = self._read_content(ent['filename'])
+        sections = self._extract_sections(file_content)
+        saved_by_id = {s['sec_id']: s['lines'] for s in bundle['content']}
 
-        for sec in sections:
-            snapshot = self._read_snapshot(post_id, sec['sec_id'], version)
-            if snapshot is not None:
-                sec['lines'] = snapshot.split('\n')
-                restored_any = True
-
-        if not restored_any:
-            return self._error('not_found', f'No snapshots found at version {version}')
+        # Whole-post snapshot whose sections match current → reorder + replace; preserves
+        # the saved order so a `rework swap` is reversible. Otherwise replace matching
+        # subset in place.
+        if len(saved_by_id) > 1 and set(saved_by_id) == {s['sec_id'] for s in sections}:
+            current_by_id = {s['sec_id']: s for s in sections}
+            sections = [{'sec_id': s['sec_id'], 'title': current_by_id[s['sec_id']]['title'],
+                         'lines': s['lines']}
+                        for s in bundle['content']]
+        else:
+            for sec in sections:
+                if sec['sec_id'] in saved_by_id:
+                    sec['lines'] = saved_by_id[sec['sec_id']]
 
         self._save_section_content(ent, sections)
         self._save_metadata(entries)

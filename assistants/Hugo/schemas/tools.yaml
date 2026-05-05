@@ -204,13 +204,12 @@ tools:
   rollback_post:
     tool_id: rollback_post
     name: "Rollback post"
-    description: "Restore a post to a previous snapshot version"
+    description: "Restore a post to a snapshot. The snapshot_id is one of the values returned by listing the session's snapshot history."
     input_schema:
       type: object
       properties:
-        post_id: {type: string, description: "The post ID to rollback"}
-        version: {type: integer, default: 1, description: "Snapshot version to restore (1-4, where 1 is the most recent)"}
-      required: [post_id]
+        snapshot_id: {type: string, description: "The snapshot identifier (e.g. 'snap_3')"}
+      required: [snapshot_id]
       additionalProperties: false
     idempotent: false
     timeout_ms: 5000
@@ -354,7 +353,7 @@ tools:
         post_id: {type: string, description: "The post ID"}
         source_section: {type: string, description: "Section ID to compare"}
         target_section: {type: string, description: "Section ID to compare against (omit to compare against snapshot)"}
-        version: {type: integer, default: 0, description: "Snapshot version to compare against (0-4)"}
+        snapshot_id: {type: string, description: "Snapshot identifier (e.g. 'snap_3') to compare against; mutually exclusive with target_section"}
       required: [post_id, source_section]
       additionalProperties: false
     idempotent: true

@@ -107,7 +107,8 @@ class PEX:
         }
 
         components = {'engineer': engineer, 'memory': memory, 'config': config, 'ambiguity': ambiguity,
-            'get_tools': self.get_tools_for_flow, 'flow_stack': self.flow_stack
+            'get_tools': self.get_tools_for_flow, 'flow_stack': self.flow_stack,
+            'content_service': self._content_service,
         }
         self._policies: dict[str, object] = {
             Intent.CONVERSE: ConversePolicy(components),
@@ -118,6 +119,12 @@ class PEX:
             Intent.PLAN: PlanPolicy(components),
             Intent.INTERNAL: InternalPolicy(components),
         }
+        self.initialization()
+
+    def initialization(self):
+        # Wipe snapshot history from prior sessions
+        for stale in self._content_service._snap_root.glob('snap_*.json'):
+            stale.unlink()
 
     def execute(self, state, context):
         active_flow = self.flow_stack.get_flow()

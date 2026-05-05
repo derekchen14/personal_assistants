@@ -61,7 +61,7 @@ class ResearchPolicy(BasePolicy):
 
     def summarize_policy(self, flow, state, context, tools):
         if frame := self._guard_entity(flow): return frame
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
 
         flow_metadata = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
@@ -124,7 +124,7 @@ class ResearchPolicy(BasePolicy):
     def inspect_policy(self, flow, state, context, tools):
         if frame := self._guard_entity(flow): return frame
 
-        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
 
         # Elective-with-default: limit metrics when aspect is filled.
@@ -232,7 +232,7 @@ class ResearchPolicy(BasePolicy):
             return DisplayFrame(flow.name())
 
         grounding = flow.slots[flow.entity_slot]
-        posts = [self._read_post_content(self.resolve_post_id(e['post'], tools), tools)
+        posts = [self._read_post_content(self._resolve_post_id(e['post'], tools), tools)
                  for e in grounding.values[:2]]
         if not (posts[0] and posts[1]):
             named = [e['post'] for e in grounding.values[:2]]

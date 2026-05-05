@@ -1,5 +1,8 @@
 import re
+import difflib
+
 from backend.components.display_frame import DisplayFrame
+from backend.utilities.services import ToolService
 
 class BasePolicy:
     """Toolkit of reusable utility methods for per-flow policy methods. No lifecycle
@@ -58,7 +61,7 @@ class BasePolicy:
 
     # -- Post helpers -------------------------------------------------------
 
-    def resolve_post_id(self, identifier, tools):
+    def _resolve_post_id(self, identifier, tools):
         """Resolve a title or post_id string to an actual post_id."""
         if not identifier:
             return None
@@ -87,37 +90,51 @@ class BasePolicy:
                 return items[0]['post_id']
         return None
 
+    def _resolve_sec_id(self, identifier, tools, post_id):
+        sec_id = None
+        if identifier:
+            section_ids = tools('read_metadata', {'post_id': post_id})['section_ids']
+            slug = ToolService._slugify(identifier)
+            if slug in section_ids:
+                sec_id = slug
+            else:
+                matches = difflib.get_close_matches(slug, section_ids, n=1, cutoff=0.6)
+                sec_id = matches[0] if matches else None
+        return sec_id
+
+
     # -- Persistence helpers ------------------------------------------------
 
-    def _resolve_source_ids(self, flow, state, tools):
+    def resolve_source_ids(self, flow, state, tools):
         """Extract (post_id, sec_id, error) from entity slot. Picks the first entity
-        that satisfies the slot's entity_part criteria — skips Phase-2 placeholder
-        entries that have post but no section/snippet yet. Syncs state.active_post.
-
+        that satisfies the slot's entity_part criteria. Syncs state.active_post and
+        returns both ids come back canonical form.
         The third return is a missing-reference error frame when the slot was filled
         with a title/id that doesn't resolve to a real post; callers early-return via
-        `post_id, _, error = self._resolve_source_ids(...); if error: return error`."""
+        `post_id, _, error = self.resolve_source_ids(...); if error: return error`."""
         grounding = flow.slots[flow.entity_slot]
         if not grounding.values:
             return None, None, None
         part = grounding.entity_part
         vals = next((e for e in grounding.values if e['post'] and (not part or e[part])),
                     grounding.values[0])
-        post_id = self.resolve_post_id(vals['post'], tools)
-        sec_id = vals['sec'] or None
-        if post_id:
+        post_id = self._resolve_post_id(vals['post'], tools)
+        if not post_id:
+            error = self.error_frame(flow, 'missing_reference',
+                thoughts='Could not find the specified post.', missing_entity='post')
+            return None, None, error
+        else:
             state.active_post = post_id
-            return post_id, sec_id, None
-        error = self.error_frame(flow, 'missing_reference',
-            thoughts='Could not find the specified post.', missing_entity='post')
-        return None, sec_id, error
+
+        sec_id = self._resolve_sec_id(vals['sec'], tools, post_id)
+        return post_id, sec_id, None
 
     def _build_resolved_context(self, flow, state, tools, include_preview:bool=False) -> dict|None:
         """Pre-resolve post/section IDs so the LLM gets deterministic entities.
 
         When include_preview=True, also fetches a per-section preview (title +
         first 3 lines) so skills don't need a follow-up read_metadata call."""
-        post_id, sec_id, _ = self._resolve_source_ids(flow, state, tools)
+        post_id, sec_id, _ = self.resolve_source_ids(flow, state, tools)
         if not post_id and state.active_post:
             post_id = state.active_post
         if not post_id:
@@ -140,13 +157,13 @@ class BasePolicy:
         """Entity-missing guard. Declares `partial` and returns an empty frame with
         origin=flow.name() when the entity slot is unfilled. Callers early-return on a
         non-None result via `if frame := self._guard_entity(flow): return frame`."""
-        grounding = flow.slots[flow.entity_slot]
-        if not grounding.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
+        ent_slot = flow.entity_slot
+        if not flow.slots[ent_slot].check_if_filled():
+            self.ambiguity.declare('partial', metadata={'missing': ent_slot, 'entity': 'post'})
             return DisplayFrame(flow.name())
         return None
 
-    # -- Error frame helper (Phase 3+) --------------------------------------
+    # -- Helper Functions --------------------------------------
 
     def error_frame(self, flow, violation:str, thoughts:str='', code:str|None=None, **extra_metadata):
         """Construct an error frame with the standard violation classification. `violation` must
@@ -155,14 +172,39 @@ class BasePolicy:
         human-readable description; `code` carries the raw payload (failing JSON, tool error
         string). `extra_metadata` merges into metadata alongside `violation`."""
         metadata = {'violation': violation, **extra_metadata}
-        return DisplayFrame(
-            origin=flow.name(),
-            metadata=metadata,
-            thoughts=thoughts,
-            code=code,
-        )
+        return DisplayFrame(origin=flow.name(), metadata=metadata, thoughts=thoughts, code=code)
 
-    # -- Retry helper (Phase 5) ---------------------------------------------
+    def toast_error(self, flow, violation, message):
+        """Render errors as toast blocks to surface failures visually to the user."""
+        frame = self.error_frame(flow, violation, thoughts=message)
+        frame.add_block({'type': 'toast', 'data': {'message': message, 'level': 'warning'}})
+        return frame
+
+    def record_snapshot(self, content, flow, context, post_id,
+                        sec_ids:list|None=None, summary:str|None=None) -> str:
+        """Capture pre-state and write a JSON snapshot bundle. Returns snapshot_id.
+
+        `content` is the ContentService — passed in by the caller (Draft/Revise/Converse
+        each set `self.content`); BasePolicy stays free of that dependency. Pass
+        `sec_ids=[<sec>]` for section-scoped snapshots, leave None for whole-post.
+        Section ids are expected to be canonical slugs — `resolve_source_ids` already
+        normalizes them via `resolve_sec_id`."""
+        ent = content._require_entry(post_id)[0]
+        all_sections = content._extract_sections(content._read_content(ent['filename']))
+
+        if sec_ids is None:
+            sections = [{'sec_id': sec['sec_id'], 'lines': sec['lines']}
+                        for sec in all_sections]
+        else:
+            sections = [{'sec_id': sec['sec_id'], 'lines': sec['lines']}
+                        for sec in all_sections if sec['sec_id'] in sec_ids]
+
+        if summary is None:
+            scope = ', '.join(sec_ids) if sec_ids else 'whole post'
+            summary = f'{flow.name()} on {scope}'
+
+        return content.take_snapshot(post_id=post_id, turn_id=context.turn_id,
+            flow_name=flow.name(), summary=summary, sections=sections)
 
     def retry_tool(self, tools, tool_name:str, params:dict, max_attempts:int=2) -> dict:
         """Call a tool with transient-failure retries. Returns the final result.

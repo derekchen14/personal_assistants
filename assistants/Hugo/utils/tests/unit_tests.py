@@ -527,11 +527,14 @@ class TestPostService:
         post_id, _ = _seed_test_post(tmp_db, title='Snap Delete')
 
         svc = PostService()
-        snap_dir = svc._snap_root / post_id / 'intro'
-        snap_dir.mkdir(parents=True)
-        (snap_dir / 'snapshot-1.txt').write_text('old content')
+        svc.take_snapshot(post_id=post_id, turn_id=1, flow_name='polish',
+            summary='polish on intro', sections=[{'sec_id': 'intro', 'lines': ['old']}])
+        assert any(svc._snap_root.glob('snap_*.json'))
         svc.delete_post(post_id)
-        assert not (svc._snap_root / post_id).exists()
+        # Snapshots referencing the deleted post are cleaned up.
+        for path in svc._snap_root.glob('snap_*.json'):
+            bundle = json.loads(path.read_text(encoding='utf-8'))
+            assert bundle['post_id'] != post_id
 
     def test_summarize_text_empty_error(self, tmp_db):
         svc = PostService()
@@ -540,9 +543,9 @@ class TestPostService:
         assert result['_error'] == 'validation'
 
     def test_rollback_post_no_snapshots(self, tmp_db):
-        post_id, _ = _seed_test_post(tmp_db, title='No Snaps')
+        _seed_test_post(tmp_db, title='No Snaps')
         svc = PostService()
-        result = svc.rollback_post(post_id)
+        result = svc.rollback_post('snap_999')
         assert result['_success'] is False
         assert result['_error'] == 'not_found'
 
@@ -747,16 +750,6 @@ class TestContentService:
         with pytest.raises(OutlineValidationError, match='Duplicate H2'):
             svc.update_post(post_id, updates={'sections': ['Process', 'Process']})
 
-    def test_revise_content_takes_snapshot(self, tmp_db):
-        body = '## Intro\n\nOriginal content.\n'
-        post_id, _ = _seed_test_post(tmp_db, title='Revise Snap', body=body)
-        svc = ContentService()
-        result = svc.revise_content(post_id, 'intro', 'Revised content.')
-        assert result['_success'] is True
-
-        snapshot = ToolService()._read_snapshot(post_id, 'intro', 1)
-        assert snapshot is not None
-
     def test_write_text_rejects_long_content(self, tmp_db):
         svc = ContentService()
         long_text = ' '.join(['word'] * 2049)
@@ -784,9 +777,11 @@ class TestContentService:
         body = '## Intro\n\nOriginal text.\n'
         post_id, _ = _seed_test_post(tmp_db, title='Diff Snap', body=body)
         svc = ContentService()
-        # Create a snapshot by revising
+        snap_id = svc.take_snapshot(post_id=post_id, turn_id=1, flow_name='polish',
+            summary='polish on intro',
+            sections=[{'sec_id': 'intro', 'lines': ['Original text.']}])
         svc.revise_content(post_id, 'intro', 'Updated text.')
-        result = svc.diff_section(post_id, 'intro', version=1)
+        result = svc.diff_section(post_id, 'intro', snapshot_id=snap_id)
         assert result['_success'] is True
         assert 'diff' in result
 
@@ -894,22 +889,64 @@ class TestPlatformService:
 
 class TestSnapshotInfra:
     def test_take_snapshot_creates_file(self, tmp_db):
+        svc = ToolService()
+        snap_id = svc.take_snapshot(post_id='test_post', turn_id=1, flow_name='polish',
+            summary='polish on intro',
+            sections=[{'sec_id': 'intro', 'lines': ['line 1', 'line 2']}])
+        bundle = svc.read_snapshot(snap_id)
+        assert bundle is not None
+        assert bundle['post_id'] == 'test_post'
+        assert bundle['content'][0]['lines'] == ['line 1', 'line 2']
 
-        ToolService()._take_snapshot('test_post', 'intro', ['line 1', 'line 2'])
-        snapshot = ToolService()._read_snapshot('test_post', 'intro', 1)
-        assert snapshot is not None
-        assert 'line 1' in snapshot
+    def test_take_snapshot_caps_at_max(self, tmp_db):
+        svc = ToolService()
+        overflow = svc.max_snapshots + 2
+        for idx in range(overflow):
+            svc.take_snapshot(post_id='test_post', turn_id=idx, flow_name='polish',
+                summary=f'turn {idx}',
+                sections=[{'sec_id': 'intro', 'lines': [f'version {idx}']}])
+        ids = svc.list_snapshots()
+        assert len(ids) == svc.max_snapshots
+        # Most recent first; the last call is at the head.
+        head = svc.read_snapshot(ids[0])
+        assert head['content'][0]['lines'] == [f'version {overflow - 1}']
 
-    def test_take_snapshot_rotates(self, tmp_db):
+    def test_cross_post_clears_history(self, tmp_db):
+        svc = ToolService()
+        svc.take_snapshot(post_id='post_a', turn_id=1, flow_name='polish',
+            summary='polish A', sections=[{'sec_id': 'intro', 'lines': ['A1']}])
+        svc.take_snapshot(post_id='post_a', turn_id=2, flow_name='polish',
+            summary='polish A', sections=[{'sec_id': 'intro', 'lines': ['A2']}])
+        svc.take_snapshot(post_id='post_b', turn_id=3, flow_name='polish',
+            summary='polish B', sections=[{'sec_id': 'intro', 'lines': ['B1']}])
+        ids = svc.list_snapshots()
+        # Cross-post write wiped post_a snapshots; only the post_b snapshot remains.
+        assert len(ids) == 1
+        bundle = svc.read_snapshot(ids[0])
+        assert bundle['post_id'] == 'post_b'
 
-        for i in range(6):
-            ToolService()._take_snapshot('test_post', 'intro', [f'version {i}'])
-        # Version 1 should be most recent (version 5)
-        snapshot1 = ToolService()._read_snapshot('test_post', 'intro', 1)
-        assert 'version 5' in snapshot1
-        # Version 4 should be version 2
-        snapshot4 = ToolService()._read_snapshot('test_post', 'intro', 4)
-        assert 'version 2' in snapshot4
+    def test_record_snapshot_section_scoped(self, tmp_db):
+        # `record_snapshot` expects canonical slugs (normalized upstream by
+        # `_resolve_source_ids`). Section-scoped bundle captures only the named slug.
+        from backend.utilities.services import ContentService
+        from backend.modules.policies.base import BasePolicy
+
+        body = '## Hungry for Power\n\nOriginal prose about power.\n\n## Other\n\nOther.\n'
+        post_id, _ = _seed_test_post(tmp_db, title='Slug Test', body=body)
+        content = ContentService()
+
+        class FakeFlow:
+            def name(self): return 'simplify'
+        class FakeContext:
+            turn_id = 1
+
+        policy = BasePolicy.__new__(BasePolicy)  # bypass __init__
+        snap_id = policy.record_snapshot(content, FakeFlow(), FakeContext(),
+            post_id, sec_ids=['hungry-for-power'])
+        bundle = content.read_snapshot(snap_id)
+        assert len(bundle['content']) == 1
+        assert bundle['content'][0]['sec_id'] == 'hungry-for-power'
+        assert any('Original prose about power' in line for line in bundle['content'][0]['lines'])
 
 
 # ═══════════════════════════════════════════════════════════════════
