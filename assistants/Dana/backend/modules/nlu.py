@@ -28,10 +28,12 @@ _SHORTCUTS: list[tuple[re.Pattern, str]] = [
 
 _DEV_PATTERN = re.compile(r'^/([0-9A-Fa-f]{3})\b\s*(.*)', re.DOTALL)
 
+# Tier-based ensemble. Concrete model swaps via ACTIVE_FAMILY in prompt_engineer.py — no provider
+# names hardcoded here.
 _ENSEMBLE_VOTERS = [
-    {'call_site': 'nlu_vote_haiku', 'label': 'haiku', 'weight': 0.20},
-    {'call_site': 'nlu_vote_sonnet', 'label': 'sonnet', 'weight': 0.45},
-    {'call_site': 'nlu_vote_gemini', 'label': 'gemini_flash', 'weight': 0.35},
+    {'call_site': 'low', 'label': 'low', 'weight': 0.20},
+    {'call_site': 'med', 'label': 'med', 'weight': 0.45},
+    {'call_site': 'high', 'label': 'high', 'weight': 0.35},
 ]
 
 _ACTION_PATTERN = re.compile(
@@ -373,7 +375,7 @@ class NLU:
         )
         text = self.engineer.call_text(
             system=system, messages=messages,
-            call_site='nlu_contemplate', max_tokens=512,
+            call_site='high', max_tokens=512,
         )
         parsed = self.engineer.apply_guardrails(text)
         if parsed and parsed.get('flow_name') in FLOW_CATALOG:

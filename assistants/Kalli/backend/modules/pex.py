@@ -110,10 +110,13 @@ class PEX:
         if frame.has_content():
             text_summary = frame.data.get('content', '')
             if text_summary:
-                self.memory.write_scratchpad(
-                    f'flow:{flow_name}',
-                    f'{flow_name}: {text_summary[:200]}',
-                )
+                turn_num = state.turn_number if hasattr(state, 'turn_number') else 0
+                self.memory.write_scratchpad(flow_name, {
+                    'version': 1,
+                    'turn_number': turn_num,
+                    'used_count': 0,
+                    'summary': text_summary[:200],
+                })
 
         self._verify()
 

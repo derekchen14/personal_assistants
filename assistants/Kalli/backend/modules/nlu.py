@@ -265,7 +265,7 @@ class NLU:
         )
         raw = self.engineer.call_text(
             system=system, messages=messages,
-            call_site='nlu_contemplate', max_tokens=512,
+            call_site='high', max_tokens=512,
         )
         parsed = self.engineer.apply_guardrails(raw)
         if parsed and parsed.get('flow_name') in FLOW_CATALOG:

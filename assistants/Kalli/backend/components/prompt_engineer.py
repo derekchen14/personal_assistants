@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 import os
+import yaml
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -23,9 +26,27 @@ from backend.modules.templates import get_template as _get_template
 from schemas.ontology import FLOW_CATALOG, Intent
 
 
+# Single-token provider swap. Callers pass abstract tiers (`low` / `med` / `high`) while the concrete
+# model is resolved against ACTIVE_FAMILY. Provider-specific keys remain for explicit overrides.
+ACTIVE_FAMILY = 'claude'
+FAMILY_TIERS = {
+    'claude':   ('claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-7'),
+    'gemini':   ('gemma-3-27b-it', 'gemini-2.5-flash', 'gemini-2.5-pro'),
+    'gpt':      ('gpt-5-nano', 'gpt-5-mini', 'gpt-5.2'),
+    'together': ('Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen3-80B', 'Qwen/Qwen3-235B-Instruct'),
+}
+
+_low, _med, _high = FAMILY_TIERS[ACTIVE_FAMILY]
+_TIER_MODELS = {'low': _low, 'med': _med, 'high': _high}
+
+
 class PromptEngineer:
 
     VERSION = 'v1'
+    _SKILL_DIRS = (
+        Path(__file__).resolve().parents[1] / 'prompts' / 'pex' / 'skills',
+        Path(__file__).resolve().parents[1] / 'prompts' / 'skills',
+    )
 
     def __init__(self, config: MappingProxyType):
         self.config = config
@@ -56,7 +77,15 @@ class PromptEngineer:
         return self._models.get('default', {}).get(key, default)
 
     def get_model_id(self, call_site: str = 'default') -> str:
-        return self._get_model_param(call_site, 'model_id', 'claude-sonnet-4-5-latest')
+        if call_site in _TIER_MODELS:
+            return _TIER_MODELS[call_site]
+        return self._get_model_param(call_site, 'model_id', _TIER_MODELS['med'])
+
+    @staticmethod
+    def resolve_tier(tier:str) -> str:
+        if tier not in _TIER_MODELS:
+            raise ValueError(f'Unknown tier: {tier!r}. Expected one of {tuple(_TIER_MODELS)}')
+        return _TIER_MODELS[tier]
 
     def _get_temperature(self, call_site: str = 'default') -> float:
         return self._get_model_param(call_site, 'temperature', 0.0)
@@ -83,17 +112,28 @@ class PromptEngineer:
     ) -> anthropic.types.Message:
         max_attempts, backoff_base, backoff_max = self._get_retry_config()
 
+        # Prompt caching: put a breakpoint at the end of the system prompt and at the end of tool
+        # definitions. These are the stable prefix shared across turns within a flow.
+        system_blocks = [{
+            'type': 'text', 'text': system, 'cache_control': {'type': 'ephemeral'},
+        }] if system else []
         kwargs: dict[str, Any] = {
             'model': self.get_model_id(call_site),
             'max_tokens': max_tokens,
-            'system': system,
+            'system': system_blocks,
             'messages': messages,
         }
         temp = self._get_temperature(call_site)
         if temp > 0:
             kwargs['temperature'] = temp
         if tools:
-            kwargs['tools'] = tools
+            tool_defs = [
+                {key: val for key, val in tool.items() if key in ('name', 'description', 'input_schema')}
+                for tool in tools
+            ]
+            if tool_defs:
+                tool_defs[-1] = {**tool_defs[-1], 'cache_control': {'type': 'ephemeral'}}
+            kwargs['tools'] = tool_defs
 
         model_id = kwargs['model']
         log.info('  llm call_site=%s  model=%s', call_site, model_id)
@@ -350,6 +390,99 @@ class PromptEngineer:
 
     def get_template(self, flow_name:str, intent:str) -> dict:
         return _get_template(flow_name, intent)
+
+    # ── New three-layer skill API (sibling of legacy call_with_tools) ───
+
+    def skill_call(self, flow, convo_history:str, scratchpad:dict, skill_name:str|None=None,
+                   skill_prompt:str|None=None, resolved:dict|None=None, max_tokens:int=1024,
+                   user_text:str|None=None) -> str:
+        """Skill execution WITHOUT tool use. Sibling of tool_call."""
+        if skill_prompt is None:
+            skill_prompt = self.load_skill_template(skill_name or flow.name())
+        base_system = self.build_system_prompt()
+        system = build_skill_system(base_system, flow, skill_prompt) if skill_prompt else base_system
+        if 'flow' in build_skill_messages.__code__.co_varnames:
+            messages = list(build_skill_messages(flow, convo_history, user_text, resolved))
+        else:
+            messages = build_skill_messages(flow.name() if hasattr(flow, 'name') else flow, convo_history)
+        response = self.call(system, messages, call_site='med', max_tokens=max_tokens)
+        return ''.join(b.text for b in response.content if b.type == 'text')
+
+    def tool_call(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], tool_dispatcher,
+                  skill_name:str|None=None, skill_prompt:str|None=None, resolved:dict|None=None,
+                  max_tokens:int=4096, user_text:str|None=None) -> tuple[str, list[dict]]:
+        """Skill execution WITH tool use. Sibling of skill_call. Caps at 8 iterations."""
+        if skill_prompt is None:
+            skill_prompt = self.load_skill_template(skill_name or flow.name())
+        base_system = self.build_system_prompt()
+        system = build_skill_system(base_system, flow, skill_prompt) if skill_prompt else base_system
+        if 'flow' in build_skill_messages.__code__.co_varnames:
+            msgs = list(build_skill_messages(flow, convo_history, user_text, resolved))
+        else:
+            msgs = build_skill_messages(flow.name() if hasattr(flow, 'name') else flow, convo_history)
+        return self.call_with_tools(system, msgs, tool_defs, tool_dispatcher,
+                                    call_site='med', max_rounds=8, max_tokens=max_tokens)
+
+    # ── Skill template loading ──────────────────────────────────────────
+
+    @classmethod
+    def _resolve_skill_path(cls, flow_name:str):
+        for base in cls._SKILL_DIRS:
+            path = base / f'{flow_name}.md'
+            if path.exists():
+                return path
+        return None
+
+    @classmethod
+    def load_skill_template(cls, flow_name:str) -> str | None:
+        path = cls._resolve_skill_path(flow_name)
+        if path is None:
+            return None
+        _, body = cls._split_frontmatter(path.read_text(encoding='utf-8'))
+        return body
+
+    @classmethod
+    def load_skill_meta(cls, flow_name:str) -> dict:
+        path = cls._resolve_skill_path(flow_name)
+        if path is None:
+            return {}
+        meta, _ = cls._split_frontmatter(path.read_text(encoding='utf-8'))
+        return meta
+
+    @staticmethod
+    def _split_frontmatter(text:str) -> tuple[dict, str]:
+        if not text.startswith('---\n'):
+            return {}, text
+        end = text.find('\n---\n', 4)
+        if end == -1:
+            return {}, text
+        meta = yaml.safe_load(text[4:end]) or {}
+        body = text[end + 5:]
+        return meta, body
+
+    # ── Tool log inspection helpers ─────────────────────────────────────
+
+    @staticmethod
+    def extract_tool_result(tool_log:list, tool_name:str) -> dict:
+        for entry in tool_log:
+            if entry['tool'] != tool_name:
+                continue
+            if entry['result']['_success']:
+                return {k: v for k, v in entry['result'].items() if not k.startswith('_')}
+        return {}
+
+    @staticmethod
+    def tool_succeeded(tool_log:list, tool_name:str) -> tuple[bool, dict]:
+        """Check whether a named tool was called AND every call succeeded.
+
+        Returns (True, last_result_dict) when the tool appears at least once in the log and every
+        matching entry has _success=True; returns (False, {}) otherwise."""
+        calls = [tc for tc in tool_log if tc['tool'] == tool_name]
+        if not calls:
+            return False, {}
+        if not all(tc['result']['_success'] for tc in calls):
+            return False, {}
+        return True, {k: v for k, v in calls[-1]['result'].items() if not k.startswith('_')}
 
 
 def _get_edge_flows_for_intent(intent: str) -> set[str]:

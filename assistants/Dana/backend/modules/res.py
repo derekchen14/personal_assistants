@@ -171,7 +171,7 @@ class RES:
         try:
             text = self.engineer.call_text(
                 system=system, messages=messages,
-                call_site='naturalize', max_tokens=2048,
+                call_site='low', max_tokens=2048,
             )
             return text.strip() if text.strip() else raw_text
         except Exception as ecp:

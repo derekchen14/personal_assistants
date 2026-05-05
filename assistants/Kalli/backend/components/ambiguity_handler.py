@@ -1,101 +1,108 @@
-"""Ambiguity Handler — 4-level clarification system (Horvitz & Paek)."""
+import logging
 
-from __future__ import annotations
+log = logging.getLogger(__name__)
 
-from types import MappingProxyType
 
-from schemas.ontology import AmbiguityLevel
+_PARTIAL_FRAMING = {
+    'inspect':    "Which {entity} should I inspect?",
+    'explain':    "Which {entity} should I explain?",
+    'browse':     "Which {entity} should I browse?",
+    'compare':    "Which {entity}s should I compare?",
+    'recommend':  "Which {entity} should I recommend on?",
+    'summarize':  "Which {entity} should I summarize?",
+    'revise':     "Which {entity} should I revise?",
+    'rework':     "Which {entity} should I rework?",
+    'remove':     "Which {entity} should I remove?",
+    'refine':     "Which {entity} should I refine?",
+    'validate':   "Which {entity} should I validate?",
+    'propose':    "Which {entity} should I propose for?",
+    'generate':   "Which {entity} should I generate?",
+    'package':    "Which {entity} should I package?",
+}
 
 
 class AmbiguityHandler:
 
-    def __init__(self, config: MappingProxyType):
+    def __init__(self, config, engineer=None):
         self.config = config
+        self.engineer = engineer
         thresholds = config.get('thresholds', {})
-        self._confidence_min = thresholds.get('nlu_confidence_min', 0.64)
-        self._max_turns = thresholds.get('ambiguity_escalation_turns', 3)
+        self.confidence_min = thresholds.get('nlu_confidence_min', 0.64)
+        self.max_turns = thresholds.get('ambiguity_escalation_turns', 3)
 
-        self._level: str | None = None
-        self._metadata: dict = {}
-        self._observation: str | None = None
-        self._counts: dict[str, int] = {
+        self.level: str = ''
+        self.metadata: dict = {}
+        self.observation: str = ''
+        self.counts: dict[str, int] = {
             'general': 0, 'partial': 0, 'specific': 0, 'confirmation': 0,
         }
 
-    def declare(self, level: str, metadata: dict | None = None,
-                observation: str | None = None):
-        self._level = level
-        self._metadata = metadata or {}
-        self._observation = observation
-        if level in self._counts:
-            self._counts[level] += 1
+    def declare(self, level:str, metadata:dict={}, observation:str=''):
+        self.level = level
+        self.metadata = metadata
+        self.observation = observation
+        if level in self.counts:
+            self.counts[level] += 1
 
-    def present(self) -> bool:
-        return self._level is not None
+    def present(self, name:bool=False):
+        if name:
+            return self.level if self.level else 'None'
+        else:
+            return bool(self.level)
 
-    def ask(self) -> str:
-        if not self._level:
-            return 'Could you tell me more about what you need?'
+    def ask(self, flow_name:str='') -> str:
+        if self.observation:
+            return self.observation
 
-        if self._level == AmbiguityLevel.GENERAL.value:
-            return self._general_ask()
-        elif self._level == AmbiguityLevel.PARTIAL.value:
-            return self._partial_ask()
-        elif self._level == AmbiguityLevel.SPECIFIC.value:
-            return self._specific_ask()
-        elif self._level == AmbiguityLevel.CONFIRMATION.value:
-            return self._confirmation_ask()
-        return 'Could you clarify what you mean?'
+        match self.level:
+            case 'general': response = self._general_ask()
+            case 'partial': response = self._partial_ask(flow_name)
+            case 'specific': response = self._specific_ask()
+            case 'confirmation': response = self._confirmation_ask()
+        return response
 
     def resolve(self):
-        self._level = None
-        self._metadata = {}
-        self._observation = None
+        self.level = ''
+        self.metadata = {}
+        self.observation = ''
 
-    def needs_clarification(self, confidence: float) -> bool:
-        return confidence < self._confidence_min
+    def needs_clarification(self, confidence:float) -> bool:
+        return confidence < self.confidence_min
 
     def should_escalate(self) -> bool:
-        total = sum(self._counts.values())
-        return total >= self._max_turns
-
-    @property
-    def level(self) -> str | None:
-        return self._level
-
-    @property
-    def metadata(self) -> dict:
-        return self._metadata
-
-    @property
-    def observation(self) -> str | None:
-        return self._observation
-
-    # ── Level-specific ask methods ───────────────────────────────────
+        return sum(self.counts.values()) >= self.max_turns
 
     def _general_ask(self) -> str:
-        if self._observation:
-            return self._observation
-        return (
-            "I'm not quite sure what you're looking for. Are you trying to "
-            "explore the architecture, provide information about your "
-            "assistant, work on flow design, or something else?"
-        )
+        missing = self.metadata.get('missing', 'intent')
+        if missing == 'intent':
+            return ("I'm not sure what you'd like to do — explore the design, "
+                    "gather requirements, personalize the assistant, or deliver?")
+        return "I'm not sure how to handle that yet — could you say it differently?"
 
-    def _partial_ask(self) -> str:
-        if self._observation:
-            return self._observation
-        missing = self._metadata.get('missing_entity', 'some details')
-        return f"I think I understand what you want, but I need {missing}. Could you provide that?"
+    def _partial_ask(self, flow_name:str='') -> str:
+        entity = self.metadata.get('entity', self.metadata['missing'])
+        phrase = _PARTIAL_FRAMING.get(flow_name)
+        if phrase and entity in ('assistant', 'requirement', 'spec', 'tool'):
+            return phrase.format(entity=entity)
+        return f"Which {entity} did you mean?"
 
     def _specific_ask(self) -> str:
-        if self._observation:
-            return self._observation
-        slot = self._metadata.get('missing_slot', 'a value')
-        return f"I need a specific {slot} to proceed. What would you like to use?"
+        slot = self.metadata['missing']
+        suffix = {
+            'invalid_value': " I couldn't find one matching what you said.",
+            'unclear_value': ' Your earlier value was a bit unclear.',
+            'wrong_slot':    " That value didn't fit the expected field.",
+        }.get(self.metadata.get('reason', ''), '')
+        return f"What would you like for {slot}?{suffix}"
 
     def _confirmation_ask(self) -> str:
-        if self._observation:
-            return self._observation
-        candidate = self._metadata.get('candidate', 'this')
-        return f"Just to confirm — did you mean {candidate}?"
+        if 'question' in self.metadata:
+            return self.metadata['question']
+        candidates = self.metadata.get('candidates') or []
+        if candidates:
+            opts = ', '.join(candidates[:-1]) + f", or {candidates[-1]}"
+            return f"Did you mean {opts}?"
+        candidate = self.metadata.get('candidate')
+        if candidate:
+            return f'Did you mean "{candidate}"?'
+        return 'Should I go ahead with that?'
