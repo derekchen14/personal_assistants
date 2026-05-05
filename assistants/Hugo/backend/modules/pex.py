@@ -1,16 +1,9 @@
-from __future__ import annotations
-
 import json
 import logging
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
-from backend.components.dialogue_state import DialogueState
 from backend.components.display_frame import DisplayFrame
-from backend.components.ambiguity_handler import AmbiguityHandler
-from backend.components.prompt_engineer import PromptEngineer
-from backend.components.memory_manager import MemoryManager
 
 from backend.utilities.services import (
     PostService, ContentService, AnalysisService, PlatformService,
@@ -18,10 +11,6 @@ from backend.utilities.services import (
 )
 from backend.modules.policies import *
 from schemas.ontology import Intent
-
-if TYPE_CHECKING:
-    from backend.components.context_coordinator import ContextCoordinator
-    from backend.components.world import World
 
 log = logging.getLogger(__name__)
 
@@ -32,10 +21,40 @@ class FrameCheck:
     reason: str = ''
     is_error_frame: bool = False  # Policy classified this as an error frame
 
+
+_GENERAL_MISSING = {'intent', 'flow'}
+_GENERAL_ERROR = {'misclassified', 'misdetected', 'user_error'}
+_PARTIAL_MISSING = {'source', 'target', 'title', 'query'}
+_PARTIAL_ENTITY = {'post', 'section', 'snippet', 'channel'}
+_SPECIFIC_REASON = {'invalid_value', 'unclear_value', 'wrong_slot'}
+
+
+def _validate_ambig_metadata(level:str, metadata:dict) -> str | None:
+    if 'missing' not in metadata:
+        return f"metadata.missing is required for level={level!r}"
+    missing = metadata['missing']
+    if level == 'general':
+        if missing not in _GENERAL_MISSING:
+            return f"general.missing must be one of {sorted(_GENERAL_MISSING)}; got {missing!r}"
+        if 'error' in metadata and metadata['error'] not in _GENERAL_ERROR:
+            return f"general.error must be one of {sorted(_GENERAL_ERROR)}; got {metadata['error']!r}"
+    elif level == 'partial':
+        if missing not in _PARTIAL_MISSING:
+            return f"partial.missing must be one of {sorted(_PARTIAL_MISSING)}; got {missing!r}"
+        if 'entity' in metadata and metadata['entity'] not in _PARTIAL_ENTITY:
+            return f"partial.entity must be one of {sorted(_PARTIAL_ENTITY)}; got {metadata['entity']!r}"
+    elif level == 'specific':
+        if 'reason' in metadata and metadata['reason'] not in _SPECIFIC_REASON:
+            return f"specific.reason must be one of {sorted(_SPECIFIC_REASON)}; got {metadata['reason']!r}"
+    elif level == 'confirmation':
+        if 'question' not in metadata:
+            return "confirmation.question is required (the clarification utterance shown to the user)"
+    return None
+
+
 class PEX:
 
-    def __init__(self, config:MappingProxyType, ambiguity:AmbiguityHandler,
-                 engineer:PromptEngineer, memory:MemoryManager, world:'World'):
+    def __init__(self, config, ambiguity, engineer, memory, world):
         self.config = config
         self.ambiguity = ambiguity
         self.engineer = engineer
@@ -100,7 +119,7 @@ class PEX:
             Intent.INTERNAL: InternalPolicy(components),
         }
 
-    def execute(self, state:DialogueState, context:'ContextCoordinator') -> tuple[DisplayFrame, bool]:
+    def execute(self, state, context):
         active_flow = self.flow_stack.get_flow()
 
         check_result = self._security_check(active_flow)
@@ -138,7 +157,7 @@ class PEX:
 
     # -- Pre-hook ---------------------------------------------------------
 
-    def _security_check(self, flow) -> DisplayFrame | None:
+    def _security_check(self, flow):
         """Check for lethal trifecta tool capability violations."""
         tools = self.get_tools_for_flow(flow)
         for tool in tools:
@@ -148,12 +167,16 @@ class PEX:
                     and caps.get('communicates_externally')):
                 self.ambiguity.declare(
                     'confirmation',
-                    metadata={'tool': tool['name'], 'reason': 'lethal_trifecta'},
-                    observation=(
-                        f'This action requires your approval because '
-                        f'"{tool["name"]}" accesses private data, accepts '
-                        f'user input, and communicates externally.'
-                    ),
+                    metadata={
+                        'missing': 'tool_approval',
+                        'question': (
+                            f'This action requires your approval because '
+                            f'"{tool["name"]}" accesses private data, accepts '
+                            f'user input, and communicates externally.'
+                        ),
+                        'tool': tool['name'],
+                        'risk_type': 'lethal_trifecta',
+                    },
                 )
                 frame = DisplayFrame(flow.name())
                 frame.add_block({'type': 'confirmation', 'data': {
@@ -175,7 +198,7 @@ class PEX:
 
     # -- Validation -------------------------------------------------------
 
-    def _validate_frame(self, frame:DisplayFrame, flow) -> FrameCheck:
+    def _validate_frame(self, frame, flow):
         """Check whether a frame is good enough to show to the user. A frame with a 'violation'
         set is already recognized as an error frame, so it does NOT need Tier-1 retry. Return
         passed=False + is_error_frame=True so the outer caller routes it directly to RES."""
@@ -201,7 +224,7 @@ class PEX:
         return FrameCheck(passed=True)
 
     @staticmethod
-    def _merge_block_data(frame:DisplayFrame) -> dict:
+    def _merge_block_data(frame):
         merged = {}
         block_types = []
         for block in frame.blocks:
@@ -209,7 +232,7 @@ class PEX:
             block_types.append(block.block_type)
         return merged, block_types
 
-    def _llm_quality_check(self, content:str) -> FrameCheck:
+    def _llm_quality_check(self, content:str):
         last_user = self.world.context.last_user_text
         convo = self.world.context.compile_history(look_back=4)
         prompt = (
@@ -217,7 +240,7 @@ class PEX:
             f'User request: {last_user}\n\nAgent output:\n{content}'
         )
         try:
-            raw_output = self.engineer(prompt, 'quality_check', model='haiku', max_tokens=128)
+            raw_output = self.engineer(prompt, 'quality_check', model='low', max_tokens=128)
             verdict = raw_output.strip().lower()
             if verdict.startswith('pass'):
                 return FrameCheck(passed=True)
@@ -228,8 +251,7 @@ class PEX:
 
     # -- Recovery ---------------------------------------------------------
 
-    def recover(self, check:FrameCheck, flow,
-                context:'ContextCoordinator') -> tuple[DisplayFrame, bool]:
+    def recover(self, check, flow, context):
         """Attempt to recover from a failed frame validation.
 
         Returns (frame, escalated). escalated=True means the caller should flip state.has_issues
@@ -267,7 +289,7 @@ class PEX:
             f'I had trouble completing this — {check.reason}. '
             f'Could you provide more details or try a different approach?'
         )
-        self.ambiguity.declare('partial', observation=observation)
+        self.ambiguity.declare('partial', metadata={'missing': 'query'}, observation=observation)
         frame = DisplayFrame(flow.name())
         return frame, True
 
@@ -354,17 +376,21 @@ class PEX:
         return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
 
     def _dispatch_ambiguity_tool(self, params:dict) -> dict:
-        action = params.get('action', '')
+        action = params['action']
+        if action == 'present':
+            return {'_success': True, 'present': self.ambiguity.present(),
+                    'level': self.ambiguity.level}
         if action == 'declare':
-            self.ambiguity.declare(
-                params.get('type', ''),
-                metadata=params.get('metadata'),
-            )
-            return {'_success': True}
-        elif action == 'ask':
-            return {'_success': True, 'prompt': self.ambiguity.ask()}
-        elif action == 'resolve':
-            self.ambiguity.resolve(params.get('metadata', {}))
+            if 'level' not in params or 'metadata' not in params:
+                return {'_success': False, '_error': 'invalid_input',
+                        '_message': "declare requires both 'level' and 'metadata'"}
+            level, metadata = params['level'], params['metadata']
+            err = _validate_ambig_metadata(level, metadata)
+            if err:
+                log.info('[ambig-trace] dispatch declare REJECTED level=%s metadata=%s err=%s',
+                         level, metadata, err)
+                return {'_success': False, '_error': 'invalid_input', '_message': err}
+            self.ambiguity.declare(level, metadata=metadata, observation=params.get('observation', ''))
             return {'_success': True}
         return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
 
@@ -433,24 +459,27 @@ class PEX:
                     "Raise an ambiguity flag back to the user when you truly cannot proceed. "
                     "Policies declare ambiguity directly; only call this tool when the skill "
                     "itself decides the user must clarify before you can act.\n\n"
-                    "Pick `type` by level:\n"
-                    "- `general`    — intent itself is unclear (the utterance doesn't map cleanly to the active flow).\n"
-                    "- `partial`    — intent is clear but the primary entity is unresolved (post/section/channel).\n"
-                    "- `specific`   — a named slot value is missing or invalid. Pass `metadata={'missing_slot': <name>}`.\n"
-                    "- `confirmation` — you have a candidate and need user sign-off before acting. Pass the candidate in `metadata`.\n\n"
                     "Actions:\n"
-                    "- `declare` — raise the flag. Requires `type`; `metadata` optional.\n"
-                    "- `ask`     — retrieve the clarifying question string for the declared ambiguity.\n"
-                    "- `resolve` — clear the flag after the user answers. Pass resolved values in `metadata`.\n\n"
+                    "- `declare` — raise the flag. Requires `level` and `metadata`; `observation` is optional except at `confirmation` level (which uses `metadata.question` instead).\n"
+                    "- `present` — return whether an ambiguity is already pending and at what level. Use to avoid overwriting a prior declaration.\n\n"
+                    "Per-level metadata shape (validated at dispatch — wrong shape returns invalid_input):\n"
+                    "- `general`      → metadata.missing ∈ {intent, flow}; metadata.error ∈ {misclassified, misdetected, user_error} (optional).\n"
+                    "- `partial`      → metadata.missing ∈ {source, target, title, query}; metadata.entity ∈ {post, section, snippet, channel} (optional).\n"
+                    "- `specific`     → metadata.missing = <slot name>; metadata.reason ∈ {invalid_value, unclear_value, wrong_slot} (optional).\n"
+                    "- `confirmation` → metadata.missing = <description>; metadata.question = <clarification utterance> (REQUIRED); metadata.candidates: list[str] (optional).\n\n"
+                    "`observation` (top-level) is the agent-authored clarification utterance for general/partial/specific. "
+                    "Confirmation-level uses `metadata.question` instead — `observation` is ignored at that level.\n\n"
+                    "General-level ambiguity is only authored by `rework`, `refine`, `explain`. Other skills should declare specific/partial.\n\n"
                     "Do NOT use this tool for tool-call failures or skill output-contract violations "
-                    "— those route through the violation-metadata DisplayFrame path, not the user."
+                    "— those route through the violation-metadata DisplayFrame path via `execution_error`, not the user."
                 ),
                 'input_schema': {
                     'type': 'object',
                     'properties': {
-                        'action': {'type': 'string', 'enum': ['declare', 'ask', 'resolve']},
-                        'type': {'type': 'string', 'enum': ['general', 'partial', 'specific', 'confirmation']},
-                        'metadata': {'type': 'object'},
+                        'action':      {'type': 'string', 'enum': ['declare', 'present']},
+                        'level':       {'type': 'string', 'enum': ['general', 'partial', 'specific', 'confirmation']},
+                        'metadata':    {'type': 'object', 'description': 'shape required per level — see description'},
+                        'observation': {'type': 'string', 'description': 'agent-authored clarification utterance (general/partial/specific only)'},
                     },
                     'required': ['action'],
                 },

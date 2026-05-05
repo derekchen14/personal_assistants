@@ -1,15 +1,14 @@
-from __future__ import annotations
-
 import json
 import os
 import re
 import time
 from pathlib import Path
-from types import MappingProxyType
-from typing import Any
+
+import anthropic
+from google import genai
+import openai
 
 import logging
-import anthropic
 import yaml
 from pydantic import BaseModel
 
@@ -38,23 +37,33 @@ _TASK_SUFFIXES = {
     'clarify': '',
 }
 
-# model tier → concrete model ID
-_MODEL_IDS = {
-    'haiku':  'claude-haiku-4-5-20251001',
-    'sonnet': 'claude-sonnet-4-6',
-    'opus':   'claude-opus-4-6',
-    'flash':  'gemini-3-flash-preview',
-    'pro':    'gemini-3.1-pro-preview',
-    'qwen':   'Qwen/Qwen3.5-397B-A17B',
-    'mini':   'gpt-5-mini',
-    'gpt':    'gpt-5.4',
+# Single-token provider swap. Callers pass abstract tiers (`low` / `med` / `high`) while the concrete model is
+# resolved against ACTIVE_FAMILY. Provider-specific keys are retained for explicit overrides / testing only.
+ACTIVE_FAMILY = 'gemini'
+FAMILY_TIERS = {
+    'claude':   ('claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-7'),
+    'gemini':   ('gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-3.1-pro-preview'),
+    'gpt':      ('gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4'),
+    'together': ('Qwen/Qwen3.6-35B-A3B-FP8', 'Qwen/Qwen3.5-397B-A17B', 'moonshotai/Kimi-K2.6'),
 }
 
-_CLAUDE_MODELS = {'haiku', 'sonnet', 'opus'}
-_GEMINI_MODELS = {'flash', 'pro'}
-_QWEN_MODELS   = {'qwen'}
-_GPT_MODELS    = {'mini', 'gpt'}
+_low, _med, _high = FAMILY_TIERS[ACTIVE_FAMILY]
+_MODEL_IDS = {
+    'low': _low, 'med': _med, 'high': _high,
+    # Provider-specific overrides for explicit testing.
+    'flash': 'gemini-3-flash-preview',
+    'pro':   'gemini-3.1-pro-preview',
+    'qwen':  'Qwen/Qwen3.5-397B-A17B',
+    'kimi':  'moonshotai/Kimi-K2.6',
+    'mini':  'gpt-5.4-mini',
+    'gpt':   'gpt-5.4',
+}
 
+_CLAUDE_MODELS    = set()
+_GEMINI_MODELS    = {'flash', 'pro'}
+_TOGETHER_MODELS  = {'qwen', 'kimi'}
+_GPT_MODELS       = {'mini', 'gpt'}
+_TIER_KEYS        = {'low', 'med', 'high'}
 
 class PromptEngineer:
 
@@ -68,10 +77,10 @@ class PromptEngineer:
         'anthropic': 'ANTHROPIC_API_KEY',
         'google':    'GOOGLE_API_KEY',
         'openai':    'OPENAI_API_KEY',
-        'qwen':      ('TOGETHER_API_KEY', 'QWEN_API_KEY'),
+        'together':  ('TOGETHER_API_KEY', 'QWEN_API_KEY'),
     }
 
-    def __init__(self, config:MappingProxyType):
+    def __init__(self, config):
         self.config = config
         self._models = config.get('models', {})
         self.persona = config.get('persona', {})
@@ -90,13 +99,10 @@ class PromptEngineer:
         if provider == 'anthropic':
             client = anthropic.Anthropic(api_key=api_key)
         elif provider == 'google':
-            from google import genai
             client = genai.Client(api_key=api_key)
         elif provider == 'openai':
-            import openai
             client = openai.OpenAI(api_key=api_key)
-        elif provider == 'qwen':
-            import openai
+        elif provider == 'together':
             client = openai.OpenAI(api_key=api_key, base_url='https://api.together.xyz/v1')
         self._clients[provider] = client
         return client
@@ -111,10 +117,11 @@ class PromptEngineer:
 
     @staticmethod
     def _model_family(model:str) -> str:
-        if model in _CLAUDE_MODELS: return 'claude'
-        if model in _GEMINI_MODELS: return 'gemini'
-        if model in _QWEN_MODELS:   return 'qwen'
-        if model in _GPT_MODELS:    return 'gpt'
+        if model in _TIER_KEYS:       return ACTIVE_FAMILY
+        if model in _CLAUDE_MODELS:   return 'claude'
+        if model in _GEMINI_MODELS:   return 'gemini'
+        if model in _TOGETHER_MODELS: return 'together'
+        if model in _GPT_MODELS:      return 'gpt'
         raise ValueError(f'Unknown model family for: {model!r}')
 
     def _get_temperature(self, task:str='skill') -> float:
@@ -139,9 +146,7 @@ class PromptEngineer:
         suffix = _TASK_SUFFIXES.get(task, '')
         return f'{base}\n\n{suffix}'.strip() if suffix else base
 
-    def __call__(self, prompt:str, task:str='skill',
-                 model:str='sonnet', max_tokens:int=1024,
-                 schema:type[BaseModel]|dict|None=None) -> str|dict|BaseModel:
+    def __call__(self, prompt:str, task:str='skill', model:str='med', max_tokens:int=1024, schema=None):
         messages = [{'role': 'user', 'content': prompt}]
         system = self._system_for_task(task)
         model_id = self._resolve_model(model)
@@ -153,8 +158,8 @@ class PromptEngineer:
                 text = ''.join(block.text for block in response.content if block.type == 'text')
             case 'gemini':
                 text = self._call_gemini(system, messages, model_id, max_tokens, schema_dict=schema_dict)
-            case 'qwen':
-                text = self._call_qwen(system, messages, model_id, max_tokens, schema_dict=schema_dict)
+            case 'together':
+                text = self._call_together(system, messages, model_id, max_tokens, schema_dict=schema_dict)
             case 'gpt':
                 text = self._call_gpt(system, messages, model_id, max_tokens, schema_dict=schema_dict)
         if schema is None:
@@ -167,7 +172,7 @@ class PromptEngineer:
         return parsed
 
     @staticmethod
-    def _to_json_schema(schema:type[BaseModel]|dict) -> dict:
+    def _to_json_schema(schema) -> dict:
         if isinstance(schema, dict):
             return schema
         if isinstance(schema, type) and issubclass(schema, BaseModel):
@@ -183,9 +188,14 @@ class PromptEngineer:
         base_system = build_system(self.persona)
         system = build_skill_system(base_system, flow, skill_prompt)
         messages = list(build_skill_messages(flow, convo_history, user_text, resolved))
-        model_id = self._resolve_model('sonnet')
-        response = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
-        return ''.join(block.text for block in response.content if block.type == 'text')
+        model_id = self._resolve_model('med')
+        match self._model_family('med'):
+            case 'claude':
+                r = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
+                return ''.join(b.text for b in r.content if b.type == 'text')
+            case 'gemini':   return self._call_gemini(system, messages, model_id, max_tokens)
+            case 'together': return self._call_together(system, messages, model_id, max_tokens)
+            case 'gpt':      return self._call_gpt(system, messages, model_id, max_tokens)
 
     def tool_call(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], tool_dispatcher,
                   skill_name:str|None=None, skill_prompt:str|None=None, resolved:dict|None=None,
@@ -196,17 +206,26 @@ class PromptEngineer:
         base_system = build_system(self.persona)
         system = build_skill_system(base_system, flow, skill_prompt)
         msgs = list(build_skill_messages(flow, convo_history, user_text, resolved))
-        model_id = self._resolve_model('sonnet')
-        tool_log: list[dict] = []
+        model_id = self._resolve_model('med')
 
         max_num_calls = 8
-        # Allow certain flows that need more effort to increase the number of tool calls
         if flow.name() in ['audit', 'refine', 'rework', 'compose', 'simplify', 'add']:
             max_num_calls *= 2
 
+        family = self._model_family('med')
+        adapted = self._adapt_tool_defs(family, tool_defs)
+        match family:
+            case 'claude':   return self._call_claude_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
+            case 'gemini':   return self._call_gemini_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
+            case 'gpt':      return self._call_gpt_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
+            case 'together': return self._call_together_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
+
+    def _call_claude_with_tools(self, system, msgs, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):
+        msgs = list(msgs)
+        tool_log: list[dict] = []
+        text_parts: list[str] = []
         for _ in range(max_num_calls):
             response = self._call_claude(system, msgs, model_id, tools=tool_defs, max_tokens=max_tokens)
-
             text_parts = []
             tool_uses = []
             for block in response.content:
@@ -214,10 +233,8 @@ class PromptEngineer:
                     text_parts.append(block.text)
                 elif block.type == 'tool_use':
                     tool_uses.append(block)
-
             if not tool_uses:
                 return '\n'.join(text_parts), tool_log
-
             msgs.append({'role': 'assistant', 'content': response.content})
             tool_results = []
             for tool_use in tool_uses:
@@ -225,13 +242,14 @@ class PromptEngineer:
                          {key: val for key, val in tool_use.input.items()} if tool_use.input else {})
                 result = tool_dispatcher(tool_use.name, tool_use.input)
                 tool_log.append({'tool': tool_use.name, 'input': tool_use.input, 'result': result})
-                parsed_content = json.dumps(result, default=str) 
-                tool_results.append({'type': 'tool_result', 'tool_use_id': tool_use.id, 'content': parsed_content})
+                tool_results.append({
+                    'type': 'tool_result', 'tool_use_id': tool_use.id,
+                    'content': json.dumps(result, default=str),
+                })
             msgs.append({'role': 'user', 'content': tool_results})
+        return '\n'.join(text_parts), tool_log
 
-        return '\n'.join(text_parts) if text_parts else '', tool_log
-
-    async def stream(self, prompt:str, task:str='skill', model:str='sonnet', max_tokens:int=4096):
+    async def stream(self, prompt:str, task:str='skill', model:str='med', max_tokens:int=4096):
         """Token streaming. Same routing as __call__, yields text chunks."""
         messages = [{'role': 'user', 'content': prompt}]
         system = self._system_for_task(task)
@@ -272,7 +290,7 @@ class PromptEngineer:
             'text': system,
             'cache_control': {'type': 'ephemeral'},
         }] if system else []
-        kwargs: dict[str, Any] = {
+        kwargs = {
             'model': model_id, 'max_tokens': max_tokens,
             'system': system_blocks, 'messages': messages,
         }
@@ -305,9 +323,12 @@ class PromptEngineer:
                 parts=[types.Part.from_text(text=msg['content'])])
             for msg in messages
         ]
+        # Pro requires thinking mode (-1 = auto-budget, separate from max_output_tokens).
+        # Flash / Flash-Lite suppress thinking (0) for latency + cost.
+        thinking_budget = -1 if 'pro' in model_id else 0
         config = types.GenerateContentConfig(
             system_instruction=system, max_output_tokens=max_tokens,
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
         )
         if temp > 0:
             config.temperature = temp
@@ -323,11 +344,10 @@ class PromptEngineer:
         return response.text
 
     def _call_gpt(self, system, messages, model_id, max_tokens=4096, schema_dict=None):
-        import openai
         temp = self._get_temperature()
         oai_messages = [{'role': 'system', 'content': system}]
         oai_messages.extend({'role': msg['role'], 'content': msg['content']} for msg in messages)
-        kwargs: dict[str, Any] = {
+        kwargs = {
             'model': model_id, 'messages': oai_messages,
             'max_completion_tokens': max_tokens,
         }
@@ -346,13 +366,12 @@ class PromptEngineer:
         except openai.APIError:
             raise
 
-    def _call_qwen(self, system, messages, model_id, max_tokens=4096, schema_dict=None):
-        import openai
+    def _call_together(self, system, messages, model_id, max_tokens=4096, schema_dict=None):
         temp = self._get_temperature()
         is_thinking = 'thinking' in model_id.lower()
         qwen_messages = [{'role': 'system', 'content': system}]
         qwen_messages.extend({'role': msg['role'], 'content': msg['content']} for msg in messages)
-        kwargs: dict[str, Any] = {
+        kwargs = {
             'model': model_id, 'messages': qwen_messages,
             'max_completion_tokens': max_tokens if is_thinking else None,
         }
@@ -366,7 +385,7 @@ class PromptEngineer:
                 'json_schema': {'name': 'response', 'schema': schema_dict, 'strict': True},
             }
         kwargs = {key: val for key, val in kwargs.items() if val is not None}
-        client = self._get_client('qwen')
+        client = self._get_client('together')
         try:
             response = self._retry(lambda: client.chat.completions.create(**kwargs),
                 (openai.RateLimitError, openai.APITimeoutError, openai.InternalServerError))
@@ -383,6 +402,180 @@ class PromptEngineer:
                     raw_text = match.group()
         return raw_text
 
+    # ── Tool-use loops (per family) ──────────────────────────────────
+
+    @staticmethod
+    def _adapt_tool_defs(family, tool_defs):
+        """Convert Anthropic-shaped tool defs to per-provider shape."""
+        if family == 'claude':
+            return [{'name': t['name'], 'description': t['description'],
+                     'input_schema': t['input_schema']} for t in tool_defs]
+        if family == 'gemini':
+            return [{'name': t['name'], 'description': t['description'],
+                     'parameters': PromptEngineer._sanitize_for_gemini(t['input_schema'])}
+                    for t in tool_defs]
+        if family in ('gpt', 'together'):
+            return [{'type': 'function', 'function': {
+                'name': t['name'], 'description': t['description'],
+                'parameters': t['input_schema'],
+            }} for t in tool_defs]
+        raise ValueError(f'Unknown family for tool-def adapter: {family!r}')
+
+    @staticmethod
+    def _sanitize_for_gemini(schema):
+        """Recursively trim JSON Schema features that Gemini's FunctionDeclaration rejects.
+        Drops oneOf/anyOf/allOf (collapsing to the first option), additionalProperties,
+        default, examples, $ref/definitions. Recurses through properties and items."""
+        if not isinstance(schema, dict):
+            return schema
+        out = {}
+        for key, val in schema.items():
+            if key in ('oneOf', 'anyOf', 'allOf'):
+                if val and isinstance(val, list) and isinstance(val[0], dict):
+                    first = PromptEngineer._sanitize_for_gemini(val[0])
+                    for k, v in first.items():
+                        out.setdefault(k, v)
+                continue
+            if key in ('additionalProperties', 'default', 'examples', '$ref', 'definitions', '$schema'):
+                continue
+            if key == 'properties' and isinstance(val, dict):
+                out[key] = {k: PromptEngineer._sanitize_for_gemini(v) for k, v in val.items()}
+            elif key == 'items':
+                out[key] = PromptEngineer._sanitize_for_gemini(val)
+            else:
+                out[key] = val
+        return out
+
+    def _call_gemini_with_tools(self, system, messages, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):
+        from google.genai import types
+        contents = [
+            types.Content(role=('model' if m['role'] == 'assistant' else 'user'),
+                          parts=[types.Part.from_text(text=m['content'])])
+            for m in messages
+        ]
+        fns = [types.FunctionDeclaration(**td) for td in tool_defs]
+        thinking_budget = -1 if 'pro' in model_id else 0
+        config = types.GenerateContentConfig(
+            system_instruction=system,
+            tools=[types.Tool(function_declarations=fns)],
+            max_output_tokens=max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+        )
+        client = self._get_client('google')
+        tool_log: list[dict] = []
+        text = ''
+        for _ in range(max_num_calls):
+            response = self._retry(
+                lambda: client.models.generate_content(model=model_id, contents=contents, config=config),
+                Exception,
+            )
+            candidate = response.candidates[0]
+            parts = candidate.content.parts or []
+            function_calls = [p.function_call for p in parts if getattr(p, 'function_call', None)]
+            text = ''.join(p.text for p in parts if getattr(p, 'text', None))
+            if not function_calls:
+                return text, tool_log
+            contents.append(candidate.content)
+            response_parts = []
+            for fc in function_calls:
+                args = dict(fc.args) if fc.args else {}
+                log.info('  skill tool=%s  input=%s', fc.name, args)
+                result = tool_dispatcher(fc.name, args)
+                tool_log.append({'tool': fc.name, 'input': args, 'result': result})
+                response_parts.append(types.Part.from_function_response(
+                    name=fc.name, response={'result': result},
+                ))
+            contents.append(types.Content(role='user', parts=response_parts))
+        return text, tool_log
+
+    def _call_gpt_with_tools(self, system, messages, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):
+        return self._openai_tool_loop(
+            client=self._get_client('openai'), system=system, messages=messages,
+            model_id=model_id, tool_defs=tool_defs, tool_dispatcher=tool_dispatcher,
+            max_tokens=max_tokens, max_num_calls=max_num_calls,
+            completion_tokens_param=True, allow_streaming_fallback=False,
+        )
+
+    def _call_together_with_tools(self, system, messages, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):
+        return self._openai_tool_loop(
+            client=self._get_client('together'), system=system, messages=messages,
+            model_id=model_id, tool_defs=tool_defs, tool_dispatcher=tool_dispatcher,
+            max_tokens=max_tokens, max_num_calls=max_num_calls,
+            completion_tokens_param=False, allow_streaming_fallback=True,
+        )
+
+    def _openai_tool_loop(self, *, client, system, messages, model_id, tool_defs, tool_dispatcher,
+                          max_tokens, max_num_calls, completion_tokens_param, allow_streaming_fallback):
+        msgs = [{'role': 'system', 'content': system}]
+        msgs.extend({'role': m['role'], 'content': m['content']} for m in messages)
+        tool_log: list[dict] = []
+        text = ''
+        for _ in range(max_num_calls):
+            kwargs = {'model': model_id, 'messages': msgs, 'tools': tool_defs}
+            kwargs['max_completion_tokens' if completion_tokens_param else 'max_tokens'] = max_tokens
+            try:
+                response = self._retry(
+                    lambda: client.chat.completions.create(**kwargs),
+                    (openai.RateLimitError, openai.APITimeoutError, openai.InternalServerError),
+                )
+            except openai.BadRequestError as ecp:
+                if allow_streaming_fallback and 'streaming' in str(ecp).lower():
+                    response = self._openai_streaming_tool_call(client, kwargs)
+                else:
+                    raise
+            msg = response.choices[0].message
+            text = msg.content or ''
+            tool_calls = getattr(msg, 'tool_calls', None) or []
+            if not tool_calls:
+                return text, tool_log
+            msgs.append({
+                'role': 'assistant', 'content': text or None,
+                'tool_calls': [{
+                    'id': tc.id, 'type': 'function',
+                    'function': {'name': tc.function.name, 'arguments': tc.function.arguments},
+                } for tc in tool_calls],
+            })
+            for tc in tool_calls:
+                args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                log.info('  skill tool=%s  input=%s', tc.function.name, args)
+                result = tool_dispatcher(tc.function.name, args)
+                tool_log.append({'tool': tc.function.name, 'input': args, 'result': result})
+                msgs.append({
+                    'role': 'tool', 'tool_call_id': tc.id,
+                    'content': json.dumps(result, default=str),
+                })
+        return text, tool_log
+
+    @staticmethod
+    def _openai_streaming_tool_call(client, kwargs):
+        """Streaming-fallback for Together models that reject non-streaming requests.
+        Accumulates text + tool_call deltas and returns a non-streaming-shaped response."""
+        kwargs = {**kwargs, 'stream': True, 'stream_options': {'include_usage': True}}
+        text_parts: list[str] = []
+        tool_acc: dict[int, dict] = {}
+        for chunk in client.chat.completions.create(**kwargs):
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta.content:
+                text_parts.append(delta.content)
+            for tc_delta in (delta.tool_calls or []):
+                slot = tool_acc.setdefault(tc_delta.index, {'id': '', 'name': '', 'arguments': ''})
+                if tc_delta.id:
+                    slot['id'] = tc_delta.id
+                if tc_delta.function and tc_delta.function.name:
+                    slot['name'] = tc_delta.function.name
+                if tc_delta.function and tc_delta.function.arguments:
+                    slot['arguments'] += tc_delta.function.arguments
+        # Re-shape to look like a non-streaming response (just the bits the loop reads).
+        from types import SimpleNamespace
+        tool_calls = [
+            SimpleNamespace(id=s['id'], function=SimpleNamespace(name=s['name'], arguments=s['arguments']))
+            for s in (tool_acc[i] for i in sorted(tool_acc))
+        ]
+        msg = SimpleNamespace(content=''.join(text_parts), tool_calls=tool_calls or None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
     # ── Output parsers ───────────────────────────────────────────────
 
     @classmethod
@@ -395,6 +588,15 @@ class PromptEngineer:
             case 'json':     return cls._parse_json(text)
             case 'sql':      return cls._parse_sql(text)
             case 'markdown': return cls._parse_markdown(text, shape)
+
+    def _strip_nulls(self, obj):
+        """Recursively drop None values before handing slots to fill_slot_values, which is needed because the
+        model prediction schema enforces emitting `null` for empty slots rather than a string sentinel."""
+        if isinstance(obj, dict):
+            return {k: self._strip_nulls(v) for k, v in obj.items() if v is not None}
+        if isinstance(obj, list):
+            return [self._strip_nulls(x) for x in obj if x is not None]
+        return obj
 
     @staticmethod
     def _strip_fences(text:str) -> str:
@@ -465,7 +667,7 @@ class PromptEngineer:
         return '\n'.join(sections) if sections else ''
 
     @classmethod
-    def _resolve_skill_path(cls, flow_name:str) -> Path | None:
+    def _resolve_skill_path(cls, flow_name:str):
         for base in cls._SKILL_DIRS:
             path = base / f'{flow_name}.md'
             if path.exists():

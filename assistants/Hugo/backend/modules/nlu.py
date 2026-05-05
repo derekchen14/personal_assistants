@@ -1,16 +1,10 @@
-from __future__ import annotations
-
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 log = logging.getLogger(__name__)
 
 from backend.components.dialogue_state import DialogueState
-from backend.components.ambiguity_handler import AmbiguityHandler
-from backend.components.prompt_engineer import PromptEngineer
 from backend.components.flow_stack import flow_classes
 from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt, render_flow_catalog
 from backend.prompts.for_nlu import build_slot_filling_prompt
@@ -18,9 +12,6 @@ from backend.prompts.for_contemplate import build_contemplate_prompt as _build_c
 from backend.utilities.services import PostService
 from schemas.ontology import FLOW_CATALOG, Intent
 from utils.helper import _DAX_LOOKUP, edge_flows_for, dax2flow, flow2dax
-
-if TYPE_CHECKING:
-    from backend.components.world import World
 
 
 _SHORTCUTS: list[tuple[re.Pattern, str]] = [
@@ -32,9 +23,9 @@ _SHORTCUTS: list[tuple[re.Pattern, str]] = [
 ]
 
 _ENSEMBLE_VOTERS = [
-    {'model': 'haiku', 'label': 'haiku', 'weight': 0.20},
-    {'model': 'sonnet', 'label': 'sonnet', 'weight': 0.45},
-    {'model': 'flash', 'label': 'gemini_flash', 'weight': 0.35},
+    {'model': 'low',  'label': 'low',  'weight': 0.20},
+    {'model': 'med',  'label': 'med',  'weight': 0.45},
+    {'model': 'high', 'label': 'high', 'weight': 0.35},
 ]
 
 def _get_edge_flows_for_intent(intent:str) -> set[str]:
@@ -45,9 +36,7 @@ def _get_edge_flows_for_intent(intent:str) -> set[str]:
                 edge.add(ef)
     return edge
 
-
 _VALID_INTENTS = ('Research', 'Draft', 'Revise', 'Publish', 'Converse', 'Plan')
-
 
 def _intent_schema() -> dict:
     return {
@@ -76,42 +65,24 @@ def _flow_detection_schema(candidate_flow_names:list[str]) -> dict:
         'additionalProperties': False,
     }
 
-
 def _fill_slots_schema(flow) -> dict:
-    """Only ask the LLM for slots that aren't already filled. Filled slots are final —
-    re-asking risks the LLM substituting worse data (e.g. post title for post_id) and
-    appending a duplicate entry on the slot."""
-    unfilled = {name: slot for name, slot in flow.slots.items() if not slot.filled}
+    """Build the JSON schema for slot-fill. Only includes unfilled slots since filled values are considered correct"""
+    unfilled_slots = {name: slot.json_schema() for name, slot in flow.slots.items() if not slot.filled}
     return {
         'type': 'object',
         'properties': {
             'reasoning': {'type': 'string'},
-            'slots': {
-                'type': 'object',
-                'properties': {name: slot.json_schema() for name, slot in unfilled.items()},
-                'required': list(unfilled),
-                'additionalProperties': False,
+            'slots': {'type': 'object', 'properties': unfilled_slots,
+                'required': list(unfilled_slots.keys()), 'additionalProperties': False,
             },
         },
         'required': ['reasoning', 'slots'],
         'additionalProperties': False,
     }
 
-
-def _strip_nulls(obj):
-    """Recursively drop None values before handing slots to fill_slot_values. Models now emit
-    `null` (schema-enforced) rather than a string sentinel."""
-    if isinstance(obj, dict):
-        return {k: _strip_nulls(v) for k, v in obj.items() if v is not None}
-    if isinstance(obj, list):
-        return [_strip_nulls(x) for x in obj if x is not None]
-    return obj
-
-
 class NLU:
 
-    def __init__(self, config:MappingProxyType, ambiguity:AmbiguityHandler,
-                 engineer:PromptEngineer, world:'World'):
+    def __init__(self, config, ambiguity, engineer, world):
         self.config = config
         self.ambiguity = ambiguity
         self.engineer = engineer
@@ -119,14 +90,22 @@ class NLU:
         self.flow_stack = world.flow_stack
         self._posts = PostService()
 
-    def understand(self, user_text:str, context, dax:str|None=None, payload:dict|None=None) -> DialogueState:
+    def understand(self, user_text:str, context, dax:str|None=None, payload:dict|None=None):
         gold_dax = dax or self.prepare(user_text)
         if gold_dax:
+            branch = 'react'
             state = self.react(gold_dax, payload or {})
         elif self.requires_contemplation():
+            branch = 'contemplate'
             state = self.contemplate(user_text)
         else:
+            branch = 'think'
             state = self.think(user_text, payload or {})
+        log.info('[ambig-trace] dispatch=%s ambig_level=%s ambig_meta=%s',
+                 branch, self.ambiguity.level, self.ambiguity.metadata)
+
+        if self.ambiguity.present():
+            self.ambiguity.resolve()
         return self.validate(state)
 
     # ── Public operational modes ──────────────────────────────────────
@@ -140,7 +119,7 @@ class NLU:
                 return '{000}'
         return None
 
-    def think(self, user_text:str, payload:dict={}) -> DialogueState:
+    def think(self, user_text:str, payload:dict={}):
         result = self.predict(user_text)
         flow_name = result['flow_name']
 
@@ -157,10 +136,10 @@ class NLU:
             )
         return state
 
-    def contemplate(self, user_text:str) -> DialogueState:
+    def contemplate(self, user_text:str):
         prev = self.world.current_state()
         failed_flow = prev.flow_name() if prev else None
-        failure_reason = self.ambiguity.observation or ''
+        failure_reason = self.ambiguity.observation
 
         detection = self._check_routing(user_text, failed_flow, failure_reason)
         flow_name = detection['flow_name']
@@ -169,7 +148,7 @@ class NLU:
 
         return self._build_state(flow_name=flow_name, confidence=detection['confidence'])
 
-    def react(self, gold_dax:str, payload:dict={}) -> DialogueState:
+    def react(self, gold_dax:str, payload:dict={}):
         """Automatically create the flow since we know the correct DAX."""
         flow_name = dax2flow(gold_dax)
         flow = self._push_or_get(flow_name)
@@ -178,7 +157,7 @@ class NLU:
         self._fill_slots(flow, payload)
         return state
 
-    def validate(self, state:DialogueState) -> DialogueState:
+    def validate(self, state):
         cat = FLOW_CATALOG.get(state.flow_name(string=True))
         if not cat:
             state.pred_intent = 'Converse'
@@ -198,7 +177,7 @@ class NLU:
 
     # ── Entity repair ──────────────────────────────────────────────────
 
-    def _repair_entities(self, state:DialogueState, flow) -> DialogueState:
+    def _repair_entities(self, state, flow):
         from backend.components.flow_stack.slots import FreeTextSlot
 
         valid_values = self._get_valid_values()
@@ -233,8 +212,11 @@ class NLU:
                     slot.value = matches[0]
                     self.ambiguity.declare(
                         'confirmation',
-                        metadata={'slot': slot_name, 'candidate': matches[0]},
-                        observation=f'Did you mean "{matches[0]}" for {slot_name}?',
+                        metadata={
+                            'missing': slot_name,
+                            'question': f'Did you mean "{matches[0]}" for {slot_name}?',
+                            'candidate': matches[0],
+                        },
                     )
                 else:
                     llm_result = self._llm_repair_slot(
@@ -244,7 +226,11 @@ class NLU:
                         slot.value = llm_result
                         self.ambiguity.declare(
                             'confirmation',
-                            metadata={'slot': slot_name, 'candidate': llm_result},
+                            metadata={
+                                'missing': slot_name,
+                                'question': f'Did you mean "{llm_result}" for {slot_name}?',
+                                'candidate': llm_result,
+                            },
                         )
                     else:
                         self._declare_slot_failure(slot, slot_name, value)
@@ -252,7 +238,7 @@ class NLU:
 
     def _declare_slot_failure(self, slot, slot_name:str, value:str) -> None:
         self.ambiguity.declare(
-            'partial', metadata={'slot': slot_name, 'invalid_value': value},
+            'specific', metadata={'missing': slot_name, 'reason': 'invalid_value'},
         )
         slot.reset()
 
@@ -410,27 +396,31 @@ class NLU:
                     slot.add_one(**entity_dict)
             # Phase 1b: Fill ExactSlot with snippets. Only for FindFLow and ReferenceFlow.
             elif 'snip' in entity_dict and flow.name() in snippet_exact_map:
-                target_name = snippet_exact_map[flow.name()]
-                slot = flow.slots.get(target_name)
-                if not slot.filled:
-                    slot.add_one(entity_dict['snip'])
+                slot_name = snippet_exact_map[flow.name()]
+                if not flow.slots[slot_name].filled:
+                    flow.slots[slot_name].add_one(entity_dict['snip'])
             # Phase 1c: Capture slot-values when a user clicks on a button or interacts with UI.
             elif last_turn.turn_type == 'action' and filtered_payload:
                 self.unpack_user_actions(flow, filtered_payload)
 
-        # Phase 2: Ground remaining source/target slots against the active post.
+        # Phase 2: Transfer entity grounding from previous flow to active flow. Gate on `slot.values` (not `slot.filled`)
+        # so a slot already partially populated from a prior turn isn't double-grounded into a duplicate entity.
         prev = self.world.current_state()
-        if prev and prev.active_post:
-            for slot_name, slot in flow.slots.items():
-                if slot.slot_type in ('source', 'target') and not slot.filled:
+        if prev.active_post:
+            for slot in flow.slots.values():
+                if slot.slot_type in ('source', 'target') and not slot.values:
                     slot.add_one(post=prev.active_post)
 
-        # Phase 3: LLM slot-filling for anything still unfilled
+        # Phase 3: Standard LLM slot-filling. Only targets unfilled slots, enforced by `_fill_slots_schema`
         if not flow.is_filled():
             convo_history = self.world.context.compile_history()
             prompt = build_slot_filling_prompt(flow, convo_history, self._active_post_dict())
-            pred_slots = self.engineer(prompt, 'fill_slots', schema=_fill_slots_schema(flow))
-            cleaned = _strip_nulls(pred_slots['slots'])
+            pred_slots = self.engineer(prompt, 'fill_slots', max_tokens=2048, schema=_fill_slots_schema(flow))
+            if 'slots' not in pred_slots:
+                log.warning('[fill_slots] schema violation flow=%s payload=%s', flow.name(), pred_slots)
+                log.warning('[fill_slots] convo_history=\n%s', convo_history)
+                log.warning('[fill_slots] filled-state: %s', {n: s.filled for n, s in flow.slots.items()})
+            cleaned = self.engineer._strip_nulls(pred_slots['slots'])
             flow.fill_slot_values(cleaned)
 
     def unpack_user_actions(self, flow, payload:dict):
@@ -494,9 +484,9 @@ class NLU:
     def requires_contemplation(self) -> bool:
         if len(self.flow_stack._stack) == 0:
             return False
-        prev = self.world.current_state()
-        if not prev:
+        if self.ambiguity.present() and self.ambiguity.level != 'general':
             return False
+        prev = self.world.current_state()
         return prev.has_issues or prev.keep_going
 
     # ── Support (private) ─────────────────────────────────────────────
@@ -520,7 +510,7 @@ class NLU:
         except (ValueError, RuntimeError):
             return None
 
-    def _build_state(self, flow_name:str, confidence:float) -> DialogueState:
+    def _build_state(self, flow_name:str, confidence:float):
         prev = self.world.current_state()
         cat = FLOW_CATALOG.get(flow_name, {})
         pred_intent = cat.get('intent', Intent.CONVERSE)

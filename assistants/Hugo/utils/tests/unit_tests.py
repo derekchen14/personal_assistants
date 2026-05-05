@@ -107,9 +107,9 @@ class TestEnsembleVoting:
     # -- _detect_flow (mocked LLM) -----------------------------------------
 
     def test_one_voter_fails(self, nlu):
-        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024, schema=None):
-            if model == 'flash':
-                raise RuntimeError('Gemini down')
+        def mock_call(prompt, task='skill', model='med', max_tokens=1024, schema=None):
+            if model == 'high':
+                raise RuntimeError('voter down')
             return {'flow_name': 'chat', 'confidence': 0.8}
 
         real_engineer = nlu.engineer
@@ -135,8 +135,8 @@ class TestEnsembleVoting:
         assert result['confidence'] == 0.3
 
     def test_disagreement_weighted(self, nlu):
-        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024, schema=None):
-            if model == 'haiku':
+        def mock_call(prompt, task='skill', model='med', max_tokens=1024, schema=None):
+            if model == 'low':
                 return {'flow_name': 'chat'}
             return {'flow_name': 'brainstorm'}
 
@@ -187,7 +187,7 @@ class TestNLUSpecificRegressions:
 class TestAgent:
     """End-to-end coverage of the agent.take_turn round trip with mocked LLM calls and
     stubbed PostService. Exercises the keep_going loop's interaction with res.start /
-    res.respond — the agent-level orchestration that policy_evals and unit-NLU tests skip."""
+    res.respond — the agent-level orchestration that lower-tier tests skip."""
 
     def test_create_action_completes_round_one_without_crash(self, mock_agent, monkeypatch):
         """A flow that completes in round 1 with keep_going=False must leave its just-completed
