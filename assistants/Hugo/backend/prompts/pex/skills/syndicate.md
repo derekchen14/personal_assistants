@@ -24,7 +24,7 @@ This skill cross-posts an already-published post to one or more **secondary** ch
 
 ## Error Handling
 
-If the post is not published, call `handle_ambiguity(level='confirmation', observation='Source post is still draft — release first, then syndicate?')`.
+If the post is not published, call `handle_ambiguity(level='confirmation', metadata={'missing': 'publish_status', 'question': 'Source post is still draft — release first, then syndicate?'})`.
 
 If `channel_status` fails for a channel, mark it failed in the output and continue with the rest.
 

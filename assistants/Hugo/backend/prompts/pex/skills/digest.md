@@ -18,9 +18,9 @@ This skill splits a broad theme into a multi-part series. Output drives PlanPoli
 
 ## Error Handling
 
-If `theme` is missing, call `handle_ambiguity(level='specific', metadata={'missing_slot': 'theme'})`.
+If `theme` is missing, call `handle_ambiguity(level='specific', metadata={'missing': 'theme'})`.
 
-If `part_count` is outside [2, 12], call `handle_ambiguity(level='specific', metadata={'invalid_input': 'part_count'})`.
+If `part_count` is outside [2, 12], call `handle_ambiguity(level='specific', metadata={'missing': 'part_count', 'reason': 'invalid_value'})`.
 
 ## Tools
 

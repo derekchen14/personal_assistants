@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-from types import MappingProxyType
 from uuid import uuid4
 
 from backend.components.flow_stack.parents import BaseFlow
@@ -9,7 +6,7 @@ from schemas.ontology import FlowLifecycle
 
 class FlowStack:
 
-    def __init__(self, config:MappingProxyType, flow_classes:dict|None=None):
+    def __init__(self, config, flow_classes:dict|None=None):
         self.config = config
         self._stack: list[BaseFlow] = []
         self._max_depth: int = config.get('session', {}).get('max_flow_depth', 8)
@@ -17,7 +14,7 @@ class FlowStack:
 
     # ── Public API ──────────────────────────────────────────────────
 
-    def stackon(self, flow_name:str, plan_id:str|None=None) -> BaseFlow:
+    def stackon(self, flow_name:str, plan_id:str|None=None):
         """Push a flow on top of the stack. The current flow stays below and resumes after the new flow completes.
         Transfers filled slot values to the new flow when slot names match across parent and child."""
         curr_flow = self._stack[-1] if self._stack else None
@@ -34,7 +31,7 @@ class FlowStack:
                     new_flow.fill_slot_values({slot_name: slot.to_dict()})
         return new_flow
 
-    def fallback(self, flow_name:str) -> BaseFlow:
+    def fallback(self, flow_name:str):
         """Replace the current flow. Marks it Invalid first, then pushes the new flow,
         and transfers matching slot values to the new flow."""
         old_flow = self._stack[-1]
@@ -45,11 +42,11 @@ class FlowStack:
                 new_flow.fill_slot_values({slot_name: slot.to_dict()})
         return new_flow
 
-    def peek(self) -> BaseFlow|None:
+    def peek(self):
         """Top of stack without removing."""
         return self._stack[-1] if self._stack else None
 
-    def get_flow(self, status:str|None=None) -> BaseFlow|None:
+    def get_flow(self, status:str|None=None):
         """Top-of-stack flow, optionally filtered by lifecycle status
         (e.g. 'Active', 'Pending')."""
         for entry in reversed(self._stack):
@@ -57,7 +54,7 @@ class FlowStack:
                 return entry
         return None
 
-    def find_by_name(self, flow_name:str) -> BaseFlow|None:
+    def find_by_name(self, flow_name:str):
         """Search the stack for an active/pending flow by name."""
         for entry in reversed(self._stack):
             if entry.flow_type == flow_name and entry.status not in (
@@ -66,7 +63,12 @@ class FlowStack:
                 return entry
         return None
 
-    def pop_completed(self) -> list[BaseFlow]:
+    def stack_size(self) -> int:
+        """Number of active/pending flows on the stack (excludes Completed/Invalid)."""
+        live = (FlowLifecycle.ACTIVE.value, FlowLifecycle.PENDING.value)
+        return sum(1 for entry in self._stack if entry.status in live)
+
+    def pop_completed(self):
         """Remove all Completed and Invalid flows. Returns only the
         Completed ones (Invalid are silently discarded). Activates the
         next Pending flow if one is now on top."""
@@ -89,7 +91,7 @@ class FlowStack:
 
     # ── Internal ────────────────────────────────────────────────────
 
-    def _push(self, flow_name:str, plan_id:str|None=None) -> BaseFlow:
+    def _push(self, flow_name:str, plan_id:str|None=None):
         if len(self._stack) >= self._max_depth:
             raise RuntimeError(
                 f'Flow stack depth limit ({self._max_depth}) exceeded'
@@ -104,5 +106,5 @@ class FlowStack:
         self._stack.append(flow)
         return flow
 
-    def _pop(self) -> BaseFlow|None:
+    def _pop(self):
         return self._stack.pop() if self._stack else None

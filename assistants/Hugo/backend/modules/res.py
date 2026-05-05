@@ -1,37 +1,23 @@
-from __future__ import annotations
-
 import logging
-from types import MappingProxyType
-from typing import TYPE_CHECKING
-
-from backend.components.dialogue_state import DialogueState
-from backend.components.display_frame import DisplayFrame
 
 log = logging.getLogger(__name__)
-from backend.components.flow_stack.parents import BaseFlow
-from backend.components.ambiguity_handler import AmbiguityHandler
-from backend.components.prompt_engineer import PromptEngineer
-from backend.prompts.for_res import get_naturalize_prompt, build_clarification
+from backend.prompts.for_res import get_naturalize_prompt
 from schemas.ontology import Intent
 from utils.helper import output_for_flow
 from backend.modules.templates import *
 from backend.modules.templates import get_template as _get_template
 
-if TYPE_CHECKING:
-    from backend.components.world import World
-
 
 class RES(object):
 
-    def __init__(self, config:MappingProxyType, ambiguity:AmbiguityHandler,
-                 engineer:PromptEngineer, world:'World'):
+    def __init__(self, config, ambiguity, engineer, world):
         self.config = config
         self.ambiguity = ambiguity
         self.engineer = engineer
         self.world = world
         self.flow_stack = world.flow_stack
 
-    def respond(self, frame:DisplayFrame) -> tuple[str, DisplayFrame]:
+    def respond(self, frame):
         completed_flows = self.start()
 
         if self.ambiguity.present():
@@ -54,18 +40,11 @@ class RES(object):
     # ── Helpers ──────────────────────────────────────────────────────
 
     def _clarify(self) -> str:
-        level = self.ambiguity.level or 'general'
-        metadata = self.ambiguity.metadata or {}
-        observation = self.ambiguity.observation
+        text = self.ambiguity.ask(self.flow_stack.get_flow().name())
+        self.world.context.add_turn('Agent', text, turn_type='clarification')
+        return text
 
-        clarification_text = build_clarification(level, metadata, observation)
-
-        self.world.context.add_turn(
-            'Agent', clarification_text, turn_type='clarification',
-        )
-        return clarification_text
-
-    def generate(self, frame:DisplayFrame, state:DialogueState, flow:BaseFlow) -> str:
+    def generate(self, frame, state, flow) -> str:
         template_info = _get_template(flow.name(), flow.intent)
         template = template_info.get('template', '{message}')
 
@@ -80,7 +59,7 @@ class RES(object):
         response = filled if template_info.get('skip_naturalize') else self.naturalize(filled, frame)
         return response
 
-    def naturalize(self, raw_text:str, frame:DisplayFrame) -> str:
+    def naturalize(self, raw_text:str, frame) -> str:
         if self.config.get('debug', False):
             return raw_text
         if not raw_text.strip():
@@ -101,7 +80,7 @@ class RES(object):
 
     # ── Hooks ─────────────────────────────────────────────────────
 
-    def start(self) -> list[BaseFlow]:
+    def start(self):
         popped = self.flow_stack.pop_completed()
 
         completed = [flow for flow in popped if flow.status == 'Completed']
@@ -121,7 +100,7 @@ class RES(object):
 
         return completed
 
-    def finish(self, text:str, frame:DisplayFrame, flow:BaseFlow):
+    def finish(self, text:str, frame, flow):
         if flow.intent not in (Intent.INTERNAL, Intent.PLAN):
             if not text and not frame.blocks:
                 pass  # orchestrator handles fallback

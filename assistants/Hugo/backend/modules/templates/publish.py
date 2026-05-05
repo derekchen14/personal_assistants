@@ -1,6 +1,3 @@
-from backend.components.flow_stack.parents import BaseFlow
-from backend.components.display_frame import DisplayFrame
-
 TEMPLATES = {
     'release':   {'template': "Published! {message}", 'block_hint': 'toast'},
     'syndicate': {'template': "Cross-posted! {message}", 'block_hint': 'toast', 'skip_naturalize': True},
@@ -11,7 +8,7 @@ TEMPLATES = {
     'survey':    {'template': "{message}", 'block_hint': 'list'},
 }
 
-def fill_publish_template(template:str, flow:BaseFlow, frame:DisplayFrame) -> str:
+def fill_publish_template(template:str, flow, frame) -> str:
     template = TEMPLATES[flow.name()]['template']
     message = frame.thoughts
     return template.format(message=message)

@@ -49,8 +49,8 @@ class Agent:
         self.world.context.add_turn('User', text, turn_type=turn_type)
         log.info('USER (%s): %s', turn_type, text)
 
-        if self.ambiguity.present():
-            self.ambiguity.resolve()
+        log.info('[ambig-trace] turn-start present=%s level=%s observation=%r',
+                 self.ambiguity.present(), self.ambiguity.level, self.ambiguity.observation)
 
         state = self.nlu.understand(text, self.world.context, dax, payload)
         flow = self.world.flow_stack.get_flow()

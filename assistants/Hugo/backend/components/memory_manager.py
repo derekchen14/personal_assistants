@@ -1,17 +1,14 @@
-from __future__ import annotations
-
 from collections import OrderedDict
-from types import MappingProxyType
 
 
 class MemoryManager:
 
-    def __init__(self, config:MappingProxyType):
+    def __init__(self, config):
         self.config = config
         memory_cfg = config.get('memory', {})
         scratchpad_cfg = memory_cfg.get('scratchpad', {})
         self._max_snippets: int = scratchpad_cfg.get('max_snippets', 64)
-        self._scratchpad: OrderedDict[str, str | dict] = OrderedDict()
+        self._scratchpad = OrderedDict()
         self._preferences: dict[str, str] = {}
 
         summarization = memory_cfg.get('summarization', {})
@@ -49,12 +46,8 @@ class MemoryManager:
     def write_preference(self, key:str, value:str):
         self._preferences[key] = value
 
-    # ── Summarization trigger check ──────────────────────────────────
-
     def should_summarize(self, turn_count:int) -> bool:
         return turn_count >= self._summarize_turn_count
-
-    # ── Component tool interface ─────────────────────────────────────
 
     def dispatch_tool(self, action:str, params:dict|None=None) -> dict:
         params = params or {}

@@ -18,7 +18,7 @@ This skill produces a content calendar — a sequence of post slots with topics 
 
 ## Error Handling
 
-If `timeframe` parses to less than a week or more than a year, call `handle_ambiguity(level='specific', metadata={'invalid_input': 'timeframe'})` with an observation showing the supported range.
+If `timeframe` parses to less than a week or more than a year, call `handle_ambiguity(level='specific', metadata={'missing': 'timeframe', 'reason': 'invalid_value'}, observation=<supported range>)`.
 
 If `find_posts` fails, proceed without the dedup scan and note the gap in `freeform`.
 

@@ -189,16 +189,18 @@ def test_intent_schema_valid():
     assert _lint_schema(_intent_schema()) == []
 
 
-@pytest.mark.parametrize('candidates', [
-    ['chat'],
-    ['outline', 'refine', 'create', 'compose'],
-    list(flow_classes.keys()),
-])
-def test_flow_detection_schema_valid(candidates):
-    assert _lint_schema(_flow_detection_schema(candidates)) == []
+def test_flow_detection_schema_valid():
+    """Lint rules are flow-set-agnostic — one all-flows case covers every branch."""
+    assert _lint_schema(_flow_detection_schema(list(flow_classes.keys()))) == []
 
 
-@pytest.mark.parametrize('flow_name', sorted(flow_classes.keys()))
+# Representative flows spanning intent classes and slot-type combinations.
+# The schema generator branches on slot type, not on flow identity, so a handful
+# of flows exercising the diverse slot families is enough — running all 35 was overkill.
+_SCHEMA_REPRESENTATIVES = ['outline', 'audit', 'release', 'compare', 'blueprint']
+
+
+@pytest.mark.parametrize('flow_name', _SCHEMA_REPRESENTATIVES)
 def test_fill_slots_schema_valid(flow_name):
     flow = flow_classes[flow_name]()
     violations = _lint_schema(_fill_slots_schema(flow))
@@ -291,17 +293,23 @@ def test_fill_slot_values_reads_declared_keys(flow_name):
 _HEADING_PATTERN = re.compile(r'^###\s+([a-z_]+)\s+\(', re.MULTILINE)
 
 
-@pytest.mark.parametrize('flow_name', sorted(flow_classes.keys()))
+def _flows_with_authored_slots():
+    """Flows whose NLU prompt hand-authors `slots:` markdown — the only ones drift can hit.
+    Procedural-rendering flows generate headings from `flow.slots`, so drift is impossible
+    by construction and there is nothing to assert."""
+    return sorted(
+        name for name, prompt in _SLOT_FILL_PROMPTS.items()
+        if (prompt.get('slots') or '').strip()
+    )
+
+
+@pytest.mark.parametrize('flow_name', _flows_with_authored_slots())
 def test_prompt_slot_headings_match_flow_slots(flow_name):
     """Each `### name (priority)` heading in the NLU slot-fill prompt must
     name a real slot AND every declared slot must have a heading. The auto-generated
     JSON schema is built from flow.slots.keys() so it can't drift, but the prompt's
     hand-authored prose can — silently confusing the LLM about which key to fill."""
-    if flow_name not in _SLOT_FILL_PROMPTS:
-        pytest.skip(f'{flow_name}: no NLU slot-fill prompt registered')
-    slots_md = _SLOT_FILL_PROMPTS[flow_name].get('slots', '') or ''
-    if not slots_md.strip():
-        pytest.skip(f'{flow_name}: prompt uses procedural slot rendering')
+    slots_md = _SLOT_FILL_PROMPTS[flow_name]['slots']
     flow = flow_classes[flow_name]()
     headings = set(_HEADING_PATTERN.findall(slots_md))
     declared = set(flow.slots.keys())

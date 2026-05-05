@@ -20,8 +20,8 @@ Previous evals mocked the LLM and/or tool dispatch, which hid real failures. We 
 ### Running
 
 ```bash
-# Free tier — no API keys, no LLM, ~6s for ~210 tests. Run after every major change.
-pytest utils/tests/unit_tests.py utils/tests/policy_evals/ utils/tests/test_artifacts.py
+# Free tier — no API keys, no LLM, <1s for ~380 tests. Run after every major change.
+pytest utils/tests/unit_tests.py utils/tests/test_artifacts.py
 
 # NLU accuracy (real LLM, flow-detection benchmark on test_cases.json)
 pytest utils/tests/model_tests.py -m llm
@@ -29,11 +29,14 @@ pytest utils/tests/model_tests.py -m llm
 # E2E full pipeline (real LLM + real tools, ~7 min)
 pytest utils/tests/e2e_agent_evals.py -v --tb=short
 
+# E2E multi-turn ambiguity (real LLM, ~2 min, 3 scenarios)
+pytest utils/tests/e2e_multiturn_evals.py -v --tb=short
+
 # E2E with reliability checks (runs each turn 3x, slower)
 pytest utils/tests/e2e_agent_evals.py -v -m reliability
 ```
 
-The free tier covers service behavior, policy orchestration, and static lints — three layers that catch most local regressions without burning tokens. Run it after every non-trivial change. Reserve `model_tests.py` for changes touching NLU prompts/schemas, and `e2e_agent_evals.py` for end-of-feature integration verification.
+The free tier covers service behavior + static lints — two layers that catch most local regressions without burning tokens. Run it after every non-trivial change. Reserve `model_tests.py` for changes touching NLU prompts/schemas, `e2e_multiturn_evals.py` for ambiguity-handling changes, and `e2e_agent_evals.py` for end-of-feature integration verification.
 
 ### Test case format
 
@@ -77,10 +80,10 @@ Labels on user turns:
 
 | File | Purpose | LLM? | Speed |
 |------|---------|------|-------|
-| `unit_tests.py` | Service-layer behavior on a tmp DB — disk round-trips, format invariants, regression tests | No | ~3s |
-| `policy_evals/` | Per-flow policy orchestration with mocked `llm_execute` — argument passing, guard clauses, ambiguity declarations, frame shapes, scratchpad contracts | No | ~2s |
-| `test_artifacts.py` | Static lints — skill-file frontmatter, few-shot tool alignment vs `flow.tools`, NLU JSON schema rules | No | ~0.1s |
+| `unit_tests.py` | Service-layer behavior on a tmp DB — disk round-trips, format invariants, regression tests | No | ~0.5s |
+| `test_artifacts.py` | Static lints — skill-file frontmatter, few-shot tool alignment vs `flow.tools`, NLU JSON schema rules, slot-key drift catchers | No | ~0.1s |
 | `model_tests.py` | NLU accuracy benchmarks against `test_cases.json` — flow detection, confidence calibration | Yes (`-m llm`) | ~1 min |
+| `e2e_multiturn_evals.py` | Three 2-turn ambiguity scenarios — declare → ask → resolve loop with real LLM | Yes | ~2 min |
 | `e2e_agent_evals.py` | Full pipeline scenarios — real LLM + real tools, 3-level evaluation, produces report next to the file | Yes | ~5–8 min |
 | `test_cases.json` | Shared test data — conversations with labels, expected_tools, and rubrics |  |  |
 | `conftest.py` | Fixtures — `agent` (real LLM), `config` |  |  |
@@ -109,9 +112,9 @@ Hypothesis prints a *minimal* failing sequence (`Falsifying example: ...`). Copy
 
 The shrunk case is a real bug, not a Hypothesis quirk. If the failure is a state-machine *modeling* error (the test's preconditions are wrong), fix the precondition. If the failure is a `FlowStack` invariant violation, fix `FlowStack`.
 
-### Free-tier unit/policy/artifact failures
+### Free-tier unit/artifact failures
 
-Free-tier tests have no LLM and no flake budget. A failure is a real regression. If a `policy_eval/` test fails after the Pillar 2b rollout (real tools running on `tmp_path`), the bug is in the policy or skill prompt — not in the test. Do not re-introduce `make_tool_stub` to "fix" it. Read the tool error; it points at the bug.
+Free-tier tests have no LLM and no flake budget. A failure is a real regression. Read the assertion message; it names the offender (slot key, schema rule, skill file). Fix the code, not the test.
 
 ### Trivial-attribute regressions to avoid
 
@@ -147,65 +150,9 @@ Each service test uses the `tmp_db` fixture which:
 
 ### What they do NOT cover
 
-- Live LLM behavior (any test that touched the LLM was moved to `model_tests.py` or `e2e_agent_evals.py`).
+- Live LLM behavior (any test that touched the LLM was moved to `model_tests.py`, `e2e_agent_evals.py`, or `e2e_multiturn_evals.py`).
 - End-to-end pipeline integration (NLU → PEX → RES) — covered by `e2e_agent_evals.py`.
-- Per-flow policy orchestration — covered by `policy_evals/`.
 - Skill-file structural correctness — covered by `test_artifacts.py`.
-
----
-
-## Policy Evals
-
-**Directory:** `policy_evals/`
-**Requires:** No API keys, no LLM calls
-**Fixture:** `monkeypatch` to stub `BasePolicy.llm_execute`
-
-One file per flow (`test_outline_policy.py`, `test_refine_policy.py`, `test_release_policy.py`, etc.). Stubs `llm_execute` to return a controlled `(text, tool_log)` tuple, then asserts on what the policy *did* with that signal — argument passing, guard clauses, frame shapes, ambiguity declarations, scratchpad contracts.
-
-### What they catch
-
-- **Argument drift.** "I refactored the policy and forgot to pass `propose_mode=True` through `extra_resolved`" — caught.
-- **Tool gating bugs.** Release only fires `update_post(status='published')` when both `channel_status` AND `release_post` succeeded; a regression that flips the gate is caught here.
-- **Guard-clause regressions.** Compose stacking-on Outline when the post has no sections; Refine declaring `partial` ambiguity when source is missing.
-- **Frame-shape contracts.** Right block types (`card`, `list`, `selection`, `toast`), right `origin`, right `data` keys.
-- **Scratchpad write contracts.** Find writes `{version, turn_number, used_count, query, items: [{post_id, title, status, preview}]}`. Audit/Brainstorm have their own shapes.
-- **Algorithmic correctness.** Find dedupes by `post_id` across expansion terms; Rework checks off ChecklistSlot suggestions when the skill returns `{"done": [...]}`.
-
-### What they cannot catch
-
-- Skill-prompt bugs (the LLM is mocked).
-- Tool-implementation bugs (tools are stubbed by `make_tool_stub`).
-- Wire-format bugs between PEX and the frontend (the policy never sees the wire).
-- NLU classification bugs (flows are pre-stacked).
-- Cross-flow control-flow bugs where one policy's `call_flow_stack` mutation should drive another flow on the next iteration. (Add the tool_log entry yourself if you need to test this seam.)
-
-### Pattern to follow
-
-```python
-def _stub_llm_execute(return_text, tool_log=None, captured=None):
-    log = list(tool_log or [])
-    def stub(self, flow, state, context, tools, include_preview=False,
-            extra_resolved=None, exclude_tools=()):
-        if captured is not None:
-            captured.append({'extra_resolved': dict(extra_resolved or {}),
-                             'exclude_tools': tuple(exclude_tools)})
-        return return_text, log
-    return stub
-
-def test_<flow>_<scenario>(monkeypatch):
-    policy, comps = build_policy('<flow>')
-    comps['flow_stack'].stackon('<flow>')
-    top = comps['flow_stack'].get_flow()
-    top.slots['source'].add_one(post=_POST_ID)
-    # ... fill remaining slots ...
-    captured = []
-    tool_log = [{'tool': '<save_tool>', 'input': {}, 'result': {'_success': True}}]
-    monkeypatch.setattr(BasePolicy, 'llm_execute',
-        _stub_llm_execute('<skill text>', tool_log=tool_log, captured=captured))
-    tools = make_tool_stub({...})
-    frame = policy.execute(state, context, tools)
-    # assert on captured args, frame shape, flow status, ambiguity, scratchpad
-```
 
 ---
 

@@ -27,7 +27,7 @@ This skill produces creative angles for a topic OR alternative phrasings for a h
 
 ## Error Handling
 
-If neither `topic` nor `source.snip` is filled, call `handle_ambiguity(level='partial', metadata={'missing_entity': 'topic_or_snippet'})`.
+If neither `topic` nor `source.snip` is filled, call `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`.
 
 If `brainstorm_ideas` fails for Mode A, fall back to LLM-only ideation based on the topic. Do NOT call `execution_error` — brainstorming is tolerant of tool gaps.
 

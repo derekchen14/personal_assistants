@@ -1,13 +1,8 @@
-from __future__ import annotations
-
 from datetime import datetime
-from types import MappingProxyType
-
 
 class Turn:
 
-    def __init__(self, speaker:str, text:str, turn_type:str='utterance',
-                 turn_id:int=0):
+    def __init__(self, speaker:str, text:str, turn_type:str='utterance', turn_id:int=0):
         self.speaker = speaker
         self.text = text
         self.turn_type = turn_type
@@ -30,18 +25,14 @@ class Turn:
 
     def utt(self, as_dict:bool=False):
         if as_dict:
-            return {
-                'speaker': self.speaker,
-                'text': self.text,
-                'turn_id': self.turn_id,
-                'turn_type': self.turn_type,
-            }
-        return f'{self.speaker}: {self.text}'
-
+            turn = {'speaker': self.speaker, 'text': self.text, 'turn_id': self.turn_id, 'turn_type': self.turn_type}
+        else:
+            turn = f'{self.speaker}: {self.text}'
+        return turn
 
 class ContextCoordinator:
 
-    def __init__(self, config:MappingProxyType):
+    def __init__(self, config):
         self.config = config
         self._history: list[Turn] = []
         self._checkpoints: list[dict] = []
@@ -52,7 +43,7 @@ class ContextCoordinator:
         self.completed_flows: list[str] = []
         self.last_actions: dict[str, list[str]] = {}
 
-    def add_turn(self, speaker:str, text:str, turn_type:str) -> Turn:
+    def add_turn(self, speaker:str, text:str, turn_type:str):
         turn = Turn(speaker, text, turn_type, turn_id=self.num_utterances)
         self._history.append(turn)
         if turn_type == 'utterance':
@@ -82,7 +73,7 @@ class ContextCoordinator:
             return filtered
         return [turn.utt() for turn in filtered]
 
-    def get_turn(self, turn_id:int) -> Turn | None:
+    def get_turn(self, turn_id:int):
         for turn in self._history:
             if turn.turn_id == turn_id:
                 return turn
@@ -129,7 +120,7 @@ class ContextCoordinator:
         return None
 
     @property
-    def last_user_turn(self) -> Turn | None:
+    def last_user_turn(self):
         for turn in reversed(self._history):
             if turn.speaker == 'User':
                 return turn
@@ -151,7 +142,7 @@ class ContextCoordinator:
                 self.bookmark = turn.turn_id
                 return
 
-    def find_turn_by_id(self, turn_id:int, clearbookmark:bool=False) -> Turn | None:
+    def find_turn_by_id(self, turn_id:int, clearbookmark:bool=False):
         for turn in self._history:
             if turn.turn_id == turn_id:
                 if clearbookmark:
@@ -174,7 +165,7 @@ class ContextCoordinator:
     def storecompleted_flows(self, completed_flows:list[str]):
         self.completed_flows = list(completed_flows)
 
-    def find_action_by_name(self, action_name:str) -> Turn | None:
+    def find_action_by_name(self, action_name:str):
         """Reverse scan history for action turns matching name."""
         for turn in reversed(self._history):
             if turn.turn_type == 'action' and action_name in turn.text:

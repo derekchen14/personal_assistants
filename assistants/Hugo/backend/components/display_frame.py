@@ -1,5 +1,3 @@
-from types import MappingProxyType
-
 VALID_BLOCK_TYPES = frozenset(('card', 'checklist', 'confirmation', 'toast', 'default', 'selection', 'list', 'compare'))
 _TOP_BLOCK_TYPES = frozenset(('confirmation', 'toast', 'list', 'grid', 'selection', 'checklist'))
 
@@ -51,11 +49,8 @@ class DisplayFrame:
         self.thoughts = ''
 
     def compose(self, block: str, data: dict) -> dict:
-        return {
-            'type': block,
-            'show': block != 'default',
-            'data': data,
-        }
+        composition = {'type': block, 'show': block != 'default', 'data': data}
+        return composition
 
     def to_dict(self) -> dict:
         frame_dict = {

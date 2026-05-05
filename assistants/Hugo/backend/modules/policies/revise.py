@@ -1,15 +1,14 @@
-from __future__ import annotations
 from backend.modules.policies.base import BasePolicy
 from backend.components.display_frame import DisplayFrame
 from backend.prompts.pex.support.revise_prompts import ROUTE_FINDINGS_SCHEMA, build_route_findings_prompt
 
 class RevisePolicy(BasePolicy):
 
-    def __init__(self, components:dict):
+    def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
 
-    def execute(self, state, context, tools) -> 'DisplayFrame':
+    def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
 
         match flow.name():
@@ -23,21 +22,10 @@ class RevisePolicy(BasePolicy):
             case _:
                 return DisplayFrame()
 
-    def _guard_entity(self, flow):
-        """Entity-missing guard. Declares `partial` and returns an empty frame with origin=flow.name() 
-        when the entity slot is unfilled. Callers early-return on non-None result"""
-        grounding = flow.slots[flow.entity_slot]
-        if not grounding.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(flow.name())
-        return None
-
     def rework_policy(self, flow, state, context, tools):
-        if not flow.slots['source'].filled:
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(origin=flow.name())
-
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
+        if frame := self._guard_entity(flow): return frame
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
 
         # Category dispatch: each option resolves deterministically (move, fallback, or ambiguity).
         if flow.slots['category'].check_if_filled():
@@ -45,7 +33,7 @@ class RevisePolicy(BasePolicy):
 
         # Null-category agentic path: skill handles itemized changes via `suggestions` / `remove`.
         if not flow.slots['suggestions'].check_if_filled() and not flow.slots['remove'].check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': 'category_or_suggestions'})
+            self.ambiguity.declare('specific', metadata={'missing': 'category_or_suggestions'})
             return DisplayFrame(origin=flow.name())
 
         text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
@@ -87,8 +75,11 @@ class RevisePolicy(BasePolicy):
         # cat == 'reframe'
         self.ambiguity.declare(
             'confirmation',
-            observation='Reframing the post is broad. List the concrete changes you want as bullets.',
-            metadata={'naturalize': True, 'category': 'reframe'},
+            metadata={
+                'missing': 'rework_changes',
+                'question': 'Reframing the post is broad. List the concrete changes you want as bullets.',
+                'naturalize': True, 'category': 'reframe',
+            },
         )
         flow.slots['category'].reset()
         return DisplayFrame(origin=flow.name())
@@ -96,7 +87,7 @@ class RevisePolicy(BasePolicy):
     def _rework_swap(self, flow, post_id, tools):
         sec_ids = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if len(sec_ids) < 2:
-            self.ambiguity.declare('specific', metadata={'missing_slot': 'second_section'})
+            self.ambiguity.declare('specific', metadata={'missing': 'second_section'})
             return DisplayFrame(origin=flow.name())
         section_ids = list(tools('read_metadata', {'post_id': post_id})['section_ids'])
         sec_a, sec_b = sec_ids[0], sec_ids[1]
@@ -121,7 +112,7 @@ class RevisePolicy(BasePolicy):
     def _rework_move(self, flow, post_id, tools, where):
         sec_ids = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if not sec_ids:
-            self.ambiguity.declare('specific', metadata={'missing_slot': 'section'})
+            self.ambiguity.declare('specific', metadata={'missing': 'section'})
             return DisplayFrame(origin=flow.name())
         sec = sec_ids[0]
         section_ids = list(tools('read_metadata', {'post_id': post_id})['section_ids'])
@@ -137,15 +128,15 @@ class RevisePolicy(BasePolicy):
         return frame
 
     def polish_policy(self, flow, state, context, tools):
-        if not flow.slots['source'].filled:
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(origin=flow.name())
-
-        post_id, sec_id = self._resolve_source_ids(flow, state, tools)
+        if frame := self._guard_entity(flow): return frame
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
-        if post_id and sec_id and text:
-            self._persist_section(post_id, sec_id, text, tools)
+        # Skill may declare ambiguity (e.g. confirmation on vague direction); leave flow
+        # Active so the next turn can resolve rather than treating completion as final.
+        if self.ambiguity.present():
+            return DisplayFrame(origin=flow.name())
 
         # Bump used_count on scratchpad entries the skill actually consumed.
         parsed = self.engineer.apply_guardrails(text)
@@ -162,38 +153,40 @@ class RevisePolicy(BasePolicy):
         if inspect_result.get('structural_issues'):
             self.flow_stack.fallback('rework')
             state.keep_going = True
-            frame = DisplayFrame(flow.name(), thoughts='Structural issues found, rerouting to rework.')
-        else:
-            flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=text)
-            if post_id:
-                frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-            if state.has_plan:
-                self.memory.write_scratchpad(flow.name(), {
-                    'version': '1', 'turn_number': context.turn_id,
-                    'used_count': 0, 'summary': text[:200],
-                })
-                audit = self.flow_stack.find_by_name('audit')
-                audit.slots['delegates'].mark_as_complete(flow.name())
+            return DisplayFrame(flow.name(), thoughts='Structural issues found, rerouting to rework.')
+
+        saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
+        if not saved:
+            error_msg = 'Polish flow did not persist any content; revise_content was not called or returned as failed.'
+            return self.error_frame(flow, 'failed_to_save', thoughts=error_msg, code=text)
+
+        flow.status = 'Completed'
+        frame = DisplayFrame(flow.name(), thoughts=text)
+        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        if state.has_plan:
+            self.memory.write_scratchpad(flow.name(), {
+                'version': '1', 'turn_number': context.turn_id,
+                'used_count': 0, 'summary': text[:200],
+            })
+            audit = self.flow_stack.find_by_name('audit')
+            audit.slots['delegates'].mark_as_complete(flow.name())
         return frame
 
     def tone_policy(self, flow, state, context, tools):
-        if not flow.slots['source'].filled:
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(origin=flow.name())
+        if frame := self._guard_entity(flow): return frame
 
         # Default-commit: at least one tone elective must land before dispatch.
         if not flow.slots['chosen_tone'].check_if_filled() and not flow.slots['custom_tone'].check_if_filled():
             pref = self.memory.read_preference('tone')
             flow.fill_slot_values({'chosen_tone': pref or 'natural'})
 
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
         flow.status = 'Completed'
         frame = DisplayFrame(flow.name(), thoughts=text)
-        if post_id:
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         # Record brief result for downstream plan steps to consume.
         if state.has_plan:
             self.memory.write_scratchpad(flow.name(), {
@@ -207,9 +200,7 @@ class RevisePolicy(BasePolicy):
         return frame
 
     def audit_policy(self, flow, state, context, tools):
-        if not flow.slots['source'].filled:
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(origin=flow.name())
+        if frame := self._guard_entity(flow): return frame
 
         if flow.slots['delegates'].is_verified():
             flow.status = 'Completed'
@@ -220,7 +211,8 @@ class RevisePolicy(BasePolicy):
             state.has_plan = False
             state.keep_going = False
             finish_msg = f'Audit completed with {len(flow.slots["delegates"].steps)} delegated flows.'
-            post_id, _ = self._resolve_source_ids(flow, state, tools)
+            post_id, _, error = self._resolve_source_ids(flow, state, tools)
+            if error: return error
             frame = DisplayFrame('audit', thoughts=finish_msg, metadata={'reports': reports})
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
@@ -295,87 +287,90 @@ class RevisePolicy(BasePolicy):
         return frame
 
     def simplify_policy(self, flow, state, context, tools):
-        # Disjunction entity: source OR image must be filled.
-        if not flow.slots['source'].check_if_filled() and not flow.slots['image'].check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post_or_image'})
+        if frame := self._guard_entity(flow): return frame
+
+        post_id, sec_id, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
+        if not sec_id:
+            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'section'})
             return DisplayFrame(flow.name())
 
-        post_id, sec_id = self._resolve_source_ids(flow, state, tools)
+        if not any(flow.slots[name].check_if_filled() for name in ('suggestions', 'guidance', 'image')):
+            obs_message = f'What did you want to simplify within the {sec_id} section?'
+            self.ambiguity.declare('specific', observation=obs_message, metadata={'missing': 'suggestions'})
+            return DisplayFrame(flow.name())
 
-        # Preload target section so the skill skips a runtime read_section.
+        frame = DisplayFrame(origin='simplify')
         extra = {}
-        if post_id and sec_id:
-            sec = tools('read_section', {'post_id': post_id, 'sec_id': sec_id})
-            if sec['_success']:
-                extra['section_content'] = sec['content']
-
+        sec = tools('read_section', {'post_id': post_id, 'sec_id': sec_id})
+        if sec['_success']:
+            extra['section_content'] = sec['content']
         text, tool_log = self.llm_execute(flow, state, context, tools, extra_resolved=extra or None)
 
-        # Fallback persistence: if skill produced prose but didn't call revise_content.
+        if self.ambiguity.present():
+            return frame
         already_saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
-        if post_id and sec_id and text and not already_saved:
-            self._persist_section(post_id, sec_id, text, tools)
+        if text and already_saved:
+            frame.thoughts = text
+            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            flow.status = 'Completed'
+        else:
+            error_msg = 'Simplify flow did not persist any content; revise_content was not called or returned as failed.'
+            return self.error_frame(flow, 'failed_to_save', thoughts=error_msg, code=text)
 
-        flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=text)
-        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         if state.has_plan:
-            self.memory.write_scratchpad(flow.name(), {
-                'version': '1', 'turn_number': context.turn_id,
-                'used_count': 0, 'summary': text[:200],
-            })
+            new_memory = {'version': '1', 'turn_number': context.turn_id, 'used_count': 0, 'summary': text[:200]}
+            self.memory.write_scratchpad('simplify', new_memory)
             audit = self.flow_stack.find_by_name('audit')
-            audit.slots['delegates'].mark_as_complete(flow.name())
+            audit.slots['delegates'].mark_as_complete('simplify')
         return frame
 
     def remove_policy(self, flow, state, context, tools):
         if not flow.is_filled():
-            missing = 'section to remove' if not flow.slots['target'].filled else 'image to remove'
-            self.ambiguity.declare('partial', metadata={'missing_entity': missing})
+            self.ambiguity.declare('partial', metadata={'missing': 'target'})
             return DisplayFrame(flow.name())
 
         if flow.slots['type'].check_if_filled():
-            post_id, _ = self._resolve_source_ids(flow, state, tools)
+            post_id, _, error = self._resolve_source_ids(flow, state, tools)
+            if error: return error
             text, tool_log = self.llm_execute(flow, state, context, tools)
             flow.status = 'Completed'
             frame = DisplayFrame(flow.name(), thoughts=text)
             frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         else:
-            self.ambiguity.declare('specific', metadata={'missing_slot': 'type'})
+            self.ambiguity.declare('specific', metadata={'missing': 'type'})
             frame = DisplayFrame(flow.name())
 
         return frame
 
     def tidy_policy(self, flow, state, context, tools):
-        early = self._guard_entity(flow)
-        if early is not None:
-            return early
+        if frame := self._guard_entity(flow): return frame
 
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
-        result = tools('read_metadata', {'post_id': post_id, 'include_outline': True}) if post_id else {'_success': False}
+        if not flow.slots['settings'].check_if_filled():
+            self.ambiguity.declare('specific',
+                observation='Which formatting rules should I apply?',
+                metadata={'missing': 'settings'})
+            return DisplayFrame(flow.name())
 
-        if not result['_success']:
-            frame = self.error_frame(flow, 'missing_reference',
-                thoughts='Could not find the specified post.',
-                missing_entity='post')
-        else:
-            content = result['outline']
-            settings_slot = flow.slots['settings']
-            settings = settings_slot.to_dict() if settings_slot.filled else {}
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
+        result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
+        content = result['outline']
+        settings = flow.slots['settings'].to_dict()
 
-            convo_history = context.compile_history()
-            history_with_data = (
-                f"{convo_history}\n\n[Post content]\nTitle: {result['title']}\n"
-                f"Content ({len(content)} chars): {content[:500]}\n\n"
-                f"[Settings] {settings if settings else 'default normalization'}"
-            )
-            text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad(), max_tokens=4096)
+        convo_history = context.compile_history()
+        history_with_data = (
+            f"{convo_history}\n\n[Post content]\nTitle: {result['title']}\n"
+            f"Content ({len(content)} chars): {content[:500]}\n\n"
+            f"[Settings] {settings}"
+        )
+        text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad(), max_tokens=4096)
 
-            flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=text)
-            frame.add_block({'type': 'card', 'data': {
-                'post_id': post_id,
-                'title': result['title'],
-                'content': text,
-            }})
+        flow.status = 'Completed'
+        frame = DisplayFrame(flow.name(), thoughts=text)
+        frame.add_block({'type': 'card', 'data': {
+            'post_id': post_id,
+            'title': result['title'],
+            'content': text,
+        }})
         return frame

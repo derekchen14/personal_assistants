@@ -1,15 +1,14 @@
-from __future__ import annotations
 from backend.components.display_frame import DisplayFrame
 
 
 class InternalPolicy:
 
-    def __init__(self, components:dict):
+    def __init__(self, components):
         self.memory = components['memory']
         self.config = components['config']
         self.flow_stack = components['flow_stack']
 
-    def execute(self, state, context, tools) -> 'DisplayFrame':
+    def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
 
         match flow.name():

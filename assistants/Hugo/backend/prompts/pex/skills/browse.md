@@ -22,7 +22,7 @@ This skill narrates a browse result. The policy has already called `find_posts` 
 
 ## Error Handling
 
-If `Items` is empty AND no tags were provided, call `handle_ambiguity(level='specific', metadata={'missing_slot': 'tags'})` — the user needs to specify what to browse for.
+If `Items` is empty AND no tags were provided, call `handle_ambiguity(level='specific', metadata={'missing': 'tags'})` — the user needs to specify what to browse for.
 
 If the policy's `find_posts` failed (indicated by a missing or malformed `Items` block), call `execution_error(violation='tool_error', message='find_posts upstream failure')`.
 

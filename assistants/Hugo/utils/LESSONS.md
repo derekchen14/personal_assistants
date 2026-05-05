@@ -199,6 +199,54 @@ if not flow.slots['<optional>'].check_if_filled():
     flow.fill_slot_values({'<optional>': <default>})  # commit default
 ```
 
+### Slot-filling prompt structure
+
+The `rules` block of every slot-filling prompt (`backend/prompts/nlu/<intent>_slots.py`) mirrors the priority hierarchy. Reading top to bottom, the LLM sees required slots first, then electives, then optional. **One numbered step per slot, written as an imperative instruction** — verb-first ("Fill", "Pick", "Capture", "Map", "Leave null on…"), not as a description (descriptions belong in the `slots` block). Nuance lives in sub-points.
+
+**Skeleton:**
+
+```
+1. <Imperative for required slot 1.> <Default behavior, anchor cases.>
+   a. <Sub-rule for nuance, only when needed.>
+2. <Imperative for required slot 2.> ...
+
+3. Exactly one of <electives> must fill (or all stay null when <bare-request condition>).
+   a. `<elective 1>` fires when <trigger>; <how to capture>.
+   b. `<elective 2>` fires when <trigger>; <how to capture>.
+   c. `<elective 3>` fires when <trigger>; <how to capture>.
+   d. <cross-elective rule — co-fire / disambiguation, if any>.
+
+4. <Imperative for optional slot 1.>
+5. <Imperative for optional slot 2.>
+
+6. <Cross-slot multi-turn rule (see below).>
+```
+
+Most flows have 2-4 slots, so most `rules` blocks fit in 3-5 numbered steps. Resist the urge to fan out into 6-10 numbered rules — push detail into sub-points (a, b, c) under the parent slot's step.
+
+**`rules` style.** Verb-first imperatives that tell the LLM what to *do* with the slot. Anti-pattern: noun-first descriptions (`source: <description>`) — those duplicate the `slots` block. The existing well-written prompts (REWORK_PROMPT, TONE_PROMPT) use the imperative style — keep it.
+
+**`slots` block discipline.** Descriptions live here. The block reduces to: slot name, priority label, 1-2 lines naming the slot type and what it stores. No when-it-fires logic, no fill semantics — those belong in `rules`.
+
+**Multi-turn / current-turn rule.** Most agentic flows benefit from an explicit cross-slot rule near the end of `rules` that constrains what carries forward across turns:
+
+```
+N. Treat <slot-class> directives as current-turn-only. Prior-turn directives are
+   assumed already applied — do NOT carry them into the current slot fill unless the
+   current turn explicitly references them via co-reference ('yes', 'do option 2',
+   'all three'). `source` is the exception: it carries forward from `state.active_post`.
+```
+
+This protects against the LLM re-firing a slot value from an earlier turn that the agent has already acted on. The exception (`source` carrying forward via `state.active_post`) is the universal grounding contract — every other slot value is current-turn-scoped unless explicitly referenced.
+
+**Anti-patterns this structure prevents:**
+- Generic rules ("Most utterances fill ONE of A / B / C") that don't say which slot category-vs-elective the alternation belongs to.
+- Required-slot priority drifting in the prompt while `flows.py` says required.
+- Examples that omit a real slot because the prompt author forgot it exists — the schema requires every unfilled slot to be present in the example output.
+- LLM re-firing prior-turn directives that the agent has already acted on.
+
+When updating a slot definition in `flows.py`, grep `<intent>_slots.py` for the slot name and confirm the prompt's slot block, rules, and examples all stay in lockstep.
+
 ## 3. Cross-Turn Contract — Session Scratchpad
 
 The Session Scratchpad is the canonical cross-turn channel for findings and produced output. The spec describes it as natural-language snippets; Hugo's policies use it more structurally — keyed dicts with a small required envelope, plus flow-specific payload.
@@ -703,9 +751,10 @@ Three tiers with increasing fidelity and decreasing speed. Same rubric keys, ass
 
 | Tier | Location | Speed | Fidelity | What it catches |
 |---|---|---|---|---|
-| **Tier 1 — policy in isolation** | `utils/tests/policy_evals/ test_<flow>_policy.py` | ~5s per policy | No LLM, mocked tools | Tool-call sequence, frame shape, metadata keys, block types, scratchpad writes, failure-channel branches |
-| **Tier 2 — E2E CLI** | `utils/tests/e2e_agent_evals.py` | ~20 min per scenario | Real LLM, persistent disk | Step-by-step lifecycle, inter-flow state propagation, frame→block serialization |
-| **Tier 3 — Playwright UI** | `utils/tests/playwright_evals/` | ~10 min | Real browser | UI rendering, click-to-emit payloads, error-frame display |
+| **Tier 1 — static lints + units** | `utils/tests/unit_tests.py`, `utils/tests/test_artifacts.py` | <1s total | No LLM, no tools | Service round-trips, slot/prompt drift, schema-rule violations, flow-declaration invariants |
+| **Tier 2 — E2E multi-turn** | `utils/tests/e2e_multiturn_evals.py` | ~2 min | Real LLM | Ambiguity declare→ask→resolve loop |
+| **Tier 3 — E2E full pipeline** | `utils/tests/e2e_agent_evals.py` | ~20 min per scenario | Real LLM, persistent disk | Step-by-step lifecycle, inter-flow state propagation, frame→block serialization |
+| **Tier 4 — Playwright UI** | `utils/tests/playwright_evals/` (planned) | ~10 min | Real browser | UI rendering, click-to-emit payloads, error-frame display |
 
 **Failure dumps.** On any failure, write `utils/policy_builder/failures/<run_id>/step_<N>.md` with: utterance, expected/actual tools and frames, scratchpad state, tool call trajectory. The dump must be sufficient for a fresh Claude instance to debug from cold — no conversation context required.
 

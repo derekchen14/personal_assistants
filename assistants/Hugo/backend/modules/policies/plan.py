@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import re
 
@@ -16,11 +14,11 @@ _APPROVE_PATTERN = re.compile(
 
 class PlanPolicy(BasePolicy):
 
-    def __init__(self, components:dict):
+    def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
 
-    def execute(self, state, context, tools) -> 'DisplayFrame':
+    def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
 
         match flow.name():

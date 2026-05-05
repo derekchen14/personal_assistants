@@ -1,4 +1,3 @@
-from __future__ import annotations
 import re
 from backend.components.display_frame import DisplayFrame
 
@@ -8,12 +7,12 @@ class BasePolicy:
 
     _STATUS_SUFFIXES = (' draft', ' post', ' note', ' published')
 
-    def __init__(self, components: dict):
+    def __init__(self, components):
         self.engineer = components['engineer']
         self.memory = components['memory']
         self.config = components['config']
         self.ambiguity = components['ambiguity']
-        self._get_tools_fn = components.get('get_tools')
+        self._get_tools_fn = components['get_tools']
 
     def llm_execute(self, flow, state, context, tools, include_preview:bool=False,
                     extra_resolved:dict|None=None, exclude_tools:tuple=()):
@@ -91,30 +90,34 @@ class BasePolicy:
     # -- Persistence helpers ------------------------------------------------
 
     def _resolve_source_ids(self, flow, state, tools):
-        """Extract (post_id, sec_id) from entity slot. Syncs state.active_post
-        as a side-effect so downstream turns can rely on the dialogue state."""
-        if flow.entity_slot is None:
-            return None, None
+        """Extract (post_id, sec_id, error) from entity slot. Picks the first entity
+        that satisfies the slot's entity_part criteria — skips Phase-2 placeholder
+        entries that have post but no section/snippet yet. Syncs state.active_post.
+
+        The third return is a missing-reference error frame when the slot was filled
+        with a title/id that doesn't resolve to a real post; callers early-return via
+        `post_id, _, error = self._resolve_source_ids(...); if error: return error`."""
         grounding = flow.slots[flow.entity_slot]
-        if grounding.slot_type not in ('source', 'target', 'removal'):
-            return None, None
         if not grounding.values:
-            return None, None
-        vals = grounding.values[0]
-        if not isinstance(vals, dict):
-            return None, None
-        post_id = self.resolve_post_id(vals.get('post', ''), tools)
-        sec_id = vals.get('sec', '') or None
+            return None, None, None
+        part = grounding.entity_part
+        vals = next((e for e in grounding.values if e['post'] and (not part or e[part])),
+                    grounding.values[0])
+        post_id = self.resolve_post_id(vals['post'], tools)
+        sec_id = vals['sec'] or None
         if post_id:
             state.active_post = post_id
-        return post_id, sec_id
+            return post_id, sec_id, None
+        error = self.error_frame(flow, 'missing_reference',
+            thoughts='Could not find the specified post.', missing_entity='post')
+        return None, sec_id, error
 
     def _build_resolved_context(self, flow, state, tools, include_preview:bool=False) -> dict|None:
         """Pre-resolve post/section IDs so the LLM gets deterministic entities.
 
         When include_preview=True, also fetches a per-section preview (title +
         first 3 lines) so skills don't need a follow-up read_metadata call."""
-        post_id, sec_id = self._resolve_source_ids(flow, state, tools)
+        post_id, sec_id, _ = self._resolve_source_ids(flow, state, tools)
         if not post_id and state.active_post:
             post_id = state.active_post
         if not post_id:
@@ -127,27 +130,25 @@ class BasePolicy:
             'post_title': meta['title'],
             'section_ids': meta['section_ids'],
         }
-        if include_preview and meta.get('preview'):
+        if include_preview and meta['preview']:
             resolved['section_preview'] = meta['preview']
         if sec_id:
             resolved['target_section'] = sec_id
         return resolved
 
-    def _persist_section(self, post_id, sec_id, text, tools):
-        """Save revised text to a section on disk."""
-        if post_id and sec_id and text:
-            tools('revise_content', {'post_id': post_id, 'sec_id': sec_id, 'content': text})
-
-    def _persist_outline(self, post_id, text, tools):
-        """Extract ## sections from text and save as outline."""
-        outline_md = self.engineer.apply_guardrails(text, format='markdown', shape='outline')
-        if post_id and outline_md:
-            tools('generate_outline', {'post_id': post_id, 'content': outline_md})
+    def _guard_entity(self, flow):
+        """Entity-missing guard. Declares `partial` and returns an empty frame with
+        origin=flow.name() when the entity slot is unfilled. Callers early-return on a
+        non-None result via `if frame := self._guard_entity(flow): return frame`."""
+        grounding = flow.slots[flow.entity_slot]
+        if not grounding.check_if_filled():
+            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
+            return DisplayFrame(flow.name())
+        return None
 
     # -- Error frame helper (Phase 3+) --------------------------------------
 
-    def error_frame(self, flow, violation:str, thoughts:str='',
-                    code:str|None=None, **extra_metadata) -> DisplayFrame:
+    def error_frame(self, flow, violation:str, thoughts:str='', code:str|None=None, **extra_metadata):
         """Construct an error frame with the standard violation classification. `violation` must
         be one of the 8-item vocabulary (failed_to_save, scope_mismatch, missing_reference,
         parse_failure, empty_output, invalid_input, conflict, tool_error). `thoughts` carries the

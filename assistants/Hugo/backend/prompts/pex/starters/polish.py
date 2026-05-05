@@ -20,7 +20,7 @@ def build(flow, resolved:dict, user_text:str) -> str:
     has_image = flow.slots['image'].check_if_filled()
 
     if has_image:
-        tool_sequence = 'Read the section, assess the image vs. the section\'s main idea, propose a replacement via `revise_content` if needed'
+        tool_sequence = "Read the section, assess the image vs. the section's main idea, propose a replacement via `revise_content` if needed"
     elif has_style_notes:
         tool_sequence = 'Read the section, rewrite the named span to the requested style (style_notes overrides current register), save via `revise_content`'
     else:

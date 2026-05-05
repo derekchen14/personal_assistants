@@ -1,27 +1,28 @@
 RELEASE_PROMPT = {
     'instructions': (
-        'The Release Flow publishes a finished post to its primary blog channel as the terminal step in '
-        'the drafting lifecycle. It typically comes after other flows, such as Compose, Rework, and '
-        'Polish.\n\n'
-        'Release always goes to the primary channel — there is no `channel` slot. If the user names a '
-        'specific non-primary channel ("publish to Medium", "post on LinkedIn"), the flow_detection step '
-        'should have routed to syndicate instead. Within release, just identify which post(s) are being '
-        'released. Source is usually pre-filled from the active post; the user may name a different one '
-        'or several.'
+        "The Release Flow publishes a finished post to its primary blog channel as the terminal step in "
+        "the drafting lifecycle. It typically comes after other flows, such as Compose, Rework, and "
+        "Polish.\n\n"
+        "Release always goes to the primary channel — there is no `channel` slot. If the user names a "
+        "specific non-primary channel ('publish to Medium', 'post on LinkedIn'), the flow_detection step "
+        "should have routed to syndicate instead. Within release, just identify which post(s) are being "
+        "released. Source is usually pre-filled from the active post; the user may name a different one "
+        "or several."
     ),
     'rules': (
-        '1. Pull `source` from the utterance or carry over from the grounded active post when the '
-        'utterance is terse ("publish it"). Strip trailing status words from titles ("draft", "post", '
-        '"article", "note").\n'
-        '2. When the user names multiple posts to release, `source` returns a list of post dicts.\n'
-        '3. Future-time language ("publish tomorrow at 9am") leaves source null — the schedule flow '
-        'handles that.'
+        "1. Pull `source` from the utterance or carry over from the grounded active post when the "
+        "utterance is terse ('publish it').\n"
+        "  a. When the user names multiple posts to release, `source` returns a list of post dicts.\n"
+        "2. Future-time language ('publish tomorrow at 9am') leaves source null — the schedule flow "
+        "handles that.\n"
+        "3. Treat release directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. References the post (or list of posts) to publish. Always carries '
-        '`{post: <title>}`. If the user says "publish it" with an active post in context, source is '
-        'inherited from `state.active_post`.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. References the post (or list of posts) to publish."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -29,15 +30,19 @@ RELEASE_PROMPT = {
 User: "Publish it."
 
 ## Input
-Active post: Attention is All You Need
+
+Active post: **Attention is All You Need** (id: `1a2b3c4d`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "1a2b3c4d", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Terse release. Source inherits from active_post.",
+  "reasoning": "Terse release. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title.",
   "slots": {
-    "source": {"post": "Attention is All You Need"}
+    "source": [{"post": "1a2b3c4d"}]
   }
 }
 ```
@@ -128,34 +133,37 @@ Active post: RL primer
 
 SYNDICATE_PROMPT = {
     'instructions': (
-        'The Syndicate Flow cross-posts a finished piece to one or more secondary channels. Channel is '
-        'the primary slot — always a list of channel name strings, one item per channel mentioned. '
-        'Source is required and typically inherits from the active post; fill explicitly only when the '
-        'user names a different post. Map misspellings and implied channels to canonical names.'
+        "The Syndicate Flow cross-posts a finished piece to one or more secondary channels. Channel is "
+        "the primary slot — always a list of channel name strings, one item per channel mentioned. "
+        "Source is required and typically inherits from the active post; fill explicitly only when the "
+        "user names a different post. Map misspellings and implied channels to canonical names."
     ),
     'rules': (
-        '1. `channel` is always a list of channel name strings. Single mention → one-item list. '
-        'Multiple mentions → multi-item list. Empty list `[]` only when no channel is mentioned or '
-        'when the only channel named is MoreThanOneTurn (see rule 2).\n'
-        '2. When the user names MoreThanOneTurn (the primary blog), drop it from the channel list and '
-        'note the exclusion in the reasoning — syndicate is for secondary channels only.\n'
-        '3. Map common surfaces: "X" / "twitter" → Twitter/X; "lnkdin" → LinkedIn; "dev to" → dev.to. '
-        'Fill on misspellings and implied references.\n'
-        '4. `source` typically inherits from `state.active_post`; fill explicitly when the user names '
-        'a different post or several. Multi-post syndication fills source as a list of post dicts.\n'
-        '5. Future-time phrases ("syndicate tomorrow at 9am") leave both slots null — the schedule '
-        'flow handles that.'
+        "1. `source` typically inherits from `state.active_post`; fill explicitly when the user names "
+        "a different post or several. Multi-post syndication fills source as a list of post dicts.\n"
+        "2. `channel` is always a list of channel name strings. Single mention → one-item list. "
+        "Multiple mentions → multi-item list. Empty list `[]` only when no channel is mentioned or "
+        "when the only channel named is MoreThanOneTurn (see rule 2a).\n"
+        "  a. When the user names MoreThanOneTurn (the primary blog), drop it from the channel list and "
+        "note the exclusion in the reasoning — syndicate is for secondary channels only.\n"
+        "  b. Map common surfaces: 'X' / 'twitter' → Twitter/X; 'lnkdin' → LinkedIn; 'dev to' → dev.to. "
+        "Fill on misspellings and implied references.\n"
+        "3. Future-time phrases ('syndicate tomorrow at 9am') leave both slots null — the schedule "
+        "flow handles that.\n"
+        "4. Treat syndicate directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. The post being syndicated. Usually inherits from `state.active_post`. Fill '
-        'explicitly only when the user names a different post. Returns a list of post dicts for '
-        'multi-post syndication.\n\n'
-        '### channel (required)\n\n'
-        'Type: ChannelSlot. Always a list of channel name strings: `["Medium", ...]`. Fill on any '
-        'channel mention including misspellings and implied references. Common values: Substack, '
-        'Medium, LinkedIn, Twitter/X, dev.to. MoreThanOneTurn (the primary blog) is never included '
-        '— it goes through Release instead.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. The post being syndicated. Returns a list of post dicts for multi-post "
+        "syndication.\n\n"
+        "### channel (required)\n\n"
+        "Type: ChannelSlot. Always a list of channel name strings: `['Medium', ...]`. Fill on any "
+        "channel mention including misspellings and implied references. Common values: Substack, "
+        "Medium, LinkedIn, Twitter/X, dev.to. MoreThanOneTurn (the primary blog) is never included "
+        "— it goes through Release instead."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -184,15 +192,19 @@ Active post: None
 User: "Send it to Substack and LinkedIn."
 
 ## Input
-Active post: Attention is All You Need
+
+Active post: **Attention is All You Need** (id: `1a2b3c4d`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "1a2b3c4d", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Source inherits from active_post. Two channels in current turn → two-item list.",
+  "reasoning": "Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title. Two channels in current turn → two-item list.",
   "slots": {
-    "source": {"post": "Attention is All You Need"},
+    "source": [{"post": "1a2b3c4d"}],
     "channel": ["Substack", "LinkedIn"]
   }
 }
@@ -337,13 +349,13 @@ Active post: None
 
 SCHEDULE_PROMPT = {
     'instructions': (
-        'The Schedule Flow sets a future publication time for a post on one or more channels. It '
-        'parallels Release but adds a structured time slot — future-time phrases (specific or '
-        'recurring) are what distinguish scheduling from immediate release.\n\n'
-        'Extract three slots: `source` (the post, usually inherited from active_post), `channel` '
-        '(list of channel name strings), and `datetime` (a RangeSlot dict describing WHEN to '
-        'publish). The `datetime` slot carries an ISO-format `start` timestamp plus optional `stop`, '
-        '`time_len`+`unit` for duration/recurrence, and a `recurrence` boolean.'
+        "The Schedule Flow sets a future publication time for a post on one or more channels. It "
+        "parallels Release but adds a structured time slot — future-time phrases (specific or "
+        "recurring) are what distinguish scheduling from immediate release.\n\n"
+        "Extract three slots: `source` (the post, usually inherited from active_post), `channel` "
+        "(list of channel name strings), and `datetime` (a RangeSlot dict describing WHEN to "
+        "publish). The `datetime` slot carries an ISO-format `start` timestamp plus optional `stop`, "
+        "`time_len`+`unit` for duration/recurrence, and a `recurrence` boolean."
     ),
     'rules': (
         "1. `source` typically inherits from `state.active_post`; fill explicitly when the user "
@@ -369,35 +381,38 @@ SCHEDULE_PROMPT = {
         "'Every other Monday' → `unit: 'week'`, `time_len: 2`. 'Daily at 9am' → `unit: 'day'`, "
         "`time_len: 1`. 'Every 3 hours' → `unit: 'hour'`, `time_len: 3`. Unit is constrained to "
         "`minute`/`hour`/`day`/`week` in this domain.\n"
-        "4. Vague phrases that lack even day-level granularity ('later this week', 'sometime soon', "
+        "3g. Vague phrases that lack even day-level granularity ('later this week', 'sometime soon', "
         "'when convenient') leave `datetime` null — the agent asks for clarification.\n"
-        "5. If the user changes just the time in a follow-up turn ('actually Monday at 9am instead'), "
-        "only the `datetime` slot updates; `source` and `channel` carry forward from earlier turns."
+        "4. If the user changes just the time in a follow-up turn ('actually Monday at 9am instead'), "
+        "only the `datetime` slot updates; `source` and `channel` carry forward from earlier turns.\n"
+        "5. Treat schedule directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. The post being scheduled. Usually inherits from `state.active_post`. Fill '
-        'explicitly when the user names a different post.\n\n'
-        '### channel (required)\n\n'
-        'Type: ChannelSlot. Always a list of channel name strings: `["Substack", ...]`. Fill on any '
-        'channel mention including misspellings and implied references. Empty list `[]` when no '
-        'channel is named.\n\n'
-        '### datetime (required)\n\n'
-        'Type: RangeSlot. A structured dict describing the publish time. Shape: '
-        '`{start, stop, time_len, unit, recurrence}`.\n'
-        '- `start` (string, ISO 8601 or date-only): the scheduled moment. Day granularity at '
-        'coarsest (`\'2026-04-19\'`), minute granularity at finest (`\'2026-04-19T09:00:00\'`).\n'
-        '- `stop` (string, ISO 8601 or date-only): the end bound when the user names a time range. '
-        'Null for point-in-time schedules.\n'
-        '- `unit` (enum of `minute`/`hour`/`day`/`week`): for non-recurring schedules, the finest '
-        'granularity the user specified (`8am` → `hour`, `8:30am` → `minute`, `Monday` → `day`). For '
-        'recurring schedules, the unit of the recurrence interval (weekly → `week`, daily → `day`, '
-        'etc.).\n'
-        '- `time_len` (int): for recurring schedules, the interval count in `unit` units (every 7 '
-        'days, every 14 days, etc.). 0 for non-recurring schedules.\n'
-        '- `recurrence` (bool): true when the user requests a repeating schedule.\n'
-        'Never put free-text like \'tomorrow morning\' into `start`. Assume local timezone unless one '
-        'is explicitly named.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. The post being scheduled.\n\n"
+        "### channel (required)\n\n"
+        "Type: ChannelSlot. Always a list of channel name strings: `['Substack', ...]`. Fill on any "
+        "channel mention including misspellings and implied references. Empty list `[]` when no "
+        "channel is named.\n\n"
+        "### datetime (required)\n\n"
+        "Type: RangeSlot. A structured dict describing the publish time. Shape: "
+        "`{start, stop, time_len, unit, recurrence}`.\n"
+        "- `start` (string, ISO 8601 or date-only): the scheduled moment. Day granularity at "
+        "coarsest (`'2026-04-19'`), minute granularity at finest (`'2026-04-19T09:00:00'`).\n"
+        "- `stop` (string, ISO 8601 or date-only): the end bound when the user names a time range. "
+        "Null for point-in-time schedules.\n"
+        "- `unit` (enum of `minute`/`hour`/`day`/`week`): for non-recurring schedules, the finest "
+        "granularity the user specified (`8am` → `hour`, `8:30am` → `minute`, `Monday` → `day`). For "
+        "recurring schedules, the unit of the recurrence interval (weekly → `week`, daily → `day`, "
+        "etc.).\n"
+        "- `time_len` (int): for recurring schedules, the interval count in `unit` units (every 7 "
+        "days, every 14 days, etc.). 0 for non-recurring schedules.\n"
+        "- `recurrence` (bool): true when the user requests a repeating schedule.\n"
+        "Never put free-text like 'tomorrow morning' into `start`. Assume local timezone unless one "
+        "is explicitly named."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -473,15 +488,19 @@ Active post: None
 User: "Send my latest out tomorrow on Substack."
 
 ## Input
-Active post: My ML Post
+
+Active post: **My ML Post** (id: `4b5c6d7e`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "4b5c6d7e", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Source inherits from active_post. 'Tomorrow' is day granularity (no time given) → date-only start, unit='day'. Channel is single item.",
+  "reasoning": "Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title. 'Tomorrow' is day granularity (no time given) → date-only start, unit='day'. Channel is single item.",
   "slots": {
-    "source": {"post": "My ML Post"},
+    "source": [{"post": "4b5c6d7e"}],
     "channel": ["Substack"],
     "datetime": {"start": "2026-04-19", "stop": null, "time_len": 0, "unit": "day", "recurrence": false}
   }
@@ -583,36 +602,39 @@ Active post: None
 
 PREVIEW_PROMPT = {
     'instructions': (
-        'The Preview Flow renders a post in a target channel\'s format so the user can review layout, '
-        'images, and formatting before going live. Preview is read-only — no content is modified. '
-        'Preview is distinct from Release (which publishes immediately) and Syndicate (which cross-'
-        'posts to secondary channels).\n\n'
-        'Extract the post being previewed (`source`, usually inherited from active_post) and the '
-        'target channel (`channel`, optional — empty list defaults to the primary blog). Preview '
-        'renders one channel at a time: when the user names multiple channels, pick only the first '
-        'and ignore the rest.'
+        "The Preview Flow renders a post in a target channel's format so the user can review layout, "
+        "images, and formatting before going live. Preview is read-only — no content is modified. "
+        "Preview is distinct from Release (which publishes immediately) and Syndicate (which cross-"
+        "posts to secondary channels).\n\n"
+        "Extract the post being previewed (`source`, usually inherited from active_post) and the "
+        "target channel (`channel`, optional — empty list defaults to the primary blog). Preview "
+        "renders one channel at a time: when the user names multiple channels, pick only the first "
+        "and ignore the rest."
     ),
     'rules': (
         "1. `source` typically inherits from `state.active_post`. Fill explicitly when the user names "
-        "a post. Strip trailing status words ('post', 'draft', 'article', 'note') from titles.\n"
+        "a post.\n"
         "2. `channel` is a list of channel name strings, but preview renders one at a time — so the "
         "list holds at most one item. When the user names multiple channels, pick only the first "
         "and drop the rest.\n"
-        "3. Empty list `[]` when no channel is named — the policy defaults to the primary blog "
+        "  a. Empty list `[]` when no channel is named — the policy defaults to the primary blog "
         "format.\n"
-        "4. Map channel misspellings and synonyms to canonical names: 'lnkdin' → LinkedIn, 'X' / "
+        "  b. Map channel misspellings and synonyms to canonical names: 'lnkdin' → LinkedIn, 'X' / "
         "'twitter' → Twitter/X, 'medim' → Medium.\n"
-        "5. Phrases outside the channel taxonomy ('for mobile', 'for dark mode') do NOT fill "
-        "`channel` — leave `[]` and let the policy figure it out."
+        "  c. Phrases outside the channel taxonomy ('for mobile', 'for dark mode') do NOT fill "
+        "`channel` — leave `[]` and let the policy figure it out.\n"
+        "3. Treat preview directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. The post to preview. Typically inherits from `state.active_post`. Fill '
-        'explicitly when the user names a different post; strip trailing status words from titles.\n\n'
-        '### channel (optional)\n\n'
-        'Type: ChannelSlot. A list holding at most one channel name string. Fill on any channel '
-        'mention including misspellings. When the user names multiple channels, keep only the first. '
-        'Empty list `[]` when no channel is named — the policy defaults to the primary blog.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. The post to preview.\n\n"
+        "### channel (optional)\n\n"
+        "Type: ChannelSlot. A list holding at most one channel name string. Fill on any channel "
+        "mention including misspellings. When the user names multiple channels, keep only the first. "
+        "Empty list `[]` when no channel is named — the policy defaults to the primary blog."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -641,15 +663,19 @@ Active post: None
 User: "Give me a mock-up."
 
 ## Input
-Active post: Attention is All You Need
+
+Active post: **Attention is All You Need** (id: `1a2b3c4d`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "1a2b3c4d", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Terse mock-up request — source inherits from active_post; no channel named → empty list. Policy falls back to primary blog.",
+  "reasoning": "Terse mock-up request. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title. No channel named → empty list. Policy falls back to primary blog.",
   "slots": {
-    "source": {"post": "Attention is All You Need"},
+    "source": [{"post": "1a2b3c4d"}],
     "channel": []
   }
 }
@@ -792,14 +818,14 @@ Active post: Trustworthy AI
 
 PROMOTE_PROMPT = {
     'instructions': (
-        'The Promote Flow amplifies a published post\'s reach — pins to the top of the blog, marks '
-        'as featured, announces to subscribers, or shares to social channels. Promote operates '
-        'after Release or Syndicate has made the post live. Promote is distinct from Release '
-        '(initial publication) and Syndicate (cross-posting to secondary channels).\n\n'
-        'Extract the post being promoted (`source`, usually inherited from active_post) and the '
-        'promotion mode (`channel`, optional). Channel is a CategorySlot with four options: `pin`, '
-        '`feature`, `announce`, `social`. Fill the mode that best matches the user\'s language; '
-        'leave null when the user is unspecific.'
+        "The Promote Flow amplifies a published post's reach — pins to the top of the blog, marks "
+        "as featured, announces to subscribers, or shares to social channels. Promote operates "
+        "after Release or Syndicate has made the post live. Promote is distinct from Release "
+        "(initial publication) and Syndicate (cross-posting to secondary channels).\n\n"
+        "Extract the post being promoted (`source`, usually inherited from active_post) and the "
+        "promotion mode (`channel`, optional). Channel is a CategorySlot with four options: `pin`, "
+        "`feature`, `announce`, `social`. Fill the mode that best matches the user's language; "
+        "leave null when the user is unspecific."
     ),
     'rules': (
         "1. `source` typically inherits from `state.active_post`. Fill explicitly when the user "
@@ -808,22 +834,25 @@ PROMOTE_PROMPT = {
         "mode: 'pin to the top' / 'pin it' → pin; 'feature on the homepage' / 'mark as featured' → "
         "feature; 'announce to subscribers' / 'email the list' → announce; 'share on social' / "
         "'tweet it' / 'post to LinkedIn' / 'share on Twitter' → social.\n"
-        "3. Specific social platforms (Twitter, LinkedIn, Facebook, Mastodon, etc.) map to the "
+        "  a. Specific social platforms (Twitter, LinkedIn, Facebook, Mastodon, etc.) map to the "
         "`social` canonical mode.\n"
-        "4. When the user names a publishing-channel-like destination for generic distribution "
+        "  b. When the user names a publishing-channel-like destination for generic distribution "
         "('Substack', 'Medium' without a social context), that routes to Syndicate not Promote — "
         "leave promote's channel null.\n"
-        "5. Multi-mode requests ('pin and feature it') — pick the first mode since CategorySlot is "
-        "single-valued. Additional modes need separate turns."
+        "  c. Multi-mode requests ('pin and feature it') — pick the first mode since CategorySlot is "
+        "single-valued. Additional modes need separate turns.\n"
+        "3. Treat promote directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. The post being promoted. Typically inherits from `state.active_post`; '
-        'fill explicitly when the user names a post.\n\n'
-        '### channel (optional)\n\n'
-        'Type: CategorySlot. One of four promotion modes (pin / feature / announce / social). Pick '
-        'the mode that best matches the user\'s language; null when unspecified. Specific social '
-        'platforms (Twitter, LinkedIn) map to `social`.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. The post being promoted.\n\n"
+        "### channel (optional)\n\n"
+        "Type: CategorySlot. One of four promotion modes (pin / feature / announce / social). Pick "
+        "the mode that best matches the user's language; null when unspecified. Specific social "
+        "platforms (Twitter, LinkedIn) map to `social`."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -898,15 +927,19 @@ Active post: None
 User: "Blast it out on socials."
 
 ## Input
-Active post: Trustworthy AI
+
+Active post: **Trustworthy AI** (id: `d1e2f3a4`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "d1e2f3a4", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "'Blast it out on socials' → channel='social'. Source inherits from active_post.",
+  "reasoning": "'Blast it out on socials' → channel='social'. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title.",
   "slots": {
-    "source": {"post": "Trustworthy AI"},
+    "source": [{"post": "d1e2f3a4"}],
     "channel": "social"
   }
 }
@@ -960,27 +993,6 @@ Active post: None
 <edge_case>
 ## Conversation History
 
-User: "Pin and feature my transformer post."
-
-## Input
-Active post: None
-
-## Output
-
-```json
-{
-  "reasoning": "Two modes named; CategorySlot is single-valued → pick the first ('pin') per rule 5.",
-  "slots": {
-    "source": {"post": "transformer"},
-    "channel": "pin"
-  }
-}
-```
-</edge_case>
-
-<edge_case>
-## Conversation History
-
 User: "Feature my regularization post."
 Agent: "Featured — it's on the homepage."
 User: "Actually, pin it instead — more visibility."
@@ -1017,14 +1029,19 @@ PROMPTS = {
         'examples': '''<positive_example>
 ## Conversation History
 
-User: "Cancel the scheduled publication of my AI roundup post"
+User: "Cancel the scheduled publication."
+
+## Input
+
+Active post: **AI roundup** (id: `9e8d7c6b`)
+
 ## Output
 
 ```json
 {
-  "reasoning": "destructive action — grounded as target (RemovalSlot)",
+  "reasoning": "Destructive action — grounded as target (RemovalSlot). Active post id is shown in the input header — copy `post_id` verbatim from the header rather than re-deriving from the title.",
   "slots": {
-    "target": [{"post": "AI roundup"}],
+    "target": [{"post": "9e8d7c6b"}],
     "reason": null
   }
 }

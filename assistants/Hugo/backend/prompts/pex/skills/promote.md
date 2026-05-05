@@ -19,7 +19,7 @@ This skill amplifies the reach of an already-published post. Common promotion mo
 
 ## Error Handling
 
-If the post is not published yet, call `handle_ambiguity(level='confirmation', observation='That post isn't published yet — release first, then promote?')`.
+If the post is not published yet, call `handle_ambiguity(level='confirmation', metadata={'missing': 'publish_status', 'question': "That post isn't published yet — release first, then promote?"})`.
 
 If `promote_post` fails for a channel, retry ONCE; then surface the failure for that channel and continue with others.
 
@@ -62,5 +62,5 @@ Resolved Details:
 
 Trajectory:
 1. `read_metadata(post_id=ef012345)` → status=draft.
-2. `handle_ambiguity(level='confirmation', observation="That post isn't published yet — release first, then promote?")` → no tool call.
+2. `handle_ambiguity(level='confirmation', metadata={'missing': 'publish_status', 'question': "That post isn't published yet — release first, then promote?"})` → no tool call.
 ```

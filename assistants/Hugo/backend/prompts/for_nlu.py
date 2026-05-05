@@ -40,14 +40,14 @@ ROLE = (
 
 BACKGROUND_STATIC = (
     '## Background\n\n'
-    'An upstream component decided to route the current user turn to one of Hugo\'s **flows** — '
+    "An upstream component decided to route the current user turn to one of Hugo's **flows** — "
     'units of work that share a goal (drafting a post, releasing it, browsing notes, etc.). '
     'Every flow declares a schema of named **slots** that capture what the agent needs to act.\n'
     'Given the recent conversation history, slot-filling is responsible for finding values for each '
-    'slot in the active flow. The shape of a value is set by the slot\'s type — e.g. `SourceSlot` '
+    "slot in the active flow. The shape of a value is set by the slot's type — e.g. `SourceSlot` "
     'returns `{post, sec, snip, chl}`; `CategorySlot` is choosing a single option from a finite set; '
     '`ChecklistSlot` returns a list of items.\n'
-    'The purpose of slot-filling is to ground the conversation to the artifacts and ideas in the user\'s '
+    "The purpose of slot-filling is to ground the conversation to the artifacts and ideas in the user's "
     'mind. Populated slots allow the policy to decide whether to act immediately, gather more info, or ask '
     'for clarification. Missing slots trigger clarification; missing electives may prompt defaults; filled '
     'slots feed into tool calls and response wording. Thus, a wrong fill is worse than a null — fabricating '
@@ -75,12 +75,22 @@ SLOT_TYPE_GUIDES = {
         '#### SourceSlot\n'
         'References existing entities. Returns a dict (or list of dicts for multiple entities) with keys: '
         '`post`, `sec`, `snip`, `chl`.\n'
-        '- `post`: the post title. Strip status words like "draft", "post", "article", "note" from the end.\n'
+        '- `post`: prefer the canonical post-id from `## Input`. Fall back to the post title only '
+        'when no id is available or the user is referencing a different post not currently active. '
+        'When using a title, strip trailing status words ("post", "draft", "article", "note") — '
+        '`"Trustworthy AI post"` → `"Trustworthy AI"`.\n'
         '- `sec`: a section within the post (e.g. "introduction", "methods").\n'
         '- `snip`: a shorter snippet (tweet, comment, quote).\n'
         '- `chl`: a publishing channel — only when the entity itself IS a channel.\n'
-        'Omit keys whose values would be empty. At minimum include `post`. When the user says "my X post" '
-        'or "the X draft", extract X as the post title.'
+        'Omit keys whose values would be empty. At minimum include `post`.\n\n'
+        '**Canonical IDs.** If the `source slot` is present in `## Input`, then it represents the '
+        "entity from the previous turn. When the `post_id` aligns with the one in the 'Active post', "
+        'then preserve the `post_id` verbatim. Copy the `post_id` (and `sec_id` if present) directly '
+        'into your output as the source entity value. If the `post_id` in the source slot and the '
+        'Active post differ, look to the most recent user utterance to help disambiguate. Changing '
+        'posts across turns is rare; by default, just copy the `post_id` (*not* the post name) from '
+        'the Active post as your output. Only emit a different value when the user explicitly '
+        'references changing to a new post in their utterance.'
     ),
     'TargetSlot': (
         '#### TargetSlot\n'
@@ -139,7 +149,7 @@ SLOT_TYPE_GUIDES = {
         '#### ExactSlot\n'
         'A specific term or phrase. For title slots, distill the subject into a short Proper Case title '
         '(e.g. "write about how transformers work" → "How Transformers Work"). For non-title ExactSlots, '
-        'preserve the user\'s phrasing verbatim (the exact words they typed).'
+        "preserve the user's phrasing verbatim (the exact words they typed)."
     ),
     'DictionarySlot': (
         '#### DictionarySlot\n'
@@ -156,7 +166,7 @@ SLOT_TYPE_GUIDES = {
         'A publishing destination. Always returns a list of channel name strings: `["Substack", ...]`. '
         'A single channel returns a one-item list (`["Substack"]`); multiple channels return multiple '
         'items; no channel mentioned returns an empty list `[]`. Common values: Substack, Medium, '
-        'Twitter/X, LinkedIn, blog (the user\'s primary, MoreThanOneTurn). Map misspellings and '
+        "Twitter/X, LinkedIn, blog (the user's primary, MoreThanOneTurn). Map misspellings and "
         'implied references to the canonical channel name.'
     ),
     'ImageSlot': (
@@ -204,13 +214,38 @@ def _filter_slot_sections(slots_md:str, skip_names:set) -> str:
     return '\n'.join(out_lines).strip()
 
 
-def _render_input(active_post:dict|None) -> str:
-    if active_post:
-        return f"## Input\n\nActive post: **{active_post['title']}** (id: `{active_post['id']}`)"
-    return '## Input\n\nActive post: None'
+def _render_input(active_post:dict|None, flow) -> str:
+    """Render the input block: active post + any pre-grounded slot values. The intro line
+    above the slot list is rendered only when at least one slot has data, so the LLM
+    knows that omitted slots are empty rather than missing-by-mistake."""
+    head = f"Active post: **{active_post['title']}** (id: `{active_post['id']}`)" if active_post else 'Active post: None'
+    slot_lines = _render_filled_slots(flow)
+    if slot_lines:
+        intro = 'Filled slots are shown as part of the input; slots not shown are empty so far.'
+        return f"## Input\n\n{head}\n\n{intro}\n" + '\n'.join(slot_lines)
+    return f"## Input\n\n{head}"
 
 
-def build_slot_filling_prompt(flow, convo_history:str, active_post:dict) -> str:
+def _render_filled_slots(flow) -> list[str]:
+    """One line per slot that has any grounded value. Source/target/removal entries render
+    as a JSON-style dict (or list of dicts) with the internal `ver` flag stripped; other
+    slots render their `to_dict()` payload when filled."""
+    import json
+    lines = []
+    for name, slot in flow.slots.items():
+        if slot.slot_type in ('source', 'target', 'removal'):
+            if not slot.values:
+                continue
+            entries = [{k: v for k, v in entry.items() if k != 'ver'} for entry in slot.values]
+            payload = entries[0] if len(entries) == 1 else entries
+            lines.append(f'{name} slot: {json.dumps(payload)}')
+        elif slot.filled:
+            value = slot.to_dict()
+            lines.append(f'{name} slot: {json.dumps(value)}')
+    return lines
+
+
+def build_slot_filling_prompt(flow, convo_block:str, active_post:dict) -> str:
     prompt_fields = get_prompt(flow.name())
     instructions = prompt_fields['instructions'].strip()
     rules = prompt_fields['rules'].strip()
@@ -235,8 +270,7 @@ def build_slot_filling_prompt(flow, convo_history:str, active_post:dict) -> str:
         f'## Slot Reference\n\n{PRIORITIES_DOC}\n\n### Slot Types\n\n{type_guides}'
     )
 
-    convo_block = convo_history.strip() if convo_history else '(empty)'
-    input_block = _render_input(active_post)
+    input_block = _render_input(active_post, flow)
     current_scenario = f'## Conversation History\n\n{convo_block}\n\n{input_block}'
 
     parts = [

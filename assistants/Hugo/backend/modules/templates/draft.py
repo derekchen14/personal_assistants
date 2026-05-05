@@ -1,6 +1,3 @@
-from backend.components.flow_stack.parents import BaseFlow
-from backend.components.display_frame import DisplayFrame
-
 TEMPLATES = {
     'brainstorm': {'template': "{message}", 'skip_naturalize': True},
     'create':     {'template': "I've created a new draft called '{title}'", 'block_hint': 'card'},
@@ -11,7 +8,7 @@ TEMPLATES = {
     'add':        {'template': "{message}", 'block_hint': 'card'},
 }
 
-def fill_draft_template(template:str, flow:BaseFlow, frame:DisplayFrame) -> str:
+def fill_draft_template(template:str, flow, frame) -> str:
     flow_name = flow.name()
 
     if flow_name == 'create':

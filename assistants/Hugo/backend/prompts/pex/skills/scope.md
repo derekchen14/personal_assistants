@@ -19,7 +19,7 @@ This skill plans the pre-draft research for a new post. Output drives `_plan_lif
 
 ## Error Handling
 
-If `topic` is missing or one-word with no context, call `handle_ambiguity(level='specific', metadata={'missing_slot': 'topic'})`.
+If `topic` is missing or one-word with no context, call `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`.
 
 ## Tools
 

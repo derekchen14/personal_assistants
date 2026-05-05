@@ -51,7 +51,7 @@ class DialogueState:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'DialogueState':
+    def from_dict(cls, data: dict):
         state = cls(
             intent=data.get('pred_intent'),
             dax=data.get('flow_name'),

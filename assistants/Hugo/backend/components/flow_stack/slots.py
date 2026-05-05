@@ -123,20 +123,26 @@ class SourceSlot(GroupSlot):
 
   def add_one(self, post='', sec='', snip='', chl='', ver=False):
     key = f"{post}-{sec}"
-    alt_key = f"{self.active_post}-{sec}"
-    if key in self._keys:
-      idx = self._keys.index(key)
+    filling_section = f"{post}-" in self._keys and sec
+
+    if key in self._keys or filling_section:  # Update an existing entity
+      idx = self._keys.index(key if key in self._keys else f"{post}-")
+      self.values[idx]['sec'] = sec  
+      self.values[idx]['snip'] = snip
+      self.values[idx]['chl'] = chl
       self.values[idx]['ver'] = ver
-    elif alt_key in self._keys:
-      pass  # earlier post is the active one
-    else:
+      self._keys[idx] = key
+    else:                                     # Create a new entity
       entity = {'post': post, 'sec': sec, 'snip': snip, 'chl': chl, 'ver': ver}
       self.values.append(entity)
       self._keys.append(key)
     self.check_if_filled()
 
   def check_if_filled(self):
-    valid = [e for e in self.values if e['post']]
+    if self.entity_part:
+      valid = [e for e in self.values if e['post'] and e[self.entity_part]]
+    else:
+      valid = [e for e in self.values if e['post']]
     self.filled = len(valid) >= self.size
     return self.filled
 

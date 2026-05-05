@@ -120,11 +120,13 @@ class CompareFlow(ResearchParentFlow):
       'source': SourceSlot(2),
       'category': CategorySlot(['inspect', 'check', 'tone'])
     }
-    self.tools = ['read_metadata', 'read_section', 'compare_style']
+    self.tools = ['read_metadata', 'read_section', 'inspect_post']
 
   def fill_slot_values(self, values):
     for item in values.get('source', []):
       self.slots['source'].add_one(**item)
+    if 'category' in values:
+      self.slots['category'].assign_one(values['category'])
 
 class DiffFlow(ResearchParentFlow):
   def __init__(self):
@@ -346,7 +348,7 @@ class PolishFlow(ReviseParentFlow):
       'image': ImageSlot(priority='elective'),
       'suggestions': ChecklistSlot(priority='elective'),
     }
-    self.tools = ['read_metadata', 'read_section', 'write_text', 'revise_content']
+    self.tools = ['read_metadata', 'read_section', 'revise_content']
 
   def fill_slot_values(self, values):
     for item in values.get('source', []):
@@ -425,7 +427,7 @@ class SimplifyFlow(ReviseParentFlow):
     self.slots = {
       'source': SourceSlot(1, 'sec'),
       'image': ImageSlot(priority='elective'),
-      'guidance': FreeTextSlot(priority='optional'),
+      'guidance': FreeTextSlot(priority='elective'),
       'suggestions': ChecklistSlot(priority='elective'),
     }
     self.tools = ['read_metadata', 'read_section', 'revise_content', 'remove_content', 'write_text']
@@ -707,7 +709,7 @@ class EndorseFlow(ConverseParentFlow):
     self.dax = '{09E}'
     self.goal = "accept Hugo's proactive suggestion and trigger the corresponding action; e.g., a recommended edit, topic idea, or next step that Hugo offered via suggest"
     self.slots = {
-      'target': TargetSlot(1, entity_part='action', priority='optional'),
+      'target': TargetSlot(1, entity_part='post', priority='optional'),
     }
     self.tools = []
 
@@ -723,7 +725,7 @@ class DismissFlow(ConverseParentFlow):
     self.dax = '{09F}'
     self.goal = "decline Hugo's proactive suggestion without providing feedback; Hugo notes the preference and moves on without further prompting"
     self.slots = {
-      'target': TargetSlot(1, entity_part='action', priority='optional'),
+      'target': TargetSlot(1, entity_part='post', priority='optional'),
     }
     self.tools = []
 

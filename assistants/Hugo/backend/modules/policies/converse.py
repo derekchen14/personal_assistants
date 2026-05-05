@@ -1,15 +1,14 @@
-from __future__ import annotations
 from backend.modules.policies.base import BasePolicy
 from backend.components.display_frame import DisplayFrame
 
 
 class ConversePolicy(BasePolicy):
 
-    def __init__(self, components:dict):
+    def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
 
-    def execute(self, state, context, tools) -> 'DisplayFrame':
+    def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
 
         match flow.name():
@@ -38,7 +37,7 @@ class ConversePolicy(BasePolicy):
             if parsed:
                 flow.fill_slots_by_label({'target': parsed})
             if not flow.slots['target'].check_if_filled():
-                self.ambiguity.declare('specific', metadata={'missing_slot': 'target'})
+                self.ambiguity.declare('specific', metadata={'missing': 'target'})
                 return DisplayFrame(flow.name())
 
         slots = flow.slot_values_dict()
@@ -97,20 +96,36 @@ class ConversePolicy(BasePolicy):
         return DisplayFrame(origin='explain', thoughts=result.get('explanation', ''))
 
     def endorse_policy(self, flow, state, context, tools):
-        convo_history = context.compile_history()
-        text = self.engineer.skill_call(flow, convo_history, self.memory.read_scratchpad(), skill_name='endorse')
+        frame = DisplayFrame(origin='endorse')
+        if self.flow_stack.stack_size() > 1:
+            state.keep_going = True
+            endorsement = 'User accepted the suggestion and wants to proceed.'
+            frame.thoughts = endorsement
+            self.memory.write_scratchpad('endorse', endorsement)
+        else:
+            convo_history = context.compile_history()
+            scratch = self.memory.read_scratchpad()
+            frame.thoughts = self.engineer.skill_call(flow, convo_history, scratch, skill_name='endorse')
+
         flow.status = 'Completed'
-        return DisplayFrame(origin='endorse', thoughts=text)
+        return frame
 
     def dismiss_policy(self, flow, state, context, tools):
-        convo_history = context.compile_history()
-        text = self.engineer.skill_call(flow, convo_history, self.memory.read_scratchpad(), skill_name='dismiss')
+        frame = DisplayFrame(origin='dismiss')
+        if self.flow_stack.stack_size() > 1:
+            state.keep_going = True
+            self.memory.write_scratchpad('dismiss', 'User rejected the suggestion and wants to proceed.')
+        else:
+            convo_history = context.compile_history()
+            scratch = self.memory.read_scratchpad()
+            frame.thoughts = self.engineer.skill_call(flow, convo_history, scratch, skill_name='dismiss')
+
         flow.status = 'Completed'
-        return DisplayFrame(origin='dismiss', thoughts=text)
+        return frame
 
     def undo_policy(self, flow, state, context, tools):
         if not state.active_post:
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
             return DisplayFrame(flow.name())
         params = {'post_id': state.active_post}
         turn_slot = flow.slots['turn']

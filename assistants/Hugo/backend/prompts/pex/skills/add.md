@@ -32,7 +32,7 @@ This skill adds in-depth content to existing sections of a blog post. When the c
 
 ## Handling Ambiguity and Errors
 
-If a named section does not exist on the post, make your best guess as to what the user is referring to. If it cannot be resolved, call `handle_ambiguity(level='specific', metadata={'missing_reference': <section_name>})`.
+If a named section does not exist on the post, make your best guess as to what the user is referring to. If it cannot be resolved, call `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
 
 If `revise_content`, `insert_section`, or `insert_media` fails, retry ONCE with the same params. If it fails again, stop and call `execution_error(violation='tool_error', message=<what failed>)`.
 

@@ -16,7 +16,7 @@ This skill produces the orchestration plan for a full post lifecycle. The output
 
 ## Error Handling
 
-If the topic is too vague to plan against (one-word and no context), call `handle_ambiguity(level='specific', metadata={'missing_slot': 'topic'})`.
+If the topic is too vague to plan against (one-word and no context), call `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`.
 
 If a referenced sibling flow doesn't exist in the registry, call `execution_error(violation='invalid_input', message='unknown sub_flow <name>')`.
 

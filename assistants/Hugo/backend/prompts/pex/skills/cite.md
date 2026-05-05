@@ -26,9 +26,9 @@ This skill attaches a citation to a snippet of text. Two modes: direct attach wh
 
 ## Error Handling
 
-If neither `target` nor `url` is filled, call `handle_ambiguity(level='partial', metadata={'missing_entity': 'target_or_url'})`.
+If neither `target` nor `url` is filled, call `handle_ambiguity(level='partial', metadata={'missing': 'target'})`.
 
-If `web_search` fails, call `handle_ambiguity(level='specific', observation='Search failed — give me a URL to attach directly?')`.
+If `web_search` fails, call `handle_ambiguity(level='specific', metadata={'missing': 'url'}, observation='Search failed — give me a URL to attach directly?')`.
 
 If `revise_content` fails, retry ONCE. Then call `execution_error(violation='tool_error', message=<reason>, failed_tool='revise_content')`.
 

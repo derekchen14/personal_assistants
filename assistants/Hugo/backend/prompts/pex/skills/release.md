@@ -29,7 +29,7 @@ If `channel_status` returns `_success=False`, do NOT call `release_post` for tha
 
 If `release_post` fails, surface the error in the output for that channel and continue with the remaining channels. Do not abort the whole flow.
 
-If the channel list resolves to empty and no default is configured, call `handle_ambiguity(level='specific', metadata={'missing_slot': 'channel'})`.
+If the channel list resolves to empty and no default is configured, call `handle_ambiguity(level='specific', metadata={'missing': 'channel'})`.
 
 ## Tools
 

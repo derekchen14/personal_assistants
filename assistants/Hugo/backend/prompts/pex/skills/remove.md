@@ -20,9 +20,9 @@ This skill removes a section from a post, or deletes an entire draft / note. Pub
 
 ## Error Handling
 
-If the user asks to delete a published post (`type=post` and `status=published`), call `handle_ambiguity(level='confirmation', observation='That post is already published. Want to unpublish it first, or cancel?')`.
+If the user asks to delete a published post (`type=post` and `status=published`), call `handle_ambiguity(level='confirmation', metadata={'missing': 'unpublish_intent', 'question': 'That post is already published. Want to unpublish it first, or cancel?'})`.
 
-If the named section doesn't exist on the post, call `handle_ambiguity(level='specific', metadata={'missing_reference': '<sec_name>'})`.
+If the named section doesn't exist on the post, call `handle_ambiguity(level='specific', metadata={'missing': 'target', 'reason': 'invalid_value'})`.
 
 If `delete_post` or `remove_content` fails, retry ONCE; then `execution_error(violation='tool_error', message=<reason>, failed_tool='<name>')`.
 
@@ -81,4 +81,4 @@ Resolved Details:
 
 Trajectory:
 1. `read_metadata(post_id=published_xyz)` → status=published.
-2. `handle_ambiguity(level='confirmation', observation='That post is already published. Want to unpublish first, or cancel?')` → no tool call.
+2. `handle_ambiguity(level='confirmation', metadata={'missing': 'unpublish_intent', 'question': 'That post is already published. Want to unpublish first, or cancel?'})` → no tool call.

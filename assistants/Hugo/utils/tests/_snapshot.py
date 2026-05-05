@@ -70,8 +70,9 @@ def project_state(agent, result:dict, tool_log:list) -> dict:
             'origin': frame_data.get('origin'),
             'metadata_keys': sorted(metadata.keys()),
             'violation': metadata.get('violation'),
-            'missing_slot': metadata.get('missing_slot'),
-            'missing_entity': metadata.get('missing_entity'),
+            'missing': metadata.get('missing'),
+            'entity': metadata.get('entity'),
+            'reason': metadata.get('reason'),
             'block_types': [b.get('type') for b in blocks],
             'block_data_keys': [sorted((b.get('data') or {}).keys()) for b in blocks],
             'block_panels': [b.get('panel') for b in blocks],
@@ -79,9 +80,8 @@ def project_state(agent, result:dict, tool_log:list) -> dict:
             'has_code': bool(frame_data.get('code')),
         },
         'tool_log': [
-            # Two known shapes: e2e_agent_evals._install_tool_logger emits
-            # {tool, input, success, error} (flat). policy_evals.capture_tool_log
-            # emits {name, params, result: {_success, ...}}. Read whichever is present.
+            # Tolerate both call-log shapes: {tool, success} (flat) or
+            # {name, result: {_success, ...}} (wrapped). Read whichever is present.
             {'tool': entry.get('tool') or entry.get('name'),
              'success': entry['success'] if 'success' in entry
                         else (entry.get('result') or {}).get('_success')}

@@ -744,7 +744,7 @@ def _check_level1(step_def, result, tool_log, agent):
     if state.has_issues and not allow_has_issues:
         issues.append('state.has_issues is True — policy or verifier flagged a problem')
     if agent.ambiguity.present():
-        amb_label = (agent.ambiguity.metadata or {}).get('reason') or agent.ambiguity.level
+        amb_label = agent.ambiguity.metadata.get('reason') or agent.ambiguity.level
         if amb_label not in expected_amb:
             issues.append(f'unexpected ambiguity: {amb_label!r}')
 

@@ -1,6 +1,3 @@
-from backend.components.flow_stack.parents import BaseFlow
-from backend.components.display_frame import DisplayFrame
-
 TEMPLATES = {
     'explain':    {'template': "{message}"},
     'chat':       {'template': "{message}"},
@@ -11,6 +8,6 @@ TEMPLATES = {
     'dismiss':    {'template': "{message}", 'skip_naturalize': True},
 }
 
-def fill_converse_template(template:str, flow:BaseFlow, frame:DisplayFrame) -> str:
+def fill_converse_template(template:str, flow, frame) -> str:
     template = TEMPLATES[flow.name()]['template']
     return template.format(message=frame.thoughts)

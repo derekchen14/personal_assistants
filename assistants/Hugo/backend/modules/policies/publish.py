@@ -1,15 +1,14 @@
-from __future__ import annotations
 from backend.modules.policies.base import BasePolicy
 from backend.components.display_frame import DisplayFrame
 
 
 class PublishPolicy(BasePolicy):
 
-    def __init__(self, components:dict):
+    def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
 
-    def execute(self, state, context, tools) -> 'DisplayFrame':
+    def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
 
         match flow.name():
@@ -45,12 +44,10 @@ class PublishPolicy(BasePolicy):
         return frame
 
     def release_policy(self, flow, state, context, tools):
-        grounding = flow.slots[flow.entity_slot]
-        if not grounding.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(flow.name())
+        if frame := self._guard_entity(flow): return frame
 
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
         failed = self._first_failed_platform_tool(tool_log)
@@ -64,10 +61,9 @@ class PublishPolicy(BasePolicy):
                 toast['level'] = result['level']
             frame.add_block({'type': 'toast', 'data': toast})
         else:
-            if post_id:
-                self.retry_tool(tools, 'update_post',
-                    {'post_id': post_id, 'updates': {'status': 'published'}})
-            title = tools('read_metadata', {'post_id': post_id})['title'] if post_id else 'the post'
+            self.retry_tool(tools, 'update_post',
+                {'post_id': post_id, 'updates': {'status': 'published'}})
+            title = tools('read_metadata', {'post_id': post_id})['title']
             frame.add_block({'type': 'toast', 'data': {'message': f'Published "{title}".', 'level': 'success'}})
         return frame
 
@@ -82,7 +78,7 @@ class PublishPolicy(BasePolicy):
 
     def syndicate_policy(self, flow, state, context, tools):
         if not flow.slots['channel'].check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': 'channel'})
+            self.ambiguity.declare('specific', metadata={'missing': 'channel'})
             frame = self._clarify_with_steps(flow)
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools)
@@ -94,7 +90,7 @@ class PublishPolicy(BasePolicy):
     def schedule_policy(self, flow, state, context, tools):
         missing = self._first_missing_required(flow, (flow.entity_slot, 'channel'))
         if missing:
-            self.ambiguity.declare('specific', metadata={'missing_slot': missing})
+            self.ambiguity.declare('specific', metadata={'missing': missing})
             frame = self._clarify_with_steps(flow)
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools)
@@ -112,51 +108,35 @@ class PublishPolicy(BasePolicy):
         return None
 
     def preview_policy(self, flow, state, context, tools):
-        grounding = flow.slots[flow.entity_slot]
-        if not grounding.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(flow.name())
+        if frame := self._guard_entity(flow): return frame
 
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
         frame = DisplayFrame(flow.name(), thoughts=text)
-        if post_id:
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
 
     def promote_policy(self, flow, state, context, tools):
-        grounding = flow.slots[flow.entity_slot]
-        if not grounding.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(flow.name())
+        if frame := self._guard_entity(flow): return frame
 
-        source_id, _ = self._resolve_source_ids(flow, state, tools)
+        source_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
-
-        post_data = self._read_post_content(source_id, tools) if source_id else {}
-        if not post_data:
-            source_title = 'Untitled'
-            if source_id:
-                source_meta = tools('read_metadata', {'post_id': source_id})
-                if source_meta['_success']:
-                    source_title = source_meta['title']
-            post_data = {'post_id': source_id or '', 'title': source_title}
 
         flow.status = 'Completed'
         frame = DisplayFrame(flow.name(), thoughts=text)
-        frame.add_block({'type': 'card', 'data': post_data})
+        frame.add_block({'type': 'card', 'data': self._read_post_content(source_id, tools)})
         return frame
 
     def cancel_policy(self, flow, state, context, tools):
-        grounding = flow.slots[flow.entity_slot]
-        if not grounding.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(flow.name())
+        if frame := self._guard_entity(flow): return frame
 
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
         result = tools('update_post', {
-            'post_id': post_id or '',
+            'post_id': post_id,
             'updates': {'status': 'draft'},
         })
 

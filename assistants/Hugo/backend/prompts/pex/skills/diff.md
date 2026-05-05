@@ -22,9 +22,9 @@ This skill narrates a version diff for a single section. The policy resolves the
 
 If `diff_section` returns an empty diff, say "No changes between the two versions."
 
-If the requested `lookback` exceeds the available history, call `handle_ambiguity(level='specific', metadata={'missing_reference': 'lookback_too_far'})` with an observation explaining how many versions are actually available.
+If the requested `lookback` exceeds the available history, call `handle_ambiguity(level='specific', metadata={'missing': 'lookback', 'reason': 'invalid_value'}, observation=<how many versions are actually available>)`.
 
-If the section doesn't exist on the post, call `handle_ambiguity(level='specific', metadata={'missing_reference': '<sec_name>'})`.
+If the section doesn't exist on the post, call `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
 
 ## Tools
 

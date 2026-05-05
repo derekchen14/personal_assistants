@@ -1,6 +1,4 @@
 from collections import Counter
-from backend.components.flow_stack.parents import BaseFlow
-from backend.components.display_frame import DisplayFrame
 
 TEMPLATES = {
     'rework':   {'template': "{message}", 'block_hint': 'card'},
@@ -15,14 +13,14 @@ TEMPLATES = {
 _SEVERITY_ORDER = {'high': 0, 'medium': 1, 'low': 2}
 
 
-def fill_revise_template(template:str, flow:BaseFlow, frame:DisplayFrame) -> str:
+def fill_revise_template(template:str, flow, frame) -> str:
     template = TEMPLATES[flow.name()]['template']
     if flow.name() == 'audit':
         return template.format(message=_format_audit_message(frame))
     return template.format(message=frame.thoughts)
 
 
-def _format_audit_message(frame:DisplayFrame) -> str:
+def _format_audit_message(frame) -> str:
     """Spoken readout for an audit turn. Branches on which metadata key is present:
       'reports'      → per-delegate rollup, audit just completed delegation
       'group_count'  → routing announcement, dispatch just stacked children

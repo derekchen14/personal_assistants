@@ -14,7 +14,7 @@ This skill confirms that a writing preference was saved. The policy has already 
 
 ## Error Handling
 
-If the key/value pair is incomplete or contradictory in `<resolved_details>`, call `handle_ambiguity(level='confirmation', observation='Got partial input — should I save just the key, or wait for the value?')`.
+If the key/value pair is incomplete or contradictory in `<resolved_details>`, call `handle_ambiguity(level='confirmation', metadata={'missing': 'preference_value', 'question': 'Got partial input — should I save just the key, or wait for the value?'})`.
 
 ## Tools
 

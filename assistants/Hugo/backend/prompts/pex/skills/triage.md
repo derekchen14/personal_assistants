@@ -19,7 +19,7 @@ This skill examines a draft and produces an ordered revision plan. Output drives
 
 ## Error Handling
 
-If `source` is missing or doesn't resolve to a post, call `handle_ambiguity(level='partial', metadata={'missing_entity': 'post'})`.
+If `source` is missing or doesn't resolve to a post, call `handle_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'post'})`.
 
 If `inspect_post` fails, fall back to a coarse plan based on metadata only and note the gap in `freeform`.
 

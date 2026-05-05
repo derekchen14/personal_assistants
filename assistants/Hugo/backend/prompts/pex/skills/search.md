@@ -19,7 +19,7 @@ This skill looks up vetted editorial guidelines and FAQ content. It runs as an I
 
 If `find_posts` fails, call `execution_error(violation='tool_error', message=<reason>, failed_tool='find_posts')`.
 
-If the query is missing or empty, call `handle_ambiguity(level='specific', metadata={'missing_slot': 'query'})`.
+If the query is missing or empty, call `handle_ambiguity(level='specific', metadata={'missing': 'query'})`.
 
 ## Tools
 

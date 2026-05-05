@@ -5,7 +5,7 @@ compare_style + read_section, then narrates differences in 2-3 sentences."""
 
 
 TEMPLATE_WITH_PREVIEWS = """<task>
-Compare two posts: {post_labels}. Call `compare_style(left=<id_1>, right=<id_2>)` for metrics, then optionally `read_section` for any section-deep comparison. End by narrating the differences in 2-3 sentences.
+Compare two posts: {post_labels}. Branch on the `Category` in `<resolved_details>`: `inspect` → `inspect_post` per post (numeric metrics); `check` → `read_metadata` per post (status / tags / dates); `tone` → `read_section` per post on a representative section (judge voice from prose). End by narrating the differences in 2-3 sentences, scoped to the chosen category.
 </task>
 
 <post_content>
@@ -18,7 +18,7 @@ Compare two posts: {post_labels}. Call `compare_style(left=<id_1>, right=<id_2>)
 
 
 TEMPLATE_NO_PREVIEWS = """<task>
-Compare two posts. Call `read_metadata` for each, optionally `read_section` for section-deep comparison, and `compare_style` for metrics. End by narrating the differences in 2-3 sentences.
+Compare two posts. Branch on the `Category` in `<resolved_details>`: `inspect` → `inspect_post` per post; `check` → `read_metadata` per post; `tone` → `read_section` per post on a representative section. End by narrating the differences in 2-3 sentences, scoped to the chosen category.
 </task>
 
 <resolved_details>
@@ -57,12 +57,10 @@ def _format_parameters(flow) -> str:
     lines = []
     source = flow.slots['source']
     if source.check_if_filled() and source.values:
-        ids = []
-        for v in source.values[:2]:
-            if isinstance(v, dict):
-                pid = v.get('post', '')
-                if pid:
-                    ids.append(pid)
+        ids = [v['post'] for v in source.values[:2] if v.get('post')]
         if ids:
             lines.append(f'Posts: {", ".join(ids)}')
+    category = flow.slots['category']
+    if category.check_if_filled():
+        lines.append(f'Category: {category.value}')
     return '\n'.join(lines) if lines else '(no parameters filled — interpret latest utterance)'

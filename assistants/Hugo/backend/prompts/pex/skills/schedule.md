@@ -26,7 +26,7 @@ If a channel fails its `channel_status` check, surface the failure for that chan
 
 If `release_post` fails for a channel, retry ONCE; then `execution_error(violation='tool_error', message=<channel that failed>, failed_tool='release_post')`.
 
-If `datetime.start` is in the past, call `handle_ambiguity(level='specific', metadata={'invalid_input': 'datetime'})` with an observation showing the parsed date.
+If `datetime.start` is in the past, call `handle_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation=<parsed date>)`.
 
 ## Tools
 

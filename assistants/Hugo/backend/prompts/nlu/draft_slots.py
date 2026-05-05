@@ -1,49 +1,53 @@
 OUTLINE_PROMPT = {
     'instructions': (
-        'Generate section headings, reading order, and optional nesting depth for a blog post. The user '
-        'typically already has an active post grounded (its title appears in the `## Input` block). The '
-        'flow runs in two modes downstream, and slot-filling decides which: when the user supplies named '
-        'section headings, fill `sections` (direct mode); when they only supply an angle, fill `topic` and '
-        'leave `sections` null (propose mode — downstream generates candidate headings). Populate `depth` '
-        'only when the user mentions nesting or levels (not counts). Fill `topic` or `sections` only when '
-        'there is a clear signal about what the post should be about.'
+        "Generate section headings, reading order, and optional nesting depth for a blog post. The user "
+        "typically already has an active post grounded (its title appears in the `## Input` block). The "
+        "flow runs in two modes downstream, and slot-filling decides which: when the user supplies named "
+        "section headings, fill `sections` (direct mode); when they only supply an angle, fill `topic` and "
+        "leave `sections` null (propose mode — downstream generates candidate headings). Populate `depth` "
+        "only when the user mentions nesting or levels (not counts). Fill `topic` or `sections` only when "
+        "there is a clear signal about what the post should be about."
     ),
     'rules': (
-        '1. `topic` is a short descriptive sentence, not a single word. Only fill when the user supplies '
-        'more information than the post title already carries. A bare restatement of the title '
-        '("regularization methods" on a post titled *Regularization Techniques*) → `topic=null`. A '
-        'full angle sentence ("why batch beats streaming for small teams") → populate.\n'
-        '2. `sections` needs named headings, not a count. "With 5 sections" → `sections=null`. "Cover X, '
-        'Y, Z" → fill with those items. Each item is `{"name": <Proper Case heading>, "description": "", '
-        '"checked": false}`. Drop filler words like "their" that break heading consistency.\n'
-        '3. `depth` is nesting depth only: 1 = top-level headings, 2 = headings + bullets, 3 = bullets + '
-        'sub-bullets. A section count is NEVER depth. Phrasing like "at the next level, we should discuss…" '
-        'implies `depth=2` even without the literal words "depth" or "levels".\n'
-        '4. Infer `topic` from conversation history when the current utterance is terse but earlier turns '
-        'established the subject.\n'
-        '5. When the same number appears alongside a matching enumeration ("Make a 4-section outline: A, B, '
-        'C, D"), the number is redundant with the enumeration — fill `sections` from the names and leave '
-        '`depth` empty.'
+        "1. `source` typically inherits from `state.active_post`. Fill explicitly when the user names a "
+        "different post.\n"
+        "2. Exactly one of `sections` / `topic` must fill (or both null on bare-outline asks):\n"
+        "  a. `sections` needs named headings, not a count. 'With 5 sections' → `sections=null`. 'Cover X, "
+        "Y, Z' → fill with those items. Each item is `{'name': <Proper Case heading>, 'description': '', "
+        "'checked': false}`. Drop filler words like 'their' that break heading consistency.\n"
+        "  b. `topic` is a short descriptive sentence, not a single word. Only fill when the user supplies "
+        "more information than the post title already carries. A bare restatement of the title "
+        "('regularization methods' on a post titled *Regularization Techniques*) → `topic=null`. A "
+        "full angle sentence ('why batch beats streaming for small teams') → populate.\n"
+        "  c. Infer `topic` from conversation history when the current utterance is terse but earlier turns "
+        "established the subject.\n"
+        "  d. When the same number appears alongside a matching enumeration ('Make a 4-section outline: A, B, "
+        "C, D'), the number is redundant with the enumeration — fill `sections` from the names and leave "
+        "`depth` empty.\n"
+        "3. `depth` is nesting depth only: 1 = top-level headings, 2 = headings + bullets, 3 = bullets + "
+        "sub-bullets. A section count is NEVER depth. Phrasing like 'at the next level, we should discuss…' "
+        "implies `depth=2` even without the literal words 'depth' or 'levels'.\n"
+        "4. Treat outline directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. Reference to the existing post being outlined. When an active post is grounded, '
-        'this slot is pre-filled and omitted from the schema above. When the user explicitly references a '
-        'different post, populate `{"post": <title>}` with trailing status words ("post", "draft", '
-        '"article", "note") stripped.\n\n'
-        '### topic (elective)\n\n'
-        'Type: ExactSlot. A short descriptive sentence capturing the angle or framing beyond the post '
-        'title. `null` when the utterance only restates the title or offers no angle.\n\n'
-        '### sections (elective)\n\n'
-        'Type: ChecklistSlot. Each item is `{"name": <Proper Case heading>, "description": "", "checked": '
-        'false}`. Fill only when the user enumerates actual section headings — bare counts leave this '
-        '`null`.\n\n'
-        '### depth (optional)\n\n'
-        'Type: LevelSlot (integer 1-3). 1 = headings only, 2 = headings + bullets, 3 = bullets + '
-        'sub-bullets. Section counts never fill this slot.\n\n'
-        '### proposals (optional)\n\n'
-        'Type: ProposalSlot. System-managed — populated by the policy when the agent presents '
-        'outline options for the user to pick from. Do NOT fill from user utterance; emit `null`.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. Reference to the existing post being outlined. When the user explicitly "
+        "references a different post, populate `{'post': <title>}`.\n\n"
+        "### topic (elective)\n\n"
+        "Type: ExactSlot. A short descriptive sentence capturing the angle or framing beyond the post "
+        "title. `null` when the utterance only restates the title or offers no angle.\n\n"
+        "### sections (elective)\n\n"
+        "Type: ChecklistSlot. Each item is `{'name': <Proper Case heading>, 'description': '', 'checked': "
+        "false}`. Fill only when the user enumerates actual section headings — bare counts leave this "
+        "`null`.\n\n"
+        "### depth (optional)\n\n"
+        "Type: LevelSlot (integer 1-3). 1 = headings only, 2 = headings + bullets, 3 = bullets + "
+        "sub-bullets. Section counts never fill this slot.\n\n"
+        "### proposals (optional)\n\n"
+        "Type: ProposalSlot. System-managed. Do NOT fill; just emit `null`."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -79,15 +83,19 @@ Active post: None
 User: "Outline my data augmentation post — focus on how paraphrasing beats back-translation for low-resource languages."
 
 ## Input
-Active post: data augmentation
+
+Active post: **data augmentation** (id: `5f6a7b8c`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "5f6a7b8c", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Descriptive sentence beyond the title → topic populated. No enumerated headings → sections empty. No nesting cue → depth empty. Source matches the active post the user is focused on.",
+  "reasoning": "Descriptive sentence beyond the title → topic populated. No enumerated headings → sections empty. No nesting cue → depth empty. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title.",
   "slots": {
-    "source": {"post": "data augmentation"},
+    "source": [{"post": "5f6a7b8c"}],
     "topic": "how paraphrasing beats back-translation for low-resource languages",
     "sections": null,
     "depth": null
@@ -308,37 +316,41 @@ Active post: cooking
 
 REFINE_PROMPT = {
     'instructions': (
-        'Apply user-requested changes to an existing outline. The user either enumerates structured edits '
-        '(items to reorder, bullets to add, sections to rename) or gives prose-style critique about the '
-        'feel of the outline. Route each utterance to the right slot; an utterance can populate both slots '
-        'when it mixes enumeration and prose.'
+        "Apply user-requested changes to an existing outline. The user either enumerates structured edits "
+        "(items to reorder, bullets to add, sections to rename) or gives prose-style critique about the "
+        "feel of the outline. Route each utterance to the right slot; an utterance can populate both slots "
+        "when it mixes enumeration and prose."
     ),
     'rules': (
-        '1. Structured enumeration fills `steps`. Triggers: numbered lists, comma-separated items, "Under '
-        'X, add: a, b, c" shapes, explicit reorder specs, rename directives. Each step is a free-form '
-        'string carrying the action plus any section anchor inline (e.g. `"Add \'pick an encoder\' '
-        'bulletpoint under \'Process\' section"`).\n'
-        '2. Prose critique fills `feedback`. A short interpretive paragraph — "more detail in the methods '
-        'section", "make the intro punchier", "trim to 4 sections" — goes here verbatim as a single '
-        'string.\n'
-        '3. Count-only directives are prose, not enumeration. "Trim to 4 sections" → `feedback`, not '
-        '`steps`, because no specific headings are named.\n'
-        '4. Mixed utterances populate BOTH slots. An enumerated reorder followed by "and make the intro '
-        'punchier" → `steps` from the enumeration, `feedback` from the trailing prose.\n'
-        '5. `source.sec` becomes a list when the user references multiple sections in one utterance (e.g. '
-        '"Under Process, add… Under Ideas, add…" → `sec=["Process", "Ideas"]`).'
+        "1. `source.sec` becomes a list when the user references multiple sections in one utterance (e.g. "
+        "'Under Process, add… Under Ideas, add…' → `sec=['Process', 'Ideas']`).\n"
+        "2. Exactly one of `steps` / `feedback` must fill:\n"
+        "  a. Structured enumeration fills `steps`. Triggers: numbered lists, comma-separated items, 'Under "
+        "X, add: a, b, c' shapes, explicit reorder specs, rename directives. Each step is a free-form "
+        "string carrying the action plus any section anchor inline (e.g. `'Add 'pick an encoder' "
+        "bulletpoint under 'Process' section'`).\n"
+        "  b. Prose critique fills `feedback`. A short interpretive paragraph — 'more detail in the methods "
+        "section', 'make the intro punchier', 'trim to 4 sections' — goes here verbatim as a single "
+        "string.\n"
+        "  c. Count-only directives are prose, not enumeration. 'Trim to 4 sections' → `feedback`, not "
+        "`steps`, because no specific headings are named.\n"
+        "  d. Mixed utterances populate BOTH slots. An enumerated reorder followed by 'and make the intro "
+        "punchier' → `steps` from the enumeration, `feedback` from the trailing prose.\n"
+        "3. Treat refine directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. The post whose outline is being refined. When an active post is grounded, this '
-        'slot is pre-filled and omitted from the schema above. The `sec` sub-key may be a list when the '
-        'utterance references multiple sections.\n\n'
-        '### steps (elective)\n\n'
-        'Type: ChecklistSlot where each item is a free-form string describing one discrete change. Section '
-        'anchors are embedded in the string (not in a separate description field).\n\n'
-        '### feedback (elective)\n\n'
-        'Type: FreeTextSlot. A single short prose string capturing interpretive direction — one value, not '
-        'a list.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. The post whose outline is being refined. The `sec` sub-key may be a list "
+        "when the utterance references multiple sections.\n\n"
+        "### steps (elective)\n\n"
+        "Type: ChecklistSlot where each item is a free-form string describing one discrete change. Section "
+        "anchors are embedded in the string (not in a separate description field).\n\n"
+        "### feedback (elective)\n\n"
+        "Type: FreeTextSlot. A single short prose string capturing interpretive direction — one value, not "
+        "a list."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -466,15 +478,19 @@ Agent: "RL primer has 2,340 words across 5 sections."
 User: "Trim it down to 4 sections."
 
 ## Input
-Active post: RL primer
+
+Active post: **RL primer** (id: `ef012345`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "ef012345", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Prior turn was an Inspect on RL primer; current turn pivots to Refine on the same post → source inherits from active post. 'Trim down to 4 sections' is a count-only directive with no named headings → feedback captures the directive verbatim. No enumerated steps.",
+  "reasoning": "Prior turn was an Inspect on RL primer; current turn pivots to Refine on the same post. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title. 'Trim down to 4 sections' is a count-only directive with no named headings → feedback captures the directive verbatim. No enumerated steps.",
   "slots": {
-    "source": {"post": "RL primer"},
+    "source": [{"post": "ef012345"}],
     "steps": null,
     "feedback": "trim it down to 4 sections"
   }
@@ -563,39 +579,41 @@ Active post: None
 
 CREATE_PROMPT = {
     'instructions': (
-        'Initialize a new post record with a clean title and type. This flow does NOT generate content — '
-        'use outline or compose for that. Titles are always multi-word Proper Case; distill or preserve per '
-        'the rules below. Default `type` to `draft` unless the user explicitly asks for a short-form note.'
+        "Initialize a new post record with a clean title and type. This flow does NOT generate content — "
+        "use outline or compose for that. Titles are always multi-word Proper Case; distill or preserve per "
+        "the rules below. Default `type` to `draft` unless the user explicitly asks for a short-form note."
     ),
     'rules': (
-        '1. `title` is ALWAYS ≥2 words; single-word titles are rejected. Examples:\n'
-        '   - *"Create a post called Regularization Techniques"* → `"Regularization Techniques"` '
-        '(preserved verbatim)\n'
-        '   - *"Write a new draft about how batch normalization works"* → `"How Batch Normalization '
-        'Works"` (distilled)\n'
-        '   - *"Start a post on calibration, focusing on isotonic regression"* → `"Isotonic Regression '
-        'for Calibration"` (title follows the elaboration; "calibration" alone would be one word and '
-        'is rejected)\n'
-        '2. Preserve verbatim when the user wraps the title in quotes OR supplies explicit Proper Case. '
-        'Otherwise distill the subject into a short Proper Case phrase.\n'
-        '3. Strip trailing status words ("post", "draft", "article", "note") from the title. *"Create an '
-        'article titled Trustworthy AI post"* → `"Trustworthy AI"`.\n'
-        '4. `type` defaults to `draft` for formal article-like content. Switch to `note` when the user uses '
-        'snippet-style language ("quick note", "snippet", "start a note"). "Post" and "article" → `draft`.\n'
-        '5. `topic` fills only when the user elaborates past the title phrasing — a longer description '
-        'beyond what the title already carries. A bare "about X" where X IS the title → `topic=null`.'
+        "1. `title` is ALWAYS ≥2 words; single-word titles are rejected. Examples:\n"
+        "   - *'Create a post called Regularization Techniques'* → `'Regularization Techniques'` "
+        "(preserved verbatim)\n"
+        "   - *'Write a new draft about how batch normalization works'* → `'How Batch Normalization "
+        "Works'` (distilled)\n"
+        "   - *'Start a post on calibration, focusing on isotonic regression'* → `'Isotonic Regression "
+        "for Calibration'` (title follows the elaboration; 'calibration' alone would be one word and "
+        "is rejected)\n"
+        "  a. Preserve verbatim when the user wraps the title in quotes OR supplies explicit Proper Case. "
+        "Otherwise distill the subject into a short Proper Case phrase.\n"
+        "2. `type` defaults to `draft` for formal article-like content. Switch to `note` when the user uses "
+        "snippet-style language ('quick note', 'snippet', 'start a note'). 'Post' and 'article' → `draft`.\n"
+        "3. `topic` fills only when the user elaborates past the title phrasing — a longer description "
+        "beyond what the title already carries. A bare 'about X' where X IS the title → `topic=null`.\n"
+        "4. Treat create directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### title (required)\n\n'
-        'Type: ExactSlot. A short Proper Case title, always ≥2 words. Preserve verbatim when the user '
-        'presented a specific title (quoted or Proper-Cased). Otherwise distill the subject. Strip trailing '
-        'status words.\n\n'
-        '### type (required)\n\n'
-        'Type: CategorySlot. Options: `draft`, `note`. Default to `draft` for article-like content; use '
-        '`note` for explicit snippet-style language.\n\n'
-        '### topic (optional)\n\n'
-        'Type: ExactSlot. A longer description beyond the title. `null` when the utterance offers no '
-        'elaboration past the title phrasing.'
+        "### title (required)\n\n"
+        "Type: ExactSlot. A short Proper Case title, always ≥2 words. Preserve verbatim when the user "
+        "presented a specific title (quoted or Proper-Cased). Otherwise distill the subject. Strip trailing "
+        "status words.\n\n"
+        "### type (required)\n\n"
+        "Type: CategorySlot. Options: `draft`, `note`. Default to `draft` for article-like content; use "
+        "`note` for explicit snippet-style language.\n\n"
+        "### topic (optional)\n\n"
+        "Type: ExactSlot. A longer description beyond the title. `null` when the utterance offers no "
+        "elaboration past the title phrasing."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -691,38 +709,43 @@ User: "Can I get an article titled Calibrating LLM Judges post?"
 
 BRAINSTORM_PROMPT = {
     'instructions': (
-        'The Brainstorm Flow is called when the user wants ideas, angles, hooks, or new perspectives '
-        'rather than a concrete write action. It is typically a discovery turn — before an outline, '
-        'before a rewrite, or to expand a thin section.\n\n'
-        'Identify whether the user has named a `topic` to brainstorm around and whether they have seeded '
-        'the brainstorm with their own `ideas`. Topic is the primary slot to look for — `source` is '
-        'typically filled by code before slot-filling runs, so if you do not see source pre-filled, '
-        'assume it is missing. Ideas fills only when the user lists existing items they want extended. '
-        'Both `topic` and `source` can be filled in the same turn when the user references an existing '
-        'post and adds a new angle.'
+        "The Brainstorm Flow is called when the user wants ideas, angles, hooks, or new perspectives "
+        "rather than a concrete write action. It is typically a discovery turn — before an outline, "
+        "before a rewrite, or to expand a thin section.\n\n"
+        "Identify whether the user has named a `topic` to brainstorm around and whether they have seeded "
+        "the brainstorm with their own `ideas`. Topic is the primary slot to look for — `source` is "
+        "typically filled by code before slot-filling runs, so if you do not see source pre-filled, "
+        "assume it is missing. Ideas fills only when the user lists existing items they want extended. "
+        "Both `topic` and `source` can be filled in the same turn when the user references an existing "
+        "post and adds a new angle."
     ),
     'rules': (
-        '1. `topic` is a bare subject or phrase the user wants ideas around. Capture it as the user wrote it.\n'
-        '2. `source` is typically filled by code before this prompt runs. If it is not pre-filled, assume '
-        'it is missing and leave it null.\n'
-        '3. `ideas` fills only when the user provides their own seed list (≥2 items). The shape is a list '
-        'of short strings, one per item the user dictated. Leave null when no user-supplied items appear.\n'
-        '4. `topic` and `source` can both fill in one turn when the user references an existing post AND '
-        'adds a new subject phrase that goes beyond the post title.\n'
-        '5. When the utterance has no subject and no seed list, leave all slots null so the flow can ask '
-        'for one.'
+        "1. Exactly one of `source` / `topic` must fill (or both null on bare requests with no subject):\n"
+        "  a. `source` is typically filled by code before this prompt runs. If it is not pre-filled, assume "
+        "it is missing and leave it null.\n"
+        "  b. `topic` is a bare subject or phrase the user wants ideas around. Capture it as the user wrote it.\n"
+        "  c. `topic` and `source` can both fill in one turn when the user references an existing post AND "
+        "adds a new subject phrase that goes beyond the post title.\n"
+        "  d. When the utterance has no subject and no seed list, leave all slots null so the flow can ask "
+        "for one.\n"
+        "2. `ideas` fills only when the user provides their own seed list (≥2 items). The shape is a list "
+        "of short strings, one per item the user dictated. Leave null when no user-supplied items appear.\n"
+        "3. Treat brainstorm directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (elective)\n\n'
-        'Type: SourceSlot. Reference to an existing post, section, or snippet that anchors the '
-        'brainstorm. Typically pre-filled by code; if you do not see it pre-filled, leave it null.\n\n'
-        '### topic (elective)\n\n'
-        'Type: ExactSlot. A bare subject, phrase, or word to brainstorm around. Leave `null` when the '
-        'utterance references an existing entity instead, or when no subject is named at all.\n\n'
-        '### ideas (elective)\n\n'
-        'Type: ProposalSlot. A list of items the user has proposed as seed material for the brainstorm. '
-        'Fills when the user dictates their own starting items (e.g., "I have intro, methods, results — '
-        'give me three more sections to add"). Leave `null` when no user-supplied items appear.'
+        "### source (elective)\n\n"
+        "Type: SourceSlot. Reference to an existing post, section, or snippet that anchors the "
+        "brainstorm. Typically pre-filled by code; if you do not see it pre-filled, leave it null.\n\n"
+        "### topic (elective)\n\n"
+        "Type: ExactSlot. A bare subject, phrase, or word to brainstorm around. Leave `null` when the "
+        "utterance references an existing entity instead, or when no subject is named at all.\n\n"
+        "### ideas (optional)\n\n"
+        "Type: ProposalSlot. A list of items the user has proposed as seed material for the brainstorm. "
+        "Fills when the user dictates their own starting items (e.g., 'I have intro, methods, results — "
+        "give me three more sections to add'). Leave `null` when no user-supplied items appear."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -868,15 +891,19 @@ Active post: None
 User: "Brainstorm angles on security for my agent harness post."
 
 ## Input
-Active post: None
+
+Active post: **agent harness** (id: `9d8e7f60`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "9d8e7f60", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Both source and topic fill in one turn. Source from the entity reference; topic from the new angle the user wants explored within that post.",
+  "reasoning": "Both source and topic fill in one turn. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title. Topic captures the new angle the user wants explored within that post.",
   "slots": {
-    "source": {"post": "agent harness"},
+    "source": [{"post": "9d8e7f60"}],
     "topic": "security",
     "ideas": null
   }
@@ -911,35 +938,40 @@ Active post: My RL Primer
 
 CITE_PROMPT = {
     'instructions': (
-        'The Cite Flow attaches a citation (URL) to a snippet of text within a post — a sentence, '
-        'phrase, or short quoted passage. Citations always anchor to snippets, not to whole posts or '
-        'sections.\n\n'
-        'Extract the snippet being cited (`target`) and the URL (`url`) when present. When the user '
-        'supplies only a target, the policy will web-search for a supporting source. When the user '
-        'supplies only a URL, the policy uses the active snippet from context. Both slots are elective '
-        'so at least one must be present to proceed.'
+        "The Cite Flow attaches a citation (URL) to a snippet of text within a post — a sentence, "
+        "phrase, or short quoted passage. Citations always anchor to snippets, not to whole posts or "
+        "sections.\n\n"
+        "Extract the snippet being cited (`target`) and the URL (`url`) when present. When the user "
+        "supplies only a target, the policy will web-search for a supporting source. When the user "
+        "supplies only a URL, the policy uses the active snippet from context. Both slots are elective "
+        "so at least one must be present to proceed."
     ),
     'rules': (
-        '1. `target` carries the snippet text the user wants to cite. Fill the `snip` key with the '
-        'sentence or phrase being cited. Leave null when the user provides only a URL without naming '
-        'what to attach it to.\n'
-        '2. `url` captures URLs verbatim as a single string. When the user supplies multiple URLs in '
-        'one utterance, concatenate with semicolons: `"https://a.com; https://b.com"`.\n'
-        '3. When only a URL is provided, leave `target` null — the policy uses the active snippet '
-        'context.\n'
-        '4. When only a target is provided, leave `url` null — the policy will search for a supporting '
-        'source.\n'
-        '5. When both are provided, fill both and trust the user\'s pairing.'
+        "1. Exactly one of `target` / `url` must fill, or both:\n"
+        "  a. `target` carries the snippet text the user wants to cite. Fill the `snip` key with the "
+        "sentence or phrase being cited. Leave null when the user provides only a URL without naming "
+        "what to attach it to.\n"
+        "  b. `url` captures URLs verbatim as a single string. When the user supplies multiple URLs in "
+        "one utterance, concatenate with semicolons: `'https://a.com; https://b.com'`.\n"
+        "  c. When only a URL is provided, leave `target` null — the policy uses the active snippet "
+        "context.\n"
+        "  d. When only a target is provided, leave `url` null — the policy will search for a supporting "
+        "source.\n"
+        "  e. When both are provided, fill both and trust the user's pairing.\n"
+        "2. Treat cite directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### target (elective)\n\n'
-        'Type: TargetSlot. The snippet of text the citation attaches to — typically a sentence or '
-        'phrase. Fill the `snip` key with the snippet text. Leave null when the user provides only a '
-        'URL.\n\n'
-        '### url (elective)\n\n'
-        'Type: ExactSlot. A URL supplied by the user as the citation source. Capture the full string '
-        'exactly. Use semicolon-separated concatenation when multiple URLs are named in the same '
-        'utterance. Leave null when the user names only a target and wants the agent to search.'
+        "### target (elective)\n\n"
+        "Type: TargetSlot. The snippet of text the citation attaches to — typically a sentence or "
+        "phrase. Fill the `snip` key with the snippet text. Leave null when the user provides only a "
+        "URL.\n\n"
+        "### url (elective)\n\n"
+        "Type: ExactSlot. A URL supplied by the user as the citation source. Capture the full string "
+        "exactly. Use semicolon-separated concatenation when multiple URLs are named in the same "
+        "utterance. Leave null when the user names only a target and wants the agent to search."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -1037,15 +1069,19 @@ Agent: "Done — cited it."
 User: "Wait — cite https://new-link.com instead."
 
 ## Input
-Active post: RL
+
+Active post: **RL** (id: `2c4e6a80`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+target slot: {"post": "2c4e6a80", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Target carries over from the first turn ('the scaling claim'). Current turn retracts the prior URL with 'instead' — use the new URL, not the old one.",
+  "reasoning": "Target.post is grounded — copy `post_id` verbatim from the target slot rather than re-deriving from the title. Snippet ('the scaling claim') carries over from the first turn. Current turn retracts the prior URL with 'instead' — use the new URL.",
   "slots": {
-    "target": {"snip": "the scaling claim"},
+    "target": [{"post": "2c4e6a80", "snip": "the scaling claim"}],
     "url": "https://new-link.com"
   }
 }
@@ -1121,49 +1157,54 @@ Active post: My Calibration Draft
 
 COMPOSE_PROMPT = {
     'instructions': (
-        'The Compose Flow writes prose for a section from scratch, based on an outline, a list of '
-        'process steps, or qualitative direction from the user. It operates on a named section of an '
-        'existing post; for editing existing prose, Rework is used instead, and for bullet-level '
-        'planning, Outline is used.\n\n'
-        'Extract the target (`source`) — always a post, usually a section (or list of sections when '
-        'the user names several) — and optionally a list of process-level `steps` the agent should '
-        'follow, or qualitative `guidance` on how to write. Source is typically pre-filled from '
-        'active_post. The most common entry point is the hand-off from an Outline Flow turn: the user '
-        'reviews a bulleted outline and then signals they want prose ("full paragraphs", "turn this '
-        'into prose", "flesh it out"). Treat those phrases as clear compose intent — fill `guidance` '
-        'with the phrase so the policy proceeds without extra clarification.'
+        "The Compose Flow writes prose for a section from scratch, based on an outline, a list of "
+        "process steps, or qualitative direction from the user. It operates on a named section of an "
+        "existing post; for editing existing prose, Rework is used instead, and for bullet-level "
+        "planning, Outline is used.\n\n"
+        "Extract the target (`source`) — always a post, usually a section (or list of sections when "
+        "the user names several) — and optionally a list of process-level `steps` the agent should "
+        "follow, or qualitative `guidance` on how to write. Source is typically pre-filled from "
+        "active_post. The most common entry point is the hand-off from an Outline Flow turn: the user "
+        "reviews a bulleted outline and then signals they want prose ('full paragraphs', 'turn this "
+        "into prose', 'flesh it out'). Treat those phrases as clear compose intent — fill `guidance` "
+        "with the phrase so the policy proceeds without extra clarification."
     ),
     'rules': (
         "1. `source` always carries `post`; fill `sec` when the user names a section. If the user "
         "names multiple sections in one utterance ('compose the MDPs, value functions, and policy "
         "gradients sections'), `sec` becomes a list — these are content anchors, not steps.\n"
-        "2. `steps` is a process-level ChecklistSlot: discrete actions the compose policy should take "
+        "2. Exactly one of `steps` / `guidance` must fill:\n"
+        "  a. `steps` is a process-level ChecklistSlot: discrete actions the compose policy should take "
         "('start with a hook', 'end with a takeaway', 'include a code sample'). Each item is "
         "`{name: <step>, description: ''}`. Do NOT use `steps` for content references — those belong "
         "in `source.sec`.\n"
-        "3. `guidance` captures qualitative writing direction — tone, length, angle, audience, "
+        "  b. `guidance` captures qualitative writing direction — tone, length, angle, audience, "
         "constraints ('casual tone', 'under 300 words', 'assume expert audience'). The hand-off "
         "phrase from outline → prose ('full paragraphs', 'flesh it out', 'turn this into prose') "
         "also fills `guidance` verbatim.\n"
-        "4. Filler words can be stripped from `steps` names, but preserve load-bearing words that "
+        "  c. Filler words can be stripped from `steps` names, but preserve load-bearing words that "
         "change meaning.\n"
-        "5. When the utterance is fully terse ('write it') and no section, steps, or guidance is "
-        "present, leave all elective slots null so the flow can clarify."
+        "  d. When the utterance is fully terse ('write it') and no section, steps, or guidance is "
+        "present, leave all elective slots null so the flow can clarify.\n"
+        "3. Treat compose directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. The target of the compose. Always references the `post` (and optionally '
-        'section) being written. When the user names multiple sections, `sec` becomes a list.\n\n'
-        '### steps (elective)\n\n'
-        'Type: ChecklistSlot. An ordered list of process-level actions for the compose policy to '
-        'follow. Each item is a dict `{name: <step>, description: \'\'}`. Fires on numbered or '
-        'bulleted lists of actions (\'1) start with a hook, 2) use concrete examples, 3) end with a '
-        'takeaway\'). Do NOT use for content-point references — those are sections on the post.\n\n'
-        '### guidance (elective)\n\n'
-        'Type: FreeTextSlot. Qualitative writing direction — tone, length, angle, audience, '
-        'constraints. Also the natural place for the outline → prose hand-off phrase (\'full '
-        'paragraphs\', \'flesh it out\'). Leave null when the user supplies only structural sub-points '
-        'with no style guidance.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. The target of the compose. Always references the `post` (and optionally "
+        "section) being written. When the user names multiple sections, `sec` becomes a list.\n\n"
+        "### steps (elective)\n\n"
+        "Type: ChecklistSlot. An ordered list of process-level actions for the compose policy to "
+        "follow. Each item is a dict `{name: <step>, description: ''}`. Fires on numbered or "
+        "bulleted lists of actions ('1) start with a hook, 2) use concrete examples, 3) end with a "
+        "takeaway'). Do NOT use for content-point references — those are sections on the post.\n\n"
+        "### guidance (elective)\n\n"
+        "Type: FreeTextSlot. Qualitative writing direction — tone, length, angle, audience, "
+        "constraints. Also the natural place for the outline → prose hand-off phrase ('full "
+        "paragraphs', 'flesh it out'). Leave null when the user supplies only structural sub-points "
+        "with no style guidance."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -1219,15 +1260,19 @@ Agent: "Which section?"
 User: "Write the methods section."
 
 ## Input
-Active post: RL primer
+
+Active post: **RL primer** (id: `ef012345`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "ef012345", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Post inherits from active_post. Section named in current turn. No process list, no writing direction.",
+  "reasoning": "Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title. Section named in current turn → fill sec. No process list, no writing direction.",
   "slots": {
-    "source": {"post": "RL primer", "sec": "methods"},
+    "source": [{"post": "ef012345", "sec": "methods"}],
     "steps": null,
     "guidance": null
   }
@@ -1355,60 +1400,65 @@ Active post: My ML Post
 
 ADD_PROMPT = {
     'instructions': (
-        'The Add Flow inserts new content into an existing post or section by drilling down to '
-        'provide more details. This can include adding a sentence, paragraph, phrase, image, or '
-        'sub-section — anchored to a specific section. In contrast, Compose writes a full section '
-        'based on the outline, and Rework changes existing section content.\n\n'
-        'Extract the target (`source`, which post + section) and the new content items: `points` '
-        'for a list of bullets the user wants copied in nearly verbatim, `suggestions` for natural-'
-        'language change instructions (an item like "Mention X in section Y"), `image` for image '
-        'additions, and `position` when the user specifies placement. Source typically inherits '
-        'from active_post; at least one content slot should fire.'
+        "The Add Flow inserts new content into an existing post or section by drilling down to "
+        "provide more details. This can include adding a sentence, paragraph, phrase, image, or "
+        "sub-section — anchored to a specific section. In contrast, Compose writes a full section "
+        "based on the outline, and Rework changes existing section content.\n\n"
+        "Extract the target (`source`, which post + section) and the new content items: `points` "
+        "for a list of bullets the user wants copied in nearly verbatim, `suggestions` for natural-"
+        "language change instructions (an item like 'Mention X in section Y'), `image` for image "
+        "additions, and `position` when the user specifies placement. Source typically inherits "
+        "from active_post; at least one content slot should fire."
     ),
     'rules': (
         "1. `source` always carries `post`; fill `sec` when the user names the target section. If "
         "the user distributes content across multiple sections in one utterance, list all mentioned "
         "sections in `source.sec` and put the natural-language directives in `suggestions`.\n"
-        "2. Adding a wholly new top-level section to a post after the Compose phase is rare — "
+        "  a. Adding a wholly new top-level section to a post after the Compose phase is rare — "
         "sections should normally be added during the outline phase. When the user does ask for it, "
         "fill source and suggestions describing the new section.\n"
-        "3. `points` is a ChecklistSlot for explicit bullets points. The canonical case is when a user"
+        "2. Exactly one of `points` / `suggestions` / `image` must fill:\n"
+        "  a. `points` is a ChecklistSlot for explicit bullets points. The canonical case is when a user"
         "enumerates of a list changes to make. Each item's `name` is an ordinal ('one', 'two', 'three',"
         " ...) and `description` holds the literal content. Fill on numbered/bulleted lists where all "
         "items target the same section.\n"
-        "4. `suggestions` is a ChecklistSlot for natural-language change directives, where each item "
+        "  b. `suggestions` is a ChecklistSlot for natural-language change directives, where each item "
         "describes an interpretive edit. Fill when the user gives a free form instructions rather a "
         "list of bullets points.\n"
-        "5. `image` fires on explicit image-add language. Image type comes from phrasing: 'diagram' "
+        "  c. `image` fires on explicit image-add language. Image type comes from phrasing: 'diagram' "
         "→ diagram, 'hero image' → hero, 'photo'/'screenshot' → photo.\n"
-        "6. `position` fills only when the user specifies placement numerically or relatively. "
+        "3. `position` fills only when the user specifies placement numerically or relatively. "
         "'Right after the intro' → 1. 'At the start' / 'before everything' → 0. The `## Input` "
         "block lists the post's current sections so positional phrases like 'before X' or 'after X' "
-        "can resolve. Leave null when unspecified."
+        "can resolve. Leave null when unspecified.\n"
+        "4. Treat add directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. The post and section to add content into. Always carries `post`; fill '
-        '`sec` when the user names the target section (or list of sections when they distribute '
-        'content across multiple). Inherits post from active_post on terse utterances.\n\n'
-        '### points (elective)\n\n'
-        'Type: ChecklistSlot. Ordered list of bullet notes copied nearly verbatim from the user. '
-        'Each item is `{name: <ordinal>, description: <content>}` — `name` counts up as \'one\', '
-        '\'two\', \'three\', ..., and `description` carries the literal bullet text. Fill when the '
-        'user gave a numbered or bulleted list and all items target the same section.\n\n'
-        '### suggestions (elective)\n\n'
-        'Type: ChecklistSlot. Natural-language change directives matching Polish/Rework\'s '
-        '`suggestions`. Each item describes an interpretive edit (e.g., "Mention the self-play '
-        'breakthrough in recent-innovations"). Fill when the user gave prose-level instructions, '
-        'including multi-section directives (the section name lives inside the description).\n\n'
-        '### image (elective)\n\n'
-        'Type: ImageSlot. An image reference to insert. Fills when the user asks to add or insert '
-        'an image, diagram, or screenshot. Image type comes from the user\'s word (\'diagram\' → '
-        'diagram, \'hero image\' → hero, \'photo\'/\'screenshot\' → photo).\n\n'
-        '### position (optional)\n\n'
-        'Type: PositionSlot. 0-based index for where to insert the new content. \'Right after the '
-        'intro\' → 1. \'At the start\' / \'before everything\' → 0. Leave null when the user does '
-        'not specify placement.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. The post and section to add content into. Always carries `post`; fill "
+        "`sec` when the user names the target section (or list of sections when they distribute "
+        "content across multiple).\n\n"
+        "### points (elective)\n\n"
+        "Type: ChecklistSlot. Ordered list of bullet notes copied nearly verbatim from the user. "
+        "Each item is `{name: <ordinal>, description: <content>}` — `name` counts up as 'one', "
+        "'two', 'three', ..., and `description` carries the literal bullet text. Fill when the "
+        "user gave a numbered or bulleted list and all items target the same section.\n\n"
+        "### suggestions (elective)\n\n"
+        "Type: ChecklistSlot. Natural-language change directives matching Polish/Rework's "
+        "`suggestions`. Each item describes an interpretive edit (e.g., 'Mention the self-play "
+        "breakthrough in recent-innovations'). Fill when the user gave prose-level instructions, "
+        "including multi-section directives (the section name lives inside the description).\n\n"
+        "### image (elective)\n\n"
+        "Type: ImageSlot. An image reference to insert. Fills when the user asks to add or insert "
+        "an image, diagram, or screenshot. Image type comes from the user's word ('diagram' → "
+        "diagram, 'hero image' → hero, 'photo'/'screenshot' → photo).\n\n"
+        "### position (optional)\n\n"
+        "Type: PositionSlot. 0-based index for where to insert the new content. 'Right after the "
+        "intro' → 1. 'At the start' / 'before everything' → 0. Leave null when the user does "
+        "not specify placement."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -1440,15 +1490,19 @@ Active post: None
 User: "Add three bulletpoints to the Conclusion: cite the recent paper, note the limitations, link to the code repo."
 
 ## Input
-Active post: My ML Post
+
+Active post: **My ML Post** (id: `4b5c6d7e`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "4b5c6d7e", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Three explicit bulletpoints targeting one section → points. Names count up as ordinals; descriptions carry the literal bullets. Source post inherits from active_post.",
+  "reasoning": "Three explicit bulletpoints targeting one section → points. Names count up as ordinals; descriptions carry the literal bullets. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title.",
   "slots": {
-    "source": {"post": "My ML Post", "sec": "Conclusion"},
+    "source": [{"post": "4b5c6d7e", "sec": "Conclusion"}],
     "points": [
       {"name": "one", "description": "cite the recent paper"},
       {"name": "two", "description": "note the limitations"},

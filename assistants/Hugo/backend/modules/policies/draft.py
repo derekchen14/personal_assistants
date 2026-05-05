@@ -58,11 +58,11 @@ def _has_removal_intent(flow) -> bool:
 
 class DraftPolicy(BasePolicy):
 
-    def __init__(self, components:dict):
+    def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
 
-    def execute(self, state, context, tools) -> 'DisplayFrame':
+    def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
 
         match flow.name():
@@ -77,7 +77,7 @@ class DraftPolicy(BasePolicy):
 
     def outline_policy(self, flow, state, context, tools):
         if not flow.slots['source'].check_if_filled():
-            self.ambiguity.declare('partial')
+            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
             return DisplayFrame()
 
         depth_slot = flow.slots['depth']
@@ -116,7 +116,7 @@ class DraftPolicy(BasePolicy):
                 frame = self._propose_outline(flow, state, context, tools)
             else:
                 flow.stage = 'error'  # Missing topic is an error state
-                self.ambiguity.declare('specific', metadata={'missing_slot': 'topic'})
+                self.ambiguity.declare('specific', metadata={'missing': 'topic'})
                 frame = DisplayFrame(flow.name())
 
         return frame
@@ -149,15 +149,13 @@ class DraftPolicy(BasePolicy):
     def refine_policy(self, flow, state, context, tools):
         if not flow.is_filled():
             if not flow.slots['source'].filled:
-                self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
+                self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
             elif not flow.slots['feedback'].filled or not flow.slots['steps'].filled:
-                self.ambiguity.declare('specific', metadata={'missing_slot': 'refine_details'})
+                self.ambiguity.declare('specific', metadata={'missing': 'refine_details'})
             return DisplayFrame(flow.name())
 
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
-        if not post_id:
-            self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-            return DisplayFrame(flow.name())
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         content = result['outline']
 
@@ -210,7 +208,7 @@ class DraftPolicy(BasePolicy):
         target_slot = flow.slots['target']
         url_slot = flow.slots['url']
         if not target_slot.check_if_filled() and not url_slot.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': 'target_or_url'})
+            self.ambiguity.declare('specific', metadata={'missing': 'target'})
             return DisplayFrame()
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
@@ -220,49 +218,48 @@ class DraftPolicy(BasePolicy):
     def compose_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
+            self.ambiguity.declare('specific', metadata={'missing': flow.entity_slot})
             return DisplayFrame()
 
         # Stack-on: compose needs an outline only when the post has no structure yet.
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
-        if post_id:
-            result = tools('read_metadata', {'post_id': post_id})
-            if result['_success'] and not result.get('section_ids'):
-                self.flow_stack.stackon('outline')
-                state.keep_going = True
-                return DisplayFrame(thoughts='No sections yet, outlining first.')
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
+        result = tools('read_metadata', {'post_id': post_id})
+        if result['_success'] and not result.get('section_ids'):
+            self.flow_stack.stackon('outline')
+            state.keep_going = True
+            return DisplayFrame(thoughts='No sections yet, outlining first.')
 
         # Preload title + section preview into resolved-entities so the skill plans without re-fetching.
         # Skill owns persistence (calls revise_content per section); the post-read below refreshes the card.
         text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
         flow.status = 'Completed'
         frame = DisplayFrame(origin='compose', thoughts=text)
-        if post_id:
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
 
     def add_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})
+            self.ambiguity.declare('specific', metadata={'missing': flow.entity_slot})
             return DisplayFrame(flow.name())
 
-        post_id, _ = self._resolve_source_ids(flow, state, tools)
+        post_id, _, error = self._resolve_source_ids(flow, state, tools)
+        if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
         frame = DisplayFrame(origin='add', thoughts=text)
-        if post_id:
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return frame
 
     def create_policy(self, flow, state, context, tools):
         if not flow.is_filled():
             if not flow.slots['title'].filled:
-                self.ambiguity.declare('specific', metadata={'missing_slot': 'title'})
+                self.ambiguity.declare('specific', metadata={'missing': 'title'})
             elif not flow.slots['type'].filled:
-                self.ambiguity.declare('specific', metadata={'missing_slot': 'type'})
+                self.ambiguity.declare('specific', metadata={'missing': 'type'})
             else:
-                self.ambiguity.declare('partial')
+                self.ambiguity.declare('partial', metadata={'missing': 'source'})
             return DisplayFrame(flow.name())
 
         slots = flow.slot_values_dict()
@@ -289,8 +286,10 @@ class DraftPolicy(BasePolicy):
 
         elif result.get('_error') == 'duplicate':
             observation = f'A post titled "{slots["title"]}" already exists. Overwrite it, or pick a different title?'
-            self.ambiguity.declare('confirmation', observation=observation,
-                metadata={'duplicate_title': slots['title']})
+            self.ambiguity.declare('confirmation', metadata={
+                'missing': 'overwrite_intent', 'question': observation,
+                'duplicate_title': slots['title'],
+            })
             frame = DisplayFrame(flow.name(), metadata={'duplicate_title': slots['title']})
         else:
             frame_meta = {'violation': 'tool_error', 'failed_tool': 'create_post'}
@@ -314,7 +313,7 @@ class DraftPolicy(BasePolicy):
             parsed = self.engineer.apply_guardrails(raw_output)
             flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})
             if not flow.slots['topic'].filled:
-                self.ambiguity.declare('specific', metadata={'missing_slot': 'topic'})
+                self.ambiguity.declare('specific', metadata={'missing': 'topic'})
                 return DisplayFrame(flow.name())
             else:
                 text, _ = self.llm_execute(flow, state, context, tools)

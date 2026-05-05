@@ -38,7 +38,7 @@ If in propose mode you find yourself wanting to call `generate_outline`, stop: t
 
 If in direct mode `generate_outline` fails, the policy will retry once automatically. A second failure surfaces as a `tool_error` frame; do not attempt a third call from the skill.
 
-If the topic cannot be extracted from the conversation and no sections were supplied, call `handle_ambiguity(level='specific', metadata={'missing_slot': 'topic'})`.
+If the topic cannot be extracted from the conversation and no sections were supplied, call `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`.
 
 ## Tools
 

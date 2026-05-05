@@ -39,7 +39,7 @@ Class constant: `_SKILL_DIR` → `backend/prompts/skills/`. Task suffixes in `_T
 - NLU owns `_detect_flow_prompt`, `_fill_slot_prompt`, `_contemplate_prompt` (all >2 lines of real work). `build_intent_prompt` is called inline at its one use site.
 - BasePolicy owns `_build_skill_prompt`.
 - RES inlines `get_naturalize_prompt` at the naturalize call site.
-- AmbiguityHandler inlines `build_clarification` from `prompts/for_res.py`.
+- AmbiguityHandler renders clarification text via `ask()` — level-specific prose lives in the handler itself.
 
 ## 2. DialogueState — beliefs + flags
 
@@ -112,17 +112,16 @@ Valid block types: `card`, `form`, `confirmation`, `toast`, `default`, `selectio
 
 ## 6. AmbiguityHandler — clarification lifecycle
 
-`backend/components/ambiguity_handler.py` contains 7 core methods.
+`backend/components/ambiguity_handler.py` contains 6 core methods.
 
 Four levels: `general`, `partial`, `specific`, `confirmation` (`schemas/ontology.py:AmbiguityLevel`).
 
-1. `declare(level, metadata=None, observation=None, generation=None)`  →  start a clarification round  (:34)
-2. `present() -> bool`  →  is a clarification pending?  (:45)
-3. `ask() -> str`  →  phrase the user-facing question  (:48)
-4. `generate() -> str`  →  LLM-based clarification when `generation` flags are set  (:67)
-5. `resolve()`  →  clear state  (:77)
-6. `needs_clarification(confidence) -> bool`  →  threshold check against NLU confidence  (:82)
-7. `should_escalate() -> bool`  →  true when total declared rounds ≥ max_turns  (:85)
+1. `declare(level, metadata=None, observation=None)`  →  start a clarification round
+2. `present() -> bool`  →  is a clarification pending?
+3. `ask() -> str`  →  phrase the user-facing question (returns observation if set, else level-specific prose)
+4. `resolve()`  →  clear state
+5. `needs_clarification(confidence) -> bool`  →  threshold check against NLU confidence
+6. `should_escalate() -> bool`  →  true when total declared rounds ≥ max_turns
 
 Properties: `level` (:90), `metadata` (:94), `observation` (:98).
 

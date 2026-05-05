@@ -25,7 +25,7 @@ This skill shifts the tone of a post — sentence length, vocabulary complexity,
 
 If `revise_content` fails for a section, retry ONCE. If it fails again, skip that section and continue. After all sections are processed, call `execution_error(violation='tool_error', message=<sections that failed>, failed_tool='revise_content')`.
 
-If both `chosen_tone` and `custom_tone` are filled and they conflict (e.g. casual + academic), call `handle_ambiguity(level='confirmation', observation='Two conflicting tones — pick one?')`.
+If both `chosen_tone` and `custom_tone` are filled and they conflict (e.g. casual + academic), call `handle_ambiguity(level='confirmation', metadata={'missing': 'tone', 'question': 'Two conflicting tones — pick one?'})`.
 
 ## Tools
 

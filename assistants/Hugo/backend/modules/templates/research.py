@@ -1,6 +1,3 @@
-from backend.components.flow_stack.parents import BaseFlow
-from backend.components.display_frame import DisplayFrame
-
 TEMPLATES = {
     'browse':    {'template': "Here are some topic ideas: {message}", 'block_hint': 'list'},
     'check':     {'template': "Here are your current drafts: {message}", 'block_hint': 'list'},
@@ -24,14 +21,14 @@ _INSPECT_LABELS = {
 }
 
 
-def fill_research_template(template:str, flow:BaseFlow, frame:DisplayFrame) -> str:
+def fill_research_template(template:str, flow, frame) -> str:
     template = TEMPLATES[flow.name()]['template']
     if flow.name() == 'inspect':
         return template.format(message=_format_inspect_message(frame))
     return template.format(message=frame.thoughts)
 
 
-def _format_inspect_message(frame:DisplayFrame) -> str:
+def _format_inspect_message(frame) -> str:
     """Produce the spoken utterance for the inspect flow directly from metadata."""
     metrics = frame.metadata.get('metrics') or {}
     if not metrics:

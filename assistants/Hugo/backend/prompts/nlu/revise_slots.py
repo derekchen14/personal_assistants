@@ -1,53 +1,59 @@
 REWORK_PROMPT = {
     'instructions': (
-        'The Rework Flow is major revision of prose that already exists — restructuring sections, '
-        'replacing weak arguments, or weaving in itemized edits across more than one section. '
-        'Source can carry sections or a snippet target.\n\n'
-        'Source is typically pre-filled with the post; the user may add one or more section names. '
-        'Beyond that, the user usually fills exactly one of: `category` (a tightly-defined verb that '
-        'maps to a deterministic operation), `suggestions` (a numbered or bulleted list of specific '
-        'edits), or `remove` (an explicit piece to cut). When the request does not map cleanly, leave '
-        'all electives null so the flow can clarify.'
+        "The Rework Flow is major revision of prose that already exists — restructuring sections, "
+        "replacing weak arguments, or weaving in itemized edits across more than one section. "
+        "Source can carry sections or a snippet target.\n\n"
+        "Source is typically pre-filled with the post; the user may add one or more section names. "
+        "Beyond that, the user usually fills exactly one of: `category` (a tightly-defined verb that "
+        "maps to a deterministic operation), `suggestions` (a numbered or bulleted list of specific "
+        "edits), or `remove` (an explicit piece to cut). When the request does not map cleanly, leave "
+        "all electives null so the flow can clarify."
     ),
     'rules': (
-        '1. Source: post is pre-filled. If the user names a section, fill `sec`. For a swap utterance '
-        '("swap A and B"), source.values must carry BOTH section names. If the user names a '
-        'paragraph/sentence/phrase scope, fill `source.snip` instead and leave `post`/`sec` off — this '
-        'triggers a re-route to Polish.\n'
-        '2. `category` is a CategorySlot. Pick the closest option only when the verb maps cleanly. '
-        'Lean toward null on the fence.\n'
-        '   - `swap`: explicit "swap" / "interchange" / "switch the order of" with two named sections.\n'
-        '   - `to_top`: "move to top" / "make it first" / "promote to first".\n'
-        '   - `to_end`: "move to end" / "make it last" / "put at the bottom".\n'
-        '   - `trim`: "shorten" / "trim down" / "reduce length" applied to multiple sections.\n'
-        '   - `sharpen`: "add evidence" / "strengthen the arguments" / "more depth across the post".\n'
-        '   - `reframe`: "different angle" / "different audience" / "shift the lens".\n'
-        '3. `suggestions` fires on numbered or bulleted lists with at least 2 items. Each item is one '
-        'suggestion. Ambiguous verbs like "tighten" or "improve flow" leave this null.\n'
-        '4. `remove` fires only on explicit cut/drop/delete language targeting a specific piece. Vague '
-        'dissatisfaction does NOT fill this slot.\n'
-        '5. Most utterances fill ONE of category / suggestions / remove. They can co-fire (e.g., a '
-        'numbered list that includes one explicit deletion → `suggestions` + `remove`), but `category` '
-        'and `suggestions` rarely co-occur — categories are deterministic verbs, suggestions are '
-        'itemized prose.'
+        "1. Source: post is pre-filled. If the user names a section, fill `sec`. For a swap utterance "
+        "('swap A and B'), source.values must carry BOTH section names. If the user names a "
+        "paragraph/sentence/phrase scope, fill `source.snip` instead and leave `post`/`sec` off — this "
+        "triggers a re-route to Polish.\n"
+        "2. Exactly one of `category` / `suggestions` / `remove` must fill (or all null when no clean "
+        "direction):\n"
+        "  a. `category` is a CategorySlot. Pick the closest option only when the verb maps cleanly. "
+        "Lean toward null on the fence.\n"
+        "     - `swap`: explicit 'swap' / 'interchange' / 'switch the order of' with two named sections.\n"
+        "     - `to_top`: 'move to top' / 'make it first' / 'promote to first'.\n"
+        "     - `to_end`: 'move to end' / 'make it last' / 'put at the bottom'.\n"
+        "     - `trim`: 'shorten' / 'trim down' / 'reduce length' applied to multiple sections.\n"
+        "     - `sharpen`: 'add evidence' / 'strengthen the arguments' / 'more depth across the post'.\n"
+        "     - `reframe`: 'different angle' / 'different audience' / 'shift the lens'.\n"
+        "  b. `suggestions` fires on numbered or bulleted lists with at least 2 items. Each item is one "
+        "suggestion. Ambiguous verbs like 'tighten' or 'improve flow' leave this null.\n"
+        "  c. `remove` fires only on explicit cut/drop/delete language targeting a specific piece. Vague "
+        "dissatisfaction does NOT fill this slot.\n"
+        "  d. Most utterances fill ONE of category / suggestions / remove. They can co-fire (e.g., a "
+        "numbered list that includes one explicit deletion → `suggestions` + `remove`), but `category` "
+        "and `suggestions` rarely co-occur — categories are deterministic verbs, suggestions are "
+        "itemized prose.\n"
+        "3. Treat rework directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. References the target of the rework. Typically pre-filled with the post; '
-        'the user may add one or more section names. For swap, BOTH section names must appear as two '
-        'separate entries in `source.values`. If the user names a paragraph/sentence/phrase scope, '
-        'fill `snip` instead — this triggers a re-route to Polish.\n\n'
-        '### category (elective)\n\n'
-        'Type: CategorySlot. Options: swap, to_top, to_end, trim, sharpen, reframe. Pick the closest '
-        'option only when the verb maps cleanly per rule 2; leave null on the fence.\n\n'
-        '### suggestions (elective)\n\n'
-        'Type: ChecklistSlot. A list of specific changes the user has itemized. Each item is one '
-        'suggestion. Fires on numbered or bulleted lists with at least 2 items. Leave null on '
-        'prose-only critique.\n\n'
-        '### remove (optional)\n\n'
-        'Type: RemovalSlot. A specific piece of content to cut during the rework. Fill only when the '
-        'user clearly targets something to remove (\'drop the tangent\', \'cut the footnote\'). Vague '
-        'dissatisfaction does NOT fill this slot.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. References the target of the rework. Typically pre-filled with the post; "
+        "the user may add one or more section names. For swap, BOTH section names must appear as two "
+        "separate entries in `source.values`. If the user names a paragraph/sentence/phrase scope, "
+        "fill `snip` instead — this triggers a re-route to Polish.\n\n"
+        "### category (elective)\n\n"
+        "Type: CategorySlot. Options: swap, to_top, to_end, trim, sharpen, reframe (see rule 2a "
+        "for verb mappings).\n\n"
+        "### suggestions (elective)\n\n"
+        "Type: ChecklistSlot. A list of specific changes the user has itemized. Each item is one "
+        "suggestion. Fires on numbered or bulleted lists with at least 2 items. Leave null on "
+        "prose-only critique.\n\n"
+        "### remove (optional)\n\n"
+        "Type: RemovalSlot. A specific piece of content to cut during the rework. Fill only when the "
+        "user clearly targets something to remove ('drop the tangent', 'cut the footnote'). Vague "
+        "dissatisfaction does NOT fill this slot."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -126,15 +132,19 @@ Agent: "Sure — what changes do you want?"
 User: "1) lead with the experiment design, 2) cut the historical preamble, 3) add a comparison table."
 
 ## Input
-Active post: regularization
+
+Active post: **regularization** (id: `8a9b0c1d`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "8a9b0c1d", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Section comes from the first turn; post inherits from active_post. Numbered list of 3 items → suggestions. Item #2 is also explicit removal language → remove fires alongside. category stays null since the verbs are itemized prose, not a single canonical operation.",
+  "reasoning": "Section comes from the first turn. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title. Numbered list of 3 items → suggestions. Item #2 is also explicit removal language → remove fires alongside. category stays null since the verbs are itemized prose, not a single canonical operation.",
   "slots": {
-    "source": {"post": "regularization", "sec": "methods"},
+    "source": [{"post": "8a9b0c1d", "sec": "methods"}],
     "category": null,
     "suggestions": [
       "lead with the experiment design",
@@ -290,46 +300,57 @@ Active post: None
 
 POLISH_PROMPT = {
     'instructions': (
-        'The Polish Flow is fine-grained editing within a paragraph, sentence, or phrase — improving '
-        'word choice, tightening sentences, fixing transitions, and smoothing flow without changing '
-        'meaning or structure. Scope is always within a single paragraph or an image caption, not '
-        'across a section or post; bigger revisions go through Rework.\n\n'
-        'Extract the target (`source`) — usually a snippet or section — and any stylistic direction '
-        '(`style_notes`). The `image` slot fires only when the user asks to add or edit an image '
-        'caption, or to regenerate an existing image.'
+        "The Polish Flow covers fine-grained editing within a paragraph, sentence, or phrase — improving "
+        "word choice, tightening sentences, fixing transitions, and smoothing flow without changing "
+        "meaning or structure. Scope is always within a single paragraph or an image caption, not "
+        "across sections or the whole post; bigger revisions go through Rework instead.\n"
+        "Extract the `source` which must include a snippet or section along with the post, and any stylistic "
+        "direction as `style_notes`. The `image` slot is relevant only when the user asks to add or edit "
+        "an image caption, or to regenerate an existing image."
     ),
     'rules': (
-        '1. `source` fills `snip` when the user names a paragraph/sentence/phrase ("the opening '
-        'paragraph"), or `sec` when they name a section ("the methods section"), or both when context '
-        'mentions both (e.g., "the opening of the methods section" → sec=methods, snip=opening). '
-        'Include `post` only when the user disambiguates across posts.\n'
-        '2. `style_notes` captures stylistic direction verbatim and is often a phrase or short '
-        'sentence. Specific single words ("shorter", "punchier", "warmer") are fine, but vague single '
-        'words ("better", "improve") leave style_notes null so the agent can clarify.\n'
-        '3. `style_notes` captures only directives from the CURRENT turn; prior-turn directives are '
-        'assumed to have been handled already.\n'
-        '4. `image` fires only on explicit image-level language — caption edits or image regeneration. '
-        'Leave null when no picture is present or mentioned.\n'
-        '5. When the user says "polish it" with only an active post grounded (no sub-section named '
-        'and no direction given), leave all slots null — the agent should ask for clarification on '
-        'both target and direction.'
+        "1. `source` fills `snip` when the user names a paragraph/sentence/phrase ('the opening "
+        "paragraph'), or `sec` when they name a section ('the methods section'), or both when context "
+        "mentions both (e.g., 'the opening of the methods section' → sec=methods, snip=opening).\n"
+        "  a. The `post` should already be known, so only change it if the user has mentioned a completely "
+        "  new one."
+        "  b. Since Polish is for targeted edits, we require that `sec` or `snip` are filled. If neither "
+        "  is mentioned, then leave them so `null` so we can ask the user for clarification. "
+        "2. Decide whether `image` or `suggestions` are mentioned (or both stay `null` if neither image-level "
+        "language nor user proposals are made):\n"
+        "  a. `image` fires only on explicit image-level language — caption edits or image "
+        "  regeneration. Leave null when no picture is present or mentioned.\n"
+        "  b. `suggestions` fills when the user gives an enumerated list of polish edits — "
+        "  numbered or bulleted, each describing one individual polish step. As a follow-up mechanism, "
+        "  you can also fill via co-reference to prior agent proposals ('yes, do all three', 'just the "
+        "  first two') when the prior agent turn surfaced options to choose from.\n"
+        "3. `style_notes` (optional) captures stylistic direction verbatim and is often a phrase or "
+        "short sentence. Specific single words ('shorter', 'punchier', 'warmer') are fine, but "
+        "vague single words ('better', 'improve') leave style_notes null so the agent can clarify.\n"
+        "  a. `style_notes` captures only directives from the CURRENT turn; prior-turn directives "
+        "  are assumed to have been handled already.\n"
+        "4. When the user says 'polish it' with only an active post grounded (no sub-section named "
+        "and no direction given), leave all slots null — the agent should ask for clarification on "
+        "both target and direction."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. What to polish. Most often a snippet — the user names a paragraph, '
-        'sentence, or phrase. Less often a whole section, and sometimes both (sec + snip). Include '
-        '`post` only when the user disambiguates across posts; otherwise active_post provides that '
-        'context.\n\n'
-        '### style_notes (optional)\n\n'
-        'Type: FreeTextSlot. The user\'s stylistic direction, captured verbatim. Often a phrase or '
-        'short sentence. Examples: "punchier — short sentences, no passive voice", "warmer tone, '
-        'less academic", "shorter". Leave null on vague single-word directives like "better".\n\n'
-        '### image (optional)\n\n'
-        'Type: ImageSlot. Fires only when the user asks to add or edit an image caption or to '
-        'regenerate the current image. Leave null when a picture is not present and not mentioned.\n\n'
-        '### suggestions (elective)\n\n'
-        'Type: ChecklistSlot. System-managed — populated by the policy when the agent proposes polish '
-        'options. Do NOT fill from user utterance; emit `null`.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. What to polish. Most often a snippet — the user names a paragraph, "
+        "sentence, or phrase. Less often a whole section, and sometimes both (sec + snip). Include "
+        "`post` only when the user disambiguates across posts; otherwise active_post provides that "
+        "context.\n\n"
+        "### style_notes (optional)\n\n"
+        "Type: FreeTextSlot. The user's stylistic direction, captured verbatim. Often a phrase or "
+        "short sentence. Examples: 'short sentences, no passive voice', 'warmer tone, less academic'. "
+        "Leave null on vague single-word directives like 'better' or 'punchier'.\n\n"
+        "### image (elective)\n\n"
+        "Type: ImageSlot. Fires only when the user asks to add or edit an image caption or to "
+        "regenerate the current image. Leave null when a picture is not present and not mentioned.\n\n"
+        "### suggestions (elective)\n\n"
+        "Type: ChecklistSlot. A list of specific polish edits the user has itemized. Each item "
+        "is one polish step. Fires primarily on user-supplied enumerations (numbered or "
+        "bulleted lists). You can also look at prior turns to fill via co-reference if the agent " 
+        "surfaced concrete options. Otherwise emit `null`."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -347,7 +368,8 @@ Active post: None
   "slots": {
     "source": {"post": "Deep NLP", "snip": "opening paragraph"},
     "style_notes": "punchier — short sentences, no passive voice, and open with the hook",
-    "image": null
+    "image": null,
+    "suggestions": null
   }
 }
 ```
@@ -359,17 +381,22 @@ Active post: None
 User: "Clean up my conclusion."
 
 ## Input
-Active post: My ML Post
+
+Active post: **My ML Post** (id: `4b5c6d7e`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "4b5c6d7e", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Section scope ('conclusion') captured; post inherits from active_post. No style direction given — leave style_notes null so the agent can ask what kind of cleanup.",
+  "reasoning": "Section scope ('conclusion') captured. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title. No style direction given — leave style_notes null so the agent can ask what kind of cleanup.",
   "slots": {
-    "source": {"post": "My ML Post", "sec": "conclusion"},
+    "source": [{"post": "4b5c6d7e", "sec": "conclusion"}],
     "style_notes": null,
-    "image": null
+    "image": null,
+    "suggestions": null
   }
 }
 ```
@@ -393,7 +420,8 @@ Active post: My ML Post
   "slots": {
     "source": {"post": "My ML Post", "sec": "conclusion"},
     "style_notes": "shorter and more active voice",
-    "image": null
+    "image": null,
+    "suggestions": null
   }
 }
 ```
@@ -417,7 +445,8 @@ Active post: None
   "slots": {
     "source": {"post": "design", "snip": "'less is more' hook at the start"},
     "style_notes": "snappier",
-    "image": null
+    "image": null,
+    "suggestions": null
   }
 }
 ```
@@ -439,7 +468,8 @@ Active post: None
   "slots": {
     "source": {"post": "transformer"},
     "style_notes": null,
-    "image": {"img_type": "hero", "src": null, "alt": null, "position": null}
+    "image": {"img_type": "hero", "src": null, "alt": null, "position": null},
+    "suggestions": null
   }
 }
 ```
@@ -463,7 +493,8 @@ Active post: My ML Paper
   "slots": {
     "source": {"post": "My ML Paper", "sec": "conclusion"},
     "style_notes": "punchier",
-    "image": null
+    "image": null,
+    "suggestions": null
   }
 }
 ```
@@ -487,7 +518,8 @@ Active post: None
   "slots": {
     "source": {"post": "RL primer", "snip": "opening sentence"},
     "style_notes": null,
-    "image": null
+    "image": null,
+    "suggestions": null
   }
 }
 ```
@@ -509,59 +541,103 @@ Active post: None
   "slots": {
     "source": {"sec": "methods", "snip": "all three sentences in the methods paragraph"},
     "style_notes": "shorter and parallel",
-    "image": null
+    "image": null,
+    "suggestions": null
   }
 }
 ```
-</edge_case>''',
+</edge_case>
+
+<positive_example>
+## Conversation History
+
+User: "Polish the opening paragraph of the Methods section so it flows better."
+Agent: "Three options for flow: (1) merge sentences 0-1 to drop the redundant transition; (2) flip passive in sentence 1 to active; (3) tighten sentence 2's 'the way that we' to 'we'. Pick any subset, or 'all three'."
+User: "Yes, do all three."
+
+## Input
+Active post: My ML Paper
+
+## Output
+
+```json
+{
+  "reasoning": "Agent's prior turn proposed 3 polish options; current user turn accepts the full list with 'yes, do all three'. Source carries forward from turn 1 (sec=methods, snip=opening paragraph). Style_notes already absorbed in turn 1 ('flows better' is now stale). Suggestions fills with the full proposed list per rule 2b.",
+  "slots": {
+    "source": {"post": "My ML Paper", "sec": "Methods", "snip": "opening paragraph"},
+    "style_notes": null,
+    "image": null,
+    "suggestions": [
+      {"name": "merge sentences 0-1", "description": "drop the redundant transition"},
+      {"name": "flip passive in sentence 1", "description": "convert to active voice"},
+      {"name": "tighten sentence 2", "description": "'the way that we' → 'we'"}
+    ]
+  }
+}
+```
+</positive_example>''',
 }
 
 
 TONE_PROMPT = {
     'instructions': (
-        'The Tone Flow adjusts register and voice across a whole post — shifting sentence length, '
-        'vocabulary complexity, and stylistic feel. The six canonical tones are: formal, casual, '
-        'technical, academic, witty, natural. When the user names one directly (or an obvious '
-        'synonym), fill `chosen_tone`; when they describe a tone in their own words that doesn\'t '
-        'map cleanly, fill `custom_tone`; both can fire together when the user gives a canonical tone '
-        'plus qualifiers.\n\n'
-        'Source is required and typically inherits from active_post. When the user names a channel '
-        '(\'for LinkedIn\') that maps to multiple canonical tones, leave `chosen_tone` null and fill '
-        '`custom_tone` with the channel phrase so the policy can resolve.'
+        "The Tone Flow adjusts register and voice across a whole post — shifting sentence length, "
+        "vocabulary complexity, and stylistic feel. The six canonical tones are: formal, casual, "
+        "technical, academic, witty, natural. When the user names one directly (or an obvious "
+        "synonym), fill `chosen_tone`; when they describe a tone in their own words that doesn't "
+        "map cleanly, fill `custom_tone`; both can fire together when the user gives a canonical tone "
+        "plus qualifiers.\n\n"
+        "Source is required and typically inherits from active_post. When the user names a channel "
+        "('for LinkedIn') that maps to multiple canonical tones, leave `chosen_tone` null and fill "
+        "`custom_tone` with the channel phrase so the policy can resolve."
     ),
     'rules': (
-        "1. `chosen_tone` fills when the user names one of the six canonical options or an obvious "
-        "synonym. Map common variants conservatively: 'professional' → formal; 'laid back' → casual; "
-        "'scholarly' → academic; 'playful' → witty; 'softer' → natural. If the mapping is too far "
-        "(no clear canonical fit), leave `chosen_tone` null and fill `custom_tone` instead.\n"
-        "2. `custom_tone` fills when the user describes a tone that doesn't map cleanly to the six "
-        "canonicals ('warmer and more welcoming', 'serious but approachable'). Capture as a short "
-        "string.\n"
-        "3. Both slots can fire together when the user gives a canonical tone plus qualifying "
-        "language ('formal but not stiff' → chosen_tone=formal, custom_tone='formal but not stiff') "
-        "OR when channel + canonical are both mentioned.\n"
-        "4. When the user names only a channel that maps to a single canonical (GitHub → technical), "
-        "fill `chosen_tone` directly. When the channel maps to multiple canonicals (LinkedIn → "
-        "formal/academic, Medium → natural/formal/witty), leave `chosen_tone` null and put the "
-        "channel phrase in `custom_tone` so the policy can resolve.\n"
-        "5. When the user uses the verb 'tone' or 'rewrite' with no specific target tone or channel "
-        "('tone my intro down' alone), leave both tone slots null so the agent can clarify."
+        "1. `source` typically inherits from `state.active_post`. Fill explicitly when the user "
+        "names a different post.\n"
+        "2. Exactly one of `chosen_tone` / `custom_tone` / `suggestions` fills (or all stay null "
+        "on bare 'tone' / 'rewrite' utterances with no target tone, e.g. 'tone my intro down' "
+        "alone):\n"
+        "  a. `chosen_tone` fills when the user names one of the six canonical options or an "
+        "  obvious synonym. Map common variants conservatively: 'professional' → formal; 'laid "
+        "  back' → casual; 'scholarly' → academic; 'playful' → witty; 'softer' → natural. If the "
+        "  mapping is too far, leave null and fill `custom_tone` instead.\n"
+        "  b. `custom_tone` fills when the user describes a tone that doesn't map cleanly to the "
+        "  six canonicals ('warmer and more welcoming', 'serious but approachable'). Capture as a "
+        "  short string.\n"
+        "  c. `suggestions` fills when the user gives an enumerated list of tone shifts — "
+        "  numbered or bulleted, 2+ items, each describing one tonal change (e.g., '1) shift "
+        "  methods to casual, 2) tighten intro to academic, 3) warmer conclusion'). As a "
+        "  follow-up mechanism, can also fill via co-reference to prior agent-proposed options "
+        "  ('yes, all three', 'just option 2'). The primary path is direct user input — the "
+        "  co-reference path is secondary.\n"
+        "  d. `chosen_tone` and `custom_tone` can co-fire when the user gives a canonical tone "
+        "  plus qualifying language ('formal but not stiff' → chosen_tone=formal, "
+        "  custom_tone='formal but not stiff') OR when channel + canonical are both mentioned.\n"
+        "  e. When the user names only a channel that maps to a single canonical (GitHub → "
+        "  technical), fill `chosen_tone` directly. When the channel maps to multiple canonicals "
+        "  (LinkedIn → formal/academic, Medium → natural/formal/witty), leave `chosen_tone` null "
+        "  and put the channel phrase in `custom_tone` so the policy can resolve.\n"
+        "3. Treat tone directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn "
+        "explicitly references them via co-reference ('yes', 'do option 2', 'all three'). "
+        "`source` is the exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. The post whose tone is being adjusted. Inherits from active_post on terse '
-        'utterances.\n\n'
-        '### chosen_tone (elective)\n\n'
-        'Type: CategorySlot. Options: formal, casual, technical, academic, witty, natural. Fill when '
-        'the user names one directly or uses an obvious synonym (\'professional\' → formal, \'laid '
-        'back\' → casual, \'softer\' → natural). Leave null when the wording doesn\'t map cleanly.\n\n'
-        '### custom_tone (elective)\n\n'
-        'Type: ExactSlot. A free-form tone description when the user\'s phrasing doesn\'t match a '
-        'canonical option. Also filled when the user names a channel that maps to multiple canonicals '
-        '— store the channel phrase here so the policy can resolve.\n\n'
-        '### suggestions (elective)\n\n'
-        'Type: ChecklistSlot. System-managed — populated by the policy after the agent proposes tone '
-        'options. Do NOT fill from user utterance; emit `null`.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. The post whose tone is being adjusted.\n\n"
+        "### chosen_tone (elective)\n\n"
+        "Type: CategorySlot. Options: formal, casual, technical, academic, witty, natural (see rule "
+        "2a for synonym mapping).\n\n"
+        "### custom_tone (elective)\n\n"
+        "Type: ExactSlot. A free-form tone description when the user's phrasing doesn't match a "
+        "canonical option. Also filled when the user names a channel that maps to multiple canonicals "
+        "— store the channel phrase here so the policy can resolve.\n\n"
+        "### suggestions (elective)\n\n"
+        "Type: ChecklistSlot. A list of specific tone shifts the user has itemized. Each item "
+        "is one tonal change. Fires primarily on user-supplied enumerations (numbered or "
+        "bulleted lists with 2+ items). As a secondary path, can also fill via co-reference "
+        "when a prior agent turn surfaced concrete options ('all three', 'just the first "
+        "two'). Otherwise emit `null`."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -579,7 +655,8 @@ Active post: None
   "slots": {
     "source": {"post": "transformer"},
     "chosen_tone": "formal",
-    "custom_tone": null
+    "custom_tone": null,
+    "suggestions": null
   }
 }
 ```
@@ -591,17 +668,22 @@ Active post: None
 User: "Tone my intro warmer and more welcoming."
 
 ## Input
-Active post: RL primer
+
+Active post: **RL primer** (id: `ef012345`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "ef012345", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "'Warmer and more welcoming' doesn't map to a canonical option — fill custom_tone. Source inherits from active_post.",
+  "reasoning": "'Warmer and more welcoming' doesn't map to a canonical option — fill custom_tone. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title.",
   "slots": {
-    "source": {"post": "RL primer"},
+    "source": [{"post": "ef012345"}],
     "chosen_tone": null,
-    "custom_tone": "warmer and more welcoming"
+    "custom_tone": "warmer and more welcoming",
+    "suggestions": null
   }
 }
 ```
@@ -625,7 +707,8 @@ Active post: My Latest Post
   "slots": {
     "source": {"post": "My Latest Post"},
     "chosen_tone": "witty",
-    "custom_tone": null
+    "custom_tone": null,
+    "suggestions": null
   }
 }
 ```
@@ -647,7 +730,8 @@ Active post: None
   "slots": {
     "source": {"post": "RL primer"},
     "chosen_tone": "formal",
-    "custom_tone": "formal but not stiff"
+    "custom_tone": "formal but not stiff",
+    "suggestions": null
   }
 }
 ```
@@ -669,7 +753,8 @@ Active post: None
   "slots": {
     "source": {"post": "RL primer"},
     "chosen_tone": null,
-    "custom_tone": "for LinkedIn"
+    "custom_tone": "for LinkedIn",
+    "suggestions": null
   }
 }
 ```
@@ -693,7 +778,8 @@ Active post: My ML Post
   "slots": {
     "source": {"post": "My ML Post"},
     "chosen_tone": "natural",
-    "custom_tone": null
+    "custom_tone": null,
+    "suggestions": null
   }
 }
 ```
@@ -715,7 +801,8 @@ Active post: Trustworthy AI
   "slots": {
     "source": {"post": "Trustworthy AI"},
     "chosen_tone": null,
-    "custom_tone": "like a seasoned practitioner talking shop"
+    "custom_tone": "like a seasoned practitioner talking shop",
+    "suggestions": null
   }
 }
 ```
@@ -739,57 +826,102 @@ Active post: None
   "slots": {
     "source": {"post": "transformer"},
     "chosen_tone": "technical",
-    "custom_tone": null
+    "custom_tone": null,
+    "suggestions": null
   }
 }
 ```
-</edge_case>''',
+</edge_case>
+
+<positive_example>
+## Conversation History
+
+User: "Tune the voice of my RL primer."
+Agent: "Three options: (1) shift the methods section toward a casual register; (2) tighten the intro to a more academic feel; (3) make the conclusion warmer with second-person framing. Pick any subset, or 'all three'."
+User: "All three."
+
+## Input
+Active post: RL primer
+
+## Output
+
+```json
+{
+  "reasoning": "Agent's prior turn proposed 3 tone options; user accepts the full list with 'all three'. Source carries forward from active_post per rule 1. chosen_tone and custom_tone stay null since the proposal mixes registers per-section. Suggestions fills with the full proposed list per rule 2c.",
+  "slots": {
+    "source": {"post": "RL primer"},
+    "chosen_tone": null,
+    "custom_tone": null,
+    "suggestions": [
+      {"name": "casual methods", "description": "shift register toward casual"},
+      {"name": "academic intro", "description": "tighten and add academic feel"},
+      {"name": "warmer conclusion", "description": "second-person framing"}
+    ]
+  }
+}
+```
+</positive_example>''',
 }
 
 
 AUDIT_PROMPT = {
     'instructions': (
-        'The Audit Flow checks that a post is written in the user\'s voice rather than sounding like '
-        'AI. It compares voice, terminology, formatting conventions, and stylistic patterns against '
-        'previous posts, flagging sections that drift above a confidence threshold. Audit is distinct '
-        'from Rework (which restructures content) and Tone (which shifts register deliberately).\n\n'
-        'Extract the target post (`source`, usually inherited from active_post), the number of prior '
-        'posts to reference (`reference_count`, optional), and the AI-likelihood threshold '
-        '(`threshold`, optional). All elective extraction fires strictly on explicit triggers — vague '
-        'descriptors leave slots null and let the policy apply defaults.'
+        "The Audit Flow checks that a post is written in the user's voice rather than sounding like "
+        "AI. It compares voice, terminology, formatting conventions, and stylistic patterns against "
+        "previous posts, flagging sections that drift above a confidence threshold. Audit is distinct "
+        "from Rework (which restructures content) and Tone (which shifts register deliberately).\n\n"
+        "Extract the target post (`source`, usually inherited from active_post), the number of prior "
+        "posts to reference (`reference_count`, optional), and the AI-likelihood threshold "
+        "(`threshold`, optional). All elective extraction fires strictly on explicit triggers — vague "
+        "descriptors leave slots null and let the policy apply defaults."
     ),
     'rules': (
-        "1. `source` typically inherits from `state.active_post`. Fill explicitly when the user names "
-        "a post.\n"
-        "2. `threshold` fills on explicit probability language: '80%' → 0.8; 'above 0.3' → 0.3; "
-        "'flag anything over 50%' → 0.5. Percentages convert to decimals. 'At least 95%' → 0.95.\n"
-        "3. Vague descriptors like 'strict' or 'loose' do NOT fill `threshold` — leave null so the "
-        "policy can default.\n"
-        "4. `reference_count` fills on explicit count language: 'compare against my last 5 posts' → "
-        "5; 'against my previous post' (singular) → 1.\n"
-        "5. If the user mentions comparing style against prior posts but does not give a count "
-        "('against my recent posts', 'compare to past stuff', 'check it against my old drafts'), fill "
-        "`reference_count` with 5 as a sensible default.\n"
-        "6. Bare audit with no comparison language → `reference_count` stays null. The skill will "
-        "default to running editor + structural checks only, without comparison."
+        "1. `source` typically inherits from `state.active_post`. Fill explicitly when the user "
+        "names a post.\n"
+        "2. `reference_count` (optional) fills on explicit count language: 'compare against my "
+        "last 5 posts' → 5; 'against my previous post' (singular) → 1.\n"
+        "  a. Qualitative comparison without an explicit count ('against my recent posts', "
+        "  'compare to past stuff', 'check it against my old drafts') fills `reference_count` "
+        "  with 5 as a sensible default.\n"
+        "  b. Bare audit with no comparison language → leave `reference_count` null. The skill "
+        "  will default to running editor + structural checks only, without comparison.\n"
+        "3. `threshold` (optional) fills on explicit probability language: '80%' → 0.8; 'above "
+        "0.3' → 0.3; 'flag anything over 50%' → 0.5. Percentages convert to decimals. 'At least "
+        "95%' → 0.95.\n"
+        "  a. Vague descriptors like 'strict' or 'loose' do NOT fill `threshold` — leave null so "
+        "  the policy can default.\n"
+        "4. `delegates` (optional) fills when the user names which sub-flows should fix audit "
+        "findings ('audit and route fixes to rework', 'send any voice issues to polish and "
+        "structural drift to rework'). Each delegate is one sub-flow name with a description. "
+        "As a follow-up mechanism, can also fill via co-reference to prior agent-proposed "
+        "delegates ('yes, all three', 'just rework and polish'). The policy more commonly "
+        "populates this from a frontend selection payload after presenting audit findings — "
+        "leave null in that case.\n"
+        "5. Treat audit directives as current-turn-only. Prior-turn directives (e.g. an earlier "
+        "reference_count or threshold) are assumed already applied — do NOT carry them into the "
+        "current slot fill unless the current turn explicitly references them via co-reference. "
+        "`source` is the exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot. The post being audited. Typically inherits from `state.active_post`; fill '
-        'explicitly when the user names a different post.\n\n'
-        '### reference_count (optional)\n\n'
-        'Type: LevelSlot (threshold=1). Number of prior posts to reference as voice samples. Fires '
-        'on explicit integers (\'last 5 posts\' → 5; \'against my previous post\' → 1) and on '
-        'qualitative comparison language (\'against my recent posts\' → 5 as a default). Leave null '
-        'only when the user makes no comparison ask at all — non-null `reference_count` is the '
-        'signal that tells the skill to run `compare_style`.\n\n'
-        '### threshold (optional)\n\n'
-        'Type: ProbabilitySlot. AI-likelihood cutoff in [0, 1] — sections with a score above this '
-        'are flagged. Fill on explicit probability language; percentages convert (\'80%\' → 0.8). '
-        'Leave null on vague qualifiers like \'strict\' so the policy can default.\n\n'
-        '### delegates (optional)\n\n'
-        'Type: ChecklistSlot. System-managed — populated by the policy after sub-flows return audit '
-        'findings. Do NOT fill from user utterance; emit `null`.'
+        "### source (required)\n\n"
+        "Type: SourceSlot. The post being audited.\n\n"
+        "### reference_count (optional)\n\n"
+        "Type: LevelSlot (threshold=1). Number of prior posts to reference as voice samples. Fires "
+        "on explicit integers ('last 5 posts' → 5; 'against my previous post' → 1) and on "
+        "qualitative comparison language ('against my recent posts' → 5 as a default). Leave null "
+        "only when the user makes no comparison ask at all — non-null `reference_count` is the "
+        "signal that tells the skill to run `compare_style`.\n\n"
+        "### threshold (optional)\n\n"
+        "Type: ProbabilitySlot. AI-likelihood cutoff in [0, 1] — sections with a score above this "
+        "are flagged. Fill on explicit probability language; percentages convert ('80%' → 0.8). "
+        "Leave null on vague qualifiers like 'strict' so the policy can default.\n\n"
+        "### delegates (optional)\n\n"
+        "Type: ChecklistSlot. A list of sub-flow names the audit should route findings to "
+        "(e.g., rework, polish, tone). Fires primarily on direct user routing directives "
+        "('send the voice issues to polish, structural drift to rework'). As a secondary "
+        "path, can also fill via co-reference when a prior agent turn proposed delegates "
+        "('all three', 'yes'). The policy more commonly populates this from frontend "
+        "selection payloads after presenting findings — leave null in that case."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -807,7 +939,8 @@ Active post: None
   "slots": {
     "source": {"post": "transformer"},
     "reference_count": 5,
-    "threshold": 0.8
+    "threshold": 0.8,
+    "delegates": null
   }
 }
 ```
@@ -829,7 +962,8 @@ Active post: None
   "slots": {
     "source": {"post": "RL primer"},
     "reference_count": null,
-    "threshold": null
+    "threshold": null,
+    "delegates": null
   }
 }
 ```
@@ -853,7 +987,8 @@ Active post: My New Post
   "slots": {
     "source": {"post": "My New Post"},
     "reference_count": 7,
-    "threshold": null
+    "threshold": null,
+    "delegates": null
   }
 }
 ```
@@ -875,7 +1010,8 @@ Active post: None
   "slots": {
     "source": {"post": "RL primer"},
     "reference_count": 1,
-    "threshold": null
+    "threshold": null,
+    "delegates": null
   }
 }
 ```
@@ -897,7 +1033,8 @@ Active post: None
   "slots": {
     "source": {"post": "intro"},
     "reference_count": null,
-    "threshold": null
+    "threshold": null,
+    "delegates": null
   }
 }
 ```
@@ -921,7 +1058,8 @@ Active post: None
   "slots": {
     "source": {"post": "RL primer"},
     "reference_count": null,
-    "threshold": 0.5
+    "threshold": 0.5,
+    "delegates": null
   }
 }
 ```
@@ -943,7 +1081,8 @@ Active post: My Post
   "slots": {
     "source": {"post": "My Post"},
     "reference_count": 5,
-    "threshold": null
+    "threshold": null,
+    "delegates": null
   }
 }
 ```
@@ -955,64 +1094,106 @@ Active post: My Post
 User: "Audit it — reference 10 posts, threshold 0.5."
 
 ## Input
-Active post: Trustworthy AI
+
+Active post: **Trustworthy AI** (id: `d1e2f3a4`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "d1e2f3a4", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Terse audit with both optional numbers explicitly provided. Source inherits from active_post.",
+  "reasoning": "Terse audit with both optional numbers explicitly provided. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title.",
   "slots": {
-    "source": {"post": "Trustworthy AI"},
+    "source": [{"post": "d1e2f3a4"}],
     "reference_count": 10,
-    "threshold": 0.5
+    "threshold": 0.5,
+    "delegates": null
   }
 }
 ```
-</edge_case>''',
-}
+</edge_case>
 
+<positive_example>
+## Conversation History
+
+User: "Audit my RL primer against my last 3 posts."
+Agent: "Found 4 issues. I can route them to: (1) rework — for the structural drift in the intro; (2) polish — for sentence-level voice mismatches in methods; (3) tone — for the abrupt register shift in the conclusion. Want me to dispatch all three?"
+User: "Yes, all three."
+
+## Input
+Active post: RL primer
+
+## Output
+
+```json
+{
+  "reasoning": "Agent's prior turn proposed 3 delegate flows; user accepts all three with 'yes, all three'. Source carries forward (RL primer). reference_count and threshold were absorbed in turn 1 and are now stale per rule 5 — leave null. Delegates fills with the proposed list per rule 4.",
+  "slots": {
+    "source": {"post": "RL primer"},
+    "reference_count": null,
+    "threshold": null,
+    "delegates": [
+      {"name": "rework", "description": "structural drift in the intro"},
+      {"name": "polish", "description": "voice mismatches in methods"},
+      {"name": "tone", "description": "register shift in the conclusion"}
+    ]
+  }
+}
+```
+</positive_example>''',
+}
 
 SIMPLIFY_PROMPT = {
     'instructions': (
-        'The Simplify Flow reduces the complexity of a section\'s prose or swaps out an overly '
-        'complex image. The primary use case is removing unnecessary content or obvious AI slop. '
-        'Simplify is distinct from Rework (which restructures) and Polish (which tightens individual '
-        'phrases for style).\n\n'
-        'Extract the target (`source`, which post + section), any image being simplified (`image`), '
-        'and any specific user directive about WHAT to cut (`guidance`). At least one of source or '
-        'image must fill. Source typically inherits the post from active_post; the user usually '
-        'names the specific section being simplified.'
+        "The Simplify Flow reduces the complexity of a section's prose or swaps out an overly "
+        "complex image. The primary use case is removing unnecessary content or obvious AI slop. "
+        "Simplify is distinct from Rework (which restructures) and Polish (which tightens individual "
+        "phrases for style).\n\n"
+        "Extract the `source` post along with the section, and a notion of what should be simplified. "
+        "This should come from a specific user directive about WHAT to cut, which is then used to fill "
+        "the slots related to `guidance`, `suggestions`, or `image`. If only vague directives are "
+        "provided, then leave the elective slots empty."
     ),
     'rules': (
-        "1. `source` always carries `post` when filled. Fill `sec` when the user names a section. "
-        "Inherits post from active_post on terse utterances.\n"
-        "2. `image` fills on explicit image-simplify language ('swap that diagram for something "
-        "simpler', 'replace the hero image'). Leave null for prose-only simplification.\n"
-        "3. `guidance` fills with the user's specific directive about what to cut or how to "
-        "simplify ('strip the academic hedging', 'cut the historical preamble'). Captured as a "
-        "list of short strings. Leave null on bare simplify requests.\n"
-        "4. At least one of `source` or `image` must fill. When both would be null, leave them "
-        "null so the flow can clarify.\n"
-        "5. Post-wide simplify (no section named, just 'simplify the whole post') is NOT valid — "
-        "leave `sec` null so the flow can flag the issue and ask which section.\n"
-        "6. Preserve the meaning — simplify is NOT rewording for style (that's Polish)."
+        "1. Fill `source.post` from the active_post and include the `sec` as provided by the user.\n"
+        "  a. The scope of this flow only covers individual sections, so `sec` is required."
+        "  b. If a request applies post-wide ('simplify the whole post', 'trim the whole thing') or "
+        "  doesn't include information on the section, leave `sec` null so we can ask the user for clarification. "
+        "2. Decide on what the user is deciding to trim or simplify:\n"
+        "  a. Fill the `suggestions` when the user provides a list of instructions or bulletpoints "
+        "  to follow. Any enumeration with more than one time belongs here."
+        "  b. `guidance` captures the user's specific request about what to cut when the directive "
+        "  is based on re-writing specific paragraphs, rather than removing specific words."
+        "  c. Fill the `image` slot when there is language targeting an image, graph or diagram. This "
+        "  effectively means the user wants to remove the image from the post."
+        "3. Simplify is NOT meant to target rewording for style. If the user's request is stylistic "
+        "  ('punchier', 'warmer'), leave all electives `null`.\n"
+        "4. You may have to look to prior turns to better understand exactly what is being requested.\n"
+        "  a. You can use previous turns to provide context for a user's request, such as when a user "
+        "  accepts a prior turn's suggestions ('yea, go for it') through co-reference."
+        "  b. Do NOT add or pay any attention to previous requests if there isn't a reference to it in "
+        "  the current turn. Previous directives should be considered already complete."
     ),
     'slots': (
-        '### source (elective)\n\n'
-        'Type: SourceSlot. The target section (and its post) to simplify. Always includes `post`; '
-        'fills `sec` when the user names a section. Inherits post from active_post on terse '
-        'utterances.\n\n'
-        '### image (elective)\n\n'
-        'Type: ImageSlot. An image reference to simplify. Fill when the user asks to swap, replace, '
-        'or remove an image for something simpler.\n\n'
-        '### guidance (optional)\n\n'
-        'Type: FreeTextSlot. A list of specific user directives about what to cut or how to '
-        'simplify. Captures phrases like "strip the academic hedging", "cut the historical '
-        'preamble", "remove every other adjective". Leave null on bare simplify requests.\n\n'
-        '### suggestions (elective)\n\n'
-        'Type: ChecklistSlot. System-managed — populated by the policy when the agent proposes '
-        'simplification options. Do NOT fill from user utterance; emit `null`.'
+        "### source (elective)\n\n"
+        "Type: SourceSlot. The target section (and its post) to simplify. Always includes `post`; "
+        "fills `sec` when the user names a section.\n\n"
+        "### image (elective)\n\n"
+        "Type: ImageSlot. An image reference to simplify. Fill when the user asks to swap, replace, "
+        "or remove an image for something simpler.\n\n"
+        "### guidance (elective)\n\n"
+        "Type: FreeTextSlot. A list of specific user directives about what to cut or how to "
+        "simplify. Captures phrases like 'strip the academic hedging', 'cut the historical "
+        "preamble', 'remove every other adjective'. Leave null on bare simplify requests.\n\n"
+        "### suggestions (elective)\n\n"
+        "Type: ChecklistSlot. A list of specific simplification edits the user has itemized — "
+        "each item targets specific words or sentences (vs. `guidance` which targets general "
+        "areas of text). Fires primarily on user-supplied enumerations (numbered or bulleted "
+        "lists with 2+ items). As a secondary path, can also fill via co-reference when a "
+        "prior agent turn proposed concrete options ('yes, all three', 'just the first two'). "
+        "Otherwise emit `null`."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -1030,7 +1211,8 @@ Active post: None
   "slots": {
     "source": {"post": "regularization", "sec": "Methods"},
     "image": null,
-    "guidance": null
+    "guidance": null,
+    "suggestions": null
   }
 }
 ```
@@ -1054,7 +1236,8 @@ Active post: RL primer
   "slots": {
     "source": {"post": "RL primer", "sec": "intro"},
     "image": null,
-    "guidance": ["cut the historical preamble and keep it to three sentences"]
+    "guidance": ["cut the historical preamble and keep it to three sentences"],
+    "suggestions": null
   }
 }
 ```
@@ -1076,7 +1259,8 @@ Active post: My ML Post
   "slots": {
     "source": {"post": "My ML Post", "sec": "Discussion"},
     "image": null,
-    "guidance": ["get rid of the redundant content"]
+    "guidance": ["get rid of the redundant content"],
+    "suggestions": null
   }
 }
 ```
@@ -1090,17 +1274,22 @@ Agent: "Should I trim it?"
 User: "Yeah, cut it in half."
 
 ## Input
-Active post: My ML Post
+
+Active post: **My ML Post** (id: `4b5c6d7e`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "4b5c6d7e", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "Indirect opener (critique, not simplify verb). Section named in prior turn; current turn adds guidance on how much to cut.",
+  "reasoning": "Indirect opener (critique, not simplify verb). Section named in prior turn; current turn adds guidance on how much to cut. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title.",
   "slots": {
-    "source": {"post": "My ML Post", "sec": "Conclusion"},
+    "source": [{"post": "4b5c6d7e", "sec": "Conclusion"}],
     "image": null,
-    "guidance": ["cut it in half"]
+    "guidance": ["cut it in half"],
+    "suggestions": null
   }
 }
 ```
@@ -1124,7 +1313,8 @@ Active post: My Paper
   "slots": {
     "source": {"post": "My Paper", "sec": "Discussion"},
     "image": null,
-    "guidance": ["trim the fluff"]
+    "guidance": ["trim the fluff"],
+    "suggestions": null
   }
 }
 ```
@@ -1146,7 +1336,8 @@ Active post: My Tutorial
   "slots": {
     "source": {"post": "My Tutorial"},
     "image": null,
-    "guidance": null
+    "guidance": null,
+    "suggestions": null
   }
 }
 ```
@@ -1168,7 +1359,8 @@ Active post: None
   "slots": {
     "source": {"sec": "Results"},
     "image": {"img_type": "photo", "src": null, "alt": "scatter plot", "position": null},
-    "guidance": ["streamline and remove the scatter plot"]
+    "guidance": ["streamline and remove the scatter plot"],
+    "suggestions": null
   }
 }
 ```
@@ -1190,48 +1382,104 @@ Active post: None
   "slots": {
     "source": {"post": "calibration", "sec": "Methods"},
     "image": null,
-    "guidance": ["strip the academic hedging", "tighten the opening sentences"]
+    "guidance": ["strip the academic hedging", "tighten the opening sentences"],
+    "suggestions": null
   }
 }
 ```
-</edge_case>''',
+</edge_case>
+
+<positive_example>
+## Conversation History
+
+User: "Simplify the Methods section of my calibration post — strip the academic hedging and cut the historical preamble."
+
+## Input
+Active post: None
+
+## Output
+
+```json
+{
+  "reasoning": "Both directives target a general area of text (academic hedging across the section, historical preamble at the top), not specific words or sentences. Two general-area directives → guidance fills as a list of two strings. The list shape doesn't make this suggestions; the items describe scope-of-text, not enumerated specific edits.",
+  "slots": {
+    "source": {"post": "calibration", "sec": "Methods"},
+    "image": null,
+    "guidance": ["strip the academic hedging", "cut the historical preamble"],
+    "suggestions": null
+  }
+}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "Simplify the Methods section of my calibration post: 1) strip out the word 'academic' wherever it appears, 2) cut the preamble sentence, 3) replace 'utilize' with 'use'."
+
+## Input
+Active post: None
+
+## Output
+
+```json
+{
+  "reasoning": "Three enumerated edits, each targeting specific words or sentences ('academic' the word, the preamble sentence, 'utilize' → 'use'). The list-of-three plus word-and-sentence specificity puts this in suggestions, not guidance. Guidance is general-area scope; suggestions is enumerated specific edits.",
+  "slots": {
+    "source": {"post": "calibration", "sec": "Methods"},
+    "image": null,
+    "guidance": null,
+    "suggestions": [
+      {"name": "one", "description": "strip out the word 'academic' wherever it appears"},
+      {"name": "two", "description": "cut the preamble sentence"},
+      {"name": "three", "description": "replace 'utilize' with 'use'"}
+    ]
+  }
+}
+```
+</positive_example>''',
 }
 
 
 REMOVE_PROMPT = {
     'instructions': (
-        'The Remove Flow deletes an entity — a section, paragraph, image, note, or an entire draft '
-        'or post. The `type` slot tags WHAT is being removed so the policy can dispatch to the '
-        'correct delete tool. Remove is distinct from Rework (which edits in place) and from '
-        'Simplify: **Simplify operates at paragraph or sentence scale (shortening inside a '
-        'section); Remove operates at section or post scale, a larger unit of deletion.**\n\n'
-        'Extract the target (`target` for text-based entities or `image` for images) and the '
-        'removal type (`type`, required). Target and image are elective; type is required so the '
-        'policy knows which tool to call. Map the user\'s noun to the closest of six type '
-        'categories.'
+        "The Remove Flow deletes an entity — a section, paragraph, image, note, or an entire draft "
+        "or post. The `type` slot tags WHAT is being removed so the policy can dispatch to the "
+        "correct delete tool. Remove is distinct from Rework (which edits in place) and from "
+        "Simplify: **Simplify operates at paragraph or sentence scale (shortening inside a "
+        "section); Remove operates at section or post scale, a larger unit of deletion.**\n\n"
+        "Extract the target (`target` for text-based entities or `image` for images) and the "
+        "removal type (`type`, required). Target and image are elective; type is required so the "
+        "policy knows which tool to call. Map the user's noun to the closest of six type "
+        "categories."
     ),
     'rules': (
         "1. `type` is required. Map user nouns to the closest category: 'article' / 'post' → post; "
         "'draft' → draft; 'section' → section; 'paragraph' / 'sentence' → paragraph; 'note' / "
         "'snippet' → note; 'image' / 'photo' / 'diagram' → image.\n"
-        "2. `target` fills when removing a text-based entity. Section-level removals fill `sec`. "
+        "2. Exactly one of `target` / `image` must fill:\n"
+        "  a. `target` fills when removing a text-based entity. Section-level removals fill `sec`. "
         "Paragraph-level removals fill BOTH `sec` (the parent section, when named) AND `snip` (the "
         "paragraph description).\n"
-        "3. `image` fills when type='image'. Carries img_type from phrasing (diagram/hero/photo).\n"
-        "4. On terse utterances ('delete it') with only active_post as context, infer type='post' "
-        "from the active_post."
+        "  b. `image` fills when type='image'. Carries img_type from phrasing (diagram/hero/photo).\n"
+        "3. On terse utterances ('delete it') with only active_post as context, infer type='post' "
+        "from the active_post.\n"
+        "4. Treat remove directives as current-turn-only. Prior-turn directives are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
+        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
+        "exception: it carries forward from `state.active_post`."
     ),
     'slots': (
-        '### target (elective)\n\n'
-        'Type: RemovalSlot. The text-based target of removal. Always includes `post`; fills `sec` '
-        'for section removal and `snip` for paragraph/sentence/note removal. Paragraph-level '
-        'removals fill BOTH sec and snip when both are named.\n\n'
-        '### image (elective)\n\n'
-        'Type: ImageSlot. The image being removed. Fill only when the user asks to delete an '
-        'image, diagram, or photo.\n\n'
-        '### type (required)\n\n'
-        'Type: CategorySlot. Options: post, draft, section, paragraph, note, image. What kind of '
-        'entity is being removed. The policy routes to different delete tools based on this.'
+        "### target (elective)\n\n"
+        "Type: RemovalSlot. The text-based target of removal. Always includes `post`; fills `sec` "
+        "for section removal and `snip` for paragraph/sentence/note removal. Paragraph-level "
+        "removals fill BOTH sec and snip when both are named.\n\n"
+        "### image (elective)\n\n"
+        "Type: ImageSlot. The image being removed. Fill only when the user asks to delete an "
+        "image, diagram, or photo.\n\n"
+        "### type (required)\n\n"
+        "Type: CategorySlot. Options: post, draft, section, paragraph, note, image. What kind of "
+        "entity is being removed. The policy routes to different delete tools based on this."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -1377,15 +1625,16 @@ Active post: None
 User: "Delete it."
 
 ## Input
-Active post: My Old Draft
+
+Active post: **My Old Draft** (id: `0f1e2d3c`)
 
 ## Output
 
 ```json
 {
-  "reasoning": "Terse removal with only active_post as context. Per rule 4, infer type='post' from the active_post — target carries the post title.",
+  "reasoning": "Terse removal with only active_post as context. Per rule 4, infer type='post' from the active_post. Active post id is shown in the input header — copy `post_id` verbatim from the header rather than re-deriving from the title.",
   "slots": {
-    "target": {"post": "My Old Draft"},
+    "target": [{"post": "0f1e2d3c"}],
     "image": null,
     "type": "post"
   }
@@ -1419,36 +1668,40 @@ Active post: My Post
 
 TIDY_PROMPT = {
     'instructions': (
-        'The Tidy Flow normalizes structural formatting across a post — heading hierarchy, list '
-        'indentation, paragraph spacing, whitespace cleanup. It does NOT change wording. Tidy is '
-        'distinct from Polish (which adjusts phrasing) and Rework (which restructures content).\n\n'
-        'Extract the target post (`source`, usually inherited from active_post) and any formatting '
-        'settings the user specifies (`settings`, a DictionarySlot of key-value pairs like '
-        '`{headings: \'H2\'}`). The `image` slot is optional and fills only when the user asks to '
-        'tidy image alignment or captions.'
+        "The Tidy Flow normalizes structural formatting across a post — heading hierarchy, list "
+        "indentation, paragraph spacing, whitespace cleanup. It does NOT change wording. Tidy is "
+        "distinct from Polish (which adjusts phrasing) and Rework (which restructures content).\n\n"
+        "Extract the target post (`source`, usually inherited from active_post) and any formatting "
+        "settings the user specifies (`settings`, a DictionarySlot of key-value pairs like "
+        "`{headings: 'H2'}`). The `image` slot is optional and fills only when the user asks to "
+        "tidy image alignment or captions."
     ),
     'rules': (
         "1. `source` typically inherits from `state.active_post`. Tidy is post-wide by default so "
         "`sec` is rarely filled.\n"
         "2. `settings` fills when the user specifies formatting rules — 'use H2 headings', "
-        "'normalize list indents'. Parse into key-value pairs: 'H2 headings' → `{headings: 'H2'}`. "
-        "Capture the user's wording as the dict key.\n"
-        "3. Leave `settings` null on bare 'clean it up' or 'tidy this' — the policy applies "
-        "defaults.\n"
-        "4. `image` fills only on explicit image-formatting language ('fix the image alignment', "
-        "'center the diagrams'). Leave null for prose-only tidying."
+        "'normalize list indents'. Parse into key-value pairs: 'H2 headings' → "
+        "`{headings: 'H2'}`. Capture the user's wording as the dict key.\n"
+        "  a. Bare 'clean it up' or 'tidy this' has no formatting direction — leave `settings` "
+        "  null so the flow can ask.\n"
+        "3. `image` (optional) fills only on explicit image-formatting language ('fix the image "
+        "alignment', 'center the diagrams'). Leave null for prose-only tidying.\n"
+        "4. Treat tidy directives as current-turn-only. Prior-turn settings are assumed already "
+        "applied — do NOT carry them into the current slot fill unless the current turn "
+        "explicitly references them via co-reference. `source` is the exception: it carries "
+        "forward from `state.active_post`."
     ),
     'slots': (
-        '### source (required)\n\n'
-        'Type: SourceSlot (entity_part=\'post\'). The post to tidy. Typically inherits from '
-        '`state.active_post`. Tidy is post-wide; `sec` rarely fills.\n\n'
-        '### settings (required)\n\n'
-        'Type: DictionarySlot. Key-value pairs capturing formatting rules the user specifies ('
-        '\'H2 headings\' → `{headings: \'H2\'}`). Leave null on bare tidy requests — the policy '
-        'applies defaults.\n\n'
-        '### image (optional)\n\n'
-        'Type: ImageSlot. Image-formatting target. Fills on alignment/caption tidying requests '
-        '(\'fix the image alignment\', \'center the diagrams\'). Leave null for prose-only tidying.'
+        "### source (required)\n\n"
+        "Type: SourceSlot (entity_part='post'). The post to tidy. Tidy is post-wide; `sec` rarely "
+        "fills.\n\n"
+        "### settings (required)\n\n"
+        "Type: DictionarySlot. Key-value pairs capturing formatting rules the user specifies ("
+        "'H2 headings' → `{headings: 'H2'}`). Leave null on bare tidy requests — the policy "
+        "applies defaults.\n\n"
+        "### image (optional)\n\n"
+        "Type: ImageSlot. Image-formatting target. Fills on alignment/caption tidying requests "
+        "('fix the image alignment', 'center the diagrams'). Leave null for prose-only tidying."
     ),
     'examples': '''<positive_example>
 ## Conversation History
@@ -1458,15 +1711,19 @@ Agent: "Done — here's the composed Methods section..."
 User: "Now tidy the heading hierarchy — H2 for top-level, H3 for sub."
 
 ## Input
-Active post: transformer
+
+Active post: **transformer** (id: `6c7d8e9f`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "6c7d8e9f", "sec": "", "snip": "", "chl": ""}
 
 ## Output
 
 ```json
 {
-  "reasoning": "First turn is Compose. Current turn switches to Tidy — source inherits post from active_post; settings parse the heading rules into a dict.",
+  "reasoning": "First turn is Compose. Current turn switches to Tidy. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title. Settings parse the heading rules into a dict.",
   "slots": {
-    "source": {"post": "transformer"},
+    "source": [{"post": "6c7d8e9f"}],
     "settings": {"headings_top": "H2", "headings_sub": "H3"},
     "image": null
   }
@@ -1541,30 +1798,6 @@ Active post: None
 }
 ```
 </positive_example>
-
-<edge_case>
-## Conversation History
-
-User: "Rework my transformer post."
-Agent: "Reworking the whole post — here's the revised version..."
-User: "Actually, just tidy it up — H2 headings throughout."
-
-## Input
-Active post: transformer
-
-## Output
-
-```json
-{
-  "reasoning": "First turn is Rework. User pivots to Tidy with specific heading rules. Source inherits post; settings parses the heading directive.",
-  "slots": {
-    "source": {"post": "transformer"},
-    "settings": {"headings": "H2"},
-    "image": null
-  }
-}
-```
-</edge_case>
 
 <edge_case>
 ## Conversation History

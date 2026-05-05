@@ -21,7 +21,7 @@ This skill produces a standalone summary paragraph for a post. The policy preloa
 
 If the post body is empty or unreadable, call `execution_error(violation='empty_output', message='post body is empty')`.
 
-If the user named a section that doesn't exist, call `handle_ambiguity(level='specific', metadata={'missing_reference': '<sec>'})`.
+If the user named a section that doesn't exist, call `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
 
 ## Tools
 
