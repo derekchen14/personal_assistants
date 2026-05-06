@@ -79,17 +79,12 @@ class ResearchPolicy(BasePolicy):
                 f"Content: {flow_metadata['outline']}"
             )
             skill_prompt = self.engineer.load_skill_template(flow.name()) + length_hint
-            text = self.engineer.skill_call(
+            summary = self.engineer.skill_call(
                 flow, history_with_data, self.memory.read_scratchpad(),
                 skill_prompt=skill_prompt,
             )
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name())
-            frame.add_block({'type': 'card', 'data': {
-                'post_id': post_id,
-                'title': flow_metadata['title'],
-                'content': text,
-            }})
+            frame = DisplayFrame(flow.name(), thoughts=summary)
         return frame
 
     def check_policy(self, flow, state, context, tools):

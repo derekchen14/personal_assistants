@@ -16,7 +16,7 @@ export const FLOW_MENU: IntentGroup[] = [
             { name: 'browse', dax: '012', description: 'Browse tagged content and saved notes for ideas' },
             { name: 'summarize', dax: '19A', description: 'Summarize a post into a short paragraph' },
             { name: 'check', dax: '0AD', description: 'Check post metadata and publication status' },
-            { name: 'inspect', dax: '1BD', description: 'Analyze word count, reading time, and content metrics' },
+            { name: 'inspect', dax: '1AD', description: 'Analyze word count, reading time, and content metrics' },
             { name: 'find', dax: '001', description: 'Search previous posts by keyword or topic' },
             { name: 'compare', dax: '18A', description: 'Compare style or structure across posts' },
             { name: 'diff', dax: '0BD', description: 'Compare two versions of a section side by side' },

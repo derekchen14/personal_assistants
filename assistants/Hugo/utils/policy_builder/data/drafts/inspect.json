@@ -88,7 +88,7 @@
       "label": "Flow class config",
       "path": "backend/components/flow_stack/flows.py :: InspectFlow",
       "status": "applicable",
-      "content": "class InspectFlow(ResearchParentFlow):\n  def __init__(self):\n    super().__init__()\n    self.flow_type = 'inspect'\n    self.dax = '{1BD}'\n    self.goal = 'report numeric content metrics; word count, section count, reading time, image count, post size (MB); optionally filtered to a single metric. Use check for post metadata'\n    self.slots = {\n      'source': SourceSlot(1),\n      'aspect': CategorySlot(['word_count', 'num_sections', 'time_to_read', 'image_count', 'num_links', 'post_size'], priority='required'),\n      'threshold': ScoreSlot(priority='optional'),\n    }\n    # Deterministic flow \u2014 the policy calls inspect_post directly; no skill delegation.\n    self.tools = ['inspect_post']"
+      "content": "class InspectFlow(ResearchParentFlow):\n  def __init__(self):\n    super().__init__()\n    self.flow_type = 'inspect'\n    self.dax = '{1AD}'\n    self.goal = 'report numeric content metrics; word count, section count, reading time, image count, post size (MB); optionally filtered to a single metric. Use check for post metadata'\n    self.slots = {\n      'source': SourceSlot(1),\n      'aspect': CategorySlot(['word_count', 'num_sections', 'time_to_read', 'image_count', 'num_links', 'post_size'], priority='required'),\n      'threshold': ScoreSlot(priority='optional'),\n    }\n    # Deterministic flow \u2014 the policy calls inspect_post directly; no skill delegation.\n    self.tools = ['inspect_post']"
     }
   ]
 }

@@ -70,7 +70,7 @@ class InspectFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
     self.flow_type = 'inspect'
-    self.dax = '{1BD}'
+    self.dax = '{1AD}'
     self.goal = 'report numeric content metrics; word count, section count, reading time, image count, post size (MB); optionally filtered to a single metric. Use check for post metadata'
 
     self.slots = {

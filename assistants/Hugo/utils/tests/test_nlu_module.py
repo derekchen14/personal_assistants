@@ -184,7 +184,7 @@ NLU_REACT_CASES = [
     },
     {
         'name': 'inspect_action_phase1a_then_phase3_for_aspect',
-        'gold_dax': '{1BD}',
+        'gold_dax': '{1AD}',
         # Phase 1a/1c are mutually exclusive (elif chain): with both entity AND
         # non-entity keys, Phase 1a wins and aspect is left for Phase 3.
         'payload': {'post': 'post_abc', 'aspect': 'word_count'},

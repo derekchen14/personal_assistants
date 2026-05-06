@@ -1,7 +1,7 @@
 # Policy Inventory — inspect
 
 **Parent intent:** Research
-**DAX:** {1BD}
+**DAX:** {1AD}
 **Eval step(s):** 10
 
 ## A. Policy (code) understanding
@@ -9,7 +9,7 @@
 ### Flow class
 From `backend/components/flow_stack/flows.py` lines 44–56:
 - `entity_slot`: `source` (SourceSlot, required)
-- `dax`: `{1BD}`
+- `dax`: `{1AD}`
 - `goal`: "report numeric content metrics; word count, section count, reading time, image count, post size (MB); optionally filtered to a single metric"
 - Slot schema:
   - `source` (SourceSlot, priority='required') — the post to inspect

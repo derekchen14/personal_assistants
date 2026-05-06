@@ -75,7 +75,7 @@ FLOW_CATALOG = {
         'policy_path': 'policies.research.check',
     },
     'inspect': {
-        'dax': '{1BD}',
+        'dax': '{1AD}',
         'intent': Intent.RESEARCH,
         'description': 'Report numeric content metrics — word count, section count, reading time, image count, post size (MB); optionally filtered to a single metric (word_count, section_count, time_to_read, image_count, post_size). Use check for post metadata',
         'output': 'card',

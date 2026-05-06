@@ -248,7 +248,7 @@ STEPS_VISION = [
         # Inspect narrates in chat — no block. Findings land in scratchpad and frame.metadata.
         'step': 10,
         'flow': 'inspect',
-        'dax': '{1BD}',
+        'dax': '{1AD}',
         'utterance': 'What are the metrics on the multi-modal models post?',
         'expected_tools': ['inspect_post'],
         'expected_scratchpad_keys': ['inspect'],
@@ -435,7 +435,7 @@ STEPS_OBSERVABILITY = [
         # Inspect narrates in chat — no block. Metrics land in scratchpad + frame.metadata.
         'step': 10,
         'flow': 'inspect',
-        'dax': '{1BD}',
+        'dax': '{1AD}',
         'utterance': 'What are the metrics on the observability post?',
         'expected_tools': ['inspect_post'],
         'expected_scratchpad_keys': ['inspect'],
@@ -614,7 +614,7 @@ STEPS_VOICE = [
         # Inspect narrates in chat — no block. Metrics land in scratchpad + frame.metadata.
         'step': 10,
         'flow': 'inspect',
-        'dax': '{1BD}',
+        'dax': '{1AD}',
         'utterance': 'What are the metrics on the voice capabilities post?',
         'expected_tools': ['inspect_post'],
         'expected_scratchpad_keys': ['inspect'],

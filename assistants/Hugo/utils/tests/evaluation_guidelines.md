@@ -413,7 +413,7 @@ Step 8 adds:
 | 7 | simplify | {7BD} | Edit | Cut sentences from Breakthrough Ideas paragraph (creates snapshot) |
 | 8 | add | {005} | Build | Add "Best Practices" section after Process (part 2 starts here) |
 | 9 | polish | {3BD} | Edit | Tighten the opening paragraph of Motivation |
-| 10 | inspect | {1BD} | Analyze | Report metrics (word count, sections, read time) |
+| 10 | inspect | {1AD} | Analyze | Report metrics (word count, sections, read time) |
 | 11 | audit | {13A} | Analyze | Compare style against existing posts |
 | 12 | brainstorm | {39D} | Research | Generate alternative angles for the topic |
 | 13 | find | {001} | Research | Search for posts about data augmentation |
