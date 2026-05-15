@@ -27,7 +27,7 @@ From `backend/modules/policies/research.py` lines 158–222 (`find_policy`):
 - **Line 185–191:** Build summary text with hit count and first 10 title snippets.
 - **Line 195:** Mark `flow.status = 'Completed'`.
 - **Line 198–212:** Conditional frame-building:
-  - If 0 results: return DisplayFrame with `thoughts=text` (no block).
+  - If 0 results: return TaskArtifact with `thoughts=text` (no block).
   - If 1 result: fetch full metadata and return card block with post content.
   - If 2+ results: return list block with optional expanded_ids if n <= 8 (lines 219–220).
 

@@ -317,7 +317,7 @@ JSON Schema derived from the flow slots that use this tool. For shared tools, ta
 
 ### Output Schema
 
-JSON Schema matching what the [Display Frame](../components/display_frame.md) needs. Design rules:
+JSON Schema matching what the [Display Frame](../components/task_artifact.md) needs. Design rules:
 
 - Always include a top-level `status` field (success/error)
 - Data goes in a `result` field (object or array)

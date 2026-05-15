@@ -2,7 +2,7 @@
 
 The final stage of the agent pipeline. Consumes execution results and renders user-facing output — text responses, data visualizations, or both. Flow-agnostic: RES does not know which policy produced the result. It only needs the intent (from dialogue state) and the display frame.
 
-**Module principle**: RES is read-only on the data layer. Its only state mutation is flow lifecycle cleanup — popping completed flows from the stack. RES receives World in its constructor and accesses state/frame/context through it. RES handles unsupported flow messages (when PEX returns carryover with `{'unsupported': True}`). Return type: `tuple[str, DisplayFrame]`.
+**Module principle**: RES is read-only on the data layer. Its only state mutation is flow lifecycle cleanup — popping completed flows from the stack. RES receives World in its constructor and accesses state/frame/context through it. RES handles unsupported flow messages (when PEX returns carryover with `{'unsupported': True}`). Return type: `tuple[str, TaskArtifact]`.
 
 - **Respond function**: top-level entry point that routes to the appropriate sub-function
 - **Generate function**: composes text responses via template-fill → naturalize pipeline
@@ -157,10 +157,10 @@ Called by `respond()` after `generate()`. No-op if no display frame exists on th
 3 checks:
 
 1. **Frame exists**: Display frame is present.
-2. **Block payloads well-formed**: each `frame.blocks[i]` carries `type` and `data` consistent with that type's expected shape (e.g., `card` blocks have `post_id`, `title`, `content`; `selection` blocks have `options`).
+2. **Block payloads well-formed**: each `artifact.blocks[i]` carries `type` and `data` consistent with that type's expected shape (e.g., `card` blocks have `post_id`, `title`, `content`; `selection` blocks have `options`).
 3. **Pagination resolvable**: If a block carries a pagination reference, the reference is resolvable.
 
-On failure: attach a `violation` to `frame.metadata` — generate() already produced a text summary, so the user gets something even if the visual fails.
+On failure: attach a `violation` to `artifact.parts` — generate() already produced a text summary, so the user gets something even if the visual fails.
 
 ### Step 1 — Block Routing
 
@@ -170,7 +170,7 @@ The frame's `blocks` list is already typed and shaped by the policy. RES's job i
 - `toast` blocks bypass panels and divert to a transient drawer overlay.
 - The frontend derives layout from which panels are populated (top only / bottom only / split).
 - Coordinate with `generate()` output to avoid duplicating information already in the text response.
-- Reference: [Building Blocks — Rendering Model](../utilities/blocks.md#rendering-model), [Display Frame](../components/display_frame.md)
+- Reference: [Building Blocks — Rendering Model](../utilities/blocks.md#rendering-model), [Display Frame](../components/task_artifact.md)
 
 ### Step 2 — Data Rendering
 
@@ -185,12 +185,12 @@ The frame's `blocks` list is already typed and shaped by the policy. RES's job i
 2 checks:
 
 1. **Blocks rendered**: No empty containers — block data was actually rendered.
-2. **Violation surfaced**: If `frame.metadata['violation']` is set, the matching limitation indicator is visible to the user.
+2. **Violation surfaced**: If `artifact.parts['violation']` is set, the matching limitation indicator is visible to the user.
 
 ---
 
 ## Response Output Structure
 
-`respond()` returns `tuple[str, DisplayFrame]` — the naturalized text response and the routed display frame. The frame's `blocks` list (with each block's panel routing) is what the frontend consumes for rendering. Blocks may stream to the frontend for faster perceived responses.
+`respond()` returns `tuple[str, TaskArtifact]` — the naturalized text response and the routed display frame. The frame's `blocks` list (with each block's panel routing) is what the frontend consumes for rendering. Blocks may stream to the frontend for faster perceived responses.
 
 The text response is HTML-formatted; the pre-naturalization template fill is logged separately for diagnostics.

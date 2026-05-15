@@ -22,18 +22,18 @@ From `backend/components/flow_stack/flows.py` (lines 128–141):
 From `backend/modules/policies/draft.py:outline_policy` (lines 31–78):
 
 1. **Guard: source slot** (lines 32–34). If `source` slot not filled:
-   - declare('partial') → return DisplayFrame()
+   - declare('partial') → return TaskArtifact()
 
 2. **Branch A: Direct mode** (lines 36–51). If `sections` slot is filled:
    - Set `flow.stage = 'direct'` (line 37)
    - Get `post_id` from `state.active_post` (line 38)
    - Call `llm_execute(flow, state, context, tools)` to refine sections (line 40)
    - Check if `generate_outline` tool was called and succeeded (lines 41–42)
-   - If LLM failed or tool not called: return DisplayFrame(origin='outline', metadata={'error': 'LLM failed to generate outline'}) (lines 44–45)
+   - If LLM failed or tool not called: return TaskArtifact(origin='outline', metadata={'error': 'LLM failed to generate outline'}) (lines 44–45)
    - Else (success):
      - Mark each section in `flow.slots['sections'].steps` as complete (lines 47–48)
      - Set `flow.status = 'Completed'` (line 49)
-     - Return DisplayFrame(origin='outline', thoughts=text) with card block of post content (lines 50–51)
+     - Return TaskArtifact(origin='outline', thoughts=text) with card block of post content (lines 50–51)
 
 3. **Branch B: Propose mode via topic** (lines 53–62). If `topic` slot is filled AND sections not filled:
    - Check if `proposals` slot already filled (lines 56): — user already chose an option in a sub-turn
@@ -47,14 +47,14 @@ From `backend/modules/policies/draft.py:outline_policy` (lines 31–78):
    - Compile conversation history (line 65)
    - Call LLM to extract topic from conversation (lines 66–68)
    - If topic extracted successfully: set `flow.stage = 'propose'` and call `_propose_outline` (lines 70–72)
-   - Else: set `flow.stage = 'error'`, declare('specific', metadata={'missing_slot': 'topic'}) → return DisplayFrame('error') (lines 74–76)
+   - Else: set `flow.stage = 'error'`, declare('specific', metadata={'missing_slot': 'topic'}) → return TaskArtifact('error') (lines 74–76)
 
 ### _propose_outline helper (lines 80–96)
 Pre-execution checks and frame composition for propose mode:
 
 1. Get `post_id` from `state.active_post` (line 81)
 2. Call `llm_execute` (line 82) — skill must output 3 options as markdown text
-3. Initialize DisplayFrame(origin='outline') (line 83)
+3. Initialize TaskArtifact(origin='outline') (line 83)
 4. Check if LLM ignored propose-mode rules and called `generate_outline` (line 86):
    - If it did: treat as direct mode, set `flow.stage = 'direct'` + `flow.status = 'Completed'`, add card block (lines 87–90)
    - Else (correct propose behavior): parse LLM markdown output as candidate options (line 92), store in `flow.slots['proposals'].options` (line 93), add selection block (lines 94–95)
@@ -115,7 +115,7 @@ None. Outline does not stack on other flows as a prerequisite.
 - blocks: none
 
 **Early guard return (line 34):**
-- origin: not set (empty DisplayFrame)
+- origin: not set (empty TaskArtifact)
 - blocks: none
 
 ### Ambiguity patterns

@@ -32,7 +32,7 @@ Hugo's runtime layers communicate through fixed surfaces. Don't widen them.
 | Surface | Direction | Channel |
 |---|---|---|
 | NLU → PEX | Pre-grounded context | `DialogueState` (slots already filled) |
-| PEX → RES | Display payload | `DisplayFrame` (origin, metadata, blocks, thoughts, code) |
+| PEX → RES | Turn output | `TaskArtifact` (3 stored: origin, parts, blocks; 3 helper properties: data, thoughts, code) |
 | Policy → Skill / Tools | Dispatch | `BasePolicy.llm_execute(...)` (agentic) or inline `tools(name, params)` (deterministic) |
 | Policy → AmbiguityHandler | Clarification | `self.ambiguity.declare(level, observation=..., metadata=...)` |
 | Policy → FlowStack | Transitions | `self.flow_stack.stackon('<name>')` / `.fallback('<name>')` |
@@ -45,8 +45,8 @@ Hugo's runtime layers communicate through fixed surfaces. Don't widen them.
 
 Hugo's slot priority follows the spec's three-level scheme, plus an entity convention:
 
-- **`required`** — must be filled before execution. Missing → `specific` ambiguity with `metadata={'missing_slot': '<name>'}`.
-- **`elective`** — exactly one of ≥2 must be filled. Single-elective is invalid (convert to required or optional). All electives empty → `specific` with `missing_slot` listing the alternatives.
+- **`required`** — must be filled before execution. Missing → `specific` ambiguity with `metadata={'missing': '<slot_name>'}`.
+- **`elective`** — exactly one of ≥2 must be filled. Single-elective is invalid (convert to required or optional). All electives empty → `specific` with `missing` listing the alternatives.
 - **`optional`** — nice-to-have. With a defensible default, commit it inline (see Part II ch. 2). Without, treat absence as OK.
 
 `flow.is_filled()` already encodes "all required filled AND ≥1 elective filled (if any)." Trust it; don't re-derive.
@@ -55,8 +55,8 @@ Hugo's slot priority follows the spec's three-level scheme, plus an entity conve
 
 ```python
 if not flow.slots[flow.entity_slot].check_if_filled():
-    self.ambiguity.declare('partial', metadata={'missing_entity': '<entity>'})
-    return DisplayFrame(flow.name())  # early return — see Convention #11
+    self.ambiguity.declare('partial', metadata={'missing': '<slot>', 'entity': '<entity>'})
+    return TaskArtifact(flow.name())  # early return — see Convention #11
 ```
 
 ### Terminology discipline
@@ -65,8 +65,8 @@ Words have specific meanings. Use them precisely:
 
 | Layer | Verbs that apply | Verbs that don't |
 |---|---|---|
-| NLU | classifies intent, detects flow, fills slot | "fires", "triggers", "activates" |
-| Policy | calls a tool, declares ambiguity, returns a frame, scans tool_log | — |
+| NLU | classifies intent, detects flow, fills slot, extracts entity | "fires", "triggers", "activates" |
+| Policy | calls a tool, declares ambiguity, returns an artifact, scans tool_log | — |
 | Skill | produces output | "saves" (unless skill owns persistence) |
 | Flow | completes, stacks on, falls back | — |
 | In-flow control | "stages" | "modes" |
@@ -79,7 +79,7 @@ Universal identifier conventions used across all flows:
 
 - **Post ID** — 8-char lowercase hex (first 8 of UUID4).
 - **Section ID** — slug (lowercase, punctuation-stripped, dashes, ≤80 chars).
-- **Flow name** — bare lowercase string (`outline`, `refine`, `compose`); used as scratchpad key and `DisplayFrame.origin`.
+- **Flow name** — bare lowercase string (`outline`, `refine`, `compose`); used as scratchpad key and `TaskArtifact.origin`.
 
 Example post ID: `abcd0123`. Example section ID: `motivation-and-goals`.
 
@@ -115,7 +115,7 @@ Match the spec exactly. Use exactly one when declaring user-intent ambiguity.
 
 ### Block types
 
-Render-targeting choice for `frame.blocks`. Pick the type the flow's RES template expects.
+Render-targeting choice for `artifact.blocks`. Pick the type the flow's RES template expects.
 
 | Block | Used for | Required data |
 |---|---|---|
@@ -164,14 +164,14 @@ Decisions to make before writing any code.
 
 **Deterministic flow.**
 - No skill file, no starter.
-- Policy builds `params` from slots, calls `tools('<tool_name>', params)` directly, flips `flow.status = 'Completed'`, returns a `DisplayFrame`.
-- On tool failure: `DisplayFrame(flow.name(), metadata={'violation': 'tool_error'}, code=result['_message'])`.
+- Policy builds `params` from slots, calls `tools('<tool_name>', params)` directly, flips `flow.status = 'Completed'`, returns a `TaskArtifact`.
+- On tool failure: `TaskArtifact(flow.name(), parts={'violation': 'tool_error'}, code=result['_message'])`.
 
 **Agentic flow.**
 - Skill file at `backend/prompts/pex/skills/<flow>.md`.
 - Starter at `backend/prompts/pex/starters/<flow>.py`.
 - Policy calls `BasePolicy.llm_execute(...)`; the sub-agent picks the trajectory from `flow.tools`.
-- On no save: `DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=...)`.
+- On no save: `TaskArtifact(flow.name(), parts={'violation': 'failed_to_save'}, thoughts=...)`.
 
 The deterministic-vs-agentic split is **implied by the policy code** — never declared on the flow class. No `flow.deterministic` flag.
 
@@ -253,7 +253,7 @@ The Session Scratchpad is the canonical cross-turn channel for findings and prod
 
 ### Hugo scratchpad convention
 
-Use the Session Scratchpad (`MemoryManager`, L1, turn-surviving) as the standard cross-policy findings channel. Never add a new `DialogueState` or `DisplayFrame` attribute.
+Use the Session Scratchpad (`MemoryManager`, L1, turn-surviving) as the standard cross-policy findings channel. Never add a new `DialogueState` or `TaskArtifact` attribute.
 
 **Convention.**
 - **Key** = bare `flow.name()` (e.g., `'inspect'`, `'audit'`).
@@ -298,7 +298,7 @@ The current flow needs another flow's output before it can run. Push the prerequ
 ```python
 self.flow_stack.stackon('<prereq_flow>')
 state.keep_going = True
-frame = DisplayFrame(flow.name(), thoughts='<reason — surfaces to user via RES>')
+artifact = TaskArtifact(flow.name(), thoughts='<reason — surfaces to user via RES>')
 ```
 
 The user sees the sub-flow's work before returning to the original.
@@ -310,10 +310,10 @@ The user's intent maps to a different flow than NLU detected. Pop current, push 
 ```python
 self.flow_stack.fallback('<sibling_flow>')
 state.keep_going = True
-frame = DisplayFrame(flow.name(), thoughts='<why we re-routed>')
+artifact = TaskArtifact(flow.name(), thoughts='<why we re-routed>')
 ```
 
-Use only when the intent genuinely belongs elsewhere — never for skill errors (use error frames) or tool failures (use failure-channel frames in Part III).
+Use only when the intent genuinely belongs elsewhere — never for skill errors (use error artifacts) or tool failures (use failure-channel frames in Part III).
 
 ### Self-recursion safety
 
@@ -335,13 +335,13 @@ def endorse_policy(self, flow, state, context, tools):
         # Optional: write a scratchpad note so the resumed flow knows the
         # user accepted (rather than re-deriving from convo history alone).
         self.memory.write_scratchpad(flow.name(), {'accepted': True})
-        return DisplayFrame(flow.name())  # empty yield-frame
+        return TaskArtifact(flow.name())  # empty yield-artifact
     # ...fall through to the normal chit-chat path
 ```
 
 **Why.** Without yielding, the user's "yes" gets answered by Converse with a generic acknowledgement, the underlying flow stays paused, and the originally-promised work never lands. Applies to `endorse` and `dismiss` — the flows that consume explicit accept/decline. Other Converse flows (`chat`, `suggest`, `explain`, `preference`, `undo`) don't carry an accept/decline contract and should not yield.
 
-**Empty yield-frame caveat.** `PEX._validate_frame` allows empty frames when `state.keep_going=True` — the empty frame here is intentional, not a bug for the retry mechanism to chase.
+**Empty yield-artifact caveat.** `PEX._validate_artifact` allows empty artifacts when `state.keep_going=True` — the empty artifact here is intentional, not a bug for the retry mechanism to chase.
 
 ## 5. Output Budget
 
@@ -375,17 +375,17 @@ def <flow>_policy(self, flow, state, context, tools):
     # 1. Guard the entity slot — partial / general use early return.
     post_id, sec_id = self._resolve_source_ids(flow, state, tools)
     if not flow.slots[flow.entity_slot].check_if_filled() or not post_id:
-        self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-        return DisplayFrame(flow.name())
+        self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
+        return TaskArtifact(flow.name())
 
     # 2. Branch on slot state. Most flows spend their lines here.
     if <specific ambiguity condition>:
-        self.ambiguity.declare('specific', metadata={'missing_slot': '<name>'})
-        frame = DisplayFrame(flow.name())
+        self.ambiguity.declare('specific', metadata={'missing': '<slot_name>'})
+        artifact = TaskArtifact(flow.name())
     elif <prerequisite missing>:
         self.flow_stack.stackon('<prereq>')
         state.keep_going = True
-        frame = DisplayFrame(flow.name(), thoughts='<reason>')
+        artifact = TaskArtifact(flow.name(), thoughts='<reason>')
     else:
         # 3. Dispatch.
         text, tool_log = self.llm_execute(flow, state, context, tools)
@@ -393,13 +393,13 @@ def <flow>_policy(self, flow, state, context, tools):
 
         if not saved:
             thoughts = '<what the skill did wrong>'
-            frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+            artifact = TaskArtifact(flow.name(), parts={'violation': 'failed_to_save'}, thoughts=thoughts)
         else:
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=text)
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            artifact = TaskArtifact(flow.name(), thoughts=text)
+            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
-    return frame  # single exit
+    return artifact  # single exit
 ```
 
 **Key rules:**
@@ -418,14 +418,14 @@ Distilled from real review. Every Hugo policy must respect these. Deviations nee
 
 3. **Slot priorities are definitional, not advisory.** Trust `flow.is_filled()` instead of re-checking each elective.
 
-4. **Build `frame_meta` and `thoughts` first, then the frame.** Assemble the dict and prose on their own lines, then instantiate `DisplayFrame` in a single line. Empty guard frames shorten to `DisplayFrame(origin=flow.name())`.
+4. **Build `parts` and `thoughts` first, then the artifact.** Assemble the dict and prose on their own lines, then instantiate `TaskArtifact` in a single line. Empty guard artifacts shorten to `TaskArtifact(origin=flow.name())`.
 
    ```python
    thoughts = 'Outline shrunk from 5 bullets to 3 without an explicit removal directive.'
-   frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+   artifact = TaskArtifact(flow.name(), parts={'violation': 'failed_to_save'}, thoughts=thoughts)
    ```
 
-5. **`code` holds actual code; `thoughts` holds descriptive text.** `code` is for copy-paste payloads (raw tool response, failing JSON, error stack). Prose explanation goes in `thoughts`. Many error frames have no `code` at all, and that's fine.
+5. **`code` holds actual code; `thoughts` holds descriptive text.** `code` is for copy-paste payloads (raw tool response, failing JSON, error stack). Prose explanation goes in `thoughts`. Many error artifacts have no `code` at all, and that's fine.
 
 6. **Keep metadata sparse.** Metadata is for classification (violation category, missing-slot name). Flow identity lives in `origin`, not metadata. Specifics go in `thoughts` (natural free-form text), not nested-underscore tokens.
 
@@ -434,10 +434,10 @@ Distilled from real review. Every Hugo policy must respect these. Deviations nee
    ```python
    self.ambiguity.declare('partial',
        observation='Simplify needs either a section or an image to target.',
-       metadata={'missing_entity': 'section_or_image'})
+       metadata={'missing': 'source', 'entity': 'section_or_image'})
    ```
 
-8. **Never invent new keys without approval.** Hard rule. Whether in `metadata`, `extra_resolved`, `frame.blocks` data, or anywhere else — don't introduce a new key. If what you want to pass doesn't fit an existing key, surface the design question.
+8. **Never invent new keys without approval.** Hard rule. Whether in `metadata`, `extra_resolved`, `artifact.blocks` data, or anywhere else — don't introduce a new key. If what you want to pass doesn't fit an existing key, surface the design question.
 
 9. **Standard variable names.** Consistency lets reviewers pattern-match instantly.
 
@@ -448,11 +448,11 @@ Distilled from real review. Every Hugo policy must respect these. Deviations nee
    | result of `apply_guardrails` | `parsed` |
    | result of `tool_succeeded` | `saved, _` (or `saved_any`, `content_saved` when distinguishing) |
 
-10. **No em-dashes in `frame.thoughts`.** Thoughts are user-facing. Use commas and short sentences. Em-dashes are hard to parse on small screens.
+10. **No em-dashes in `artifact.thoughts`.** Thoughts are user-facing. Use commas and short sentences. Em-dashes are hard to parse on small screens.
 
-11. **Single return at end; early returns only for major errors.** See § III.1. `partial` / `general` ambiguity use early returns. Everything else — `specific`, `confirmation`, stack-on, fallback, success, error frames — assigns to `frame` and falls through to one `return frame` at the bottom.
+11. **Single return at end; early returns only for major errors.** See § III.1. `partial` / `general` ambiguity use early returns. Everything else — `specific`, `confirmation`, stack-on, fallback, success, error artifacts — assigns to `artifact` and falls through to one `return artifact` at the bottom.
 
-12. **`origin` is always the name of the flow.** Every `DisplayFrame` a policy builds sets `origin` to `flow.name()` — guards, stack-on, fallback, error, and success frames alike. Error-ness lives in metadata (`'violation' in frame.metadata`). The only exception is frames built outside the policy layer (e.g., an `Agent.take_turn` try-catch can use `'system'`).
+12. **`origin` is always the name of the flow.** Every `TaskArtifact` a policy builds sets `origin` to `flow.name()` — guards, stack-on, fallback, error, and success artifacts alike. Error-ness lives in the classification dict (`'violation' in artifact.data`, accessed via the helper property over the first data Part). The only exception is artifacts built outside the policy layer (e.g., an `Agent.take_turn` try-catch can use `'system'`).
 
 ## 3. Failure Channels
 
@@ -463,12 +463,12 @@ Three failure modes, three distinct channels. Two channels live here (policy-sid
 **Tool-call failure** (network, API down, permission denied, deterministic tool returned `_success=False`):
 
 ```python
-return DisplayFrame(flow.name(),
-    metadata={'violation': 'tool_error', 'failed_tool': '<tool_name>'},
+return TaskArtifact(flow.name(),
+    parts={'violation': 'tool_error', 'failed_tool': '<tool_name>'},
     code=result['_message'])
 ```
 
-No ambiguity. Use `code` for raw payloads. **Retry rule:** if the error is transient (timeout, lock), retry once via `BasePolicy.retry_tool(tools, name, params, max_attempts=2)`. Non-retryable or retry-failed → return the error frame.
+No ambiguity. Use `code` for raw payloads. **Retry rule:** if the error is transient (timeout, lock), retry once via `BasePolicy.retry_tool(tools, name, params, max_attempts=2)`. Non-retryable or retry-failed → return the error artifact.
 
 **Ambiguous user intent** (missing or unclear slot, unresolved entity):
 
@@ -485,9 +485,9 @@ The only channel that produces a clarification question. One clarification per t
 | When the policy discovers... | Declare | Metadata | Frame shape |
 |---|---|---|---|
 | No entity slot filled, no candidate in scratchpad | `general` | none | empty; RES asks "what are we doing?" |
-| Entity is post/section but `post_id` unresolvable | `partial` | `{missing_entity: 'post'}` | empty; RES asks "which post?" |
-| Required value slot missing | `specific` | `{missing_slot: <name>}` | RES asks "what value do you want?" |
-| All electives empty | `specific` | `{missing_slot: <alt1>_or_<alt2>}` | "Which direction do you want to go?" |
+| Entity is post/section but `post_id` unresolvable | `partial` | `{missing: 'source', entity: 'post'}` | empty; RES asks "which post?" |
+| Required value slot missing | `specific` | `{missing: <slot_name>}` | RES asks "what value do you want?" |
+| All electives empty | `specific` | `{missing: <alt1>_or_<alt2>}` | "Which direction do you want to go?" |
 | Candidate exists needing sign-off (duplicate title, audit threshold) | `confirmation` | `{candidate: <value>}` or `{reason: <code>}` | optional confirmation block |
 
 ### Forward-pointer to contract violations
@@ -497,8 +497,8 @@ When the skill returns malformed output, the policy uses:
 ```python
 parsed = self.engineer.apply_guardrails(text, format='json')
 if 'findings' not in parsed:
-    return DisplayFrame(flow.name(),
-        metadata={'violation': 'parse_failure'},
+    return TaskArtifact(flow.name(),
+        parts={'violation': 'parse_failure'},
         code=text)
 ```
 
@@ -506,10 +506,10 @@ The skill is broken, not the user's intent — don't route to `AmbiguityHandler`
 
 ## 4. Frame Construction
 
-`DisplayFrame` is the policy → RES contract. Single-meaning fields:
+`TaskArtifact` is the policy → RES contract. Single-meaning fields:
 
 - **`origin`** = flow name
-- **`metadata`** = classification only (`violation`, `missing_slot`, `missing_entity`, `missing_reference`, `failed_tool`). Sparse (Convention #6).
+- **`parts`** = classification only (A2A's Part concept) (`violation`, `missing`, `entity`, `reason`, `failed_tool`, `candidate`, `question`). Sparse (Convention #6).
 - **`thoughts`** = user-facing prose (no em-dashes; commas and short sentences). Goes through RES naturalization.
 - **`code`** = raw payloads (tool error text, failing JSON, stack traces). Machine-consumable.
 - **`blocks`** = render-targeting list. Pick the type the flow's RES template expects.
@@ -518,11 +518,11 @@ The skill is broken, not the user's intent — don't route to `AmbiguityHandler`
 **Frame patterns:**
 
 ```python
-DisplayFrame(origin=flow.name())                                                        # empty guard
-frame = DisplayFrame(flow.name(), thoughts='No outline yet, outlining first.')   # stack-on
-frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=...)  # error
-frame = DisplayFrame(flow.name(), thoughts=text)                                 # success
-frame.add_block({'type': 'card', 'data': {...}})                                 # add block
+TaskArtifact(origin=flow.name())                                                        # empty guard
+artifact = TaskArtifact(flow.name(), thoughts='No outline yet, outlining first.')   # stack-on
+artifact = TaskArtifact(flow.name(), parts={'violation': 'failed_to_save'}, thoughts=...)  # error
+artifact = TaskArtifact(flow.name(), thoughts=text)                                 # success
+artifact.add_block({'type': 'card', 'data': {...}})                                 # add block
 ```
 
 ---
@@ -741,7 +741,7 @@ Trajectory:
 
 ### 4. Contract Compliance
 
-When a skill's output doesn't parse into the expected shape, the policy returns a `parse_failure` error frame (see Part III.3). Skill authors prevent this through three mechanisms:
+When a skill's output doesn't parse into the expected shape, the policy returns a `parse_failure` error artifact (see Part III.3). Skill authors prevent this through three mechanisms:
 
 **Specify a strict output schema.** If the skill returns JSON, document the exact keys and types in the skill body. If prose, name the format constraints (e.g., "exactly 3 bullets, each starting with a verb"). Schemas embedded in the skill body are reinforcement against drift.
 
@@ -754,8 +754,8 @@ When a skill's output doesn't parse into the expected shape, the policy returns 
 ```python
 parsed = self.engineer.apply_guardrails(text, format='json')
 if 'findings' not in parsed:
-    return DisplayFrame(flow.name(),
-        metadata={'violation': 'parse_failure'},
+    return TaskArtifact(flow.name(),
+        parts={'violation': 'parse_failure'},
         code=text)
 ```
 
@@ -773,18 +773,18 @@ Three tiers with increasing fidelity and decreasing speed. Same rubric keys, ass
 |---|---|---|---|---|
 | **Tier 1 — static lints + units** | `utils/tests/unit_tests.py`, `utils/tests/test_artifacts.py` | <1s total | No LLM, no tools | Service round-trips, slot/prompt drift, schema-rule violations, flow-declaration invariants |
 | **Tier 2 — E2E multi-turn** | `utils/tests/e2e_multiturn_evals.py` | ~2 min | Real LLM | Ambiguity declare→ask→resolve loop |
-| **Tier 3 — E2E full pipeline** | `utils/tests/e2e_agent_evals.py` | ~20 min per scenario | Real LLM, persistent disk | Step-by-step lifecycle, inter-flow state propagation, frame→block serialization |
-| **Tier 4 — Playwright UI** | `utils/tests/playwright_evals/` (planned) | ~10 min | Real browser | UI rendering, click-to-emit payloads, error-frame display |
+| **Tier 3 — E2E full pipeline** | `utils/tests/e2e_agent_evals.py` | ~20 min per scenario | Real LLM, persistent disk | Step-by-step lifecycle, inter-flow state propagation, artifact→block serialization |
+| **Tier 4 — Playwright UI** | `utils/tests/playwright_evals/` (planned) | ~10 min | Real browser | UI rendering, click-to-emit payloads, error-artifact display |
 
 **Failure dumps.** On any failure, write `utils/policy_builder/failures/<run_id>/step_<N>.md` with: utterance, expected/actual tools and frames, scratchpad state, tool call trajectory. The dump must be sufficient for a fresh Claude instance to debug from cold — no conversation context required.
 
 **Eval-failure-as-success principle.** During harness construction, success means **seeing the tests fail** — that's the signal evals catch what the app breaks on. Mock over early failures so downstream steps run and surface their own failures. Once the harness produces a realistic failure profile, design policies to get everything green.
 
-**Snapshot updates require PR-body justification.** Pillar 1's structural snapshots (`utils/tests/snapshots/*.json`) capture flow_stack composition, slot shape, frame structure, and tool sequence after every e2e turn. A failure means the projection diverged from the recorded shape. Re-running with `UPDATE_SNAPSHOTS=1` is not a fix — it overwrites the recorded behavior. Always read the diff first: if the change is intentional, update and explain *what changed and why* in the PR body; if it's a regression, fix the code.
+**Snapshot updates require PR-body justification.** Pillar 1's structural snapshots (`utils/tests/snapshots/*.json`) capture flow_stack composition, slot shape, artifact structure, and tool sequence after every e2e turn. A failure means the projection diverged from the recorded shape. Re-running with `UPDATE_SNAPSHOTS=1` is not a fix — it overwrites the recorded behavior. Always read the diff first: if the change is intentional, update and explain *what changed and why* in the PR body; if it's a regression, fix the code.
 
 ### 2. Frame Validation
 
-**`_validate_frame` checks values, not just presence.** It asserts that expected values are present on frame blocks (e.g., `card` blocks have `post_id`, `title`, `content` keys), not just that `.blocks` is non-empty.
+**`_validate_artifact` checks values, not just presence.** It asserts that expected values are present on artifact blocks (e.g., `card` blocks have `post_id`, `title`, `content` keys), not just that `.blocks` is non-empty.
 
 **`_llm_quality_check` defaults off.** The LLM-as-judge secondary check only runs for flows where prose quality is the entire contract. Per-flow `BaseFlow.llm_quality_check` flag (default False). Override True only when warranted (polish, rework, brainstorm).
 
@@ -814,13 +814,13 @@ Common pitfalls. Each is a specific failure mode the conventions are designed to
 |---|---|---|
 | `text or ''`, `parsed or {}`, `dict.get('key', '')` | Silently converts errors to empty values. Tests pass; prod breaks. | #2 |
 | Declaring ambiguity for tool failures | Conflates failure channels. Tool down is not a question for the user. | III.3 |
-| Em-dashes in `frame.thoughts` | Hard to parse on small screens; user-facing text. | #10 |
+| Em-dashes in `artifact.thoughts` | Hard to parse on small screens; user-facing text. | #10 |
 | Inventing new metadata keys | Downstream RES templates silently drop unrecognized keys. | #8 |
 | `if post_id and post_id != ''` after NLU resolved it | Defensive checks hide missing contracts. | #1 |
 | Hallucinated APIs (`engineer.tools`, `flow.resolved`) | Crashes at runtime; verify imports against the actual module. | CLAUDE.md |
 | Both policy and skill writing to disk | Double-persistence causes silent overwrites. | VI.1 |
 | `if _legacy_flag: ... else: ...` shims | Doubles code paths; testing twice as complex. Remove old paths cleanly. | — |
-| `stage = 'error'` instead of error frames | Stages should reflect genuine control-flow divergence, not cosmetic labels. | AGENTS.md |
+| `stage = 'error'` instead of error artifacts | Stages should reflect genuine control-flow divergence, not cosmetic labels. | AGENTS.md |
 | `## Slots` headers in skill files | LLM is in execution mode; grounding is done by NLU. | IV.B.2 |
 | Asking for clarification despite all slots filled | Usually means a slot is missing from the flow design. Fix the flow. | #7 |
 
@@ -846,7 +846,7 @@ Hard project rule (`CLAUDE.md`). Maintain a single source of truth for the agent
 - `BasePolicy.guard_slot(...)` — slot semantics vary too much.
 - `BasePolicy.complete_with_card(...)` — saves only 3 lines; future variation will diverge.
 - `flow.deterministic` flag — implied by the policy code.
-- `DialogueState.findings` / `DisplayFrame.findings` attribute — use scratchpad.
+- `DialogueState.findings` / `TaskArtifact.findings` attribute — use scratchpad.
 - `error_class` parallel taxonomy on metadata — `violation` + `tool_log` covers PEX recovery.
 - Cached fields like `active_post_title` — call the service on demand.
 - New metadata keys outside the 8-violation vocab.
@@ -866,7 +866,7 @@ How to ship large refactors safely.
 
 Each step validates against the previous one. Reversing the order leads to drift.
 
-**Update test fixtures in lockstep with metadata key changes.** When renaming a key (e.g., `missing_ground` → `missing_entity`), update fixtures in the same commit. Otherwise green tests mask the new bugs the refactor was meant to surface. Grep templates and tests for the old key before the rename.
+**Update test fixtures in lockstep with metadata key changes.** When renaming a key (e.g., a metadata field name), update fixtures in the same commit. Otherwise green tests mask the new bugs the refactor was meant to surface. Grep templates and tests for the old key before the rename.
 
 **Fix root cause; don't chase cascading symptoms.** When N steps fail in a sequence, isolate the first failure. Downstream symptoms often clear automatically once upstream is fixed.
 
@@ -939,23 +939,23 @@ Wrapped by canonical tools, never standalone:
 
 | Question | Answer | See |
 |---|---|---|
-| User's post is missing — how do I signal? | `partial` ambiguity with `missing_entity='post'` | III.3 |
-| Skill returned bad JSON — how do I respond? | `apply_guardrails(format='json')` first, then `parse_failure` error frame | III.3 + IV.C ch.4 |
-| Tool failed (network down) — how do I respond? | `tool_error` error frame, not ambiguity | III.3 |
+| User's post is missing — how do I signal? | `partial` ambiguity with `parts={'missing': 'source', 'entity': 'post'}` | III.3 |
+| Skill returned bad JSON — how do I respond? | `apply_guardrails(format='json')` first, then `parse_failure` error artifact | III.3 + IV.C ch.4 |
+| Tool failed (network down) — how do I respond? | `tool_error` error artifact, not ambiguity | III.3 |
 | Optional slot is missing — ask or default? | If sensible default exists, commit it. Otherwise, OK to proceed. | II.2 |
 | Which tool saves an outline section? | `generate_section` for outline content; `revise_content` for prose | VI.1 |
 | How do I pass findings from one flow to another? | Session Scratchpad with `key=flow_name`, fields `{version, turn_number, used_count}` | II.3 |
 | Should I call `read_metadata` to load context? | No — NLU already resolved it; use `_resolve_source_ids` or `extra_resolved` | I.A |
-| How do I create a `DisplayFrame` with metadata? | Build metadata dict and thoughts first, then one-line instantiation | III.2 #4 |
+| How do I create a `TaskArtifact` with parts? | Build parts dict and thoughts first, then one-line instantiation | III.2 #4 |
 | What's the outline depth scheme? | Level 0: `# Title`; 1: `##`; 2: `###`; 3: `-`; 4: `  *` | I.C |
-| Can I add a new attribute to `DialogueState`? | No. Use the Session Scratchpad for findings; per-turn payload in `frame.metadata` | II.3 |
+| Can I add a new attribute to `DialogueState`? | No. Use the Session Scratchpad for findings; per-turn payload in `artifact.parts` | II.3 |
 | Single elective slot — required or optional? | Convert to required (or optional). Single-elective is invalid. | I.A |
-| Should I retry on tool failure? | Yes, once via `BasePolicy.retry_tool` if transient. Otherwise return error frame. | III.3 |
+| Should I retry on tool failure? | Yes, once via `BasePolicy.retry_tool` if transient. Otherwise return error artifact. | III.3 |
 | Can my flow self-recurse? | Only if the recursive call hits a non-recursive branch. Outline excepted. | II.4 |
 | Can I add a new violation code? | No. The 8-item vocabulary is closed. Surface a design question. | I.C |
 | Where do hard rules go — system or skill? | Both. Repeat critical rules in system AND skill. | IV.A.2 |
 | Deterministic or agentic flow? | Deterministic if 1 tool + args derivable from slots. Otherwise agentic. | II.1 |
-| How do I prerequisite another flow? | `flow_stack.stackon(name)` + `state.keep_going = True` + `frame.thoughts = <reason>` | II.4 |
+| How do I prerequisite another flow? | `flow_stack.stackon(name)` + `state.keep_going = True` + `artifact.thoughts = <reason>` | II.4 |
 | What `max_response_tokens` should my flow use? | 1024 short / 2048 single-section / 4096 multi-section prose. Match output schema to cap. | II.5 |
 | Where does YAML frontmatter live on a skill? | Top of `backend/prompts/pex/skills/<flow>.md`. | IV.C ch.2 |
 

@@ -10,7 +10,7 @@
 
 Part 3 takes the 7 locked architectural decisions (AD-1, AD-3, AD-6, AD-7, AD-8, AD-9, AD-10 — AD-2/4/5 were conventions moved to `AGENTS.md`) and Themes 1-7 that already landed, and applies them uniformly so that every flow composes the same way. The work is not additive — it is consolidating. We shrink variance across **four pillars**:
 
-1. **Interface** — how a policy talks to its collaborators, and how PEX signals state back to RES/user. Outside the policy layer the contracts are already clear: NLU↔PEX through `DialogueState`, PEX↔RES through `DisplayFrame`. Part 3 fixes the policy-side interface: the policy reaches the skill and tools through `BasePolicy.llm_execute` / `PromptEngineer.tool_call` / direct `tools(name, params)`; it declares ambiguity via `self.ambiguity.declare(level, observation=..., metadata=...)`; it pushes prerequisites via `flow_stack.stackon(...)` or re-routes via `flow_stack.fallback(...)`; it writes findings via `memory.write_scratchpad(flow.name(), {...})`; and it signals errors to RES via `DisplayFrame(flow.name(), metadata={'violation': ...}, thoughts=...)` per AD-6.
+1. **Interface** — how a policy talks to its collaborators, and how PEX signals state back to RES/user. Outside the policy layer the contracts are already clear: NLU↔PEX through `DialogueState`, PEX↔RES through `TaskArtifact`. Part 3 fixes the policy-side interface: the policy reaches the skill and tools through `BasePolicy.llm_execute` / `PromptEngineer.tool_call` / direct `tools(name, params)`; it declares ambiguity via `self.ambiguity.declare(level, observation=..., metadata=...)`; it pushes prerequisites via `flow_stack.stackon(...)` or re-routes via `flow_stack.fallback(...)`; it writes findings via `memory.write_scratchpad(flow.name(), {...})`; and it signals errors to RES via `TaskArtifact(flow.name(), metadata={'violation': ...}, thoughts=...)` per AD-6.
 2. **Structure** — one method shape per policy (§ 3.1) and one three-layer shape per prompt (§ 3.5). Deviations cite a specific convention.
 3. **Policy** — Python code that executes the flow. Deterministic flows (create, find, inspect, explain, undo) call tools inline and have no skill file. Agentic flows route through `llm_execute`. The template covers both shapes.
 4. **Prompt** — for agentic flows only: system prompt (persona + flow preamble + skill body + suffix + current state) + starter prompt (recent conversation + latest utterance + task framing) + skill file (frontmatter + Behavior + Important + Slots + Output + Few-shot). Each sub-component has a single job; Theme 8 tightens the assembly.
@@ -19,7 +19,7 @@ Three things change in the repo:
 
 - **Policy methods** gain a single, uniform shape: entity-slot guard → optional-slot defaults (AD-8) → `_resolve_source_ids` → dispatch (deterministic inline tool call, or `self.llm_execute`) → success check via `self.engineer.tool_succeeded` → error-frame branch per AD-6 → completion + card.
 - **Skill files** align to a uniform section layout (YAML frontmatter → `## Behavior` → `## Important` → `## Slots` → `## Output` → `## Few-shot examples`), with Option C trajectory examples already required by Phase 3's pytest (`test_skill_tool_alignment.py`).
-- **Error recovery** stops living in two fighting systems. `_validate_frame` dispatches error frames by inspecting `metadata['violation']` and `tool_log` — the same information the policy already produced. Per `error_recovery_proposal.md § 5.3` (updated to drop the parallel `error_class` taxonomy), Tiers 2 and 3 are revived (not deleted) per DP-8. Retry lives at three layers — skill inner loop, `BasePolicy.retry_tool`, and `pex.recover` Tier 1 — each addressing a different failure class (§ 6 below). App-crash handling (unhandled exceptions) is out of scope for 4RE — handled by try-catch at `Agent.take_turn`.
+- **Error recovery** stops living in two fighting systems. `_validate_artifact` dispatches error artifacts by inspecting `metadata['violation']` and `tool_log` — the same information the policy already produced. Per `error_recovery_proposal.md § 5.3` (updated to drop the parallel `error_class` taxonomy), Tiers 2 and 3 are revived (not deleted) per DP-8. Retry lives at three layers — skill inner loop, `BasePolicy.retry_tool`, and `pex.recover` Tier 1 — each addressing a different failure class (§ 6 below). App-crash handling (unhandled exceptions) is out of scope for 4RE — handled by try-catch at `Agent.take_turn`.
 
 The six exemplars in § 4 cover the patterns the other 42 flows reduce to:
 
@@ -34,11 +34,11 @@ Once these six lock in, the remaining 9 flows in the 14-step eval (Phase 4a) + 3
 
 **Template philosophy — principles, not fill-in-the-blank.** The § 3 standardization rules describe best practices grounded in the 10 ADs, the 12 conventions, and the 8-item violation vocabulary. They are not a rigid template to mechanically apply. Every policy shares the method-shape contract (§ 3.1) and AD-6 error channels (§ 3.2), but deviations are allowed when a flow has a genuinely different shape — they just need an inline comment citing which convention justifies the deviation. The goal is **consolidation** (removing variance that hides bugs), not uniformity for its own sake.
 
-**Themes 1-7 — partial landing, Phase 1/4 completes the sweep.** Themes 1-7 landed across the 12 exemplar flows (`policy_spec.md § Theme execution status`). Across the remaining 36 flows, coverage is partial: most have AD-6 error frames only where Theme 4 forced them (release); AD-1 scratchpad only where Theme 5 consumers exist (polish); standardized `missing_entity` / `missing_slot` metadata only where Theme 7 call-sites were touched. Phase 1 normalizes metadata to the 8-item `violation` vocabulary uniformly; Phases 4a–4c complete the Theme 1-7 sweep (entity-slot guard first, tool_succeeded backstops, optional-slot defaults) across every flow.
+**Themes 1-7 — partial landing, Phase 1/4 completes the sweep.** Themes 1-7 landed across the 12 exemplar flows (`policy_spec.md § Theme execution status`). Across the remaining 36 flows, coverage is partial: most have AD-6 error artifacts only where Theme 4 forced them (release); AD-1 scratchpad only where Theme 5 consumers exist (polish); standardized `missing_entity` / `missing_slot` metadata only where Theme 7 call-sites were touched. Phase 1 normalizes metadata to the 8-item `violation` vocabulary uniformly; Phases 4a–4c complete the Theme 1-7 sweep (entity-slot guard first, tool_succeeded backstops, optional-slot defaults) across every flow.
 
 **Part 5 relationship — first-draft here, tuning there.** Part 3 writes the first-draft policy + prompt for every flow following the template. **Things work after Part 3 lands** — the 14-step eval passes at the current level (or better), and the 36 non-eval flows at least import, construct, and execute a happy path. Part 5 then makes targeted improvements to specific flows based on Part 4 eval results (failing rubrics) and human feedback (Part 5a HITL app). Part 5 is iterative quality work; Part 3 is the foundation. If the template itself needs revision because a specific flow surfaces a genuine design gap, we come back to Part 3, not the other way around.
 
-Part 3 does **not** introduce new concepts, new helpers beyond what `fixes/_shared.md` proposes under AD-7…AD-10, new `DialogueState` or `DisplayFrame` attributes, new `flow.deterministic` flags, or any `BasePolicy.direct_tool_call` helper. Those are rejected (see `fixes/_shared.md § Proposed but rejected`).
+Part 3 does **not** introduce new concepts, new helpers beyond what `fixes/_shared.md` proposes under AD-7…AD-10, new `DialogueState` or `TaskArtifact` attributes, new `flow.deterministic` flags, or any `BasePolicy.direct_tool_call` helper. Those are rejected (see `fixes/_shared.md § Proposed but rejected`).
 
 ---
 
@@ -48,10 +48,10 @@ Part 3 does **not** introduce new concepts, new helpers beyond what `fixes/_shar
 
 - **AD-1** — scratchpad `dict[str, dict]` with `{version, turn_number, used_count, ...}` convention. Producers: `inspect_policy`, `find_policy`, `audit_policy` (`backend/modules/policies/revise.py:189-199`). Consumer: `polish_policy` (`revise.py:102-108`).
 - **AD-3** — outline recursion is safe; documented as a comment at `draft.py:94-97`; `OutlineFlow` may not `stackon('outline')` itself.
-- **AD-6** — three failure channels, all routed through `DisplayFrame(flow.name(), metadata={'violation': <class>}, thoughts=...)` where `<class>` is one of the 8-item violation vocabulary (§ 3.3). User-intent ambiguity uses `self.ambiguity.declare(level, observation=..., metadata=...)`. Distinct, never conflated.
+- **AD-6** — three failure channels, all routed through `TaskArtifact(flow.name(), metadata={'violation': <class>}, thoughts=...)` where `<class>` is one of the 8-item violation vocabulary (§ 3.3). User-intent ambiguity uses `self.ambiguity.declare(level, observation=..., metadata=...)`. Distinct, never conflated.
 - **AD-7** — YAML frontmatter on every skill (`policy_spec.md § Theme execution status`). Phase 1 landed; loader parses + strips frontmatter.
 - **AD-8** — optional slots with a sensible default commit with the default (`audit_policy`'s `reference_count=5` at `revise.py:150-151`).
-- **AD-9** — `_validate_frame` checks value correctness per block type; `_llm_quality_check` off by default, per-flow opt-in.
+- **AD-9** — `_validate_artifact` checks value correctness per block type; `_llm_quality_check` off by default, per-flow opt-in.
 - **AD-10** — prompt caching on system+tool segments; `BaseFlow.max_response_tokens` per-flow override.
 
 Gaps (no AD-2/4/5) are deliberate — those were conventions (terminology, `OUTLINE_LEVELS` reference, polish-stages design note). Moved to `AGENTS.md` so they're visible to coding agents without bloating the code-shaping decision set.
@@ -63,7 +63,7 @@ Gaps (no AD-2/4/5) are deliberate — those were conventions (terminology, `OUTL
 - **T3** (output-shape drift) — `audit` emits structured report; scratchpad writes standardized.
 - **T4** (error-path gaps) — AD-6 landed in `release_policy`, `refine_policy`, `outline_policy` propose-mode.
 - **T5** (scratchpad convention) — producers/consumers wired end-to-end using `context.turn_id`.
-- **T6** (stack-on opacity) — inline `flow_stack.stackon(...) + state.keep_going = True + frame.thoughts=<reason>` (`draft.py:197-200`, `draft.py:226-228`).
+- **T6** (stack-on opacity) — inline `flow_stack.stackon(...) + state.keep_going = True + artifact.thoughts=<reason>` (`draft.py:197-200`, `draft.py:226-228`).
 - **T7** (repeated guard patterns) — only `PromptEngineer.tool_succeeded` extracted; `guard_slot`/`complete_with_card`/`stack_on` rejected.
 
 ### Part 2 Phases 1-4
@@ -101,7 +101,7 @@ Every policy method MUST follow the rules below. Deviations require an inline co
 
 When writing a policy, still ask: *does the skill have enough to produce the right output given what `is_filled()` accepts?* If the answer is no, the flow's slot priorities are wrong — flag for review (promote an elective to required, add a new slot, or assign an AD-8 default). Don't paper over with ad-hoc defaults in the policy.
 
-**Single return at end; early returns only for major errors.** Major errors (`partial` and `general` ambiguity — top-level grounding failures that block the whole turn) use early returns. Every other outcome — `specific` ambiguity, `confirmation`, stack-on, fallback, success, and AD-6 error frames — assigns to a `frame` variable and falls through to a single `return frame` at the end. The main policy body ends up as one nested if/elif/else that decides what `frame` contains.
+**Single return at end; early returns only for major errors.** Major errors (`partial` and `general` ambiguity — top-level grounding failures that block the whole turn) use early returns. Every other outcome — `specific` ambiguity, `confirmation`, stack-on, fallback, success, and AD-6 error artifacts — assigns to a `frame` variable and falls through to a single `return artifact` at the end. The main policy body ends up as one nested if/elif/else that decides what `frame` contains.
 
 **No universal slot-guard helper.** Each flow's guard depends on its slot semantics — which slots are required, whether there's a disjunction (e.g. simplify's `source OR image`), whether NLU can sometimes infer a missing slot from context. Hand-write the guard per flow. Do NOT introduce a `BasePolicy._require_source` / `guard_slot` helper — variance in slot contracts makes the abstraction wrong more often than right.
 
@@ -113,29 +113,29 @@ def <flow>_policy(self, flow, state, context, tools):
     post_id, sec_id = self._resolve_source_ids(flow, state, tools)
     if not flow.slots[flow.entity_slot].check_if_filled() or not post_id:
         self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-        return DisplayFrame(flow.name())
+        return TaskArtifact(flow.name())
 
     # 2. Branch on slot state. Most flows spend their lines here.
     if <specific ambiguity condition>:
         self.ambiguity.declare('specific', metadata={'missing_slot': '<name>'})
-        frame = DisplayFrame(flow.name())
+        artifact = TaskArtifact(flow.name())
     elif <prerequisite missing>:
         self.flow_stack.stackon('<prereq>')
         state.keep_going = True
-        frame = DisplayFrame(flow.name(), thoughts='<reason>')
+        artifact = TaskArtifact(flow.name(), thoughts='<reason>')
     else:
         # 3. Dispatch. Deterministic → inline tools(name, params). Agentic → llm_execute.
         text, tool_log = self.llm_execute(flow, state, context, tools)
         saved, _ = self.engineer.tool_succeeded(tool_log, '<tool_name>')
         if not saved:
             thoughts = '<what the skill did wrong>'
-            frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+            artifact = TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
         else:
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=text)
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            artifact = TaskArtifact(flow.name(), thoughts=text)
+            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
-    return frame
+    return artifact
 ```
 
 **Default-commit for optional slots (AD-8) is rare.** When a slot has a sensible default (`audit`'s `reference_count=5`), commit it inline at entry with `flow.fill_slot_values({'X': <default>})` and cite AD-8. Not part of the standard template — most flows don't have a defaultable optional slot.
@@ -148,16 +148,16 @@ Rules that apply to every Hugo policy. Each was distilled from a specific feedba
 
 **2. No defaults that hide errors.** `text or ''`, `parsed or {}`, `isinstance(parsed, dict)` — these mask upstream mistakes. Let the code crash on unexpected state so tests catch it. `apply_guardrails` returns a dict; trust that.
 
-**3. Build `frame_meta` and `thoughts` first, then the frame.** Avoid multi-line `DisplayFrame(...)` constructions. Assemble the dict and thoughts on their own lines, then instantiate in a single line. Keep short dicts collapsed — one line is readable and diff-friendly. When metadata has one key with no computed values, inline it directly.
+**3. Build `frame_meta` and `thoughts` first, then the frame.** Avoid multi-line `TaskArtifact(...)` constructions. Assemble the dict and thoughts on their own lines, then instantiate in a single line. Keep short dicts collapsed — one line is readable and diff-friendly. When metadata has one key with no computed values, inline it directly.
 
 ```python
 thoughts = 'Outline shrunk from 5 bullets to 3 without an explicit removal directive.'
-frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+artifact = TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
 ```
 
-`DisplayFrame` accepts `origin` positionally. Empty guard frames shorten to `DisplayFrame(flow.name())`.
+`TaskArtifact` accepts `origin` positionally. Empty guard frames shorten to `TaskArtifact(flow.name())`.
 
-**4. `code` holds actual code; `thoughts` holds descriptive text.** `code` is for payloads a human would copy-paste: raw tool response, failing JSON blob, erroring SQL, unparseable LLM output. Descriptive prose belongs in `thoughts`. Many error frames have no `code` at all, and that's fine.
+**4. `code` holds actual code; `thoughts` holds descriptive text.** `code` is for payloads a human would copy-paste: raw tool response, failing JSON blob, erroring SQL, unparseable LLM output. Descriptive prose belongs in `thoughts`. Many error artifacts have no `code` at all, and that's fine.
 
 **5. Keep metadata sparse.** Metadata is for classification (violation category, missing-slot name, duplicate-title sentinel, etc.). Flow identity is not in metadata — it lives in `origin` (see convention #12). Specifics go in `thoughts` (natural free-form text), not nested-underscore tokens. Natural text can be rendered to the user or fed to a future summarizer; mangled keys can't.
 
@@ -171,7 +171,7 @@ self.ambiguity.declare('partial',
 
 Corollary: if every slot is filled correctly, the skill should not be raising clarification questions. "Intent unclear despite all slots filled" usually means a slot is missing from the flow design.
 
-**7. Never invent new keys without approval.** Hard rule. Whether in `metadata`, `extra_resolved`, `frame.blocks` data, or anywhere else — **don't introduce a new key name** without explicit approval. Use the keys the downstream consumer (skill template, RES template, tool schema) already knows about. If what you want to pass doesn't fit an existing key, surface that as a design question before adding it.
+**7. Never invent new keys without approval.** Hard rule. Whether in `metadata`, `extra_resolved`, `artifact.blocks` data, or anywhere else — **don't introduce a new key name** without explicit approval. Use the keys the downstream consumer (skill template, RES template, tool schema) already knows about. If what you want to pass doesn't fit an existing key, surface that as a design question before adding it.
 
 **8. Standard variable names.**
 
@@ -182,23 +182,23 @@ Corollary: if every slot is filled correctly, the skill should not be raising cl
 | result of `apply_guardrails` | `parsed` |
 | result of `tool_succeeded` | `saved, _` (or `saved_any`, `content_saved`, etc. when distinguishing) |
 
-**9. No em-dashes in `frame.thoughts`.** Thoughts are user-facing. Write like a person: commas, periods, or short sentences.
+**9. No em-dashes in `artifact.thoughts`.** Thoughts are user-facing. Write like a person: commas, periods, or short sentences.
 
-**10. Single return at end; early returns only for major errors.** See § 3.1 — covered by the method-shape contract. Avoid inline `return DisplayFrame(origin=..., metadata=..., code=...)` constructions anywhere. Assemble `frame_meta` and `thoughts` on their own lines first, then build the frame in a single line (see convention #3).
+**10. Single return at end; early returns only for major errors.** See § 3.1 — covered by the method-shape contract. Avoid inline `return TaskArtifact(origin=..., metadata=..., code=...)` constructions anywhere. Assemble `frame_meta` and `thoughts` on their own lines first, then build the frame in a single line (see convention #3).
 
 **11. Strip template comments from real code.** Exemplars use comments to explain *why* non-obvious decisions are made. When you port these shapes into real `backend/modules/policies/*.py` code, **drop the step-by-step template comments**. Keep comments only where something is genuinely tricky — a cross-flow invariant, a bug workaround, a subtle contract. A reader of the policy should be able to follow the code from the structure itself.
 
-**12. `origin` is always `flow.name()`.** Every `DisplayFrame` a policy builds sets `origin` to `flow.name()` — guards, stack-on, fallback, error, and success frames alike. The old pattern `origin='error'` is gone; error-ness lives in metadata (`'violation' in frame.metadata`). And `flow` is not a metadata key — it lives in `origin` only. Single-meaning field: "which flow produced this frame."
+**12. `origin` is always `flow.name()`.** Every `TaskArtifact` a policy builds sets `origin` to `flow.name()` — guards, stack-on, fallback, error, and success artifacts alike. The old pattern `origin='error'` is gone; error-ness lives in metadata (`'violation' in artifact.parts`). And `flow` is not a metadata key — it lives in `origin` only. Single-meaning field: "which flow produced this frame."
 
 ```python
-return DisplayFrame(flow.name())                                                 # guard (empty)
-frame = DisplayFrame(flow.name(), thoughts='No sections yet, outlining first.')  # stack-on / fallback
-frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'},      # error
+return TaskArtifact(flow.name())                                                 # guard (empty)
+artifact = TaskArtifact(flow.name(), thoughts='No sections yet, outlining first.')  # stack-on / fallback
+artifact = TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'},      # error
                     thoughts=thoughts)
-frame = DisplayFrame(flow.name(), thoughts=text)                                 # success
+artifact = TaskArtifact(flow.name(), thoughts=text)                                 # success
 ```
 
-Consumers: RES keys per-flow templates off `frame.origin`; `_validate_frame` detects error frames via `'violation' in metadata`. Frames built outside the policy layer (e.g., an `Agent.take_turn` try-catch for app crashes) are the one exception — those can use a literal like `'system'`.
+Consumers: RES keys per-flow templates off `artifact.origin`; `_validate_artifact` detects error artifacts via `'violation' in metadata`. Frames built outside the policy layer (e.g., an `Agent.take_turn` try-catch for app crashes) are the one exception — those can use a literal like `'system'`.
 
 ### 3.3 Violation vocabulary
 
@@ -224,14 +224,14 @@ Consumers: RES keys per-flow templates off `frame.origin`; `_validate_frame` det
 - `tool_error` with a non-retryable code → short-circuit
 - `scope_mismatch` / `missing_reference` / `conflict` → never reach PEX recovery (the policy resolves these via fallback, ambiguity, or confirmation)
 
-`error_class` is dropped. `_validate_frame` inspects `violation` and `tool_log` to decide the recovery tier. This matches the codebase's "inspect what you already have" pattern and keeps metadata sparse. `error_recovery_proposal.md § 5.3` needs an aligned update — flag for follow-up.
+`error_class` is dropped. `_validate_artifact` inspects `violation` and `tool_log` to decide the recovery tier. This matches the codebase's "inspect what you already have" pattern and keeps metadata sparse. `error_recovery_proposal.md § 5.3` needs an aligned update — flag for follow-up.
 
 ### 3.4 Rules by what NOT to do
 
 - **Do NOT** invent a `BasePolicy.direct_tool_call(...)` helper. Inline `tools(name, params)`.
 - **Do NOT** invent a `BasePolicy._require_source(...)` / `guard_slot(...)` helper. Slot guards are flow-specific — hand-write per policy. `OutlineFlow` / `CreateFlow` / `RefineFlow` are reference shapes.
 - **Do NOT** add `flow.deterministic` or any flow-class flag that encodes deterministic-vs-agentic routing. The policy code is the source of truth.
-- **Do NOT** add attributes to `DialogueState` or `DisplayFrame`. Findings go in scratchpad; transient per-turn payload goes in `frame.metadata`.
+- **Do NOT** add attributes to `DialogueState` or `TaskArtifact`. Findings go in scratchpad; transient per-turn payload goes in `artifact.parts`.
 - **Do NOT** raise ambiguity for tool-call failures or contract violations.
 - **Do NOT** delete skill files for non-deterministic flows (Phase 2 is complete).
 - **Do NOT** rewrite component files (AmbiguityHandler, DialogueState, ContextCoordinator).
@@ -410,10 +410,10 @@ The policy sits at the center of four interfaces. All of them use existing hooks
 
 - **Policy → Skill / Tools** (`backend/modules/policies/base.py::llm_execute` or inline `tools(name, params)`). Deterministic flows call tools directly. Agentic flows package the system + starter + skill per § 3.5 and dispatch through `engineer.tool_call`, getting back `(text, tool_log)`. The success check is `engineer.tool_succeeded(tool_log, name)` — the one shared helper Theme 7 kept.
 - **Policy → AmbiguityHandler** (`self.ambiguity.declare(level, observation=..., metadata=...)`). Four levels (general / partial / specific / confirmation). `metadata` keys are standardized: `'missing_entity': <entity_name>`, `'missing_slot': <slot_name>`, `'missing_reference': <ref_kind>`, `'duplicate_title': <title>`. Per convention #6, human-readable text goes in `observation`, not metadata.
-- **Policy → FlowStack** (`self.flow_stack.stackon('<name>')` for prerequisites, `self.flow_stack.fallback('<name>')` for re-routes). Inline reason goes in `frame.thoughts` so RES can surface the transition. No helper — Theme 6.
+- **Policy → FlowStack** (`self.flow_stack.stackon('<name>')` for prerequisites, `self.flow_stack.fallback('<name>')` for re-routes). Inline reason goes in `artifact.thoughts` so RES can surface the transition. No helper — Theme 6.
 - **Policy → MemoryManager** (`self.memory.write_scratchpad(flow.name(), payload)`). Key is the bare flow name; payload has `version`, `turn_number: context.turn_id`, `used_count`, plus flow-specific fields. AD-1 is the authoritative convention.
-- **PEX → RES → user** (via `DisplayFrame`). Error-signaling uses `DisplayFrame(flow.name(), metadata={'violation': <class>}, thoughts=<description>)` per convention #12. RES templates key off `frame.origin` (the flow name) and detect error frames via `'violation' in metadata`.
-- **PEX → policy (recovery)** — four-tier ladder dispatched by `_validate_frame` inspecting `metadata['violation']` + `tool_log`. **Tier 1** (rephrase-with-feedback) remains live. **Tiers 2 and 3 are revived** in Phase 2 with tightened triggers (§ 6). **Tier 4** (escalate via `ambiguity.declare('partial', ...)`) remains as the terminal rung. **App-crash handling is outside this ladder** — try-catch at `Agent.take_turn` renders a standard system message (see `error_recovery_proposal.md § 5.9`).
+- **PEX → RES → user** (via `TaskArtifact`). Error-signaling uses `TaskArtifact(flow.name(), metadata={'violation': <class>}, thoughts=<description>)` per convention #12. RES templates key off `artifact.origin` (the flow name) and detect error artifacts via `'violation' in metadata`.
+- **PEX → policy (recovery)** — four-tier ladder dispatched by `_validate_artifact` inspecting `metadata['violation']` + `tool_log`. **Tier 1** (rephrase-with-feedback) remains live. **Tiers 2 and 3 are revived** in Phase 2 with tightened triggers (§ 6). **Tier 4** (escalate via `ambiguity.declare('partial', ...)`) remains as the terminal rung. **App-crash handling is outside this ladder** — try-catch at `Agent.take_turn` renders a standard system message (see `error_recovery_proposal.md § 5.9`).
 
 ---
 
@@ -432,12 +432,12 @@ def refine_policy(self, flow, state, context, tools):
     post_id, _ = self._resolve_source_ids(flow, state, tools)
     if not flow.slots['source'].check_if_filled() or not post_id:
         self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-        return DisplayFrame(flow.name())
+        return TaskArtifact(flow.name())
 
     if (not flow.slots['feedback'].check_if_filled()
             and not flow.slots['steps'].check_if_filled()):
         self.ambiguity.declare('specific', metadata={'missing_slot': 'refine_details'})
-        frame = DisplayFrame(flow.name())
+        artifact = TaskArtifact(flow.name())
     else:
         flow_metadata = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         content = flow_metadata['outline']
@@ -445,7 +445,7 @@ def refine_policy(self, flow, state, context, tools):
         if not self._has_bullets(content):
             self.flow_stack.stackon('outline')
             state.keep_going = True
-            frame = DisplayFrame(flow.name(), thoughts='No bullets in the outline yet, generating one first.')
+            artifact = TaskArtifact(flow.name(), thoughts='No bullets in the outline yet, generating one first.')
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools,
                 extra_resolved={'current_outline': content})
@@ -453,7 +453,7 @@ def refine_policy(self, flow, state, context, tools):
 
             if not text or not saved:
                 thoughts = 'The refine skill did not call merge_outline, or produced empty output.'
-                frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+                artifact = TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
             else:
                 # Silent-shrink backstop: merge_outline should not lose bullets without a removal directive.
                 new_metadata = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
@@ -462,13 +462,13 @@ def refine_policy(self, flow, state, context, tools):
 
                 if new_bullets < prior_bullets and not _has_removal_intent(flow):
                     thoughts = f'Outline shrunk from {prior_bullets} bullets to {new_bullets} without an explicit removal directive.'
-                    frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+                    artifact = TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
                 else:
                     flow.status = 'Completed'
-                    frame = DisplayFrame(flow.name(), thoughts=text)
-                    frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+                    artifact = TaskArtifact(flow.name(), thoughts=text)
+                    artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
-    return frame
+    return artifact
 ```
 
 ---
@@ -484,38 +484,38 @@ def compose_policy(self, flow, state, context, tools):
     post_id, sec_id = self._resolve_source_ids(flow, state, tools)
     if not flow.slots['source'].check_if_filled() or not post_id:
         self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-        return DisplayFrame(flow.name())
+        return TaskArtifact(flow.name())
 
     if (not flow.slots['steps'].check_if_filled()
             and not flow.slots['guidance'].check_if_filled()):
         self.ambiguity.declare('specific',
             observation='Compose needs either a list of sections to write, or guidance on what to compose.',
             metadata={'missing_slot': 'steps_or_guidance'})
-        frame = DisplayFrame(flow.name())
+        artifact = TaskArtifact(flow.name())
     else:
         flow_metadata = tools('read_metadata', {'post_id': post_id})
         if not flow_metadata['section_ids']:
             self.flow_stack.stackon('outline')
             state.keep_going = True
-            frame = DisplayFrame(flow.name(), thoughts='No sections yet, outlining first.')
+            artifact = TaskArtifact(flow.name(), thoughts='No sections yet, outlining first.')
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
             saved_any, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
             if saved_any:
                 flow.status = 'Completed'
-                frame = DisplayFrame(flow.name(), thoughts=text)
-                frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+                artifact = TaskArtifact(flow.name(), thoughts=text)
+                artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
             else:
                 thoughts = 'The compose skill produced no revise_content calls.'
-                frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+                artifact = TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
 
-    return frame
+    return artifact
 ```
 
 **Lessons:**
 
 - The policy does not invent `extra_resolved` keys to carry slot values. The skill's resolved context already exposes filled slots through the standard assembly.
-- Only the `partial` guard at the top uses early return. The "both electives empty" case is `specific`, so it builds an empty frame and falls through. Same for the stack-on case and the success/failure branches — all assign to `frame` and reach the single `return frame` at the end.
+- Only the `partial` guard at the top uses early return. The "both electives empty" case is `specific`, so it builds an empty frame and falls through. Same for the stack-on case and the success/failure branches — all assign to `frame` and reach the single `return artifact` at the end.
 
 ---
 
@@ -536,19 +536,19 @@ def simplify_policy(self, flow, state, context, tools):
         self.ambiguity.declare('partial',
             observation='Simplify needs either a section or an image to target.',
             metadata={'missing_entity': 'section_or_image'})
-        return DisplayFrame(flow.name())
+        return TaskArtifact(flow.name())
 
     if flow.slots['source'].check_if_filled():
         post_id, sec_id = self._resolve_source_ids(flow, state, tools)
         if not sec_id:
             self.flow_stack.fallback('rework')
             state.keep_going = True
-            frame = DisplayFrame(flow.name(), thoughts='Simplifying a whole post belongs to rework. Switching flows.')
+            artifact = TaskArtifact(flow.name(), thoughts='Simplifying a whole post belongs to rework. Switching flows.')
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools)
             parsed = self.engineer.apply_guardrails(text)
             if 'error' in parsed:
-                frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=parsed['error'])
+                artifact = TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=parsed['error'])
             else:
                 already_saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
                 if not already_saved:
@@ -556,11 +556,11 @@ def simplify_policy(self, flow, state, context, tools):
                     already_saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
                 if already_saved:
                     flow.status = 'Completed'
-                    frame = DisplayFrame(flow.name(), thoughts=parsed['prose'])
-                    frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+                    artifact = TaskArtifact(flow.name(), thoughts=parsed['prose'])
+                    artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
                 else:
                     thoughts = 'The simplify skill produced prose but revise_content did not persist.'
-                    frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+                    artifact = TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
     else:
         post_id = flow.slots['image'].post_id
         flow_metadata = tools('read_metadata', {'post_id': post_id})
@@ -568,18 +568,18 @@ def simplify_policy(self, flow, state, context, tools):
             self.ambiguity.declare('specific',
                 observation='The referenced image is not on this post.',
                 metadata={'missing_reference': 'image'})
-            frame = DisplayFrame(flow.name())
+            artifact = TaskArtifact(flow.name())
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools)
             parsed = self.engineer.apply_guardrails(text)
             if 'error' in parsed:
-                frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=parsed['error'])
+                artifact = TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=parsed['error'])
             else:
                 flow.status = 'Completed'
-                frame = DisplayFrame(flow.name(), thoughts=parsed['prose'])
-                frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+                artifact = TaskArtifact(flow.name(), thoughts=parsed['prose'])
+                artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
-    return frame
+    return artifact
 ```
 
 ---
@@ -594,11 +594,11 @@ def simplify_policy(self, flow, state, context, tools):
 def create_policy(self, flow, state, context, tools):
     if not flow.slots['title'].check_if_filled():
         self.ambiguity.declare('partial', metadata={'missing_entity': 'title'})
-        return DisplayFrame(flow.name())
+        return TaskArtifact(flow.name())
 
     if not flow.slots['type'].check_if_filled():
         self.ambiguity.declare('specific', metadata={'missing_slot': 'type'})
-        frame = DisplayFrame(flow.name())
+        artifact = TaskArtifact(flow.name())
     else:
         slots = flow.slot_values_dict()
         params = {'title': slots['title'], 'type': slots['type']}
@@ -612,12 +612,12 @@ def create_policy(self, flow, state, context, tools):
             state.active_post = new_id
             flow.status = 'Completed'
             block_data = {'post_id': new_id, 'title': result['title'], 'status': result['status']}
-            frame = DisplayFrame(flow.name())
-            frame.add_block({'type': 'card', 'data': block_data})
+            artifact = TaskArtifact(flow.name())
+            artifact.add_block({'type': 'card', 'data': block_data})
 
             # Chain forward: if the user gave a topic, outline next with grounding pre-filled.
             if 'topic' in slots:
-                frame.thoughts = 'Created the post, moving on to outline.'
+                artifact.thoughts = 'Created the post, moving on to outline.'
                 self.flow_stack.stackon('outline')
                 state.keep_going = True
                 outline_flow = self.flow_stack.get_flow()
@@ -628,13 +628,13 @@ def create_policy(self, flow, state, context, tools):
             self.ambiguity.declare('confirmation',
                 observation=f'A post titled "{slots["title"]}" already exists. Overwrite it, or pick a different title?',
                 metadata={'duplicate_title': slots['title']})
-            frame = DisplayFrame(flow.name())
+            artifact = TaskArtifact(flow.name())
 
         else:
             thoughts = f'Could not create the {slots["type"]}: {result["_message"]}'
-            frame = DisplayFrame(flow.name(), metadata={'violation': 'tool_error'}, thoughts=thoughts)
+            artifact = TaskArtifact(flow.name(), metadata={'violation': 'tool_error'}, thoughts=thoughts)
 
-    return frame
+    return artifact
 ```
 
 **Lessons:**
@@ -657,7 +657,7 @@ def add_policy(self, flow, state, context, tools):
     post_id, sec_id = self._resolve_source_ids(flow, state, tools)
     if not flow.slots['source'].check_if_filled() or not post_id:
         self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-        return DisplayFrame(flow.name())
+        return TaskArtifact(flow.name())
 
     any_content = (flow.slots['points'].check_if_filled()
                    or flow.slots['additions'].check_if_filled()
@@ -666,7 +666,7 @@ def add_policy(self, flow, state, context, tools):
         self.ambiguity.declare('specific',
             observation='Add needs something to insert: bullet points, a section addition, or an image.',
             metadata={'missing_slot': 'points_additions_or_image'})
-        frame = DisplayFrame(flow.name())
+        artifact = TaskArtifact(flow.name())
     else:
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
@@ -676,13 +676,13 @@ def add_policy(self, flow, state, context, tools):
 
         if content_saved or media_saved or revise_saved:
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=text)
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            artifact = TaskArtifact(flow.name(), thoughts=text)
+            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         else:
             thoughts = 'The add skill produced no insert_content, insert_media, or revise_content calls.'
-            frame = DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
+            artifact = TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=thoughts)
 
-    return frame
+    return artifact
 ```
 
 **Lessons:**
@@ -703,11 +703,11 @@ def add_policy(self, flow, state, context, tools):
 def browse_policy(self, flow, state, context, tools):
     if not flow.slots['tags'].check_if_filled():
         self.ambiguity.declare('partial', metadata={'missing_entity': 'tags'})
-        return DisplayFrame(flow.name())
+        return TaskArtifact(flow.name())
 
     if not flow.slots['target'].check_if_filled():
         self.ambiguity.declare('specific', metadata={'missing_slot': 'target'})
-        frame = DisplayFrame(flow.name())
+        artifact = TaskArtifact(flow.name())
     else:
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
@@ -724,12 +724,12 @@ def browse_policy(self, flow, state, context, tools):
 
         if saved:
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=text)
+            artifact = TaskArtifact(flow.name(), thoughts=text)
         else:
             thoughts = f'The browse skill produced no results for target "{target}".'
-            frame = DisplayFrame(flow.name(), metadata={'violation': 'empty_output'}, thoughts=thoughts)
+            artifact = TaskArtifact(flow.name(), metadata={'violation': 'empty_output'}, thoughts=thoughts)
 
-    return frame
+    return artifact
 ```
 
 **Lessons:**
@@ -1088,13 +1088,13 @@ def <flow>_policy(self, flow, state, context, tools):
     # branch: success / error / fallback / stack-on
 
     # --- build frame ---
-    frame = DisplayFrame(flow.name(), ...) or self.error_frame(...)
+    artifact = TaskArtifact(flow.name(), ...) or self.error_artifact(...)
     # add blocks, set flow.status
 
-    return frame  # one exit
+    return artifact  # one exit
 ```
 
-Early returns are allowed ONLY for `partial` / `general` ambiguity (entity-missing, gibberish). Everything else — `specific`, `confirmation`, stack-on, fallback, success, error — assigns to `frame` and flows to the final `return frame`.
+Early returns are allowed ONLY for `partial` / `general` ambiguity (entity-missing, gibberish). Everything else — `specific`, `confirmation`, stack-on, fallback, success, error — assigns to `frame` and flows to the final `return artifact`.
 
 #### Lesson 2 — Guard composition (pick what applies)
 
@@ -1103,7 +1103,7 @@ Early returns are allowed ONLY for `partial` / `general` ambiguity (entity-missi
 - **Disjunction entity** — if/elif/else when the flow has two entity axes (source vs. image, tag vs. note). From Simplify / Browse.
 - **Elective "at-least-one-of"** — `specific` when all N electives are empty (two-way from Compose, three-way from Add, generalizable to N).
 - **Confirmation** — `confirmation` with `observation=...` + metadata for candidate-awaiting-signoff cases (duplicate title, overwrite). From Create.
-- **Prerequisite stack-on** — if a precondition needs a sibling flow, `stackon('<name>') + state.keep_going = True + frame.thoughts = <reason>`. From Compose / Refine.
+- **Prerequisite stack-on** — if a precondition needs a sibling flow, `stackon('<name>') + state.keep_going = True + artifact.thoughts = <reason>`. From Compose / Refine.
 - **Forward stack-on** — after a successful deterministic operation, chain the next flow with slot pre-population. From Create.
 - **Scope-mismatch fallback** — `flow_stack.fallback('<sibling>')` when the request is at the wrong granularity. From Simplify.
 
@@ -1125,14 +1125,14 @@ Early returns are allowed ONLY for `partial` / `general` ambiguity (entity-missi
 
 #### Lesson 5 — Error-frame construction (universal)
 
-- Use `self.error_frame(flow, violation, thoughts, code, **extra_metadata)`.
+- Use `self.error_artifact(flow, violation, thoughts, code, **extra_metadata)`.
 - `origin=flow.name()` always (convention #12). Never `'error'`; never bare strings.
 - `metadata['violation']` in the 8-item vocab: `failed_to_save`, `scope_mismatch`, `missing_reference`, `parse_failure`, `empty_output`, `invalid_input`, `conflict`, `tool_error`.
 - Keep `metadata` sparse (convention #6). Prose goes in `thoughts`; raw payloads go in `code`.
 
 #### Lesson 6 — Success-frame construction
 
-- `frame = DisplayFrame(flow.name(), thoughts=text)` — minimal shape.
+- `artifact = TaskArtifact(flow.name(), thoughts=text)` — minimal shape.
 - Add a block only when there's UI data to render: `card` for post edits, `list` / `selection` for search results, `toast` for publishes, `compare` for diffs.
 - Set `flow.status = 'Completed'` before returning.
 
@@ -1144,20 +1144,20 @@ Early returns are allowed ONLY for `partial` / `general` ambiguity (entity-missi
 
 #### Lesson 8 — `BasePolicy` helpers
 
-`llm_execute`, `_resolve_source_ids`, `_build_resolved_context`, `_read_post_content`, `resolve_post_id`, `_persist_section`, `_persist_outline`, `error_frame`, `retry_tool`, `engineer.tool_succeeded`.
+`llm_execute`, `_resolve_source_ids`, `_build_resolved_context`, `_read_post_content`, `resolve_post_id`, `_persist_section`, `_persist_outline`, `error_artifact`, `retry_tool`, `engineer.tool_succeeded`.
 
 #### Lesson 9 — Universal conventions (all 12)
 
 1. Don't defend deterministic code (direct dict access, not `.get()` with defaults).
 2. No defaults that hide errors (`text or ''`, `parsed or {}` are banned).
 3. Slot priorities are definitional — trust `flow.is_filled()`.
-4. Build `thoughts` / `metadata` first, then one-line `DisplayFrame(...)`.
+4. Build `thoughts` / `metadata` first, then one-line `TaskArtifact(...)`.
 5. `code` holds payloads; `thoughts` holds prose.
 6. Metadata is classification-only; no detailed explanations.
 7. `ambiguity.declare` uses `observation=` for human text; metadata is classification.
 8. Never invent new keys without approval.
 9. Standard variable names (`flow_metadata`, `text, tool_log`, `parsed`, `saved`).
-10. No em-dashes in `frame.thoughts` (user-facing).
+10. No em-dashes in `artifact.thoughts` (user-facing).
 11. Single return at end; early returns only for `partial` / `general`.
 12. `origin` is always `flow.name()`.
 
@@ -1224,8 +1224,8 @@ These three intents share a trait: flows are slot-light or orchestration-heavy, 
 Every flow after Phase 4 must satisfy:
 
 - **Structural**: imports + constructs cleanly; `flow_classes[name]()` doesn't raise.
-- **Contract**: policy returns a `DisplayFrame` (never `None`, never a raw dict) on every code path, per MEMORY.md module-contracts rule.
-- **AD-6**: every tool call result check emits an error frame with `origin=flow.name()` + `metadata['violation']` from the 8-item vocab. No bare `frame.thoughts = err_msg` anywhere. No `origin='error'` sentinel.
+- **Contract**: policy returns a `TaskArtifact` (never `None`, never a raw dict) on every code path, per MEMORY.md module-contracts rule.
+- **AD-6**: every tool call result check emits an error artifact with `origin=flow.name()` + `metadata['violation']` from the 8-item vocab. No bare `artifact.thoughts = err_msg` anywhere. No `origin='error'` sentinel.
 - **AD-1**: any scratchpad write uses the `{version, turn_number: context.turn_id, used_count, …}` shape, keyed by bare flow name.
 - **Skill file** (if agentic): frontmatter + six sections + Option C trajectories; `test_skill_frontmatter.py` + `test_skill_tool_alignment.py` pass.
 
@@ -1240,11 +1240,11 @@ Resolution of `error_recovery_proposal.md` decision points, translated to Part 3
 | DP | Recommendation | Status | Part 3 action |
 |---|---|---|---|
 | **DP-1** (`RecoveryAction` enum) | Option B: remove entirely | landed | Phase 2 |
-| **DP-2** (`classify_error` location) | Option A: `PromptEngineer.classify_error` | dropped | `classify_error` is not needed — `_validate_frame` inspects `violation` + `tool_log` directly |
-| **DP-3** (`_validate_frame` dispatch) | Dispatch by `violation` + `tool_log`: short-circuit for `tool_error` with empty log; Tier 2 for `parse_failure`/`empty_output`/`invalid_input`; Tier 2→1 for `failed_to_save` with tool calls | landed | Phase 2 |
+| **DP-2** (`classify_error` location) | Option A: `PromptEngineer.classify_error` | dropped | `classify_error` is not needed — `_validate_artifact` inspects `violation` + `tool_log` directly |
+| **DP-3** (`_validate_artifact` dispatch) | Dispatch by `violation` + `tool_log`: short-circuit for `tool_error` with empty log; Tier 2 for `parse_failure`/`empty_output`/`invalid_input`; Tier 2→1 for `failed_to_save` with tool calls | landed | Phase 2 |
 | **DP-4** (retry helper placement) | Option A: `BasePolicy.retry_tool`, called from inside policy | landed | Phase 5 (release only) |
 | **DP-5** (fallback) | Option B: flow-level via existing `FlowStack.fallback`; slot-level chains dropped | landed | Part 3 codifies usage (simplify/rework scope-mismatch); no new structure |
-| **DP-6** (user-facing copy) | Option A: RES templates | landed | RES keys per-flow templates off `frame.origin`; detects error frames via `'violation' in metadata`. `backend/modules/templates/errors.py` is follow-up. |
+| **DP-6** (user-facing copy) | Option A: RES templates | landed | RES keys per-flow templates off `artifact.origin`; detects error artifacts via `'violation' in metadata`. `backend/modules/templates/errors.py` is follow-up. |
 | **DP-7** (auto-dump) | Option C: env-gated | landed | Not in Part 3; revisit when `database/telemetry/` exists |
 | **DP-8** (commented Tier 2/3) | Option C: **revive with tightened triggers** | landed | Phase 2 un-comments both tiers; gates them on `violation` vocabulary |
 
@@ -1257,17 +1257,17 @@ Resolution of `error_recovery_proposal.md` decision points, translated to Part 3
 - **Rephrase (two variants)** — Tier 1 (feedback retry, existing) + Tier 2 (context-aided retry: `retrieve` + `search` then Tier 1, revived). Tier 2 fires for `{invalid_input, parse_failure, empty_output}` and for `failed_to_save` with non-empty `tool_log` (semantic drift).
 - **Re-route (two variants)** —
   - Policy-directed: `FlowStack.fallback('<name>')` (e.g. `polish→rework` existing; `simplify→rework` newly codified). `FlowStack.stackon(...)` for prerequisites (refine/compose → outline, existing).
-  - NLU-directed: `pex.recover` Tier 3 calls `NLU.contemplate()` (revived). Fires as follow-on to failed Tier 1 on flow-mis-selection-shaped malformations, or when `_validate_frame` detects a `missing_reference` that's really a wrong-flow signal.
+  - NLU-directed: `pex.recover` Tier 3 calls `NLU.contemplate()` (revived). Fires as follow-on to failed Tier 1 on flow-mis-selection-shaped malformations, or when `_validate_artifact` detects a `missing_reference` that's really a wrong-flow signal.
 - **Re-plan** — Plan-family flows, out of scope for Part 3.
-- **Escalate (two variants)** — error `DisplayFrame(flow.name(), metadata={'violation': ...}, thoughts=...)` (AD-6 terminal) + `pex.recover` Tier 4 `ambiguity.declare('partial', ...)` (existing). **Note: app-crash handling is beyond 4RE** — try-catch at `Agent.take_turn` + standard system message; engineering concern, not a recovery mechanism (see `error_recovery_proposal.md § 5.9`).
+- **Escalate (two variants)** — error `TaskArtifact(flow.name(), metadata={'violation': ...}, thoughts=...)` (AD-6 terminal) + `pex.recover` Tier 4 `ambiguity.declare('partial', ...)` (existing). **Note: app-crash handling is beyond 4RE** — try-catch at `Agent.take_turn` + standard system message; engineering concern, not a recovery mechanism (see `error_recovery_proposal.md § 5.9`).
 
-**Dispatch summary (inside `_validate_frame`):**
+**Dispatch summary (inside `_validate_artifact`):**
 
 ```
-if 'violation' not in frame.metadata:               # non-error frame
+if 'violation' not in artifact.parts:               # non-error artifact
     run full Tier 1 ladder on malformed output
 elif violation == 'tool_error' and not tool_log:    # short-circuit
-    return frame as-is
+    return artifact as-is
 elif violation in {'parse_failure', 'empty_output', 'invalid_input'}:
     Tier 2 gather-context → Tier 1 rephrase
 elif violation == 'failed_to_save' and tool_log:    # semantic drift
@@ -1290,9 +1290,9 @@ Seven phases (5 was, 7 is — Phase 4 split into 4a/4b/4c for the all-48-flows s
 
 **Phase 0b — `generate_section` tool migration (landed; ✅).** New tool in `ContentService.generate_section(post_id, sec_id, content)` — appends when `sec_id` is new, replaces when it matches (with rename detection). Registered in `schemas/tools.yaml` and `pex.py` tool registry. `RefineFlow.tools` now lists `generate_section` + `generate_outline` instead of `merge_outline`. `refine_policy` checks both tools' `tool_succeeded` (either counts as saved). `merge_outline` stays registered as legacy; the policy no longer requires it. **Test migration pending:** `utils/tests/policy_evals/test_refine_policy.py`, `utils/tests/unit_tests.py`, and `utils/tests/e2e_agent_evals.py` assert on `merge_outline` — those fixtures need updating to `generate_section` before Phase 3 finishes.
 
-**Phase 1 — uniform AD-6 metadata sweep (~60 LOC across `draft.py`, `revise.py`, `publish.py`, `research.py`).** For every error `DisplayFrame` site in the 12 exemplar flows: (a) move the flow name from `metadata['flow']` (if present) or from `origin='error'` to `origin=flow.name()`; (b) ensure `metadata['violation']` is one of the 8-item vocabulary; (c) normalize `'missing_ground'` → `'missing_entity'`. No `classify_error` helper — `_validate_frame` inspects `violation` + `tool_log` directly. Greens: `test_*_policy.py` (update assertions to the new keys); `test_skill_tool_alignment.py`, `test_skill_frontmatter.py`.
+**Phase 1 — uniform AD-6 metadata sweep (~60 LOC across `draft.py`, `revise.py`, `publish.py`, `research.py`).** For every error `TaskArtifact` site in the 12 exemplar flows: (a) move the flow name from `metadata['flow']` (if present) or from `origin='error'` to `origin=flow.name()`; (b) ensure `metadata['violation']` is one of the 8-item vocabulary; (c) normalize `'missing_ground'` → `'missing_entity'`. No `classify_error` helper — `_validate_artifact` inspects `violation` + `tool_log` directly. Greens: `test_*_policy.py` (update assertions to the new keys); `test_skill_tool_alignment.py`, `test_skill_frontmatter.py`.
 
-**Phase 2 — `pex.py` rework per `error_recovery_proposal.md` (~60 LOC net, mix of additions + removals).** `_validate_frame` dispatches via `violation` + `tool_log` per the § 6 dispatch summary. Delete `RecoveryAction` enum (DP-1 B). **Revive** Tier 2 (gather-context via `retrieve` + `search`) and Tier 3 (NLU `contemplate` re-route) — both gated on the `violation` vocabulary (DP-8 C). Drop the invalid `ambiguity.declare('reroute', ...)` call in Tier 3; replace with direct flow-swap + re-execute. Delete legacy `block_data.status == 'error'` branch in `_merge_block_data` (Open Q 2, confirmed legacy). Greens: `e2e_agent_evals.py` step 14; new unit tests for Tier 2 and Tier 3 trigger conditions.
+**Phase 2 — `pex.py` rework per `error_recovery_proposal.md` (~60 LOC net, mix of additions + removals).** `_validate_artifact` dispatches via `violation` + `tool_log` per the § 6 dispatch summary. Delete `RecoveryAction` enum (DP-1 B). **Revive** Tier 2 (gather-context via `retrieve` + `search`) and Tier 3 (NLU `contemplate` re-route) — both gated on the `violation` vocabulary (DP-8 C). Drop the invalid `ambiguity.declare('reroute', ...)` call in Tier 3; replace with direct flow-swap + re-execute. Delete legacy `block_data.status == 'error'` branch in `_merge_block_data` (Open Q 2, confirmed legacy). Greens: `e2e_agent_evals.py` step 14; new unit tests for Tier 2 and Tier 3 trigger conditions.
 
 **Phase 3 — six exemplar policy + skill edits (~160 LOC across `draft.py`, `revise.py`, `publish.py`, `research.py`, skill files for refine/compose/simplify/add/browse).** Lands § 4.1–4.6. Greens: `test_refine_policy.py`, `test_compose_policy.py`, `test_simplify_policy.py`, `test_create_policy.py`, `test_add_policy.py`, `test_browse_policy.py` with new fixture rows; `e2e_agent_evals.py` steps exercising these six.
 
@@ -1308,7 +1308,7 @@ Optional follow-up tasks (not gated on this plan):
 
 - AD-10 prompt caching in `PromptEngineer._call_claude` (pure additive win).
 - AD-9 `flow.llm_quality_check` opt-in.
-- `BasePolicy.error_frame(...)` helper — only if ≥5 call-sites want identical construction; track post-Phase-4c.
+- `BasePolicy.error_artifact(...)` helper — only if ≥5 call-sites want identical construction; track post-Phase-4c.
 - `backend/modules/templates/errors.py` (DP-6 follow-up) — `violation` → user-facing copy map in RES.
 - App-crash try-catch at `Agent.take_turn` (engineering scope per § 5.9 of the proposal).
 - Align `error_recovery_proposal.md § 5.3` with the `error_class`-dropped dispatch.
@@ -1319,15 +1319,15 @@ Rough total surface: ~1,000 LOC changed across ~10 policy/component files + ~25 
 
 ## 8. Risk register
 
-1. **`_validate_frame` dispatch-by-violation changes PEX behavior for existing error frames.** The old `_validate_frame` flagged AD-6 error frames as "no data" (`pex.py:184-185`) and triggered `recover` Tier 1 unconditionally. Post-fix, behavior splits by `violation` + `tool_log`. Any policy today that relies on Tier 1 auto-retry masking a tool failure will break — exactly the kind of silent failure this phase is meant to surface. Mitigation: run full `e2e_agent_evals.py` before and after Phase 2; investigate any step that changed from pass to fail.
+1. **`_validate_artifact` dispatch-by-violation changes PEX behavior for existing error artifacts.** The old `_validate_artifact` flagged AD-6 error artifacts as "no data" (`pex.py:184-185`) and triggered `recover` Tier 1 unconditionally. Post-fix, behavior splits by `violation` + `tool_log`. Any policy today that relies on Tier 1 auto-retry masking a tool failure will break — exactly the kind of silent failure this phase is meant to surface. Mitigation: run full `e2e_agent_evals.py` before and after Phase 2; investigate any step that changed from pass to fail.
 
 2. **Metadata-key reclassification** (`missing_ground` → `missing_entity`; `origin='error'` → `origin=flow.name()`; drop `metadata['flow']` and `metadata['error_class']`). Downstream RES templates may key on the old metadata shapes. Mitigation: `grep` RES templates for `missing_ground` / `origin == 'error'` / `metadata['flow']` / `error_class` usages before Phase 1; update in lockstep.
 
-3. **Simplify `needs_clarification` hoist double-handles the signal.** Today the skill's JSON reaches the user via `frame.thoughts`; the new policy parse declares `confirmation` *and* returns an empty frame. If the RES template still reads `frame.thoughts` for simplify, the user loses the clarifying question. Mitigation: verify the RES simplify path uses `ambiguity.ask()` (likely — that's the 4-level handler contract); add an `e2e` assertion.
+3. **Simplify `needs_clarification` hoist double-handles the signal.** Today the skill's JSON reaches the user via `artifact.thoughts`; the new policy parse declares `confirmation` *and* returns an empty frame. If the RES template still reads `artifact.thoughts` for simplify, the user loses the clarifying question. Mitigation: verify the RES simplify path uses `ambiguity.ask()` (likely — that's the 4-level handler contract); add an `e2e` assertion.
 
 4. **Compose `failed_to_save` backstop false-positives.** If the user says "no sections are worth composing, explain why", the skill should return text without any `revise_content` calls, and the new backstop will error. Mitigation: fold the "explain why and call no tools" path into the skill `## Important` bullet — the skill's summary text is fine; the error is only raised when at least one section was in scope.
 
-5. **`read_metadata` failure branches change flow semantics.** Today refine/compose silently continue. Adding explicit error frames makes previously-hidden failures visible — some E2E runs that were quietly passing may now report errors. Mitigation: this is the correct behavior; treat any regression as a real bug and fix the tool or the test setup, not the policy.
+5. **`read_metadata` failure branches change flow semantics.** Today refine/compose silently continue. Adding explicit error artifacts makes previously-hidden failures visible — some E2E runs that were quietly passing may now report errors. Mitigation: this is the correct behavior; treat any regression as a real bug and fix the tool or the test setup, not the policy.
 
 6. **Reclassifying `create`'s duplicate-title to `confirmation`.** `fixes/_interfaces.md` currently says duplicate-title is `specific`. User has confirmed revert to `confirmation`. Mitigation: Phase 3 updates `draft.py:287` and the interface doc in lockstep so future readers don't re-reclassify.
 
@@ -1339,7 +1339,7 @@ Rough total surface: ~1,000 LOC changed across ~10 policy/component files + ~25 
 
 10. **App-crash try-catch at `Agent.take_turn` is NOT in Part 3.** 4RE covers failures the agent observes; app-crash handling is engineering scope (separate commit, likely in Part 4 when telemetry wiring lands). If a production turn crashes during Part 3 rollout, we still get a Python traceback with no user message — mitigated today by the frontend showing "something went wrong" generically. Flag for follow-up, not a Part 3 blocker.
 
-11. **Scope expansion to all 48 flows (Phases 4b + 4c) touches code the 14-step eval doesn't exercise.** Non-eval flows may have latent bugs that template application surfaces (e.g. a Converse flow that silently swallowed tool failures will now return an error frame — correct behavior, but newly visible). Mitigation: Phase 4b/4c add an `import + construct` smoke test for every flow; regressions in non-eval flows are treated as new bugs, not rollback triggers for the template work. Part 5 tunes any flow whose first-draft policy needs refinement based on Part 4 evals + Part 5a HITL feedback.
+11. **Scope expansion to all 48 flows (Phases 4b + 4c) touches code the 14-step eval doesn't exercise.** Non-eval flows may have latent bugs that template application surfaces (e.g. a Converse flow that silently swallowed tool failures will now return an error artifact — correct behavior, but newly visible). Mitigation: Phase 4b/4c add an `import + construct` smoke test for every flow; regressions in non-eval flows are treated as new bugs, not rollback triggers for the template work. Part 5 tunes any flow whose first-draft policy needs refinement based on Part 4 evals + Part 5a HITL feedback.
 
 12. **Plan flows' orchestration semantics unclear without Part 4 eval coverage.** Phase 4c applies the template to Plan flows (`triage`, `blueprint`, etc.) but the 14-step eval doesn't exercise them. First-draft policies may be structurally correct but semantically under-tested. Mitigation: Part 5 picks up Plan flows once Part 4 adds Plan-specific eval coverage; Phase 4c ships the template application and flags the eval gap.
 

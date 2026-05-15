@@ -92,7 +92,7 @@ Implement model-agnostic LLM interface.
 
 Implement the data-display decoupling layer.
 
-**File**: `backend/components/display_frame.py`
+**File**: `backend/components/task_artifact.py`
 
 **Implement**:
 - **Common attributes**: `data`, `code`, `source`, `display_name`, `display_type`
@@ -101,7 +101,7 @@ Implement the data-display decoupling layer.
 - **Domain-specific attributes**: Extension point for domain-specific fields (e.g., `shadow`, `visual` for data analysis)
 - **One frame = one block rule**: Each frame maps to exactly one block per turn
 
-**Reference**: [display_frame.md](../components/display_frame.md)
+**Reference**: [task_artifact.md](../components/task_artifact.md)
 
 ### Step 6 — Ambiguity Handler
 
@@ -171,7 +171,7 @@ Implement the policy execution engine.
 
 **Implement**:
 - **Constructor**: `PEX(config, ambiguity, engineer, memory, world)` — receives World, accesses flow stack via `world.flow_stack`. Stores `self.flow_stack` for convenience. Components dict passes `'config': config` (not `'world': world`).
-- **`execute(state, context)`**: Takes DialogueState and ContextCoordinator as parameters. Gets active flow from flow stack (does NOT push flows — NLU handles that). Returns `tuple[DisplayFrame, bool]`.
+- **`execute(state, context)`**: Takes DialogueState and ContextCoordinator as parameters. Gets active flow from flow stack (does NOT push flows — NLU handles that). Returns `tuple[TaskArtifact, bool]`.
 - **`_tools` dict**: Domain tools registered as `(service_instance, method_name)` tuples. Dispatch via `getattr(service, method_name)(**tool_input)`.
 - **`get_tools_for_flow(flow)`**: Takes a flow instance (not `flow_name, flow_info`). Combines component tool definitions with flow's declared tools from config manifest.
 - **`_check(flow, context)` pre-hook**: Reads required slots from `flow.slots` (slot objects with `.priority` and `.filled`). Fills missing slots via `flow.fill_slot_values({name: value})`. Lethal Trifecta gate on tool capabilities.
@@ -194,7 +194,7 @@ Implement the response generator.
 
 **Implement**:
 - **Constructor**: `RES(config, ambiguity, engineer, world)` — receives World, accesses state via `world.current_state()`, flow stack via `world.flow_stack`, context via `world.context`
-- **Output**: Returns `tuple[str, DisplayFrame]`. Handles unsupported flow messages (detects `active.result.get('unsupported')`).
+- **Output**: Returns `tuple[str, TaskArtifact]`. Handles unsupported flow messages (detects `active.result.get('unsupported')`).
 - **`start()` pre-hook** — 4 checks: pop Completed flows (retain as full objects), snapshot trigger (>1 completed), pop Invalid flows, stack integrity
 - **`respond()`** — entry point. Routes to generate/clarify/display via lightweight Haiku call. May invoke multiple sub-functions per turn.
 - **`generate()`**:
@@ -263,7 +263,7 @@ On failure: set `has_issues`, emit signal, return to Agent.
 | Modify | `<domain>/backend/components/flow_stack/` | Full implementation (stack.py, slots.py, parents.py, flows.py, __init__.py) |
 | Modify | `<domain>/backend/components/context_coordinator.py` | Full implementation |
 | Modify | `<domain>/backend/components/prompt_engineer.py` | Full implementation |
-| Modify | `<domain>/backend/components/display_frame.py` | Full implementation |
+| Modify | `<domain>/backend/components/task_artifact.py` | Full implementation |
 | Modify | `<domain>/backend/components/ambiguity_handler.py` | Full implementation |
 | Modify | `<domain>/backend/components/memory_manager.py` | Full implementation |
 | Modify | `<domain>/backend/modules/nlu.py` | Full implementation |

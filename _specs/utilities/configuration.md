@@ -242,7 +242,7 @@ display:
   types: [Default]                  # minimal; domains extend
   chart_types: [bar, line]          # common chart types
   page_size: 512                   # rows before pagination
-                                    # (ref: display_frame.md § Pagination)
+                                    # (ref: task_artifact.md § Pagination)
 
 thresholds:
   stream_threshold_tokens: 200      # above this, RES streams response

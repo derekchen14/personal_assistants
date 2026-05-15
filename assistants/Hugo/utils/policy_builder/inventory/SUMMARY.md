@@ -58,7 +58,7 @@ The new 14-step sequence has `inspect → find → audit → polish` as a chain 
 - `find.md` — list block too thin; audit and polish can't cite specific prior posts.
 - `audit.md` — findings buried in `thoughts`; downstream polish can't retrieve them.
 
-**Resolved (AD-1 + AD-2):** cross-turn channel = scratchpad with key convention (`key=flow_name`, required fields `version` / `turn_number` / `used_count`). No new `DialogueState` / `DisplayFrame` attributes. No "informed" stage on polish — the skill always reads conversation history + scratchpad and behaves accordingly.
+**Resolved (AD-1 + AD-2):** cross-turn channel = scratchpad with key convention (`key=flow_name`, required fields `version` / `turn_number` / `used_count`). No new `DialogueState` / `TaskArtifact` attributes. No "informed" stage on polish — the skill always reads conversation history + scratchpad and behaves accordingly.
 
 ## Theme 6 — Stack-on and recursion risk
 
@@ -72,10 +72,10 @@ The new 14-step sequence has `inspect → find → audit → polish` as a chain 
 
 Observed near-verbatim in almost every policy (see inventory files for line refs):
 
-- `if not flow.slots[<slot>].check_if_filled(): self.ambiguity.declare(...); return DisplayFrame()` — candidate for `self.guard_slot(flow, slot_name, level)`
+- `if not flow.slots[<slot>].check_if_filled(): self.ambiguity.declare(...); return TaskArtifact()` — candidate for `self.guard_slot(flow, slot_name, level)`
 - `[tc for tc in tool_log if tc.get('tool') == X]` + success-check — candidate for `self.engineer.tool_succeeded(tool_log, name)`
-- `flow.status = 'Completed'; frame = DisplayFrame(origin=X); frame.add_block({'type': 'card', ...})` — candidate for `self.complete_with_card(flow, post_id, tools)`
-- `self.flow_stack.stackon('outline'); state.keep_going = True; return DisplayFrame()` — candidate for `self.stack_on('outline', state)`
+- `flow.status = 'Completed'; artifact = TaskArtifact(origin=X); artifact.add_block({'type': 'card', ...})` — candidate for `self.complete_with_card(flow, post_id, tools)`
+- `self.flow_stack.stackon('outline'); state.keep_going = True; return TaskArtifact()` — candidate for `self.stack_on('outline', state)`
 
 **Implication for Part 3:** `fixes/_shared.md` should extract these helpers with line-refs to every call-site they replace.
 

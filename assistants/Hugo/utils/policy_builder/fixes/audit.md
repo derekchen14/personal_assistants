@@ -37,7 +37,7 @@
 
 ### Threshold breach → `confirmation` ambiguity with findings preview
 
-- **What changed:** When `sections_affected / total_sections > threshold` (default 0.2), the policy declares `ambiguity.declare('confirmation', metadata={'reason': 'audit_threshold_exceeded', 'pct': round(pct, 2), 'threshold': threshold, 'findings_preview': findings[:3]})` and returns `DisplayFrame()`. The preview carries the top-3 findings so the spoken confirmation question can reference what triggered the escalation ("I found a few issues during the audit, would you like me to go ahead and polish section X?").
+- **What changed:** When `sections_affected / total_sections > threshold` (default 0.2), the policy declares `ambiguity.declare('confirmation', metadata={'reason': 'audit_threshold_exceeded', 'pct': round(pct, 2), 'threshold': threshold, 'findings_preview': findings[:3]})` and returns `TaskArtifact()`. The preview carries the top-3 findings so the spoken confirmation question can reference what triggered the escalation ("I found a few issues during the audit, would you like me to go ahead and polish section X?").
 - **Why:** `_theme4_feedback.md § audit` confirmed this path stays in `AmbiguityHandler` per AD-6 Section 3 (genuine ambiguous user intent — user must decide whether to apply changes).
 - **Theme:** Theme 4 (error-path gaps) refinement.
 - **Files touched:**
@@ -47,7 +47,7 @@
 
 - **What changed:** If `apply_guardrails` cannot return a dict with a `findings` key, the policy returns
   ```python
-  DisplayFrame(
+  TaskArtifact(
       origin='error',
       metadata={'contract_violation': 'audit_findings_missing'},
       code=text or 'Audit produced no structured findings.',
@@ -70,9 +70,9 @@
 ## Architectural decisions applied
 
 - **AD-1** (scratchpad channel) — producer write under key `'audit'`, convention-compliant.
-- **AD-5** (terminology) — policy "declares ambiguity" on threshold breach, "returns an error frame" on contract violation; no "fires" language.
+- **AD-5** (terminology) — policy "declares ambiguity" on threshold breach, "returns an error artifact" on contract violation; no "fires" language.
 - **AD-6** (three failure modes):
-  - Parse/contract failure → `DisplayFrame(origin='error', metadata={'contract_violation': ...}, code=raw_text)`. Not ambiguity.
+  - Parse/contract failure → `TaskArtifact(origin='error', metadata={'contract_violation': ...}, code=raw_text)`. Not ambiguity.
   - Threshold breach → `AmbiguityHandler` `confirmation` level (legitimate user-intent ambiguity).
   - Tool-call failure is not yet explicitly scanned (the `editor_review` / `compare_style` calls could fail); treated as skill output contract violation today.
 

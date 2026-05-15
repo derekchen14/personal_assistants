@@ -10,7 +10,7 @@ Three tiers with increasing fidelity and decreasing speed:
 2. **E2E CLI harness** — full turn pipeline (NLU → PEX → RES), LLM-driven, tool calls to real services where possible. ~5 min for the 14-step sequence. Uses existing `utils/tests/e2e_agent_evals.py`, extended with the new rubric fields below.
 3. **Playwright UI tier** — drives `http://localhost:5174` in a real browser. Catches "backend says fine, UI doesn't render / button doesn't work" bugs. Slowest tier (~10 min expected). Lives in `utils/tests/playwright_evals.py`.
 
-Each tier uses the **same rubric keys** but asserts at different scope: Tier 1 on the returned `DisplayFrame`; Tier 2 on `result['frame']` after the full pipeline; Tier 3 on the rendered DOM. Consistency across tiers makes a failure at one tier diagnostic for the tier above.
+Each tier uses the **same rubric keys** but asserts at different scope: Tier 1 on the returned `TaskArtifact`; Tier 2 on `result['frame']` after the full pipeline; Tier 3 on the rendered DOM. Consistency across tiers makes a failure at one tier diagnostic for the tier above.
 
 The three-tier split is the "deterministic core, agentic shell" principle applied to testing ([davemo.com](https://blog.davemo.com/posts/2026-02-14-deterministic-core-agentic-shell.html), cited in `best_practices.md § 8`). Tier 1 is the deterministic core; Tiers 2/3 are the agentic shell. The "discovery deterministic, interpretation LLM" rule ([DEV — Deterministic vs. LLM Evaluators](https://dev.to/anshd_12/deterministic-vs-llm-evaluators-a-2026-technical-trade-off-study-11h)) is why Tier 1 has no LLM-as-judge rubric and Tier 2 does.
 
@@ -24,7 +24,7 @@ The three-tier split is the "deterministic core, agentic shell" principle applie
   2. Build a stub `FlowStack` with the target flow already active at the top.
   3. Stub `tools` so tool calls return canned results (no network, no LLM).
   4. Call `<Intent>Policy.<flow>_policy(flow, state, context, tools)` directly.
-  5. Assert on the returned `DisplayFrame` (origin, blocks, metadata, code) plus `flow.status` plus the tool log.
+  5. Assert on the returned `TaskArtifact` (origin, blocks, metadata, code) plus `flow.status` plus the tool log.
 
 - **Required fixtures (module-level signatures):**
   - `make_state(active_post=None, keep_going=False, has_issues=False, has_plan=False, pred_intent=None)` — returns a `DialogueState` with the given top-level fields set.
@@ -69,7 +69,7 @@ The three-tier split is the "deterministic core, agentic shell" principle applie
 - **New rubric fields** (from Theme 4 and Theme 5, add per step as applicable):
   - `expected_frame_origin: str` — the flow name on the happy path, `'error'` on the AD-6 tool-failure / contract-violation path. Step 14 already sets this to `'error'` (per `fixes/release.md § Eval rubric aligned with AD-6`). Step 11 should set this to `'audit'` on the happy path and `'error'` with `expected_contract_violation='audit_findings_missing'` on the contract-violation path (cited in `fixes/_interfaces.md § AD-6` and `fixes/audit.md § Changes that landed`).
   - `expected_tool_error: set[str]` — only set when `expected_frame_origin='error'`. The union of tool names whose failure the step explicitly anticipates. Step 14 uses `{'channel_status', 'release_post'}` (per `fixes/release.md`).
-  - `expected_contract_violation: str | None` — the expected value of `frame.metadata['contract_violation']` when the skill output fails JSON-shape validation (AD-6 Section 2; cited in `fixes/_interfaces.md § AD-6`). Applies to audit step 11 and refine steps 3/4 as an error-path-only assertion.
+  - `expected_contract_violation: str | None` — the expected value of `artifact.parts['contract_violation']` when the skill output fails JSON-shape validation (AD-6 Section 2; cited in `fixes/_interfaces.md § AD-6`). Applies to audit step 11 and refine steps 3/4 as an error-path-only assertion.
   - `expected_scratchpad_keys: list[str]` — scratchpad keys that MUST exist after this step per AD-1 (producers: `inspect`, `find`, `audit`; cited in `fixes/_interfaces.md § AD-1`). Step 10 expects `['inspect']`, step 11 expects `['inspect', 'audit']`, step 13 expects `['inspect', 'audit', 'find']`, step 9 (the polish consumer — but step 9 is before the producers in the linear sequence so it won't trigger consumption; defer to Phase 2 of migration when the informed-polish scenario lands).
 
 - **Assertion back-references.** For every new rubric field, the inline comment cites the inventory file and the `fixes/<flow>.md` section. Example:
@@ -90,7 +90,7 @@ CLI validates `result['frame']` — the serialized payload. It can't see what th
 - **Selection blocks are clickable.** The outline propose → select path (02a → 02b) depends on clicking option 2 and emitting the right payload; CLI simulates the utterance, Playwright exercises the real click.
 - **Confirmation buttons emit the right payload.** For confirmation-ambiguity flows (`audit` threshold-exceeded per `fixes/_interfaces.md § PEX ↔ AmbiguityHandler`), the UI test verifies the button emits `{keep_going:True, payload:{...}}` correctly.
 - **Toast messages surface.** The `release` happy path writes `level='success'` (per `fixes/release.md § Success path`); a template regression could hide it.
-- **Error-origin frames render a user-visible notice.** AD-6 error frames have `origin='error'` and empty `blocks` — a front-end defaulting to `blocks || []` would white-screen instead of surfacing the tool-error message.
+- **Error-origin frames render a user-visible notice.** AD-6 error artifacts have `origin='error'` and empty `blocks` — a front-end defaulting to `blocks || []` would white-screen instead of surfacing the tool-error message.
 
 ### Driver structure
 
@@ -190,7 +190,7 @@ For each flow, the unit test file verifies at least the following inventory-cite
 |---|---|---|
 | create | `create_post` called exactly once; duplicate-title → `ambiguity.declare('specific', {'missing_slot':'topic'})`; skill is not invoked | `inventory/create.md § Persistence calls, § Ambiguity patterns`; `fixes/_interfaces.md § PEX ↔ AmbiguityHandler` |
 | outline | Propose mode excludes `generate_outline` + `merge_outline`; direct mode calls `generate_outline`; self-recurses at most once (AD-3) | `inventory/outline.md § Propose mode, § Staging`; `fixes/_interfaces.md § AD-3` |
-| refine | Append-intent uses `merge_outline`; removal-intent uses `generate_outline`; shrink-without-removal → contract-violation error frame | `inventory/refine.md § Known gaps`; `fixes/refine.md § Changes that landed` |
+| refine | Append-intent uses `merge_outline`; removal-intent uses `generate_outline`; shrink-without-removal → contract-violation error artifact | `inventory/refine.md § Known gaps`; `fixes/refine.md § Changes that landed` |
 | compose | Per-section preview included in resolved context; stack-on `outline` when sections missing | `inventory/compose.md § Tool plan, § Stack-on` |
 | rework | `_mark_suggestions_done` ticks each completed suggestion; suggestion / remove slots pass through to skill | `inventory/rework.md § Known gaps`; `fixes/_shared.md § RevisePolicy._mark_suggestions_done` |
 | simplify | No double-persist — only policy's `_persist_section` writes | `inventory/simplify.md § Persistence calls` |
@@ -198,8 +198,8 @@ For each flow, the unit test file verifies at least the following inventory-cite
 | polish | Structural-issue fallback → `flow_stack.fallback('rework')` + `state.keep_going=True`; consumer reads scratchpad and bumps `used_count` | `inventory/polish.md § Stack-on triggers`; `fixes/_interfaces.md § AD-1` |
 | inspect | Scratchpad write: `{version, turn_number, used_count:0, metrics:...}` keyed on `'inspect'` | `inventory/inspect.md § Frame shape`; `fixes/_interfaces.md § AD-1` |
 | find | List block carries post status + outline preview (unblocks audit/polish); scratchpad write under `'find'` | `inventory/find.md § Known gaps`; `fixes/find.md § Changes that landed` |
-| audit | Structured findings in card block (not thoughts); `audit_findings_missing` contract-violation error frame on bad shape; threshold-exceeded → `ambiguity.declare('confirmation', {'reason':'audit_threshold_exceeded'})` | `inventory/audit.md § Output shape, § Ambiguity patterns`; `fixes/audit.md § Changes that landed` |
-| release | `update_post(status='published')` gated on tool success; tool failure → `DisplayFrame(origin='error', metadata={'tool_error':...}, code=...)` not ambiguity | `inventory/release.md § Known gaps`; `fixes/release.md § Changes that landed` |
+| audit | Structured findings in card block (not thoughts); `audit_findings_missing` contract-violation error artifact on bad shape; threshold-exceeded → `ambiguity.declare('confirmation', {'reason':'audit_threshold_exceeded'})` | `inventory/audit.md § Output shape, § Ambiguity patterns`; `fixes/audit.md § Changes that landed` |
+| release | `update_post(status='published')` gated on tool success; tool failure → `TaskArtifact(origin='error', metadata={'tool_error':...}, code=...)` not ambiguity | `inventory/release.md § Known gaps`; `fixes/release.md § Changes that landed` |
 
 ## Stability work
 
@@ -231,17 +231,17 @@ Three `TestEnsembleVoting` tests in `utils/tests/unit_tests.py` fail — NOT cau
 
 ## Migration plan
 
-- **Phase 1** — scaffold `utils/tests/policy_evals/` and write 2 unit tests. Start with `release` (exercises AD-6 tool-failure error frame + gated persistence + success toast — step 14 was the Theme 4 anchor) and `audit` (exercises contract-violation error frame, AD-1 scratchpad write, confirmation-ambiguity threshold escalation — three AD-6-linked surfaces in one flow). Together they cover every new rubric field and every AD-6 branch, proving the template for the other 10 flows.
+- **Phase 1** — scaffold `utils/tests/policy_evals/` and write 2 unit tests. Start with `release` (exercises AD-6 tool-failure error artifact + gated persistence + success toast — step 14 was the Theme 4 anchor) and `audit` (exercises contract-violation error artifact, AD-1 scratchpad write, confirmation-ambiguity threshold escalation — three AD-6-linked surfaces in one flow). Together they cover every new rubric field and every AD-6 branch, proving the template for the other 10 flows.
 
-- **Phase 2** — extend `utils/tests/e2e_agent_evals.py` with the new rubric fields (`expected_frame_origin`, `expected_tool_error`, `expected_contract_violation`, `expected_scratchpad_keys`) on steps 10-14. Wire `_check_level1` to read `frame.metadata.get('contract_violation')` and cross-check `agent.memory.read_scratchpad()` for expected keys.
+- **Phase 2** — extend `utils/tests/e2e_agent_evals.py` with the new rubric fields (`expected_frame_origin`, `expected_tool_error`, `expected_contract_violation`, `expected_scratchpad_keys`) on steps 10-14. Wire `_check_level1` to read `artifact.parts.get('contract_violation')` and cross-check `agent.memory.read_scratchpad()` for expected keys.
 
-- **Phase 3** — Playwright. Start with step 1 create (simplest card render, no prior state) and step 14 release (highest-value error-origin render — the UI shouldn't white-screen on AD-6 error frames). Add the 02a → 02b selection-click test once the driver is stable.
+- **Phase 3** — Playwright. Start with step 1 create (simplest card render, no prior state) and step 14 release (highest-value error-origin render — the UI shouldn't white-screen on AD-6 error artifacts). Add the 02a → 02b selection-click test once the driver is stable.
 
 ## Back-references to Part 1
 
 Every rubric field and assertion cites its inventory source. Spot-checks:
 
-- Release step 14 asserts `frame.metadata['tool_error'] ∈ {channel_status, release_post}` — `inventory/release.md § Eval step`, `fixes/release.md § Eval rubric aligned with AD-6`.
+- Release step 14 asserts `artifact.parts['tool_error'] ∈ {channel_status, release_post}` — `inventory/release.md § Eval step`, `fixes/release.md § Eval rubric aligned with AD-6`.
 - Audit step 11 asserts structured card block (not `thoughts`) — `inventory/audit.md § Output shape`, `fixes/audit.md`.
 - Polish step 9 retry-on-flake — `inventory/polish.md § Known gaps`.
 - Scratchpad keys per step — `fixes/_interfaces.md § AD-1`; producer rows in `inventory/inspect.md`, `find.md`, `audit.md`.

@@ -44,7 +44,7 @@
 ## Architectural decisions applied
 
 - **AD-5** (terminology): "per-section loop" / "stack on" — no "fires" language.
-- **AD-6**: vague `remove` targets are a `specific`-level **ambiguity**, not an error frame — the skill signals via `needs_clarification` (see skill § Important) and the policy surfaces it through `AmbiguityHandler`.
+- **AD-6**: vague `remove` targets are a `specific`-level **ambiguity**, not an error artifact — the skill signals via `needs_clarification` (see skill § Important) and the policy surfaces it through `AmbiguityHandler`.
 
 ## Open follow-ups
 

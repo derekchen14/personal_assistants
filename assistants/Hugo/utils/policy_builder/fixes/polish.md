@@ -36,7 +36,7 @@ The `## Slots` section mirrors these rules — `style_notes` priority note, `ima
 
 The skill's output JSON gained a `used: ["<scratchpad key>", ...]` array. The prompt says findings are **hints, not mandates** — if the user's current utterance contradicts a prior finding, honor the user; never fabricate findings.
 
-**Why.** Theme 5's goal: let Step 13 polish consume Steps 10–12 findings without the user restating them. AD-1 chose scratchpad over new `DialogueState` / `DisplayFrame` attributes.
+**Why.** Theme 5's goal: let Step 13 polish consume Steps 10–12 findings without the user restating them. AD-1 chose scratchpad over new `DialogueState` / `TaskArtifact` attributes.
 
 ### 3. Policy increments `used_count` on consumed findings (Theme 5 observability)
 

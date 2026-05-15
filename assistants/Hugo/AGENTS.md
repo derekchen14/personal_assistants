@@ -22,11 +22,11 @@ The 7 core components cover ~80% of every assistant's capability. Flow policies 
 
 ## Mental model
 
-- **World** (`backend/components/world.py`) — session-scoped registry: `states`, `frames`, `flow_stack`, `context`. `current_state()` / `latest_frame()` never return None; a kickoff state + frame + system turn are seeded on init.
+- **World** (`backend/components/world.py`) — session-scoped registry: `states`, `frames`, `flow_stack`, `context`. `current_state()` / `latest_artifact()` never return None; a kickoff state + frame + system turn are seeded on init.
 - **FlowStack** (`backend/components/flow_stack/stack.py`) — top-of-stack is authoritative past NLU. `flow_stack.get_flow()` returns top by default; pass `status='Active'` only when distinguishing lifecycle.
 - **DialogueState** (`backend/components/dialogue_state.py`) — beliefs + control flags: `pred_intent`, `flow_name`, `active_post`, `keep_going`, `has_issues`, `has_plan`.
-- **DisplayFrame** (`backend/components/display_frame.py`) — turn output. Exactly five attributes: `origin`, `metadata`, `blocks`, `code`, `thoughts`. **Never add DisplayFrame attributes without asking.**
-- Module contracts are guaranteed (drop defensive `if x is None` checks for these): `NLU.understand` always returns `DialogueState`; every turn has a flow; `PEX.execute` always returns `(DisplayFrame, keep_going)`; `RES.respond` always returns `(str, DisplayFrame)`.
+- **TaskArtifact** (`backend/components/task_artifact.py`) — turn output. A2A-aligned: an artifact is the agent's output for one task (= one flow turn). **3 stored attributes** (`origin`, `parts`, `blocks`) + **3 helper properties** (`data`, `thoughts`, `code`) that unpack the parts list. `parts: list[Part]` follows A2A v1.0's Part oneof (`text` / `raw` / `url` / `data` + optional `metadata`). The classification dict (`violation`, `missing`, `entity`, …) lives inside the first `data` Part; agent reasoning lives in a `text` Part tagged `metadata.kind='thoughts'`; generated code lives in a `text` Part tagged `metadata.kind='code'`. Readers use `artifact.data['violation']` / `artifact.thoughts` / `artifact.code`. `blocks` are visual UI building blocks (cards/lists/selections/etc.). **Never add TaskArtifact attributes without asking.**
+- Module contracts are guaranteed (drop defensive `if x is None` checks for these): `NLU.understand` always returns `DialogueState`; every turn has a flow; `PEX.execute` always returns `(TaskArtifact, keep_going)`; `RES.respond` always returns `(str, TaskArtifact)`.
 
 ## The 7 components — what they own
 
@@ -36,7 +36,7 @@ One line per component. Full method inventory in `utils/helper_ref.md`.
 - **DialogueState** — beliefs + flags. `update`, `reset`, `serialize`.
 - **FlowStack** — flow lifecycle. Public: `stackon(name, plan_id=None)` push a prerequisite flow on top, `fallback(name)` replace current flow (mark Invalid, transfer slots, push new), `peek`, `get_flow(status=None)`, `find_by_name`, `pop_completed` remove done/invalid flows (returns only completed), `to_list`. Internal: `_push`, `_pop`.
 - **ContextCoordinator** (`components/context_coordinator.py`) — conversation turns + checkpoints. `add_turn`, `compile_history`, `save_checkpoint`, `get_checkpoint`, `get_turn`, `last_user_text`, `rewrite_history`, `contains_keyword`.
-- **DisplayFrame** — turn output container. `set_frame`, `add_block`, `compose`, `clear`, `to_dict`. Block types: `card`, `form`, `confirmation`, `toast`, `default`, `selection`, `list`.
+- **TaskArtifact** — turn output container. `set_artifact`, `add_block`, `compose`, `clear`, `to_dict`. Block types: `card`, `form`, `confirmation`, `toast`, `default`, `selection`, `list`.
 - **AmbiguityHandler** (`components/ambiguity_handler.py`) — clarification lifecycle. `declare`, `ask`, `resolve`, `present`, `needs_clarification`, `should_escalate`. Four levels: `general`, `partial`, `specific`, `confirmation`.
 - **MemoryManager** (`components/memory_manager.py`) — 3-tier cache (L1 scratchpad, L2 preferences, L3 business context). `read_scratchpad`, `write_scratchpad`, `clear_scratchpad`, `read_preference`, `write_preference`, `should_summarize`, `dispatch_tool`.
 
@@ -70,7 +70,7 @@ One line per component. Full method inventory in `utils/helper_ref.md`.
 
 NLU does NOT "fire" anything. The action verbs by layer:
 
-- **NLU** — *classifies* an intent, *detects* a flow, *fills* a slot. Never "fires", "triggers", or "activates".
+- **NLU** — *classifies* an intent, *detects* a flow, *fills* a slot, *extracts* an entity. Entity extraction is the grounding sub-task of slot filling — when the action is specifically filling the flow's `entity_slot`, say "extracts an entity"; otherwise "fills a slot". Never "fires", "triggers", or "activates".
 - **Policies** — *call* tools, *declare* ambiguity, *write* scratchpad, *push* / *fallback* on the flow stack.
 - **Skills** — *produce* output, *call* tools via the agentic loop.
 - **Flows** — *complete*, *stack on*, *fallback*. They have **stages**, not *modes*.
@@ -98,20 +98,20 @@ Every flow touches five files:
 1. `backend/components/flow_stack/flows.py` — declare the flow (parent class, `flow_type`, `dax`, `entity_slot`, `goal`, `slots`, `tools`). Register in `flow_stack/__init__.py:flow_classes`.
 2. `backend/modules/policies/<intent>.py` — add `<flow>_policy`. Dispatched via `match flow.name()`.
 3. `backend/prompts/skills/<flow>.md` — skill prompt loaded by `PromptEngineer.load_skill_template`.
-4. `backend/modules/templates/<intent>.py` — entry in `TEMPLATES` + branch in `fill_<intent>_template`. Spoken text goes here, NOT in `frame.thoughts`.
+4. `backend/modules/templates/<intent>.py` — entry in `TEMPLATES` + branch in `fill_<intent>_template`. Spoken text goes here, NOT in `artifact.thoughts`.
 5. `backend/prompts/nlu/<intent>_slots.py` — slot-extraction prompt for NLU `_fill_slots` phase 2.
 
 Full walkthrough with `CreateFlow` as the running example: `utils/flow_recipe.md`.
 
 ## Planning rule
 
-Any non-trivial task begins with a plan. While designing the plan, default to **existing component APIs** — read the method inventories in `utils/helper_ref.md` and the `FlowStack` / `DisplayFrame` / other component sections above and use what's already there. Do NOT invent new methods, rename existing ones, or change signatures as part of a fix. If the task genuinely needs a component API change, **surface it to the user for review before editing** — do not quietly expand or modify a contract mid-task.
+Any non-trivial task begins with a plan. While designing the plan, default to **existing component APIs** — read the method inventories in `utils/helper_ref.md` and the `FlowStack` / `TaskArtifact` / other component sections above and use what's already there. Do NOT invent new methods, rename existing ones, or change signatures as part of a fix. If the task genuinely needs a component API change, **surface it to the user for review before editing** — do not quietly expand or modify a contract mid-task.
 
 ## Invariants (bug magnets when violated)
 
 - Each policy owns `flow.status = 'Completed'` — PEX does not mark completion centrally.
 - `state.active_post` must be set by the policy when the flow is source/target/removal/channel-grounded — PEX post-hook flips `has_issues` if missing.
-- Response wording lives in `modules/templates/*.py`, not `frame.thoughts`. Exceptions: flows whose output IS the LLM text (brainstorm, outline-thoughts).
+- Response wording lives in `modules/templates/*.py`, not `artifact.thoughts`. Exceptions: flows whose output IS the LLM text (brainstorm, outline-thoughts).
 - `flow.intent` is a property (no parens); `state.pred_intent` is NLU's guess — past NLU, trust `flow.intent`.
 - Recompute slot fill at policy entry with `slot.check_if_filled()`; `.filled` is stale after earlier turns.
 - Sub-flows pushed via `flow_stack.stackon()` or `fallback()` exit to the user for review unless `state.has_plan` is set — no silent chaining outside a plan.
@@ -123,7 +123,7 @@ Any non-trivial task begins with a plan. While designing the plan, default to **
 
 - ✅ Edit policies, skill prompts, templates, slot definitions, existing tool implementations freely.
 - ✅ Reuse helpers from the 7 components + `BasePolicy` + `pex._tools`.
-- ⚠️ Ask before adding: a new tool to PEX registry, a new slot type, a new flow, a new `DisplayFrame` attribute, a new entry in `FLOW_CATALOG`.
+- ⚠️ Ask before adding: a new tool to PEX registry, a new slot type, a new flow, a new `TaskArtifact` attribute, a new entry in `FLOW_CATALOG`.
 - ⚠️ Ask before a migration touching `database/content/metadata.json` or `database/tables.py`.
 - 🚫 Never create new components, concepts, directories, or utility modules. The 7 components already cover ~80% of what's needed.
 - 🚫 Never `pip install` — use `uv pip install`.

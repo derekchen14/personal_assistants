@@ -71,7 +71,7 @@ not a screen-clear.
 
 | Flow | Notes |
 |---|---|
-| recap, store, recall, retrieve, search, reference, study | System-only; no UI surface. Policy returns DisplayFrame(flow.name()) with no block. |
+| recap, store, recall, retrieve, search, reference, study | System-only; no UI surface. Policy returns TaskArtifact(flow.name()) with no block. |
 
 ## How this is enforced in evals
 

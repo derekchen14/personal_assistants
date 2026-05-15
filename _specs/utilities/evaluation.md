@@ -100,7 +100,7 @@ Every module and component emits structured signals. Organized by source.
 | Dialogue State | Top-3 confidence scores | After every NLU prediction | [dialogue_state.md § Confidence Tracking](../components/dialogue_state.md) |
 | Context Coordinator | Checkpoint | End of session | [context_coordinator.md § Checkpoints](../components/context_coordinator.md) |
 | Prompt Engineer | Prompt version ID | Every prompt execution | [prompt_engineer.md § Prompt Versioning](../components/prompt_engineer.md) |
-| Display Frame | Graceful degradation flag | On render failure | [display_frame.md § Rendering Pipeline](../components/display_frame.md) |
+| Display Frame | Graceful degradation flag | On render failure | [task_artifact.md § Rendering Pipeline](../components/task_artifact.md) |
 | Memory Manager | Promotion signal | On scratchpad promotion | [memory_manager.md § Promotion Triggers](../components/memory_manager.md) |
 
 Each validation hook check failure is itself a signal (NLU: 7 pre + 4 post, PEX: 7 pre + 5 post, RES: 4 cleanup + 4 output).

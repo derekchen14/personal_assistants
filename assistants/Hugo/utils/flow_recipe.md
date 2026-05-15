@@ -79,7 +79,7 @@ Add `<flow>_policy(self, flow, state, context, tools)`. The intent policy's `exe
 5. Based on the outcome of the action:
    a. When the result is successful, mark the flow complete — `flow.status = 'Completed'`. PEX does not do this centrally.
    b. If the task has failed, or only partially successful - declare ambiguity, stack on a flow to the stack, fall back to a different flow, or retrieve additional information as needed
-6. Build and return `DisplayFrame`. If the flow is grounded on a post, add a card block with `self._read_post_content(post_id, tools)`.
+6. Build and return `TaskArtifact`. If the flow is grounded on a post, add a card block with `self._read_post_content(post_id, tools)`.
 
 Example (`policies/draft.py:199-237`, `create_policy`):
 
@@ -87,7 +87,7 @@ Example (`policies/draft.py:199-237`, `create_policy`):
 def outline_policy(self, flow, state, context, tools):
     if not flow.slots['source'].check_if_filled():
         self.ambiguity.declare('partial')
-        return DisplayFrame()
+        return TaskArtifact()
 
     if flow.slots['sections'].check_if_filled():
         flow.stage = 'direct'
@@ -95,8 +95,8 @@ def outline_policy(self, flow, state, context, tools):
         text, tool_log = self.llm_execute(flow, state, context, tools)
         ...
         flow.status = 'Completed'
-        frame = DisplayFrame(origin='outline', thoughts=text)
-        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        artifact = TaskArtifact(origin='outline', thoughts=text)
+        artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
     elif flow.slots['topic'].check_if_filled():
         flow.stage = 'propose'
@@ -114,16 +114,16 @@ def outline_policy(self, flow, state, context, tools):
         else:
             flow.stage = 'error'  # Missing topic is an error state
             self.ambiguity.declare('specific', metadata={'missing_slot': 'topic'})
-            frame = DisplayFrame('error')
+            artifact = TaskArtifact('error')
 
-    return frame
+    return artifact
 ```
 
 Anti-patterns to avoid:
 - Adding defensive `if state is None` / `if flow is None` — the module contracts guarantee these are non-None.
 - Writing output parsers inline — use `self.engineer.apply_guardrails(text, format='json')` or `apply_guardrails(text, format='markdown', shape='candidates'|'outline')`.
 - Calling `revise_content` directly — use `self._persist_section(...)`.
-- Writing spoken response text into `frame.thoughts`. Only do that when the LLM text IS the response (brainstorm, outline-thoughts). Normal flows pass data to RES via blocks/metadata; RES uses a template to phrase it.
+- Writing spoken response text into `artifact.thoughts`. Only do that when the LLM text IS the response (brainstorm, outline-thoughts). Normal flows pass data to RES via blocks/metadata; RES uses a template to phrase it.
 
 ## 4. Skill prompt — `backend/prompts/skills/<flow>.md`
 
@@ -159,7 +159,7 @@ def fill_draft_template(template, flow, frame):
         return TEMPLATES['create']['template'].format(title=flow.slots['title'].value)
     if flow_name == 'outline':
         ...
-    return TEMPLATES[flow_name]['template'].format(message=frame.thoughts)
+    return TEMPLATES[flow_name]['template'].format(message=artifact.thoughts)
 ```
 
 `skip_naturalize: True` when the text is already human-phrased (brainstorm output, outline proposals). Leave it False when the template is a template literal — RES will rewrite through `engineer.call` with the naturalize prompt.
@@ -171,11 +171,11 @@ These rules apply to every flow touchpoint — NLU slot defs, policy methods, sk
 1. **Don't defend deterministic code.** Internal tools have known contracts. Access keys directly (`flow_metadata['outline']`, `slots['source'].values[0]`); let missing keys or `_success=False` crash so tests catch the bug. See `CLAUDE.md § "Don't defensively access known-present values"` for the canonical list of where this applies.
 2. **No defaults that hide errors.** `text or ''`, `parsed or {}`, `isinstance(parsed, dict)` mask upstream bugs. If a call can legitimately return empty, branch on the value — don't coerce.
 3. **Slot priorities are definitional.** Required = must be filled. Elective = exactly one of ≥2 options must be filled. Optional = nice-to-have. `flow.is_filled()` encodes both the required check and the at-least-one-elective check; don't re-derive them in policies or NLU prompts. A single elective is a flow-design bug — promote it to required or make it optional.
-4. **`DisplayFrame` conventions.** `origin` is always `flow.name()` for frames a policy builds (or `'system'` for the `Agent.take_turn` crash path). Error-ness lives in `metadata['violation']`, not in `origin`. `code` holds raw payloads (tool response, failing JSON); `thoughts` holds descriptive prose. No em-dashes in `thoughts` — it's user-facing.
+4. **`TaskArtifact` conventions.** `origin` is always `flow.name()` for artifacts a policy builds (or `'system'` for the `Agent.take_turn` crash path). Error-ness lives in `artifact.data['violation']` (helper property over the first data Part), not in `origin`. The constructor's `parts=dict` shape is wrapped as a single data Part inside the artifact. `code` holds raw payloads (tool response, failing JSON); `thoughts` holds descriptive prose. No em-dashes in `thoughts` — it's user-facing.
 5. **`ambiguity.declare` uses `observation`.** `declare(level, observation=..., metadata=...)` — human-readable text goes in `observation`; metadata is classification only (`missing_entity`, `missing_slot`, `missing_reference`, `duplicate_title`). Don't stuff questions into metadata.
-6. **Never invent new keys without approval.** Hard rule across metadata, `extra_resolved`, `frame.blocks[i].data`, scratchpad payloads, tool schema args. If what you want to pass doesn't fit an existing key, surface the design question first. See `CLAUDE.md § "New components or concepts"`.
+6. **Never invent new keys without approval.** Hard rule across metadata, `extra_resolved`, `artifact.blocks[i].data`, scratchpad payloads, tool schema args. If what you want to pass doesn't fit an existing key, surface the design question first. See `CLAUDE.md § "New components or concepts"`.
 7. **Standard variable names.** `flow_metadata` for `tools('read_metadata', ...)`, `text, tool_log` for `llm_execute`, `parsed` for `apply_guardrails`, `saved, _` for `tool_succeeded`. Matches `CLAUDE.md § Variable naming`.
-8. **Single return at the end of a policy.** Early returns only for major errors (`partial` / `general` ambiguity — top-level grounding failures). Every other outcome assigns to `frame` and falls through to one `return frame`.
+8. **Single return at the end of a policy.** Early returns only for major errors (`partial` / `general` ambiguity — top-level grounding failures). Every other outcome assigns to `frame` and falls through to one `return artifact`.
 
 The violation vocabulary (8 categories: `failed_to_save`, `scope_mismatch`, `missing_reference`, `parse_failure`, `empty_output`, `invalid_input`, `conflict`, `tool_error`) is enumerated in `policy_spec.md § Violation vocabulary`. Use those exact strings when setting `metadata['violation']` — don't coin new ones.
 
@@ -189,6 +189,6 @@ When the flow is wired up:
 - [ ] L2 pass: domain-tool trajectory matches what you expect given the skill prompt.
 - [ ] L3 pass: the LLM-as-judge's rubric is satisfied — `did_action` + `did_follow_instructions`.
 - [ ] `state.active_post` is set for any grounded flow (source/target/removal/channel). If not, PEX post-hook flips `has_issues` and RES escalates ambiguity.
-- [ ] Spoken text comes from the template, not `frame.thoughts` (unless the flow is brainstorm-like).
+- [ ] Spoken text comes from the template, not `artifact.thoughts` (unless the flow is brainstorm-like).
 
 When in doubt, trace `CreateFlow` from `flows.py:113` → `policies/draft.py:199` → `prompts/skills/create.md` → `templates/draft.py:TEMPLATES['create']` → `prompts/nlu/draft_slots.py:'create'`. Every working flow has the same five part trace.

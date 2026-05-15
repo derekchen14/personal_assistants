@@ -42,7 +42,7 @@ Create the full domain folder structure. Every file listed here must exist (may 
 │   │   ├── flow_stack.py
 │   │   ├── context_coordinator.py
 │   │   ├── prompt_engineer.py
-│   │   ├── display_frame.py
+│   │   ├── task_artifact.py
 │   │   ├── ambiguity_handler.py
 │   │   └── memory_manager.py
 │   ├── modules/

@@ -2,10 +2,10 @@
 
 The execution engine of the agent. Holds all policies associated with each flow — this is where the agent's actions happen. Each policy is a deterministic class method that may delegate tool calling to a skill (an LLM with access to tools). The class method handles slot review, ambiguity declaration, frame construction, and flow lifecycle. The skill, when used, handles tool selection, tool execution, and result gathering.
 
-**Module principle**: PEX processes information through policies, but does not store the information itself. It mutates the State objects passed to it, and always returns a `DisplayFrame`. PEX does not write user-facing prose — message generation is RES's responsibility (with one exception: flows whose output IS the LLM's prose, such as `brainstorm`, place that prose in `frame.thoughts`).
+**Module principle**: PEX processes information through policies, but does not store the information itself. It mutates the State objects passed to it, and always returns a `TaskArtifact`. PEX does not write user-facing prose — message generation is RES's responsibility (with one exception: flows whose output IS the LLM's prose, such as `brainstorm`, place that prose in `artifact.thoughts`).
 
 - **Execute function**: primary path for running the active flow's policy
-- **Recover function**: failure escalation when a policy declares ambiguity or returns an error frame
+- **Recover function**: failure escalation when a policy declares ambiguity or returns an error artifact
 
 **Policy file organization**: PEX imports from one policy file per intent. Each domain has 7 intent files — three universal (`plan`, `converse`, `internal`) plus four domain-specific intents whose names the domain chooses.
 
@@ -27,15 +27,15 @@ The deterministic-vs-agentic split is **implied by the policy code** — never d
 
 **Deterministic flow:**
 - No skill file, no starter.
-- Policy builds `params` from slots, calls `tools('<tool_name>', params)` directly, flips `flow.status = 'Completed'`, returns a `DisplayFrame`.
-- On tool failure: `DisplayFrame(flow.name(), metadata={'violation': 'tool_error'}, code=result['_message'])`.
+- Policy builds `params` from slots, calls `tools('<tool_name>', params)` directly, flips `flow.status = 'Completed'`, returns a `TaskArtifact`.
+- On tool failure: `TaskArtifact(flow.name(), metadata={'violation': 'tool_error'}, code=result['_message'])`.
 
 **Agentic flow:**
 - Skill file at `backend/prompts/pex/skills/<flow>.md`.
 - Starter at `backend/prompts/pex/starters/<flow>.py` exporting `build(flow, resolved, user_text)`.
 - Policy calls `BasePolicy.llm_execute(...)` which loads the skill, builds the prompt, runs the tool loop, and returns `(text, tool_log)`.
 - Policy reads `tool_log` via `engineer.tool_succeeded(tool_log, '<tool>')` and `engineer.extract_tool_result(...)` to verify persistence and pull results.
-- On no save: `DisplayFrame(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=...)`.
+- On no save: `TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=...)`.
 
 Reference: [Flow Stack](../components/flow_stack.md), [Configuration](../utilities/configuration.md), [Tool Smith](../utilities/tool_smith.md)
 
@@ -47,7 +47,7 @@ The policy classifies the result by inspecting `tool_log`:
 
 | Policy detection | Frame produced |
 |---|---|
-| `tool_succeeded(tool_log, '<tool>')` returns True | Success frame: `DisplayFrame(flow.name(), thoughts=text)` + appropriate block |
+| `tool_succeeded(tool_log, '<tool>')` returns True | Success frame: `TaskArtifact(flow.name(), thoughts=text)` + appropriate block |
 | Persistence tool ran but produced no effect | `metadata={'violation': 'failed_to_save'}` |
 | Skill output couldn't be parsed | `metadata={'violation': 'parse_failure'}, code=text` |
 | Tool returned `_success=False` | `metadata={'violation': 'tool_error', 'failed_tool': '<name>'}, code=msg` |
@@ -112,7 +112,7 @@ Persistent ownership rule: agentic flows persist via the skill; deterministic fl
 Called by the Agent after NLU has routed and the flow is Active on the stack.
 
 - **Input**: [Dialogue State](../components/dialogue_state.md), World, memory manager, ambiguity handler, prompt engineer, domain config
-- **Output**: `tuple[`[DisplayFrame](../components/display_frame.md)`, bool]` — frame (always returned; never `None`) and `keep_going` flag
+- **Output**: `tuple[`[TaskArtifact](../components/task_artifact.md)`, bool]` — frame (always returned; never `None`) and `keep_going` flag
 
 ### Pre-Hook: `check()`
 
@@ -137,31 +137,31 @@ def <flow>_policy(self, flow, state, context, tools):
     post_id, sec_id = self._resolve_source_ids(flow, state, tools)
     if not flow.slots[flow.entity_slot].check_if_filled() or not post_id:
         self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-        return DisplayFrame(flow.name())
+        return TaskArtifact(flow.name())
 
     # 2. Branch on slot state. Most flows spend their lines here.
     if <specific ambiguity condition>:
         self.ambiguity.declare('specific', metadata={'missing_slot': '<name>'})
-        frame = DisplayFrame(flow.name())
+        artifact = TaskArtifact(flow.name())
     elif <prerequisite missing>:
         self.flow_stack.stackon('<prereq>')
         state.keep_going = True
-        frame = DisplayFrame(flow.name(), thoughts='<reason>')
+        artifact = TaskArtifact(flow.name(), thoughts='<reason>')
     else:
         # 3. Dispatch.
         text, tool_log = self.llm_execute(flow, state, context, tools)
         saved, _ = self.engineer.tool_succeeded(tool_log, '<tool_name>')
 
         if not saved:
-            frame = DisplayFrame(flow.name(),
+            artifact = TaskArtifact(flow.name(),
                                  metadata={'violation': 'failed_to_save'},
                                  thoughts='<what the skill did wrong>')
         else:
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=text)
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            artifact = TaskArtifact(flow.name(), thoughts=text)
+            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
-    return frame  # single exit
+    return artifact  # single exit
 ```
 
 **Key rules:**
@@ -180,7 +180,7 @@ Three distinct failure modes, three distinct channels:
 | Ambiguous user intent (missing slot, unresolved entity) | `ambiguity.declare(level, observation=, metadata=)` | Empty frame; RES asks the question |
 | Skill produced malformed output | Error frame | `metadata={'violation': 'parse_failure'}, code=text` |
 
-**Retry rule.** If a tool error is transient (timeout, lock), retry once via `BasePolicy.retry_tool(tools, name, params, max_attempts=2)`. Non-retryable or retry-failed → return the error frame.
+**Retry rule.** If a tool error is transient (timeout, lock), retry once via `BasePolicy.retry_tool(tools, name, params, max_attempts=2)`. Non-retryable or retry-failed → return the error artifact.
 
 **Never declare ambiguity for tool failures.** Tool-down is not a question for the user. Conflating channels hides root cause.
 
@@ -217,7 +217,7 @@ The policy reads `tool_log` and constructs the frame. Single exit at the bottom 
 - Route by intent: domain-specific intents typically attach a `card` block; Converse flows usually attach no block; Plan and Internal flows write findings to the scratchpad
 
 **Violation** — skill ran but produced an unusable result:
-- Build error frame with the appropriate `violation` code
+- Build error artifact with the appropriate `violation` code
 - Specifics go in `thoughts` (natural language) or `code` (raw payload)
 
 **Ambiguity** — slot state requires user input:
@@ -266,7 +266,7 @@ Reference: [Flow Stack § Plan Flow Lifecycle](../components/flow_stack.md), [Di
 
 ## Recover Function
 
-Called when a policy returns an error frame or when post-hook detects issues.
+Called when a policy returns an error artifact or when post-hook detects issues.
 
 - **Input**: dialogue state, last frame, ambiguity handler, domain config
 - **Output**: recovery action for the Agent
@@ -281,8 +281,8 @@ The Agent picks one based on the situation:
 
 ### Yield-When-Stacked
 
-When a Converse intent (`endorse`, `dismiss`) pushes onto an already-active flow during a confirmation resolution turn, the Converse policy yields with an empty frame and `state.keep_going=True` rather than running its own chit-chat skill. The underlying flow's resolution turn consumes the user's accept/decline. PEX `_validate_frame` allows empty frames when `keep_going=True` — the empty frame here is intentional, not a bug for retry to chase.
+When a Converse intent (`endorse`, `dismiss`) pushes onto an already-active flow during a confirmation resolution turn, the Converse policy yields with an empty frame and `state.keep_going=True` rather than running its own chit-chat skill. The underlying flow's resolution turn consumes the user's accept/decline. PEX `_validate_artifact` allows empty frames when `keep_going=True` — the empty frame here is intentional, not a bug for retry to chase.
 
 ### Hard-Coded Fallbacks
 
-Rare. Some policies redirect to a sibling flow when the user's intent maps elsewhere than NLU detected. Process: `flow_stack.fallback('<sibling>')` + `state.keep_going=True` + `thoughts='<why we re-routed>'`. Use only when the intent genuinely belongs elsewhere — never for skill errors (use error frames) or tool failures (use error frames).
+Rare. Some policies redirect to a sibling flow when the user's intent maps elsewhere than NLU detected. Process: `flow_stack.fallback('<sibling>')` + `state.keep_going=True` + `thoughts='<why we re-routed>'`. Use only when the intent genuinely belongs elsewhere — never for skill errors (use error artifacts) or tool failures (use error artifacts).

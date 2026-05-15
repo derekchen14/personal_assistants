@@ -55,7 +55,7 @@ All other block types (tables, charts, cards, forms, navigation) render on the r
 
 ### One Frame, One Block
 
-Each turn produces at most one display frame, which maps to one block. If a turn requires two visuals, use `keep_going` to split across multiple flows — each flow gets its own frame and block. Reference: [Display Frame](../components/display_frame.md)
+Each turn produces at most one display frame, which maps to one block. If a turn requires two visuals, use `keep_going` to split across multiple flows — each flow gets its own frame and block. Reference: [Display Frame](../components/task_artifact.md)
 
 ### Panel Interactions
 

@@ -23,9 +23,9 @@
   - `backend/modules/policies/draft.py` — `refine_policy` `extra_resolved={'current_outline': content}`
   - `backend/prompts/skills/refine.md` (rewrite)
 
-### Contract-violation backstop — return error frame when outline shrinks unexpectedly
+### Contract-violation backstop — return error artifact when outline shrinks unexpectedly
 
-- **What changed:** After `merge_outline` reports success, `refine_policy` re-reads the post's outline metadata and compares `_count_bullets(new_outline)` to `_count_bullets(content)` (prior). If the new outline has strictly fewer bullets AND the user did NOT express removal intent (via `_has_removal_intent`, which scans `flow.slots['steps']` step names/descriptions and `flow.slots['feedback']` values for any of `_REMOVAL_TOKENS = ('remove', 'delete', 'drop', 'cut', 'trim')`), the policy returns a `DisplayFrame(origin='error', metadata={'contract_violation': 'outline_shrunk_after_merge', 'prior_bullets': N, 'new_bullets': M}, code='merge_outline returned a shorter outline than the prior state without an explicit removal directive')`. A sibling error branch covers the case where the skill failed to persist at all (`not text or not saved`): `metadata={'contract_violation': 'refine_did_not_persist'}`.
+- **What changed:** After `merge_outline` reports success, `refine_policy` re-reads the post's outline metadata and compares `_count_bullets(new_outline)` to `_count_bullets(content)` (prior). If the new outline has strictly fewer bullets AND the user did NOT express removal intent (via `_has_removal_intent`, which scans `flow.slots['steps']` step names/descriptions and `flow.slots['feedback']` values for any of `_REMOVAL_TOKENS = ('remove', 'delete', 'drop', 'cut', 'trim')`), the policy returns a `TaskArtifact(origin='error', metadata={'contract_violation': 'outline_shrunk_after_merge', 'prior_bullets': N, 'new_bullets': M}, code='merge_outline returned a shorter outline than the prior state without an explicit removal directive')`. A sibling error branch covers the case where the skill failed to persist at all (`not text or not saved`): `metadata={'contract_violation': 'refine_did_not_persist'}`.
 - **Why:** AD-6 — contract violations surface as error-origin frames with a `code` payload, not through `AmbiguityHandler`. The bullet-count check is intentionally lenient (only a *net* loss triggers) per the user's feedback that strict equality is overkill for minor issues.
 - **Theme:** Theme 4 (error-path gaps) under the AD-6 contract-violation channel.
 - **Files touched:**
@@ -33,8 +33,8 @@
 
 ### Stack-on to `OutlineFlow` surfaces the reason inline
 
-- **What changed:** The "outline has no bullets" branch now stacks `OutlineFlow` using the inline Theme 6 form: `self.flow_stack.stackon('outline'); state.keep_going = True; frame = DisplayFrame(thoughts='No bullets in the outline yet — generating one first.')`. No helper, no new attributes — just the existing `flow_stack.stackon()` plus a reason attached to `thoughts` so the RES layer can surface the transition.
-- **Why:** SUMMARY.md § Theme 6 flagged the silent stack-on. User feedback on Theme 6/7 explicitly rejected a `BasePolicy.stack_on` helper, a `STACK_ON_REASONS` dict, and new DisplayFrame fields; the reason lives in `thoughts` and the pattern is inline.
+- **What changed:** The "outline has no bullets" branch now stacks `OutlineFlow` using the inline Theme 6 form: `self.flow_stack.stackon('outline'); state.keep_going = True; artifact = TaskArtifact(thoughts='No bullets in the outline yet — generating one first.')`. No helper, no new attributes — just the existing `flow_stack.stackon()` plus a reason attached to `thoughts` so the RES layer can surface the transition.
+- **Why:** SUMMARY.md § Theme 6 flagged the silent stack-on. User feedback on Theme 6/7 explicitly rejected a `BasePolicy.stack_on` helper, a `STACK_ON_REASONS` dict, and new TaskArtifact fields; the reason lives in `thoughts` and the pattern is inline.
 - **Theme:** Theme 6 (stack-on & recursion risk).
 - **Files touched:**
   - `backend/modules/policies/draft.py` — `refine_policy` lines ~196-200
@@ -49,13 +49,13 @@
 
 ## Architectural decisions applied
 
-- **AD-6** — contract violations (`outline_shrunk_after_merge`, `refine_did_not_persist`) return `DisplayFrame(origin='error', metadata=..., code=...)`, never `ambiguity.declare(...)`.
+- **AD-6** — contract violations (`outline_shrunk_after_merge`, `refine_did_not_persist`) return `TaskArtifact(origin='error', metadata=..., code=...)`, never `ambiguity.declare(...)`.
 - **AD-5** — OutlineFlow stack-on uses "stacks on", reason text goes to `thoughts`, no new fields/flags.
 
-> **Part 2 alignment.** This fix aligns with [§ 3 Error recovery](../best_practices.md#3-error-recovery) and [§ 6 Stage machines inside policies](../best_practices.md#6-stage-machines-inside-policies). See [Your ReAct Agent Is Wasting 90% of Its Retries — TDS](https://towardsdatascience.com/your-react-agent-is-wasting-90-of-its-retries-heres-how-to-stop-it/) on classifying errors before retry — `outline_shrunk_after_merge` is a semantic contract violation (not a transient), so it surfaces as an error frame rather than a silent retry. Tool-split (`merge_outline` vs. `generate_outline`) echoes [SitePoint — Agentic Design Patterns 2026](https://www.sitepoint.com/the-definitive-guide-to-agentic-design-patterns-in-2026/) on making stage transitions reflect real control-flow divergence.
+> **Part 2 alignment.** This fix aligns with [§ 3 Error recovery](../best_practices.md#3-error-recovery) and [§ 6 Stage machines inside policies](../best_practices.md#6-stage-machines-inside-policies). See [Your ReAct Agent Is Wasting 90% of Its Retries — TDS](https://towardsdatascience.com/your-react-agent-is-wasting-90-of-its-retries-heres-how-to-stop-it/) on classifying errors before retry — `outline_shrunk_after_merge` is a semantic contract violation (not a transient), so it surfaces as an error artifact rather than a silent retry. Tool-split (`merge_outline` vs. `generate_outline`) echoes [SitePoint — Agentic Design Patterns 2026](https://www.sitepoint.com/the-definitive-guide-to-agentic-design-patterns-in-2026/) on making stage transitions reflect real control-flow divergence.
 
 ## Open follow-ups
 
 - The removal-intent detector is a keyword scan over `steps` + `feedback`. A user requesting removal via `changes`-style free text that doesn't contain any `_REMOVAL_TOKENS` word could trip the backstop. Eval coverage should include a "remove X" utterance that uses synonyms like "drop" (already covered) and "scrap" / "delete" (covered via "delete").
 - `merge_outline` currently treats omitted sections as implicitly preserved. If the skill intentionally drops a section to delete it, the policy should ideally surface that as a separate `remove_section` intent — deferred.
-- The malformed-outline skill path (return plain-text error) is not yet wired to a specific policy handling branch; today it falls through to the `not text or not saved` → `refine_did_not_persist` error frame, which is accurate but could be split for clearer UI messaging.
+- The malformed-outline skill path (return plain-text error) is not yet wired to a specific policy handling branch; today it falls through to the `not text or not saved` → `refine_did_not_persist` error artifact, which is accurate but could be split for clearer UI messaging.

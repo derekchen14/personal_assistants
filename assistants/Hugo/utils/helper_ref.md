@@ -94,13 +94,13 @@ Extended (turn rewriting + search + lifecycle):
 
 `Turn`: `speaker`, `text`, `turn_type`, `turn_id`, `timestamp`, `is_revised`, `original`; methods `action_target()`, `add_revision(new_text)`, `utt(as_dict=False)`.
 
-## 5. DisplayFrame — turn output container
+## 5. TaskArtifact — turn output container
 
-`backend/components/display_frame.py` contains 5 core methods and 5 attributes.
+`backend/components/task_artifact.py` contains the core methods plus a `Part` class (A2A v1.0 oneof).
 
-`DisplayFrame` attributes: `origin`, `metadata`, `blocks`, `code`, `thoughts`. **Never add more.**
+`TaskArtifact` shape: **3 stored attributes** (`origin`, `parts: list[Part]`, `blocks`) + **3 helper properties** (`data`, `thoughts`, `code`) that unpack the parts list. The constructor accepts the legacy `parts=dict` shape (wrapped as a single data Part) plus `thoughts`/`code` kwargs (each wrapped as a `text` Part tagged via `Part.metadata.kind`). **Never add new top-level attributes.**
 
-1. `set_frame(origin='', blocks=[], new_data={})`  →  merges blocks + metadata  (:30)
+1. `set_artifact(origin='', blocks=[], new_data={})`  →  merges blocks + metadata  (:30)
 2. `add_block(block_data)`  →  auto-routes `form/confirmation/toast` to `top`, others to `bottom`  (:37)
 3. `clear()`  (:51)
 4. `compose(block, data) -> dict`  →  build a frontend-shaped block dict  (:58)

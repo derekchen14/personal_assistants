@@ -21,7 +21,7 @@ API contract changes between PEX and its neighbors (`AmbiguityHandler`, `FlowSta
 - **Producers (landed):** `inspect_policy`, `find_policy`, `audit_policy`.
 - **Producers (pending):** `browse_policy`, `summarize_policy`, `check_policy`, `compare_policy`, `diff_policy` all carry a `TODO(Theme 5 AD-1)` comment and will write on demand when a downstream consumer appears.
 - **Consumers (landed):** `polish_policy` walks the scratchpad via `self.engineer.apply_guardrails(text, ...)['used']` and increments `used_count` for each key the skill reports it consumed.
-- **Rejected:** no `DialogueState.findings` attribute, no `DisplayFrame.findings`. New attribute adds go through explicit user review.
+- **Rejected:** no `DialogueState.findings` attribute, no `TaskArtifact.findings`. New attribute adds go through explicit user review.
 
 ### AD-2 — No "informed mode" on polish
 
@@ -48,8 +48,8 @@ API contract changes between PEX and its neighbors (`AmbiguityHandler`, `FlowSta
 
 ### AD-6 — Three failure modes, three distinct channels
 
-1. **Tool-call failure** → `DisplayFrame(origin='error', metadata={'tool_error': <name>, 'reason': <code|msg>, ...}, code=<raw err text>)`. Do NOT declare ambiguity. Landed in `release_policy`.
-2. **Contract violation** → first-line fixes are prompt tightening + JSON output + `engineer.apply_guardrails(text, format='json')`. If validation still fails at runtime: `DisplayFrame(origin='error', metadata={'contract_violation': <field>}, code=<offending raw output>)`. Landed in `audit_policy` (`'audit_findings_missing'`) and `refine_policy` (`'outline_shrunk_after_merge'`, `'refine_did_not_persist'`).
+1. **Tool-call failure** → `TaskArtifact(origin='error', metadata={'tool_error': <name>, 'reason': <code|msg>, ...}, code=<raw err text>)`. Do NOT declare ambiguity. Landed in `release_policy`.
+2. **Contract violation** → first-line fixes are prompt tightening + JSON output + `engineer.apply_guardrails(text, format='json')`. If validation still fails at runtime: `TaskArtifact(origin='error', metadata={'contract_violation': <field>}, code=<offending raw output>)`. Landed in `audit_policy` (`'audit_findings_missing'`) and `refine_policy` (`'outline_shrunk_after_merge'`, `'refine_did_not_persist'`).
 3. **Ambiguous user intent** → `self.ambiguity.declare(level, metadata=...)` with one of the 4 levels (`general | partial | specific | confirmation`) from `_specs/components/ambiguity_handler.md`. The only channel that produces a clarification question.
 
 ## PEX ↔ AmbiguityHandler
@@ -60,7 +60,7 @@ API contract changes between PEX and its neighbors (`AmbiguityHandler`, `FlowSta
   - `partial` — intent known, key entity unresolved (post / section / channel)
   - `specific` — intent + entity known, a slot value is missing or invalid
   - `confirmation` — a candidate value exists and needs user sign-off
-- Canonical call pattern: `self.ambiguity.declare(level, metadata={...})` then `return DisplayFrame()` (empty frame — RES synthesises the clarification question).
+- Canonical call pattern: `self.ambiguity.declare(level, metadata={...})` then `return TaskArtifact()` (empty frame — RES synthesises the clarification question).
 - Threshold breach in `audit_policy` uses `confirmation` + `metadata={'reason': 'audit_threshold_exceeded', 'findings_preview': findings[:3]}` so the spoken line can reference what triggered the escalation.
 - Duplicate-title in `create_policy` was **reclassified** from `confirmation` to `specific` (known intent, invalid slot value — a user mistake, not a candidate value awaiting sign-off).
 
@@ -70,8 +70,8 @@ API contract changes between PEX and its neighbors (`AmbiguityHandler`, `FlowSta
   ```python
   self.flow_stack.stackon(flow_name)
   state.keep_going = True
-  frame.thoughts = <reason>     # for user-visible transitions
-  return frame
+  artifact.thoughts = <reason>     # for user-visible transitions
+  return artifact
   ```
 - `BasePolicy.stack_on` helper was **rejected** — `flow_stack.stackon()` already exists (`_theme7_feedback.md § Overall Feedback #4`).
 - `flow.status = 'Completed'` is owned by each policy at the point of terminal success (per AGENTS.md invariant: RES is responsible for popping completed flows, so policies must mark completion before returning).
@@ -95,7 +95,7 @@ API contract changes between PEX and its neighbors (`AmbiguityHandler`, `FlowSta
 ## PEX ↔ DialogueState
 
 - Contract surface (attributes PEX reads or writes): `state.keep_going` (stack-on continuation flag), `state.active_post` (set by `_resolve_source_ids` as a side-effect), `state.has_issues` (read by Plan-related flows and by `polish` for rework fallback decisions), `state.has_plan` (read by tone_policy for scratchpad write gating).
-- **No new attributes added during Theme 1-7.** Every new cross-flow need was routed through scratchpad (AD-1) or frame.metadata (AD-6 error path).
+- **No new attributes added during Theme 1-7.** Every new cross-flow need was routed through scratchpad (AD-1) or artifact.parts (AD-6 error path).
 - `DialogueState.findings` was **rejected** (AD-1).
 - `active_post_title` etc. were **rejected** per MEMORY.md § "Sync lookups over cached state fields" — use `PostService.get_title(id)` on demand instead of adding a parallel cached field.
 
@@ -112,9 +112,9 @@ Existing callers that already implement this (canonical references):
 
 Add to any flow that has an optional slot with a default. Does NOT apply to required slots or to optional slots without a defensible default.
 
-## AD-9 — `_validate_frame` tightens; `_llm_quality_check` off by default
+## AD-9 — `_validate_artifact` tightens; `_llm_quality_check` off by default
 
-`_validate_frame` checks **value correctness** on the returned frame, not just non-emptiness. Concrete checks per block type:
+`_validate_artifact` checks **value correctness** on the returned frame, not just non-emptiness. Concrete checks per block type:
 - `card`: `post_id`, `title`, `content` present (or whichever the per-flow contract expects)
 - `list`: `items` is a list, each item has `post_id` + `title`
 - `confirmation`: `prompt`, `confirm_label`, `cancel_label` present
@@ -134,7 +134,7 @@ Two additive changes, no AD conflicts:
 
 - **Still present** in `backend/modules/pex.py` (line 27 + usage at 123, 250, 273, 291, 306, 319) — PEX's retry / escalate / reroute signalling plumbing predates this policy work.
 - **Not touched by Theme 1-7.** The enum was never used as a cross-neighbour contract in the 12 policies we rewrote; it sits inside PEX's own recovery loop.
-- **Recommended disposition (open follow-up, not in Theme 1-7 scope):** audit usage in a future cleanup and either (a) delete it if the `ESCALATE` path is the only live one, or (b) document the two-tier recovery (retry inside PEX vs. AD-6 error frame surfaced to RES) so both layers' semantics are clear.
+- **Recommended disposition (open follow-up, not in Theme 1-7 scope):** audit usage in a future cleanup and either (a) delete it if the `ESCALATE` path is the only live one, or (b) document the two-tier recovery (retry inside PEX vs. AD-6 error artifact surfaced to RES) so both layers' semantics are clear.
 
 ## Best-practice justifications
 

@@ -24,13 +24,13 @@ From `backend/modules/policies/draft.py:refine_policy` (lines 98–130):
      - declare('partial', metadata={'missing_ground': 'source slot empty'}) (line 101)
    - Else if `feedback` AND `steps` both not filled:
      - declare('specific', metadata={'missing_slot': 'details on how to refine the outline are incomplete'}) (line 103)
-   - Return DisplayFrame() (empty) (line 104)
+   - Return TaskArtifact() (empty) (line 104)
 
 2. **Guard: source resolution** (lines 106–109). Resolve source to post_id:
    - Call `_resolve_source_ids(flow, state, tools)` (line 106)
    - If post_id could not be resolved:
      - declare('specific', metadata={'missing_ground': 'could not resolve source to a post'}) (line 108)
-     - Return DisplayFrame() (line 109)
+     - Return TaskArtifact() (line 109)
 
 3. **Guard: outline existence** (lines 110–130). Check if post has an outline with bullet points:
    - Call `tools('read_metadata', {'post_id': post_id, 'include_outline': True})` (line 110)
@@ -38,14 +38,14 @@ From `backend/modules/policies/draft.py:refine_policy` (lines 98–130):
    - If outline has bullets (line 113):
      - Call `llm_execute(flow, state, context, tools)` to refine (line 114)
      - Check if `generate_outline` was called and succeeded (lines 115–116)
-     - If LLM failed: return DisplayFrame(origin='refine', metadata={'error': 'LLM failed to refine outline bulletpoints'}) (lines 118–119)
+     - If LLM failed: return TaskArtifact(origin='refine', metadata={'error': 'LLM failed to refine outline bulletpoints'}) (lines 118–119)
      - Else (success):
        - Set `flow.status = 'Completed'` (line 121)
-       - Return DisplayFrame(origin='refine', thoughts=text) with card block of post (lines 122–123)
+       - Return TaskArtifact(origin='refine', thoughts=text) with card block of post (lines 122–123)
    - Else (no bullets, outline is missing):
      - Stack-on outline flow (line 126): `self.flow_stack.stackon('outline')`
      - Set `state.keep_going = True` (line 127) so UI doesn't wait for user input
-     - Return empty DisplayFrame() (line 128)
+     - Return empty TaskArtifact() (line 128)
 
 ### Staging
 No `flow.stage` assignments in refine_policy. Single path: validate → refine or stack-on.
@@ -54,7 +54,7 @@ No `flow.stage` assignments in refine_policy. Single path: validate → refine o
 
 **Outline stack-on** (lines 125–128):
 - Condition: Source resolved OK, but outline has no bullet points (missing outline)
-- Action: `flow_stack.stackon('outline')` + `state.keep_going = True` + return empty DisplayFrame
+- Action: `flow_stack.stackon('outline')` + `state.keep_going = True` + return empty TaskArtifact
 - Rationale: User cannot refine a non-existent outline; must generate first
 
 ### Persistence calls
@@ -84,12 +84,12 @@ No `flow.stage` assignments in refine_policy. Single path: validate → refine o
 - thoughts: none
 
 **Stack-on deflection (line 128):**
-- origin: not set (empty DisplayFrame)
+- origin: not set (empty TaskArtifact)
 - blocks: none
 - thoughts: none
 
 **Early guard returns (lines 104, 109):**
-- origin: not set (empty DisplayFrame)
+- origin: not set (empty TaskArtifact)
 - blocks: none
 - thoughts: none
 

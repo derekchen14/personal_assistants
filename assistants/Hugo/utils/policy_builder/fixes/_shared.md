@@ -68,12 +68,12 @@ Cross-flow helpers, conventions, and constants touched during the Theme 1-7 exec
 
 Tracking the proposals explicitly so we don't regrow them next time.
 
-- **`BasePolicy.stack_on(flow_name, state, reason=None)`** — rejected in `_theme7_feedback.md § Overall Feedback #4`. `flow_stack.stackon()` already exists; callers inline the 3-line pattern (`flow_stack.stackon(X); state.keep_going = True; frame.thoughts = <reason>; return frame`) to keep one source of truth.
+- **`BasePolicy.stack_on(flow_name, state, reason=None)`** — rejected in `_theme7_feedback.md § Overall Feedback #4`. `flow_stack.stackon()` already exists; callers inline the 3-line pattern (`flow_stack.stackon(X); state.keep_going = True; artifact.thoughts = <reason>; return artifact`) to keep one source of truth.
 - **`STACK_ON_REASONS` dict in templates** — rejected in `_theme6_feedback.md § refine (d)`. Reason strings are inlined at the call-site; if duplication becomes a problem, revisit.
 - **`BasePolicy.guard_slot(flow, slot_name, level='specific')`** — rejected in `_theme7_feedback.md § Overall Feedback #1`. Slot treatment varies too much across the 12 flows (entity vs elective vs required vs optional), and some flows optimistically fill without guarding. The *pattern* is useful but the *shape* can't be standardised.
-- **`BasePolicy.complete_with_card(flow, post_id, tools)`** — rejected in `_theme7_feedback.md § Overall Feedback #3`. Only saves 3 lines, and future `DisplayFrame` / `BuildingBlock` variation will diverge (more blocks, more origins, more conditions).
+- **`BasePolicy.complete_with_card(flow, post_id, tools)`** — rejected in `_theme7_feedback.md § Overall Feedback #3`. Only saves 3 lines, and future `TaskArtifact` / `BuildingBlock` variation will diverge (more blocks, more origins, more conditions).
 - **`DialogueState.findings` attribute** — rejected per AD-1. Scratchpad with the key convention is the channel; no new attributes on `DialogueState`.
-- **`DisplayFrame.findings` attribute** — rejected per AD-1. Findings live in scratchpad; frame metadata carries ephemeral per-turn payload only.
+- **`TaskArtifact.findings` attribute** — rejected per AD-1. Findings live in scratchpad; frame metadata carries ephemeral per-turn payload only.
 
 ## Additional helpers proposed (Part 2 feedback, pending user sign-off)
 
@@ -90,15 +90,15 @@ These are concrete helpers / kwargs that land once AD-7 through AD-10 are signed
 - **Location (proposed):** `backend/modules/policies/base.py`.
 - **Change:** three-line helper; if slot is unfilled, fill it with the default. Codifies the pattern already in `audit_policy` (reference_count default 5). Optional helper — if only 1-2 flows need it, keep it inline.
 
-### AD-9 — `_validate_frame` block-type value checks
+### AD-9 — `_validate_artifact` block-type value checks
 
-- **Location:** `backend/modules/pex.py::_validate_frame`.
+- **Location:** `backend/modules/pex.py::_validate_artifact`.
 - **Change:** small `_BLOCK_VALIDATORS` dict keyed by block type. Validators return `(ok: bool, reason: str)`. `origin='error'` short-circuits passed=True (AD-6 alignment; matches the `error_recovery_proposal.md § 5.3` fix).
 
 ### AD-9 — `_llm_quality_check` per-flow opt-in
 
 - **Location:** `backend/components/flow_stack/parents.py::BaseFlow.__init__`, add `self.llm_quality_check = False`. Override `True` in prose-heavy flows (`polish`, `rework`, `brainstorm`).
-- **`_validate_frame`:** replace current `_should_llm_validate(flow)` with `flow.llm_quality_check`.
+- **`_validate_artifact`:** replace current `_should_llm_validate(flow)` with `flow.llm_quality_check`.
 - **Rationale:** eliminates default-on LLM-as-judge; ~50% reduction in per-turn LLM cost across the deterministic or tool-heavy flows.
 
 ### AD-10 — Prompt caching markers

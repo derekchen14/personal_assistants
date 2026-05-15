@@ -65,7 +65,7 @@ shared/
 │   │   ├── flow_stack.py           # Stack data structure, lifecycle states                [Phase 5]
 │   │   ├── context_coordinator.py  # Turn storage, history retrieval, checkpoints         [Phase 5]
 │   │   ├── prompt_engineer.py      # Model-agnostic LLM interface, guardrails            [Phase 5]
-│   │   ├── display_frame.py        # Data-display decoupling, core entities               [Phase 5]
+│   │   ├── task_artifact.py        # Data-display decoupling, core entities               [Phase 5]
 │   │   ├── ambiguity_handler.py    # 4-level uncertainty tracking + resolution            [Phase 5]
 │   │   └── memory_manager.py       # 3-tier cache (scratchpad, prefs, business)           [Phase 5]
 │   │

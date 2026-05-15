@@ -45,10 +45,10 @@ Also: the `## Behavior` block now explicitly **permits paragraph reformatting** 
 
 ## Architectural decisions applied
 
-- **AD-6** (failure modes): unclear image intent is an **ambiguity** (`confirmation` level), surfaced via the skill's `needs_clarification` JSON field — NOT an error frame and NOT a tool-call failure. Ambiguous user intent lives in channel 3.
+- **AD-6** (failure modes): unclear image intent is an **ambiguity** (`confirmation` level), surfaced via the skill's `needs_clarification` JSON field — NOT an error artifact and NOT a tool-call failure. Ambiguous user intent lives in channel 3.
 - **AD-5** (terminology): the skill "emits" / "declares"; it does not "fire".
 
 ## Open follow-ups
 
-- The `needs_clarification` string is **emitted by the skill**, but `simplify_policy` does not yet parse the JSON to hoist it into an explicit `self.ambiguity.declare('confirmation', ...)` call. Today the field reaches the user via `frame.thoughts`, which works for RES but misses the AmbiguityHandler bookkeeping. Wire-up is noted as a future pass once other flows (rework, polish) adopt the same pattern — centralising the parse in a helper would be the time to lift it.
+- The `needs_clarification` string is **emitted by the skill**, but `simplify_policy` does not yet parse the JSON to hoist it into an explicit `self.ambiguity.declare('confirmation', ...)` call. Today the field reaches the user via `artifact.thoughts`, which works for RES but misses the AmbiguityHandler bookkeeping. Wire-up is noted as a future pass once other flows (rework, polish) adopt the same pattern — centralising the parse in a helper would be the time to lift it.
 - Paragraph-5-in-3-paragraph-section edge case from Known Gap #4 is still skill-level heuristic; no policy guard added.

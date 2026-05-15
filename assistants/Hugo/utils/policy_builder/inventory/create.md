@@ -20,9 +20,9 @@ From `backend/components/flow_stack/flows.py` (lines 114–126):
 From `backend/modules/policies/draft.py:create_policy` (lines 183–221):
 
 1. **Guard: slot completeness** (lines 184–191). If `flow.is_filled()` returns false:
-   - If `title` slot not filled → declare('specific', metadata={'missing_slot': 'title'}) → return DisplayFrame('error')
-   - Else if `type` slot not filled → declare('specific', metadata={'missing_slot': 'type'}) → return DisplayFrame('error')
-   - Else → declare('partial') → return DisplayFrame('error')
+   - If `title` slot not filled → declare('specific', metadata={'missing_slot': 'title'}) → return TaskArtifact('error')
+   - Else if `type` slot not filled → declare('specific', metadata={'missing_slot': 'type'}) → return TaskArtifact('error')
+   - Else → declare('partial') → return TaskArtifact('error')
    
 2. **Main path: direct tool call** (lines 193–221). If all required slots filled:
    - Extract slot values dict (title, type, optionally topic) (lines 193–196)
@@ -31,12 +31,12 @@ From `backend/modules/policies/draft.py:create_policy` (lines 183–221):
      - Set `new_id = result['post_id']`
      - Sync state: `state.active_post = new_id` (line 201)
      - Mark flow complete: `flow.status = 'Completed'` (line 202)
-     - Return DisplayFrame(origin='create') with card block containing post_id, title, status (lines 203–205)
+     - Return TaskArtifact(origin='create') with card block containing post_id, title, status (lines 203–205)
    - Else if result['_error'] == 'duplicate' (line 207):
      - Declare confirmation ambiguity: `declare('confirmation', metadata={'reason': 'duplicate_file'})` (line 208)
-     - Return DisplayFrame with confirmation block asking user to confirm/cancel (lines 209–217)
+     - Return TaskArtifact with confirmation block asking user to confirm/cancel (lines 209–217)
    - Else (other tool error) (line 218):
-     - Return DisplayFrame(origin='create', thoughts=error_message) (lines 219–220)
+     - Return TaskArtifact(origin='create', thoughts=error_message) (lines 219–220)
 
 ### Staging
 No `flow.stage` assignments in create_policy. Flow is single-stage: slots → direct tool call → done.
@@ -55,7 +55,7 @@ No delegation to llm_execute. The policy owns the create_post call entirely.
 **Success path (lines 203–205):**
 - origin: `'create'`
 - blocks: 1 card block with shape `{'post_id': str, 'title': str, 'status': str}`
-- thoughts: none (frame.thoughts not set)
+- thoughts: none (artifact.thoughts not set)
 
 **Duplicate confirmation path (lines 209–217):**
 - origin: `'create'`

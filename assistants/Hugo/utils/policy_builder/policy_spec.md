@@ -58,7 +58,7 @@ These 14 cover every major policy pattern (pure-LLM, tool-call loop, stack-on, c
 | 1 | Skill/policy contract confusion | ✅ | create+find+inspect skills deleted; simplify/compose/rework skill owns persistence; refine uses new `merge_outline` tool. |
 | 2 | Unexemplified slots | ✅ | rework+simplify+polish exemplars added; `add` skill rewritten for detail-into-existing-section; `outline` `depth` wired via 4-level scheme (AD-4). |
 | 3 | Output-shape drift | ✅ | audit: structured `report` card + severity per finding + scratchpad write. inspect: skill deleted, deterministic tool call, RES template surfaces answer. find+create carried over from Theme 1. |
-| 4 | Error-path gaps | ✅ | AD-6 established: tool failures → `DisplayFrame(origin='error', metadata, code)`, NOT ambiguity. release: gate `update_post` on success, route failures to error frame. refine: bullet-count backstop. outline: propose-mode tool-stripping via `exclude_tools` kwarg. Eval rubric updated. |
+| 4 | Error-path gaps | ✅ | AD-6 established: tool failures → `TaskArtifact(origin='error', metadata, code)`, NOT ambiguity. release: gate `update_post` on success, route failures to error artifact. refine: bullet-count backstop. outline: propose-mode tool-stripping via `exclude_tools` kwarg. Eval rubric updated. |
 | 5 | Scratchpad convention (AD-1) | ✅ | Producers (inspect/find/audit) write scratchpad using `context.turn_id`. Polish skill emits `used:[...]`, policy increments `used_count`. |
 | 6 | Stack-on + outline recursion | ✅ | Inline `flow_stack.stackon()` + `state.keep_going = True` + reason in `thoughts`. No `BasePolicy.stack_on` helper, no `STACK_ON_REASONS` dict. Outline recursion documented as safe per AD-3. |
 | 7 | Repeated guard-clause patterns | ✅ (scoped down) | Only `PromptEngineer.tool_succeeded(tool_log, name) → (bool, dict)` added. `guard_slot` / `complete_with_card` / `stack_on` helpers rejected. 4 call-sites migrated. |
@@ -101,7 +101,7 @@ Dispatch contract documented in `best_practices.md § 2`: *if `len(flow.tools) >
 
 The four pillars Part 3 locks down:
 
-- **Interface** — how a policy talks to its collaborators and how PEX signals state back to RES/user. NLU talks to PEX via `DialogueState`; PEX talks to RES via `DisplayFrame`. Part 3 fixes the policy-side interface: how a policy reaches the skill / tools / `AmbiguityHandler` / `FlowStack` / `MemoryManager`, and how it surfaces errors through the frame so RES (and therefore the user) can reason about what went wrong.
+- **Interface** — how a policy talks to its collaborators and how PEX signals state back to RES/user. NLU talks to PEX via `DialogueState`; PEX talks to RES via `TaskArtifact`. Part 3 fixes the policy-side interface: how a policy reaches the skill / tools / `AmbiguityHandler` / `FlowStack` / `MemoryManager`, and how it surfaces errors through the frame so RES (and therefore the user) can reason about what went wrong.
 - **Structure** — the sub-component layout that every policy and every prompt follows. Policy has one method shape (guard → defaults → resolve → dispatch → verify → complete). Prompt has one three-layer shape: system prompt (persona + flow preamble + skill body + suffix + current state) + starter prompt (recent conversation + latest utterance + task framing) + skill file (frontmatter + Behavior + Important + Slots + Output + Few-shot).
 - **Policy** — the Python code that executes the flow. Some policies call tools directly and need no prompt (deterministic flows: create / find / inspect / explain / undo). The template covers both shapes.
 - **Prompt** — the assembled system + starter + skill combo that enables agentic tool-calling loops for non-deterministic flows. Each sub-component has a single job; Theme 8 tightens the assembly.
@@ -123,11 +123,11 @@ All seven phases + Theme 8 + all optional follow-ups landed. Full detail in `ski
 |---|---|
 | **0** | Theme 8 prompt restructure. 3-layer assembly live (`pex/sys_prompts.py`, `pex/starters/*.py`, `pex/skills/*.md`). `SKILL_SYSTEM_SUFFIX` deleted. `## Latest utterance` block deleted. XML closing tags (`</resolved_details>`) throughout. Divider shape `--- {Flow_name} Skill Instructions ---`. |
 | **0b** | `generate_section(post_id, sec_id, content)` tool added (append-or-replace single-section edits). `merge_outline` fully deleted from `content_service.py`, `pex.py` registry, `schemas/tools.yaml`, refine's flow tools, and the outline skill's exclude-list doc. |
-| **1** | AD-6 metadata sweep: every error frame uses `origin=flow.name()`, `metadata['violation']` in the 8-item vocab. `missing_ground`→`missing_entity`; `contract_violation`→`violation`; `tool_error`→`violation='tool_error'`+`failed_tool`. Duplicate-title reclassified from `specific` to `confirmation`. Test fixtures migrated; 3 stale NLU ensemble tests fixed. |
-| **2** | `pex.py` rework: `RecoveryAction` enum deleted. `_validate_frame` recognizes `metadata['violation']`-carrying frames as already-classified AD-6 errors and bypasses Tier-1 retry. Legacy `block_data.status=='error'` branch removed. Escalation cleaned of non-vocab keys. Tier 2/3 revival deferred — those are new code paths that need a driving failure mode plus dedicated tests. |
+| **1** | AD-6 metadata sweep: every error artifact uses `origin=flow.name()`, `metadata['violation']` in the 8-item vocab. `missing_ground`→`missing_entity`; `contract_violation`→`violation`; `tool_error`→`violation='tool_error'`+`failed_tool`. Duplicate-title reclassified from `specific` to `confirmation`. Test fixtures migrated; 3 stale NLU ensemble tests fixed. |
+| **2** | `pex.py` rework: `RecoveryAction` enum deleted. `_validate_artifact` recognizes `metadata['violation']`-carrying frames as already-classified AD-6 errors and bypasses Tier-1 retry. Legacy `block_data.status=='error'` branch removed. Escalation cleaned of non-vocab keys. Tier 2/3 revival deferred — those are new code paths that need a driving failure mode plus dedicated tests. |
 | **3** | Exemplar patterns landed: `refine` / `compose` / `simplify` / `add` / `browse` skills reshaped to the Process + Error Handling + Tools + Few-shot structure in `pex/skills/`. Starter templates for add/browse. `create` stays deterministic (no skill). |
 | **4 prep** | Universal `## Handling Ambiguity and Errors` block appended by `build_skill_system`. Generic starter fallback in `_render_starter` produces the canonical XML shape for any flow without a custom module. `_SKILL_DIRS` fallback keeps unmigrated skills working. |
-| **4a/b/c** | All 48 flows have live policies (no empty stubs). Phase 1 normalized metadata everywhere. `DisplayFrame(self.config)` anti-pattern cleaned across `internal.py`, `pex.py::_security_check`, and `world.py::_seed_session`. Method-shape aesthetic alignment deferred to Part 5. |
+| **4a/b/c** | All 48 flows have live policies (no empty stubs). Phase 1 normalized metadata everywhere. `TaskArtifact(self.config)` anti-pattern cleaned across `internal.py`, `pex.py::_security_check`, and `world.py::_seed_session`. Method-shape aesthetic alignment deferred to Part 5. |
 | **5** | `BasePolicy.retry_tool(tools, name, params, max_attempts=2)` helper added. `release_policy`'s `update_post` call routes through it. |
 
 ### Optional follow-ups (all complete)
@@ -136,7 +136,7 @@ All seven phases + Theme 8 + all optional follow-ups landed. Full detail in `ski
 |---|---|
 | **AD-10 prompt caching** | `cache_control: {type: 'ephemeral'}` breakpoints on the system block and the last tool def in `PromptEngineer._call_claude`. `BaseFlow.max_response_tokens` per-flow override (default 4096). |
 | **AD-9 `llm_quality_check`** | `BaseFlow.llm_quality_check` flag (default False). `pex._should_llm_validate` honors it. |
-| **`BasePolicy.error_frame` helper** | Added: `error_frame(flow, violation, thoughts, code, **extra)` returns an AD-6 frame with classification. |
+| **`BasePolicy.error_artifact` helper** | Added: `error_artifact(flow, violation, thoughts, code, **extra)` returns an AD-6 frame with classification. |
 | **`templates/errors.py`** | `VIOLATION_COPY` map + `describe(violation)` helper for RES-side user-facing copy. |
 | **App-crash guard** | `Agent.take_turn` wraps `_take_turn` with a try/except; returns a standard fallback message instead of propagating tracebacks. |
 | **`error_recovery_proposal.md § 5.3` alignment** | N/A — file does not exist in repo; Phase 2 folded the needed changes. |
@@ -151,7 +151,7 @@ All seven phases + Theme 8 + all optional follow-ups landed. Full detail in `ski
 
 ### Stack-on semantics (Open Question #3, resolved)
 
-Theme 6 landed the inline pattern: `self.flow_stack.stackon('<name>'); state.keep_going = True; frame.thoughts = <reason>`. No API redesign needed — the existing `flow_stack.stackon()` is the source of truth, and the inline reason is carried via `frame.thoughts` so RES can surface the transition. No `BasePolicy.stack_on(...)` helper and no `STACK_ON_REASONS` dict were introduced.
+Theme 6 landed the inline pattern: `self.flow_stack.stackon('<name>'); state.keep_going = True; artifact.thoughts = <reason>`. No API redesign needed — the existing `flow_stack.stackon()` is the source of truth, and the inline reason is carried via `artifact.thoughts` so RES can surface the transition. No `BasePolicy.stack_on(...)` helper and no `STACK_ON_REASONS` dict were introduced.
 
 ### Skill-file template (Open Question #4, resolved)
 
@@ -303,7 +303,7 @@ Part 5b                                 ████████ (batches)
 - Plan flows (separate playbook, touch later).
 - Converse flows (policy-lite; no structural fixes needed from this pass). Exceptions: `explain` and `undo` were migrated in Part 2 Phase 2 because they're deterministic.
 - The 33 non-eval-covered flows — stretch goal only if Part 5b finishes early.
-- Schema changes to `DisplayFrame`, `DialogueState`, or flow-class contracts.
+- Schema changes to `TaskArtifact`, `DialogueState`, or flow-class contracts.
 - NLU slot-filling changes (just finished that project).
 
 ---
@@ -314,7 +314,7 @@ These are the decisions that resolved the biggest open questions from Part 1 —
 
 ### AD-1 — Cross-turn findings channel = **scratchpad with key convention**
 
-No new attribute on `DialogueState`, no new attribute on `DisplayFrame`. The scratchpad (`MemoryManager`, L1, turn-surviving) is the standard cross-policy channel. We adopt a stricter key convention so downstream flows can rely on its shape:
+No new attribute on `DialogueState`, no new attribute on `TaskArtifact`. The scratchpad (`MemoryManager`, L1, turn-surviving) is the standard cross-policy channel. We adopt a stricter key convention so downstream flows can rely on its shape:
 
 - **Key** = the `flow_name` (e.g. `'inspect'`, `'find'`, `'audit'`).
 - **Value** = `dict` with required fields: `version`, `turn_number`, `used_count`, plus flow-specific payload.
@@ -322,7 +322,7 @@ No new attribute on `DialogueState`, no new attribute on `DisplayFrame`. The scr
 - Each dialogue state is turn-scoped; it already houses the flow stack, so it naturally exposes flow + slot state to any policy that needs it.
 - Consumers (e.g. `polish` on turn 13) look up by `flow_name` — or, since max 64 snippets, walk the whole scratchpad and filter.
 
-If a flow needs something the convention can't carry, raise it before adding a new attribute. The bar for new `DialogueState` / `DisplayFrame` attributes is explicit user approval (per AGENTS.md § Boundaries ⚠️).
+If a flow needs something the convention can't carry, raise it before adding a new attribute. The bar for new `DialogueState` / `TaskArtifact` attributes is explicit user approval (per AGENTS.md § Boundaries ⚠️).
 
 ### AD-3 — Outline recursion is already safe (document, don't refactor)
 
@@ -333,13 +333,13 @@ The existing `outline_policy` only self-recurses AFTER draining `proposals` into
 Every policy handles three classes of "things didn't go smoothly", each with its own channel — **do NOT conflate them under `AmbiguityHandler`**.
 
 **1. Tool-call failure** (platform unavailable, API down, permission denied, network error):
-- Use `DisplayFrame(origin='error', metadata={'tool_error': <tool_name>, 'reason': <code|msg>, ...}, code=<raw error text>)`.
-- `code` is the existing `DisplayFrame` attribute — it holds error messages (analogous to how it holds successful code). Do NOT invent a new field.
+- Use `TaskArtifact(origin='error', metadata={'tool_error': <tool_name>, 'reason': <code|msg>, ...}, code=<raw error text>)`.
+- `code` is the existing `TaskArtifact` attribute — it holds error messages (analogous to how it holds successful code). Do NOT invent a new field.
 - Do NOT declare ambiguity. A platform being down is not a question for the user; it's a failure the UI surfaces.
 
 **2. Contract violation** (skill output shape mismatch, missing required fields, truncated result):
 - First-line fixes: (a) tighten the skill prompt, (b) require JSON output, (c) run `engineer.apply_guardrails(text, format='json')` to parse-and-fail-closed.
-- If the validated output still violates the contract at runtime, fall through to an error frame: `DisplayFrame(origin='error', metadata={'contract_violation': <field>}, code=<offending raw output>)`.
+- If the validated output still violates the contract at runtime, fall through to an error artifact: `TaskArtifact(origin='error', metadata={'contract_violation': <field>}, code=<offending raw output>)`.
 - Do NOT declare ambiguity.
 
 **3. Ambiguous user intent** (the prototypical AmbiguityHandler case):
@@ -380,11 +380,11 @@ Concrete callers today:
 - `audit_policy` already does this for `reference_count` (defaults to 5); preserve and document.
 - Slots with no obvious default stay as `ambiguity.declare('specific', metadata={'missing_slot': …})`.
 
-### AD-9 — `_validate_frame` tightens; `_llm_quality_check` is off by default
+### AD-9 — `_validate_artifact` tightens; `_llm_quality_check` is off by default
 
-`_validate_frame` in `pex.py` should check that expected *values* are present on the returned frame (e.g., card blocks have the required `post_id` / `title` / `content` keys), not just that `.blocks` is non-empty. Every non-trivial policy already knows its contract — validation enforces it deterministically.
+`_validate_artifact` in `pex.py` should check that expected *values* are present on the returned frame (e.g., card blocks have the required `post_id` / `title` / `content` keys), not just that `.blocks` is non-empty. Every non-trivial policy already knows its contract — validation enforces it deterministically.
 
-`_llm_quality_check` (the LLM-as-judge secondary check invoked from `_validate_frame` when enabled) should **not run on most turns**. It adds a second LLM call to every response; the deterministic value-checks above are cheaper and more reliable. Reserve LLM quality checking for a small allowlist of flows where prose quality is the whole point (e.g. `polish`, `rework`) — and even there, gate behind a per-flow opt-in flag.
+`_llm_quality_check` (the LLM-as-judge secondary check invoked from `_validate_artifact` when enabled) should **not run on most turns**. It adds a second LLM call to every response; the deterministic value-checks above are cheaper and more reliable. Reserve LLM quality checking for a small allowlist of flows where prose quality is the whole point (e.g. `polish`, `rework`) — and even there, gate behind a per-flow opt-in flag.
 
 ### AD-10 — Token-budgeting easy wins
 
@@ -405,15 +405,15 @@ Distilled while writing the six exemplar policies (`utils/policy_builder/skill_t
 1. **Don't defend deterministic code.** Service tools (`read_metadata`, `create_post`, etc.) have known contracts. Access keys directly — `flow_metadata['outline']`, not `flow_metadata.get('outline', '')`. If a key is missing or `_success=False`, that's a bug to surface.
 2. **No defaults that hide errors.** `text or ''`, `parsed or {}`, `isinstance(parsed, dict)` — mask upstream mistakes. Let the code crash so tests catch it.
 3. **Slot priorities are definitional, not advisory** (canonical defs in `utils/flow_recipe.md § 1` / `_specs/components/flow_stack.md § Elective Rule`). Required = must be filled. Elective = exactly one of ≥2 options. Optional = nice-to-have. `flow.is_filled()` encodes both the required check and the at-least-one-elective check; the policy doesn't re-derive them.
-4. **Build `frame_meta` and `thoughts` first, then the frame.** Avoid multi-line `DisplayFrame(...)` constructions. One-line instantiation. `DisplayFrame(flow.name())` is the empty-guard shorthand.
+4. **Build `frame_meta` and `thoughts` first, then the frame.** Avoid multi-line `TaskArtifact(...)` constructions. One-line instantiation. `TaskArtifact(flow.name())` is the empty-guard shorthand.
 5. **`code` holds actual code; `thoughts` holds descriptive text.** `code` is for copy-paste payloads (raw tool response, failing JSON). Descriptive prose goes in `thoughts`.
 6. **Keep metadata sparse.** Metadata is for classification (violation category, missing-slot name, duplicate-title sentinel). Flow identity lives in `origin`, not metadata. Specifics go in `thoughts`, not nested-underscore tokens.
 7. **`ambiguity.declare` uses `observation`, not metadata keys.** `declare(level, observation=..., metadata=...)` — the human-readable text is `observation`; metadata is classification only. Don't stuff `question`/`reason`/`prompt` into metadata.
-8. **Never invent new keys without approval.** Hard rule. Whether in `metadata`, `extra_resolved`, `frame.blocks` data, or anywhere else — don't introduce a new key without explicit approval. If it doesn't fit an existing key, surface the design question.
+8. **Never invent new keys without approval.** Hard rule. Whether in `metadata`, `extra_resolved`, `artifact.blocks` data, or anywhere else — don't introduce a new key without explicit approval. If it doesn't fit an existing key, surface the design question.
 9. **Standard variable names.** `flow_metadata` for `tools('read_metadata', ...)`, `text, tool_log` for `llm_execute`, `parsed` for `apply_guardrails`, `saved, _` (or `saved_any`, `content_saved`) for `tool_succeeded`.
-10. **No em-dashes in `frame.thoughts`.** Thoughts are user-facing. Write like a person: commas, periods, short sentences.
-11. **Single return at end; early returns only for major errors.** `partial` and `general` ambiguity use early returns. Everything else — `specific`, `confirmation`, stack-on, fallback, success, AD-6 error frames — assigns to `frame` and falls through to one `return frame` at the bottom.
-12. **`origin` is always `flow.name()`.** Every policy-built `DisplayFrame` sets `origin` to `flow.name()`, regardless of success/error. Error-ness lives in metadata (`'violation' in frame.metadata`). The old `origin='error'` sentinel is gone. `flow` is never a metadata key — it lives in `origin` only.
+10. **No em-dashes in `artifact.thoughts`.** Thoughts are user-facing. Write like a person: commas, periods, short sentences.
+11. **Single return at end; early returns only for major errors.** `partial` and `general` ambiguity use early returns. Everything else — `specific`, `confirmation`, stack-on, fallback, success, AD-6 error artifacts — assigns to `frame` and falls through to one `return artifact` at the bottom.
+12. **`origin` is always `flow.name()`.** Every policy-built `TaskArtifact` sets `origin` to `flow.name()`, regardless of success/error. Error-ness lives in metadata (`'violation' in artifact.parts`). The old `origin='error'` sentinel is gone. `flow` is never a metadata key — it lives in `origin` only.
 
 ### Violation vocabulary
 

@@ -22,7 +22,7 @@
 
 ### Single list block, no per-count branches
 
-- **What changed:** Per (d) feedback in `_theme3_feedback.md § find`, the policy no longer special-cases `n == 0` (empty thoughts, no block) or `n == 1` (one card block via `read_metadata`). Every non-error return path is a `DisplayFrame(origin='find')` with one list block carrying all items. A `page` hint (`'posts'` if published-count >= draft-count else `'drafts'`) is computed for the list block so the UI can pick a layout; `expanded_ids` is set when `n <= 8` so the frontend can opt into inline previews.
+- **What changed:** Per (d) feedback in `_theme3_feedback.md § find`, the policy no longer special-cases `n == 0` (empty thoughts, no block) or `n == 1` (one card block via `read_metadata`). Every non-error return path is a `TaskArtifact(origin='find')` with one list block carrying all items. A `page` hint (`'posts'` if published-count >= draft-count else `'drafts'`) is computed for the list block so the UI can pick a layout; `expanded_ids` is set when `n <= 8` so the frontend can opt into inline previews.
 - **Why:** The user explicitly asked for a single, uniform shape so downstream consumers (step 12 audit, any Plan chain) don't branch on result count. Simpler template logic, fewer eval variants.
 - **Files touched:**
   - `backend/modules/policies/research.py` — `find_policy` lines ~194-204

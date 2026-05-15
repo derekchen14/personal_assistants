@@ -23,14 +23,14 @@
 # compose_policy, post-fix:
 text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
 flow.status = 'Completed'
-frame = DisplayFrame(origin='compose', thoughts=text)
+artifact = TaskArtifact(origin='compose', thoughts=text)
 if post_id:
-    frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+    artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 ```
 
 ### Stack-on to `OutlineFlow` when the post has no sections — reason surfaced inline
 
-- **What changed:** The "post has no `section_ids`" branch continues to stack `OutlineFlow`, but now attaches the transition reason to `thoughts`: `return DisplayFrame(thoughts='No sections yet — outlining first.')`. No new fields, no helper — inline `flow_stack.stackon('outline')` + `state.keep_going = True` + reason in `thoughts`, matching the Theme 6 convention.
+- **What changed:** The "post has no `section_ids`" branch continues to stack `OutlineFlow`, but now attaches the transition reason to `thoughts`: `return TaskArtifact(thoughts='No sections yet — outlining first.')`. No new fields, no helper — inline `flow_stack.stackon('outline')` + `state.keep_going = True` + reason in `thoughts`, matching the Theme 6 convention.
 - **Why:** Inventory § Stack-on triggers flagged the transition as opaque (user asks for prose, gets an outline form with no explanation). Theme 6 landed a uniform pattern across compose and refine without introducing new component attributes.
 - **Theme:** Theme 6 (stack-on ergonomics).
 - **Files touched:**
@@ -40,18 +40,18 @@ if post_id:
 if result['_success'] and not result.get('section_ids'):
     self.flow_stack.stackon('outline')
     state.keep_going = True
-    return DisplayFrame(thoughts='No sections yet — outlining first.')
+    return TaskArtifact(thoughts='No sections yet — outlining first.')
 ```
 
 ## Architectural decisions applied
 
-- **AD-6** — compose currently has no contract-violation backstop (a failed `convert_to_prose` retry is handled inside the skill by "skip this section, move on" rather than surfacing an error frame). If the whole flow produces zero `revise_content` calls, this should eventually become an error frame; tracked under follow-ups.
-- **AD-5** — inline stack-on phrasing (the post "stacks on" outline); no new DisplayFrame attributes.
+- **AD-6** — compose currently has no contract-violation backstop (a failed `convert_to_prose` retry is handled inside the skill by "skip this section, move on" rather than surfacing an error artifact). If the whole flow produces zero `revise_content` calls, this should eventually become an error artifact; tracked under follow-ups.
+- **AD-5** — inline stack-on phrasing (the post "stacks on" outline); no new TaskArtifact attributes.
 
 > **Part 2 alignment.** This fix aligns with [§ 8 Determinism boundaries](../best_practices.md#8-determinism-boundaries) and [§ 6 Stage machines inside policies](../best_practices.md#6-stage-machines-inside-policies). See [Deterministic Core, Agentic Shell — davemo.com](https://blog.davemo.com/posts/2026-02-14-deterministic-core-agentic-shell.html) on one owner per concern — skill owns persistence end-to-end, the policy does not double-write — and [SitePoint — Agentic Design Patterns 2026](https://www.sitepoint.com/the-definitive-guide-to-agentic-design-patterns-in-2026/) on surfacing stage transitions (stack-on to outline) through user-visible reason text rather than hidden flags.
 
 ## Open follow-ups
 
-- No policy-side check that the skill actually called `revise_content` at least once. A future AD-6 contract-violation backstop could assert `tool_succeeded(tool_log, 'revise_content')` and return an error frame if the skill silently skipped every section.
+- No policy-side check that the skill actually called `revise_content` at least once. A future AD-6 contract-violation backstop could assert `tool_succeeded(tool_log, 'revise_content')` and return an error artifact if the skill silently skipped every section.
 - The `steps` / `guidance` slots are now exemplified only implicitly (via the "decide scope from the user's utterance" instruction). If these slots start appearing filled without coverage, add targeted few-shots similar to the `rework`/`simplify`/`polish` Theme 2 additions.
 - Tone-matching guidance ("Match the tone and style of existing sections") still relies on the section_preview being useful. If the preview proves too short in practice, the skill may need an explicit `read_section` on adjacent sections — currently not exemplified.

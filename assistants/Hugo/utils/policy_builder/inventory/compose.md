@@ -21,7 +21,7 @@ From `backend/modules/policies/draft.py:compose_policy` (lines 143–167):
 
 1. **Guard: entity slot (source)** (lines 144–147). If `flow.slots[flow.entity_slot]` not filled:
    - declare('specific', metadata={'missing_slot': flow.entity_slot}) (line 146)
-   - Return DisplayFrame() (line 147)
+   - Return TaskArtifact() (line 147)
 
 2. **Main path: check for outline, possibly stack-on** (lines 149–156):
    - Resolve source to post_id (line 150)
@@ -30,7 +30,7 @@ From `backend/modules/policies/draft.py:compose_policy` (lines 143–167):
      - If post has NO `section_ids` (line 153):
        - Stack-on outline flow: `flow_stack.stackon('outline')` (line 154)
        - Set `state.keep_going = True` (line 155)
-       - Return empty DisplayFrame() (line 156)
+       - Return empty TaskArtifact() (line 156)
 
 3. **Compose path: execute or persist** (lines 158–167):
    - Call `llm_execute(flow, state, context, tools)` to compose prose (line 158)
@@ -38,7 +38,7 @@ From `backend/modules/policies/draft.py:compose_policy` (lines 143–167):
      - Resolve source section again (line 160) — get post_id and sec_id
      - Call `_persist_section(post_id, sec_id, text, tools)` to save composed text (line 162)
    - Mark flow complete: `flow.status = 'Completed'` (line 163)
-   - Return DisplayFrame(origin='compose', thoughts=text) with card block if post_id exists (lines 164–166)
+   - Return TaskArtifact(origin='compose', thoughts=text) with card block if post_id exists (lines 164–166)
 
 ### Staging
 No `flow.stage` assignments in compose_policy. Single path: check outline → compose → save.
@@ -47,7 +47,7 @@ No `flow.stage` assignments in compose_policy. Single path: check outline → co
 
 **Outline stack-on** (lines 149–156):
 - Condition: Source resolved to a post, but post has no section structure (no section_ids)
-- Action: `flow_stack.stackon('outline')` + `state.keep_going = True` + return empty DisplayFrame
+- Action: `flow_stack.stackon('outline')` + `state.keep_going = True` + return empty TaskArtifact
 - Rationale: Cannot compose a section without outline structure; must generate outline first
 
 ### Persistence calls
@@ -79,12 +79,12 @@ No `flow.stage` assignments in compose_policy. Single path: check outline → co
 - blocks: none
 
 **Stack-on deflection (line 156):**
-- origin: not set (empty DisplayFrame)
+- origin: not set (empty TaskArtifact)
 - blocks: none
 - thoughts: none
 
 **Early guard return (line 147):**
-- origin: not set (empty DisplayFrame)
+- origin: not set (empty TaskArtifact)
 - blocks: none
 - thoughts: none
 

@@ -18,13 +18,13 @@ From `backend/components/flow_stack/flows.py` lines 214-225:
 
 ### Guard clauses
 From `backend/modules/policies/revise.py` lines 47-69 (polish_policy):
-- **Line 48-49:** Call `_require_source(flow, state, context)` which checks if entity_slot is filled. If missing, declare 'specific' ambiguity and return empty DisplayFrame().
+- **Line 48-49:** Call `_require_source(flow, state, context)` which checks if entity_slot is filled. If missing, declare 'specific' ambiguity and return empty TaskArtifact().
 - **Line 52:** Call `_resolve_source_ids` to ground post_id and sec_id from source slot.
 - **Line 53:** Call `llm_execute` to run the skill (tool-using loop).
 - **Line 55-56:** If post_id and sec_id and text all exist, call `_persist_section` to save the polished version (same pattern as simplify).
-- **Line 59-63:** Check for structural issues via `extract_tool_result(tool_log, 'inspect_post')`. If structural_issues are found, call `fallback('rework')`, set keep_going=True, and return empty DisplayFrame() to escalate to rework. This is the only stack-on/fallback trigger in the polish policy.
+- **Line 59-63:** Check for structural issues via `extract_tool_result(tool_log, 'inspect_post')`. If structural_issues are found, call `fallback('rework')`, set keep_going=True, and return empty TaskArtifact() to escalate to rework. This is the only stack-on/fallback trigger in the polish policy.
 - **Line 65:** Mark flow.status = 'Completed'.
-- **Line 66:** Build DisplayFrame with origin='polish' and thoughts from LLM output.
+- **Line 66:** Build TaskArtifact with origin='polish' and thoughts from LLM output.
 - **Line 67-68:** If post_id exists, add a card block with post content.
 
 ### Staging

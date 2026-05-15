@@ -18,12 +18,12 @@ From `backend/components/flow_stack/flows.py` lines 262-273:
 
 ### Guard clauses
 From `backend/modules/policies/revise.py` lines 155-170 (simplify_policy):
-- **Line 156-158:** If both source and image are unfilled, declare 'partial' ambiguity and return empty DisplayFrame(). (Simplify is unusual: it requires at least one of two slots, not a single entity_slot like other revise flows.)
+- **Line 156-158:** If both source and image are unfilled, declare 'partial' ambiguity and return empty TaskArtifact(). (Simplify is unusual: it requires at least one of two slots, not a single entity_slot like other revise flows.)
 - **Line 160:** Call `_resolve_source_ids` to ground post_id and sec_id from source slot (may return None, None if source is unfilled).
 - **Line 161:** Call `llm_execute` to run the skill (tool-using loop).
 - **Line 163-164:** If post_id and sec_id and text all exist, call `_persist_section` to save the simplified version directly (unlike rework/polish, simplify persists via the policy helper).
 - **Line 166:** Mark flow.status = 'Completed'.
-- **Line 167:** Build DisplayFrame with origin='simplify' and thoughts from LLM output.
+- **Line 167:** Build TaskArtifact with origin='simplify' and thoughts from LLM output.
 - **Line 168-169:** If post_id exists, add a card block with post content.
 
 ### Staging

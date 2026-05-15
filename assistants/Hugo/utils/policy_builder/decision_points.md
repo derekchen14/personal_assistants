@@ -34,7 +34,7 @@ These are locked-in across all flows. The app displays them as context; they don
 | UA-15 | Scratchpad key convention: key = `flow_name`; value = dict with `version`, `turn_number`, `used_count`, plus flow payload | AD-1 |
 | UA-16 | Persona (from `general.py::build_system`): 3 bullets — response length, visual-block referencing, no-fabrication | `general.py` |
 | UA-17 | Persistence ownership: agentic flows (skill has tools) — the skill owns persistence. Deterministic flows — the policy saves inline. | Theme 1 |
-| UA-18 | Error channel selection: tool failure → error frame (AD-6); contract violation → error frame (AD-6); ambiguous user intent → `handle_ambiguity`. Never conflate. | AD-6 |
+| UA-18 | Error channel selection: tool failure → error artifact (AD-6); contract violation → error artifact (AD-6); ambiguous user intent → `handle_ambiguity`. Never conflate. | AD-6 |
 | UA-19 | Prompt caching: `cache_control: {'type':'ephemeral'}` on system block + last tool def; 1-hour TTL | AD-10 |
 | UA-20 | `max_response_tokens` default = 4096 (override per-flow when meaningful) | AD-10 |
 | UA-21 | `_llm_quality_check` default = off (enable only when prose quality is the flow's whole point) | AD-9 |
@@ -161,7 +161,7 @@ Flows whose policy calls a single tool inline without LLM reasoning (`create`, `
 *Applies to:* all flows (deterministic flows only populate the policy-side branches).
 *Why it matters:* Without enumeration, the skill ends up with generic error handling that doesn't match real failure modes. Per the Part 3 conventions (and UA-18 / AD-6), error routing depends on knowing which channel applies.
 *Precedents:*
-  - Refine: malformed `<post_content>` → `execution_error('invalid_input', ...)`; user names non-existent section → `handle_ambiguity('specific', metadata={'missing_slot': ...})` or `missing_reference` error frame; `generate_section` tool failure → retry once, then `tool_error`.
+  - Refine: malformed `<post_content>` → `execution_error('invalid_input', ...)`; user names non-existent section → `handle_ambiguity('specific', metadata={'missing_slot': ...})` or `missing_reference` error artifact; `generate_section` tool failure → retry once, then `tool_error`.
   - Compose: `convert_to_prose` fails for a section → retry once, skip on second fail, continue other sections, report skipped via `tool_error` at end; user's request doesn't map to visible sections → `handle_ambiguity('partial' or 'specific')`.
   - Simplify: `<section_content>` malformed → `execution_error('invalid_input', ...)`; user names a paragraph that doesn't exist in the section → `handle_ambiguity('specific')`; image simplification with no verb → `handle_ambiguity('confirmation')`; cross-section edit → `handle_ambiguity('partial')` directing user to Rework flow.
 
@@ -192,14 +192,14 @@ Flows whose policy calls a single tool inline without LLM reasoning (`create`, `
   - Create: `topic` (optional) has no default — passed to `create_post` only if filled.
 
 **DP-14: Flow transitions (stack-on and fallback)**
-*Decision:* When does this flow hand off to another flow, and through which channel? Two channels: `flow_stack('stackon', <name>)` pushes a prerequisite onto the stack and resumes the current flow after; `flow_stack('fallback', <name>)` pops the current flow and re-routes to a sibling better-matched to the user's actual intent. Also note cases where the flow emits an error frame and stops (no transition).
+*Decision:* When does this flow hand off to another flow, and through which channel? Two channels: `flow_stack('stackon', <name>)` pushes a prerequisite onto the stack and resumes the current flow after; `flow_stack('fallback', <name>)` pops the current flow and re-routes to a sibling better-matched to the user's actual intent. Also note cases where the flow emits an error artifact and stops (no transition).
 *Applies to:* all flows. Most flows do not transition; outline may NOT stack on itself (AD-3).
 *Why it matters:* Stack-on changes the user's experience (they see the sub-flow's work before returning); fallback replaces this flow entirely. Choosing the wrong channel or triggering on cosmetic state produces confusing UX.
 *Precedents:*
   - Compose: `flow_stack('stackon', 'outline')` when `current_outline` is empty. Thoughts: "No outline to compose from, stacking on Outline first."
   - Refine: no proactive stack-on; `flow_stack('stackon', 'outline')` as error-recovery structural fallback when the outline is unparseable.
   - Rework: no stack-on; three fallbacks — `flow_stack('fallback', 'polish')` for word-tightening intent, `flow_stack('fallback', 'simplify')` for trimming intent, `flow_stack('fallback', 'remove')` for span-excise intent.
-  - Simplify: no transitions; emits an error frame and stops on unworkable state.
+  - Simplify: no transitions; emits an error artifact and stops on unworkable state.
 
 **DP-15: Scratchpad contract (write / read)**
 *Decision:* Does this flow write findings for downstream flows? Does it read from upstream producers? What's the payload shape?
@@ -211,7 +211,7 @@ Flows whose policy calls a single tool inline without LLM reasoning (`create`, `
   - Refine / Compose / Simplify: no scratchpad interaction.
 
 **DP-16: Frame output spec (metadata keys + block types)**
-*Decision:* What success-path metadata keys does the `DisplayFrame` carry, what error-path keys, and what block types go in `frame.blocks`?
+*Decision:* What success-path metadata keys does the `TaskArtifact` carry, what error-path keys, and what block types go in `artifact.blocks`?
 *Applies to:* all flows. Multi-mode flows use a mode-keyed object when success block types differ per mode (e.g., outline's `selection` block for propose vs. `card` block for direct).
 *Why it matters:* RES renders based on block type + metadata. Unknown keys silently drop; missing blocks break the UI.
 *Precedents:*

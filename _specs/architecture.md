@@ -24,7 +24,7 @@ Every user turn follows this sequence:
 
 | Step | Owner | Action |
 |---|---|---|
-| 1 | NLU `think()` / `react()` | Classify intent and detect flow, fill slots |
+| 1 | NLU `think()` / `react()` | Classify intent, detect flow, fill slots (entity extraction is the grounding sub-task) |
 | 2 | PEX `execute()` | Run the active flow's policy and tools |
 | 3 | RES `respond()` | Route to `generate()` for text, `clarify()` for clarification, or `display()` for visuals as needed |
 
@@ -39,14 +39,14 @@ If `keep_going` is set on the dialogue state after step 3, the Agent loops back 
 The Agent owns a `World` instance — a session-scoped container that acts as the data registry and state archive. World stores:
 
 - **State history** (`states: list[DialogueState]`): All prior DialogueState objects for the session
-- **Frame archive** (`frames: list[DisplayFrame]`): All frames produced by policies
+- **Frame archive** (`frames: list[TaskArtifact]`): All frames produced by policies
 - **Flow Stack**: The session's flow stack instance
 - **Context Coordinator**: The session's context coordinator instance
 
 Modules receive World in their constructor and unpack what they need:
 - `NLU(config, ambiguity, engineer, world)` — returns `DialogueState` (no intermediate NLUResult)
-- `PEX(config, ambiguity, engineer, memory, world)` — returns `DisplayFrame` (no intermediate PEXResult); PEX does not write messages
-- `RES(config, ambiguity, engineer, world)` — returns `tuple[str, DisplayFrame]`
+- `PEX(config, ambiguity, engineer, memory, world)` — returns `TaskArtifact` (no intermediate PEXResult); PEX does not write messages
+- `RES(config, ambiguity, engineer, world)` — returns `tuple[str, TaskArtifact]`
 
 World is not a core component — it lives inside the Agent and provides the session-level storage that individual components reference. Dialogue State tracks beliefs; World tracks what the agent has seen and produced.
 
@@ -89,7 +89,7 @@ Two tiers of failure handling operate at different levels:
 
 4. **[Prompt Engineer](./components/prompt_engineer.md)** — Model-agnostic LLM interface. Handles streaming vs. regular responses, output parsing, guardrails (JSON, SQL, Python), and data preview formatting.
 
-5. **[Display Frame](./components/display_frame.md)** — Decouples data transformation (policy's job) from data display (RES's job). Holds the core entities for the current turn that RES needs to render the correct views.
+5. **[Display Frame](./components/task_artifact.md)** — Decouples data transformation (policy's job) from data display (RES's job). Holds the core entities for the current turn that RES needs to render the correct views.
 
 6. **[Ambiguity Handler](./components/ambiguity_handler.md)** — Declares, tracks, and resolves uncertainty at four levels: general, partial, specific, and confirmation. First-class citizen for agent reliability.
 

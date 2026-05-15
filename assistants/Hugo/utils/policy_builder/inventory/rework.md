@@ -19,11 +19,11 @@ From `backend/components/flow_stack/flows.py` lines 200-212:
 
 ### Guard clauses
 From `backend/modules/policies/revise.py` lines 34-45 (rework_policy):
-- **Line 35-36:** Call `_require_source(flow, state, context)` which checks if entity_slot is filled. If missing, declare 'specific' ambiguity and return empty DisplayFrame().
+- **Line 35-36:** Call `_require_source(flow, state, context)` which checks if entity_slot is filled. If missing, declare 'specific' ambiguity and return empty TaskArtifact().
 - **Line 39:** Call `_resolve_source_ids` to ground post_id and sec_id from source slot.
 - **Line 40:** Call `llm_execute` to run the skill (tool-using loop).
 - **Line 41:** Mark flow.status = 'Completed'.
-- **Line 42:** Build DisplayFrame with origin='rework' and thoughts from LLM output.
+- **Line 42:** Build TaskArtifact with origin='rework' and thoughts from LLM output.
 - **Line 43-44:** If post_id exists, add a card block with post content.
 
 ### Staging

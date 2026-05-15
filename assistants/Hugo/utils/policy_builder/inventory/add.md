@@ -20,11 +20,11 @@ From `backend/components/flow_stack/flows.py` lines 182-196:
 
 ### Guard clauses
 From `backend/modules/policies/draft.py` lines 169-181 (add_policy):
-- **Line 170-173:** If entity_slot (source) is not filled, declare 'specific' ambiguity with missing_slot metadata and return empty DisplayFrame('error').
+- **Line 170-173:** If entity_slot (source) is not filled, declare 'specific' ambiguity with missing_slot metadata and return empty TaskArtifact('error').
 - **Line 175:** Call `_resolve_source_ids` to ground post_id from source slot.
 - **Line 176:** Call `llm_execute` to run the skill (tool-using loop).
 - **Line 177:** Mark flow.status = 'Completed'.
-- **Line 178:** Build DisplayFrame with origin='add' and thoughts from LLM output.
+- **Line 178:** Build TaskArtifact with origin='add' and thoughts from LLM output.
 - **Line 179-180:** If post_id exists, add a card block with post content.
 
 ### Staging

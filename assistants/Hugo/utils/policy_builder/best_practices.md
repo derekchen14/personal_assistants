@@ -68,7 +68,7 @@
 
 **Dispatch contract (Phase 2).** Two execution paths, written directly into each per-flow policy method — no shared helper, no flow-class flag:
 
-- **Deterministic path** — the policy builds `params` from filled slots, calls `tools(tool_name, params)` directly, flips `flow.status = 'Completed'`, and returns a `DisplayFrame`. On tool failure returns `DisplayFrame(origin='error', metadata={'tool_error': ..., 'reason': ...}, code=result['_message'])` per AD-6. The corresponding skill file is deleted — `llm_execute` would narrate what the caller already knows. Reference implementations: `create_policy` (draft.py), `inspect_policy` / `find_policy` (research.py), `explain_policy` / `undo_policy` (converse.py).
+- **Deterministic path** — the policy builds `params` from filled slots, calls `tools(tool_name, params)` directly, flips `flow.status = 'Completed'`, and returns a `TaskArtifact`. On tool failure returns `TaskArtifact(origin='error', metadata={'tool_error': ..., 'reason': ...}, code=result['_message'])` per AD-6. The corresponding skill file is deleted — `llm_execute` would narrate what the caller already knows. Reference implementations: `create_policy` (draft.py), `inspect_policy` / `find_policy` (research.py), `explain_policy` / `undo_policy` (converse.py).
 - **Agentic path** — the policy calls `BasePolicy.llm_execute(...)`. The sub-agent picks the tool trajectory from `flow.tools`. Used for outline, refine, compose, rework, polish, simplify, add, audit, release, etc.
 
 Heuristic for picking the path: deterministic when `len(flow.tools) == 1` AND the tool's args are fully derivable from `flow.slots` + `state.active_post` without LLM reasoning. Agentic when `len(flow.tools) >= 2` OR any tool arg is prose/content the LLM must compose. A flow's deterministic nature is *implied* by what its policy does — it is not a declared attribute.
@@ -79,9 +79,9 @@ Heuristic for picking the path: deterministic when `len(flow.tools) == 1` AND th
 
 **Evidence.** The MAST taxonomy: 41.8% spec/design, 36.9% inter-agent misalignment, 21.3% verification ([Augment Code](https://www.augmentcode.com/guides/why-multi-agent-llm-systems-fail-and-how-to-fix-them)). Anthropic's guidance: verification-as-feedback via rules > visual > LLM-as-judge, in decreasing reliability ([Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk)).
 
-**Hugo today.** AD-6 locks three distinct channels: (1) **tool-call failure** → `DisplayFrame(origin='error', metadata={'tool_error': ...}, code=<raw>)`; (2) **contract violation** → `engineer.apply_guardrails(format='json')` fails-closed to an error frame; (3) **ambiguous user intent** → `self.ambiguity.declare(level, metadata=...)`. `RecoveryAction` (`pex.py` lines 27–31) has only `RETRY` and `ESCALATE` live; `GATHER_CONTEXT` / `REROUTE` are `# future` stubs.
+**Hugo today.** AD-6 locks three distinct channels: (1) **tool-call failure** → `TaskArtifact(origin='error', metadata={'tool_error': ...}, code=<raw>)`; (2) **contract violation** → `engineer.apply_guardrails(format='json')` fails-closed to an error artifact; (3) **ambiguous user intent** → `self.ambiguity.declare(level, metadata=...)`. `RecoveryAction` (`pex.py` lines 27–31) has only `RETRY` and `ESCALATE` live; `GATHER_CONTEXT` / `REROUTE` are `# future` stubs.
 
-**Alignment / proposed direction on `RecoveryAction`.** Hugo's three-channel rule matches the 2026 "classify before retry" principle tightly. But `RecoveryAction` as coded is incoherent with AD-6: it was designed for a legacy retry-then-escalate model AD-6 replaced. **Recommendation: shrink the enum.** The real recovery axis is what PEX does *after* `_validate_frame` rejects a frame — `RETRY` (re-run once with repair scratchpad) and `ESCALATE` (surface via partial-ambiguity). Replace `GATHER_CONTEXT` and `REROUTE` with comments pointing to AD-6: routing belongs in NLU `contemplate()`; context enrichment belongs in the Internal-flow chain (per `CLAUDE.md § Module Contracts`). Shrink-and-document honors the lock without re-architecting.
+**Alignment / proposed direction on `RecoveryAction`.** Hugo's three-channel rule matches the 2026 "classify before retry" principle tightly. But `RecoveryAction` as coded is incoherent with AD-6: it was designed for a legacy retry-then-escalate model AD-6 replaced. **Recommendation: shrink the enum.** The real recovery axis is what PEX does *after* `_validate_artifact` rejects a frame — `RETRY` (re-run once with repair scratchpad) and `ESCALATE` (surface via partial-ambiguity). Replace `GATHER_CONTEXT` and `REROUTE` with comments pointing to AD-6: routing belongs in NLU `contemplate()`; context enrichment belongs in the Internal-flow chain (per `CLAUDE.md § Module Contracts`). Shrink-and-document honors the lock without re-architecting.
 
 ## 4. Grounding vs. reasoning
 
@@ -135,7 +135,7 @@ Heuristic for picking the path: deterministic when `len(flow.tools) == 1` AND th
 
 **Hugo today.** Per `policy_spec.md § Theme execution status`, post-Theme-3 `inspect` became fully deterministic (skill deleted, policy calls `inspect_post` directly), `create` was already deterministic (`inventory/create.md § Persistence calls`), `find` was always deterministic. The remaining LLM-driven flows (audit, rework, simplify, polish, compose, refine, add, release) all have genuine judgment-heavy steps. Compare-style in audit is an LLM call *inside the deterministic audit policy* — correctly scoped.
 
-**Alignment.** Post-Theme-3 Hugo matches "deterministic core, agentic shell" closely. Subtle gap: `pex.py::_validate_frame` (lines 172–197) uses `_llm_quality_check` (lines 228–245) — LLM verifying LLM. Weak signal by the 2026 principle. It's gated by `recovery.llm_validate_flows` and short-circuits on failure so it doesn't harm, but shouldn't be treated as a real gate. Rules-based checks (frame-shape validation, required block types, `tool_succeeded`) carry the actual safety.
+**Alignment.** Post-Theme-3 Hugo matches "deterministic core, agentic shell" closely. Subtle gap: `pex.py::_validate_artifact` (lines 172–197) uses `_llm_quality_check` (lines 228–245) — LLM verifying LLM. Weak signal by the 2026 principle. It's gated by `recovery.llm_validate_flows` and short-circuits on failure so it doesn't harm, but shouldn't be treated as a real gate. Rules-based checks (frame-shape validation, required block types, `tool_succeeded`) carry the actual safety.
 
 ## 9. Cross-turn state / findings channel
 
@@ -143,7 +143,7 @@ Heuristic for picking the path: deterministic when `len(flow.tools) == 1` AND th
 
 **Evidence.** MemoryArena: 95%+ passive recall drops to 40–60% on active, decision-relevant use ([mem0.ai](https://mem0.ai/blog/state-of-ai-agent-memory-2026)). Implication: structured keys with `version`/`turn_number` metadata beat freeform text.
 
-**Hugo today.** AD-1 (`policy_spec.md § Architectural decisions`) codifies the convention: scratchpad key = `flow_name`; value is a dict with required fields `version`, `turn_number`, `used_count`, plus flow-specific payload. Per `policy_spec.md § Theme execution status`, T5 is executed: producers (`inspect`, `find`, `audit`) write scratchpad using `context.turn_id`, and the polish skill emits `used:[...]` which the policy reads to increment `used_count`. No new attribute on `DialogueState` or `DisplayFrame`.
+**Hugo today.** AD-1 (`policy_spec.md § Architectural decisions`) codifies the convention: scratchpad key = `flow_name`; value is a dict with required fields `version`, `turn_number`, `used_count`, plus flow-specific payload. Per `policy_spec.md § Theme execution status`, T5 is executed: producers (`inspect`, `find`, `audit`) write scratchpad using `context.turn_id`, and the polish skill emits `used:[...]` which the policy reads to increment `used_count`. No new attribute on `DialogueState` or `TaskArtifact`.
 
 **Alignment.** Hugo's convention matches the 2026 structured-scratchpad pattern and is **stronger than most framework defaults** in one respect: `used_count` gives an explicit active-use signal — the decision-relevant memory metric MemoryArena highlights. `version` handles re-audits. Two forward-looking notes (not fixes now): (a) no intent-filter — polish walks the whole scratchpad and filters by `key=flow_name`, fine at 64 snippets but wouldn't scale; (b) no compression path — a long audit finding stays verbatim. Neither urgent.
 
@@ -179,7 +179,7 @@ The architecture below is a **consolidation** of what already landed (post Theme
 
 Every policy method receives `(state, context, tools)` from `PEX.execute` (`pex.py` line 118) and must, in order:
 
-1. **Guard entity slot.** If `flow.entity_slot` is SourceSlot-derived, confirm `.filled`; if missing, `declare('partial', metadata={'missing_entity': ...})` and return an error frame. Topic-entity flows declare `'specific'`.
+1. **Guard entity slot.** If `flow.entity_slot` is SourceSlot-derived, confirm `.filled`; if missing, `declare('partial', metadata={'missing_entity': ...})` and return an error artifact. Topic-entity flows declare `'specific'`.
 2. **Guard required slots.** For each `priority='required'` non-entity slot, check `.filled`; declare `'specific'` and return. Optional slots MAY take a sensible default (per § 5 EVPI guidance).
 3. **Resolve context.** `self._build_resolved_context(flow, state, tools)` — deterministic-core step; never delegate to the skill.
 4. **Dispatch** — either direct tool call (`create`, `inspect`, `find` per `policy_spec.md § Theme execution status`) or skill loop via `self.llm_execute(...)` with success check `self.engineer.tool_succeeded(tool_log, name)` (Theme 7).
@@ -202,13 +202,13 @@ Every policy method receives `(state, context, tools)` from `PEX.execute` (`pex.
        permission)      (bad JSON,          (missing /
            │            schema miss)        wrong slot)
            ▼                 │                  │
-  DisplayFrame(               │                  │
+  TaskArtifact(               │                  │
    origin='error',            ▼                  ▼
    metadata={          apply_guardrails    self.ambiguity.
      'tool_error':    (format='json')       declare(level,
       <name>,             │                    metadata)
      'reason': ...},      │                  return empty
-   code=<raw>)            ▼                    DisplayFrame
+   code=<raw>)            ▼                    TaskArtifact
    return           still mismatched?
                          │
                     YES  │  NO
@@ -217,7 +217,7 @@ Every policy method receives `(state, context, tools)` from `PEX.execute` (`pex.
                     frame as LHS
 ```
 
-PEX's `_validate_frame` + `recover` ladder (`pex.py` lines 172–319) is the outer safety net, stays thin:
+PEX's `_validate_artifact` + `recover` ladder (`pex.py` lines 172–319) is the outer safety net, stays thin:
 
 - **Tier 1 (RETRY)** — re-run policy once with a `scratchpad['repair']` note. Live.
 - **Tier 4 (ESCALATE)** — declare `partial` ambiguity with `failure_reason`. Live.
@@ -254,7 +254,7 @@ Post-Theme-7 only one helper landed: `PromptEngineer.tool_succeeded(log, name) �
 
 **2026-informed additions (proposals, not locked):**
 
-1. **`BasePolicy.error_frame(origin, tool_error=None, contract_violation=None, reason='', raw='')`** — thin constructor for the AD-6 error-origin frame. Every policy currently inlines `DisplayFrame(origin='error', metadata={...}, code=<raw>)`; a helper codifies AD-6 and prevents metadata-key drift (`tool_error` vs. `tool_failure` vs. `error_tool`). Will have ≥5 call-sites post-Part-3.
+1. **`BasePolicy.error_artifact(origin, tool_error=None, contract_violation=None, reason='', raw='')`** — thin constructor for the AD-6 error-origin frame. Every policy currently inlines `TaskArtifact(origin='error', metadata={...}, code=<raw>)`; a helper codifies AD-6 and prevents metadata-key drift (`tool_error` vs. `tool_failure` vs. `error_tool`). Will have ≥5 call-sites post-Part-3.
 2. **Prompt-cache markers in `PromptEngineer._call_claude`** (§ 7) — add `cache_control={'type': 'ephemeral'}` on the system-block tail and `tools=` array. Additive, no AD conflict.
 
 Flag both for user sign-off in Part 3.

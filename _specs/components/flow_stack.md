@@ -2,14 +2,27 @@
 
 Lives within the dialogue state, but is complex enough to warrant its own description.
 
+## Naming Map — A2A Alignment
+
+For interop with the [A2A protocol](https://a2a-protocol.org/latest/specification/), the runtime vocabulary maps as follows. Our terms are kept because they're established in this codebase; the right column is the A2A equivalent so external readers can translate.
+
+| Our term | A2A term | Notes |
+|---|---|---|
+| **flow** ↔ **policy** ↔ **task** | task | All three refer to the same thing: the work the sub-agent does. *Flow* is the declarative spec (slots, tools, parents); *policy* is the Python code executing it; *task* is A2A's framing of the unit of work. Use whichever fits the layer being discussed. |
+| **artifact** (was: frame) | artifact | The structured output a policy hands to RES for the turn. Class: `TaskArtifact` (renamed from `DisplayFrame`). |
+| **parts** (was: metadata) | parts | The A2A v1.0 parts array on the artifact: `list[Part]`, each Part holding exactly one of `text` / `raw` / `url` / `data` (+ optional `metadata` extension). The classification dict lives inside the first `data` Part; agent reasoning lives inside a `text` Part tagged `metadata.kind='thoughts'`. Helper properties on `TaskArtifact` (`.data`, `.thoughts`, `.code`) unpack from this list for ergonomic reads. |
+| **block** | (no direct A2A term) | Visual UI building block carried in `artifact.blocks` (cards, lists, selections, confirmations). We keep "block" — A2A's *Part* is a content container (text / raw / url / data) that maps to our `parts` field, not to our visual UI units. |
+
 ## What is a Flow?
 
 - Flows hold the slots, metadata, and other information about the action to take
   - Also known as "workflows" in extended form
   - Historic name: "dialog acts"; modern name: sometimes called "sub-agents"
+  - In A2A vocabulary: each flow is a **task** that the agent runs
 - The **policy** is the code that actually executes the action
   - Implemented as a Skill (https://agentskills.io/what-are-skills) with access to tools (https://www.anthropic.com/engineering/writing-tools-for-agents)
   - Sometimes a tool is actually just a call to an MCP server
+  - *Flow / policy / task* are interchangeable when discussing "the sub-agent's work" — see naming map above
 
 ## Flow Class Hierarchy
 
@@ -71,7 +84,7 @@ Also resolves **aliases** (e.g., the LLM says `'post'` but the slot is named `'s
 
 **`fill_slots_by_label(labels: dict)`** — Targeted fill for a specific slot.
 
-The upstream prompt is shorter and more focused: it knows exactly which slot it needs to fill (e.g., "Extract the topic the user wants to outline") and produces a single `{slot_name: value}` pair. The method routes entity-slot values through `validate_entity()` — a hook that domain parent flows can override for early validation (e.g., checking that a post exists before filling the source slot). Non-entity slots delegate to `fill_slot_values` for the actual storage. Returns `is_filled()` status.
+The upstream prompt is shorter and more focused: it knows exactly which slot it needs to fill (e.g., "Extract the topic the user wants to outline") and produces a single `{slot_name: value}` pair. The method routes entity-slot values through `extract_entity()` — the entity-extraction hook that domain parent flows can override for early validation (e.g., checking that a post exists before filling the source slot). Non-entity slots delegate to `fill_slot_values` for the actual storage. Returns `is_filled()` status.
 
 Used primarily by **policies in PEX** — when a policy knows a specific slot is missing, it runs a targeted extraction prompt and fills just that slot:
 
@@ -80,7 +93,7 @@ Used primarily by **policies in PEX** — when a policy knows a specific slot is
 text = self.engineer.call(history, system="Extract the topic the user wants to outline.")
 flow.fill_slots_by_label({'topic': parsed_value})
 if not flow.slots['topic'].filled:
-    self.ambiguity.declare('specific', metadata={'missing_slot': 'topic'})
+    self.ambiguity.declare('specific', metadata={'missing': 'topic'})
 ```
 
 **Summary of the distinction:**
@@ -89,9 +102,33 @@ if not flow.slots['topic'].filled:
 |---|---|---|
 | **Prompt scope** | Full flow — all slots at once | Single slot — focused extraction |
 | **Primary caller** | NLU (after flow detection) | Policies in PEX (during execution) |
-| **Entity handling** | Direct to slot | Via `validate_entity()` hook |
+| **Entity handling** | Direct to slot | Via `extract_entity()` hook |
 | **Alias resolution** | Yes | No |
 | **Returns** | Nothing | `is_filled()` boolean |
+
+### Entity Extraction (sub-task of slot filling)
+
+Industry NLU draws a line between **entity extraction** (identifying which entity the user is referring to — e.g. "this post", "the second section") and **slot filling** (writing a value into a structured variable). Hugo follows this distinction:
+
+| Layer | Action verb | Subject |
+|---|---|---|
+| NLU | classifies | intent |
+| NLU | detects | flow |
+| NLU | extracts | entity (`entities are extracted`) |
+| NLU | fills | slot (`slots are filled`) |
+
+**Entity extraction** is a sub-task of slot filling, focused on grounding:
+
+- In **NLU**, the `_extract_entities(flow, entity_dict)` helper (called from `_fill_slots`) routes entity payload values (`post`, `sec`, `snip`, `chl`) into the flow's grounding slots — its `SourceSlot` / `TargetSlot` / `RemovalSlot`, or into the `query` / `word` `ExactSlot` for snippet-scoped flows like `find` and `reference`.
+- In **flows**, the `BaseFlow.extract_entity(entity)` hook is what `fill_slots_by_label` invokes when the slot being filled is the flow's `entity_slot`. Domain parents may override `extract_entity` to add validation (e.g. confirming the post exists before committing).
+
+**Failure mapping:**
+- `partial` ambiguity = entity extraction failed (the entity the user was referring to could not be resolved). The flow's `entity_slot` is still unfilled after extraction attempts.
+- `specific` ambiguity = slot filling failed for some other (non-entity) slot.
+
+Both share the same runtime contract — `parts={'missing': <slot_name>, 'entity': <entity_type>?, 'reason': <code>?}` — so consumers reading an artifact's `parts` have a uniform "what was missing?" key regardless of which sub-task failed.
+
+The canonical entity slot name is `'source'` (matching `BaseFlow.entity_slot`); the slot type is `SourceSlot` (or a `SourceSlot`-derived class like `TargetSlot` / `RemovalSlot`).
 
 ### Flow Registration: `flow_classes` Dict
 
@@ -196,7 +233,7 @@ This 12+4 pattern is the scalable architecture for adding new domains. When crea
 
 A slot's priority is one of: `required`, `optional`, `elective`.
 
-- **required** — must be filled before execution. Missing → `specific` ambiguity with `metadata={'missing_slot': '<name>'}`.
+- **required** — must be filled before execution. Missing → `specific` ambiguity with `metadata={'missing': '<slot_name>'}`.
 - **elective** — at least one of N elective slots must be filled (choice among alternatives). A flow with elective slots must have ≥2 elective options — single-elective is invalid (convert to required or optional).
 - **optional** — nice-to-have. With a defensible default, commit it inline at policy entry. Without, treat absence as OK.
 
@@ -302,7 +339,7 @@ The current flow needs another flow's output before it can run. Push the prerequ
 ```python
 self.flow_stack.stackon('<prereq_flow>')
 state.keep_going = True
-frame = DisplayFrame(flow.name(), thoughts='<reason — surfaces to user via RES>')
+artifact = TaskArtifact(flow.name(), thoughts='<reason — surfaces to user via RES>')
 ```
 
 ### Fallback (re-route to sibling)
@@ -312,12 +349,12 @@ The user's intent maps to a different flow than NLU detected. Pop current, push 
 ```python
 self.flow_stack.fallback('<sibling_flow>')
 state.keep_going = True
-frame = DisplayFrame(flow.name(), thoughts='<why we re-routed>')
+artifact = TaskArtifact(flow.name(), thoughts='<why we re-routed>')
 ```
 
 The fallback process: a new flow is created for the target; best-effort slot mapping transfers slot values where names match (unmatched slots are discarded); flow metadata transfers; the previous flow is marked Invalid and popped; the new flow is pushed on top.
 
-Use only when the intent genuinely belongs elsewhere — never for skill errors (use error frames) or tool failures (use error frames).
+Use only when the intent genuinely belongs elsewhere — never for skill errors (use error artifacts) or tool failures (use error artifacts).
 
 ### Yield-When-Stacked (Converse on top of an active flow)
 
@@ -330,19 +367,19 @@ def endorse_policy(self, flow, state, context, tools):
         state.keep_going = True
         # Optional scratchpad note so the resumed flow knows the user accepted.
         self.memory.write_scratchpad(flow.name(), {'accepted': True})
-        return DisplayFrame(flow.name())  # empty yield-frame
+        return TaskArtifact(flow.name())  # empty yield-artifact
     # ...fall through to the normal chit-chat path
 ```
 
 Without yielding, the user's "yes" gets answered by Converse with a generic acknowledgement, the underlying flow stays paused, and the originally-promised work never lands. Applies to `endorse` and `dismiss` — the flows that consume explicit accept/decline. Other Converse flows (`chat`, `suggest`, `explain`, `preference`, `undo`) don't carry an accept/decline contract and should not yield.
 
-PEX `_validate_frame` allows empty frames when `keep_going=True` — the empty frame here is intentional, not a bug for the retry mechanism to chase.
+PEX `_validate_artifact` allows empty artifacts when `keep_going=True` — the empty artifact here is intentional, not a bug for the retry mechanism to chase.
 
 ## Failure Recovery
 
 Failure recovery is owned by the Agent, not the flow stack itself. The flow of recovery:
 
-1. **Policy classifies the failure** — tool-call failure → error frame with `metadata={'violation': 'tool_error', ...}`; ambiguous user intent → `ambiguity.declare(level, observation=, metadata=)`; malformed skill output → error frame with `metadata={'violation': 'parse_failure'}`.
+1. **Policy classifies the failure** — tool-call failure → error artifact with `parts={'violation': 'tool_error', ...}`; ambiguous user intent → `ambiguity.declare(level, observation=, metadata=)` (note: `declare()`'s `metadata=` parameter stays — it's the ambiguity component's input, not the artifact attribute); malformed skill output → error artifact with `parts={'violation': 'parse_failure'}`.
 2. **Agent decides** based on what was returned:
    - Tool error and transient → retry once via `BasePolicy.retry_tool(tools, name, params, max_attempts=2)`.
    - Ambiguity that may indicate the wrong flow → `NLU.contemplate()` to re-route; mark current flow Invalid; best-effort slot mapping to the new flow.

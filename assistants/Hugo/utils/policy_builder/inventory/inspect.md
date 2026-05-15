@@ -23,7 +23,7 @@ From `backend/modules/policies/research.py` lines 123–135 (`inspect_policy`):
 - **Line 129:** If filled, delegate to `llm_execute` (agentic tool-use loop).
 - **Line 130:** Extract `inspect_post` tool result.
 - **Line 133:** Call helper `_format_inspect_metrics` to format results.
-- **Line 135:** Return DisplayFrame with `origin='inspect'` and formatted metrics as `thoughts`.
+- **Line 135:** Return TaskArtifact with `origin='inspect'` and formatted metrics as `thoughts`.
 - **Line 59:** Mark `flow.status = 'Completed'` after policy completes.
 
 ### Staging

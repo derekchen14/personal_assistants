@@ -18,9 +18,9 @@
 - **Files touched:**
   - `backend/prompts/skills/create.md` (deleted)
 
-### Duplicate-title branch: `'specific'` ambiguity on an error frame
+### Duplicate-title branch: `'specific'` ambiguity on an error artifact
 
-- **What changed:** The duplicate-title branch in `create_policy` no longer routes through `ambiguity.declare('confirmation', metadata={'reason': 'duplicate_file'})` with a confirmation block. It now calls `self.ambiguity.declare('specific', metadata={'duplicate_title': slots['title']})` and returns `DisplayFrame('error', metadata={'duplicate_title': slots['title']})`.
+- **What changed:** The duplicate-title branch in `create_policy` no longer routes through `ambiguity.declare('confirmation', metadata={'reason': 'duplicate_file'})` with a confirmation block. It now calls `self.ambiguity.declare('specific', metadata={'duplicate_title': slots['title']})` and returns `TaskArtifact('error', metadata={'duplicate_title': slots['title']})`.
 - **Why:** Per user's (d) feedback on Theme 4 — a duplicate title is a user mistake, not a candidate value awaiting sign-off. `confirmation` is reserved for genuine "candidate value needs user approval" cases (AD-6 § 3).
 - **Theme:** Theme 4 (error-path gaps) informed the reclassification; Theme 3 (output-shape drift) informed dropping the confirmation block.
 - **Files touched:**
@@ -29,12 +29,12 @@
 ```python
 elif result.get('_error') == 'duplicate':
     self.ambiguity.declare('specific', metadata={'duplicate_title': slots['title']})
-    frame = DisplayFrame('error', metadata={'duplicate_title': slots['title']})
+    artifact = TaskArtifact('error', metadata={'duplicate_title': slots['title']})
 ```
 
 ### Topic-provided path stacks on `OutlineFlow` inline
 
-- **What changed:** After a successful `create_post`, if the `topic` slot was filled the policy now pushes `OutlineFlow` on top of the stack, pre-fills the new post's id into `outline_flow.slots['source']` (as the `post=` entity part) and forwards the topic into `outline_flow.slots['topic']`, then sets `state.keep_going = True` and attaches a short transition note to `frame.thoughts` ("Created the post — moving on to outline.").
+- **What changed:** After a successful `create_post`, if the `topic` slot was filled the policy now pushes `OutlineFlow` on top of the stack, pre-fills the new post's id into `outline_flow.slots['source']` (as the `post=` entity part) and forwards the topic into `outline_flow.slots['topic']`, then sets `state.keep_going = True` and attaches a short transition note to `artifact.thoughts` ("Created the post — moving on to outline.").
 - **Why:** Inventory § Known gaps #2 flagged topic handling as undefined: the slot was passed to `create_post` but nothing ever generated the promised initial outline. The Theme 6 convention (inline `flow_stack.stackon()` + `state.keep_going = True` + reason in `thoughts`, no helper) is used verbatim. No new flags or fields invented.
 - **Theme:** Theme 6 (stack-on ergonomics). Theme 7 rejected the `stack_on` helper, so the pattern is inline.
 - **Files touched:**
@@ -47,7 +47,7 @@ if 'topic' in slots:
     outline_flow = self.flow_stack.get_flow()
     outline_flow.slots['source'].add_one(post=new_id)
     outline_flow.slots['topic'].add_one(slots['topic'])
-    frame.thoughts = 'Created the post — moving on to outline.'
+    artifact.thoughts = 'Created the post — moving on to outline.'
 ```
 
 ## Architectural decisions applied
