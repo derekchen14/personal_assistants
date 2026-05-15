@@ -52,12 +52,16 @@ def project_state(agent, result:dict, tool_log:list) -> dict:
     """Build a deterministic structural projection of the post-turn agent state.
 
     Captures shape (slot fill state, value-count, value key-sets, flow_stack composition,
-    frame structure, tool sequence) — NOT the LLM-generated text values that vary turn-to-turn.
+    artifact structure, tool sequence) — NOT the LLM-generated text values that vary turn-to-turn.
     This is what catches Bugs #2-#5 without flaking on legitimate LLM variance."""
     state = agent.world.current_state()
-    frame_data = result.get('frame') or {}
-    metadata = frame_data.get('metadata') or {}
-    blocks = frame_data.get('blocks') or []
+    artifact_data = result.get('artifact') or {}
+    parts = artifact_data.get('parts') or []
+    blocks = artifact_data.get('blocks') or []
+    data_part = next((p.get('data') for p in parts if 'data' in p), {}) or {}
+    has_text_kind = lambda kind: any(
+        'text' in p and (p.get('metadata') or {}).get('kind') == kind for p in parts
+    )
 
     flow_stack = agent.world.flow_stack
     top = flow_stack.get_flow()
@@ -66,18 +70,18 @@ def project_state(agent, result:dict, tool_log:list) -> dict:
         'state': _project_state_obj(state),
         'flow_stack': [_project_flow(entry) for entry in flow_stack._stack],
         'top_flow': _project_top(top),
-        'frame': {
-            'origin': frame_data.get('origin'),
-            'metadata_keys': sorted(metadata.keys()),
-            'violation': metadata.get('violation'),
-            'missing': metadata.get('missing'),
-            'entity': metadata.get('entity'),
-            'reason': metadata.get('reason'),
+        'artifact': {
+            'origin': artifact_data.get('origin'),
+            'parts_keys': sorted(data_part.keys()),
+            'violation': data_part.get('violation'),
+            'missing': data_part.get('missing'),
+            'entity': data_part.get('entity'),
+            'reason': data_part.get('reason'),
             'block_types': [b.get('type') for b in blocks],
             'block_data_keys': [sorted((b.get('data') or {}).keys()) for b in blocks],
             'block_panels': [b.get('panel') for b in blocks],
-            'has_thoughts': bool(frame_data.get('thoughts')),
-            'has_code': bool(frame_data.get('code')),
+            'has_thoughts': has_text_kind('thoughts'),
+            'has_code': has_text_kind('code'),
         },
         'tool_log': [
             # Tolerate both call-log shapes: {tool, success} (flat) or

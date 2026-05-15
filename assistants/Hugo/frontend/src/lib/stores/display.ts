@@ -24,23 +24,29 @@ export interface Block {
     expand?: boolean;
 }
 
-export interface FrameData {
+// A2A v1.0 Part: exactly one of text / raw / url / data is set. Optional metadata extension.
+export type Part =
+    | { text: string;  metadata?: Record<string, unknown> }
+    | { raw:  string;  metadata?: Record<string, unknown> }  // base64-encoded bytes
+    | { url:  string;  metadata?: Record<string, unknown> }
+    | { data: Record<string, unknown>; metadata?: Record<string, unknown> };
+
+export interface ArtifactData {
     origin?: string;
     blocks?: Block[];
-    metadata?: Record<string, unknown>;
-    thoughts?: string;
+    parts?: Part[];
 }
 
-function firstBlock(frame: FrameData | null): Block | undefined {
-    return frame?.blocks?.[0];
+function firstBlock(artifact: ArtifactData | null): Block | undefined {
+    return artifact?.blocks?.[0];
 }
 
 export type DisplayLayout = 'top' | 'split' | 'bottom';
 export type ActivePage = 'posts' | 'drafts' | 'notes' | 'tags';
 
-export const activePanel = writable<FrameData | null>(null);
-export const topPanel = writable<FrameData | null>(null);
-export const bottomPanel = writable<FrameData | null>(null);
+export const activePanel = writable<ArtifactData | null>(null);
+export const topPanel = writable<ArtifactData | null>(null);
+export const bottomPanel = writable<ArtifactData | null>(null);
 export const drawer = writable<Block | null>(null);
 export const activePage = writable<ActivePage>('posts');
 export const activeTag = writable<string>('');
@@ -95,15 +101,15 @@ export function dismissDrawer() {
 // content inside it. Toast is the canonical case; extend this set if other transient types arrive.
 const TRANSIENT_BLOCK_TYPES = new Set(['toast']);
 
-export function setPanel(frame: FrameData) {
-    // Blockless frame (e.g. inspect, clarification) carries chat-only content — metadata / thoughts but
+export function setPanel(artifact: ArtifactData) {
+    // Blockless artifact (e.g. inspect, clarification) carries chat-only content — metadata / thoughts but
     // nothing to render. Leave panels alone so the user's current view (card, list, grid) survives.
-    const blocks = frame.blocks ?? [];
+    const blocks = artifact.blocks ?? [];
     if (blocks.length === 0) return;
     const primary = blocks[0];
     if (primary.type === 'card' && (primary.data as Record<string, unknown>)?.status === 'note') return;
-    activePanel.set(frame);
-    if (frame.origin === 'find' && (primary.data as Record<string, unknown>)?.page) {
+    activePanel.set(artifact);
+    if (artifact.origin === 'find' && (primary.data as Record<string, unknown>)?.page) {
         showPage((primary.data as Record<string, unknown>).page as ActivePage);
     }
 
@@ -122,11 +128,11 @@ export function setPanel(frame: FrameData) {
         }
     }
     if (hasTopPersistent) {
-        topPanel.set(frame);
+        topPanel.set(artifact);
     }
     if (hasBottomPersistent) {
         _listExpanded.set(false);
-        bottomPanel.set(frame);
+        bottomPanel.set(artifact);
         if (primary.expand) {
             _expanded.set(true);
         }
@@ -140,7 +146,7 @@ export function showChosenOutline(
     const content = outline
         .map(sec => `## ${sec.name}\n\n${sec.description ?? ''}`)
         .join('\n\n');
-    const frame: FrameData = {
+    const artifact: ArtifactData = {
         origin: 'outline',
         blocks: [{
             type: 'card',
@@ -148,8 +154,8 @@ export function showChosenOutline(
             data: { ...priorData, content, pending: true },
         }],
     };
-    activePanel.set(frame);
-    bottomPanel.set(frame);
+    activePanel.set(artifact);
+    bottomPanel.set(artifact);
 }
 
 let _onRefresh: ((frameType: string) => void) | null = null;
