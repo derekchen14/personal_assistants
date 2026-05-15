@@ -41,7 +41,7 @@ If the channel list resolves to empty and no default is configured, call `handle
 
 ### General tools
 
-- `execution_error(violation, message)` when a tool fails in a way that should surface as a policy-layer error frame rather than a per-channel failure row.
+- `execution_error(violation, message)` when a tool fails in a way that should surface as a policy-layer error artifact rather than a per-channel failure row.
 - `handle_ambiguity(level, metadata)` when the channel list resolves to empty and no default channel is configured.
 - `manage_memory(action, key, value)` to read a per-channel token when the user has stored authentication preferences there.
 - `call_flow_stack(action='read', details='flows')` to check whether a `syndicate` or `promote` flow is already queued behind this release. When one is, trim the release output to the primary channel so the downstream flow handles amplification.

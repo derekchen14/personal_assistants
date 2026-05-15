@@ -9,7 +9,7 @@ class BaseFlow(object):
     self.is_uncertain = False
 
     self.fall_back = None
-    self.stage = ''
+    self.stage = 'default'    # default, discovery, direct, dispatch, delegation, done
     self.entity_slot = 'source'
 
     self.flow_id: str = ''
@@ -57,14 +57,15 @@ class BaseFlow(object):
   def fill_slots_by_label(self, labels: dict):
     """System 1: Targeted single-slot fill from PEX label extraction.
     Labels format: {slot_name: extracted_value}
-    Routes entity-slot values through validate_entity so domain parents
-    can override for early validation (e.g. checking post existence)."""
+    The entity-slot branch is the entity-extraction path: it routes the value
+    through `extract_entity` so domain parents can override for early validation
+    (e.g. checking post existence). All other slots go through `fill_slot_values`."""
     for slot_name, value in labels.items():
       if slot_name not in self.slots or value is None:
         continue
       if slot_name == self.entity_slot:
         entity = value if isinstance(value, dict) else {'post': str(value)}
-        self.validate_entity(entity)
+        self.extract_entity(entity)
       else:
         self.fill_slot_values({slot_name: value})
     return self.is_filled()
@@ -88,8 +89,10 @@ class BaseFlow(object):
       'plan_id': self.plan_id, 'turn_ids': self.turn_ids,
     }
 
-  def validate_entity(self, entity):
-    """Add entity to the primary grounding slot. Override in domain parents for validation."""
+  def extract_entity(self, entity):
+    """Entity-extraction hook: write the extracted entity dict into the primary
+    grounding slot. Override in domain parents for validation (e.g. confirming
+    the entity exists before committing it)."""
     if self.entity_slot in self.slots:
       self.slots[self.entity_slot].add_one(**entity)
 

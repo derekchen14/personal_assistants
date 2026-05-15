@@ -134,7 +134,7 @@ class BaseFlow(object):
       'plan_id': self.plan_id, 'turn_ids': self.turn_ids,
     }
 
-  def validate_entity(self, entity, current_context):
+  def extract_entity(self, entity, current_context):
     """Add entity to the primary grounding slot. Override in domain parents for validation."""
     if self.entity_slot in self.slots:
       self.slots[self.entity_slot].add_one(**entity)
@@ -171,7 +171,7 @@ class ExploreParentFlow(BaseFlow):
     """Explore flows expect NLU to identify assistant/spec entities."""
     current_context = labels.get('current_assistant', '')
     for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_context)
+      self.extract_entity(entity, current_context)
     return self.is_filled()
 
 
@@ -184,7 +184,7 @@ class GatherParentFlow(BaseFlow):
     """Gather flows expect NLU to identify scope/requirement entities."""
     current_context = labels.get('current_assistant', '')
     for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_context)
+      self.extract_entity(entity, current_context)
     return self.is_filled()
 
 
@@ -197,7 +197,7 @@ class PersonalizeParentFlow(BaseFlow):
     """Personalize flows expect NLU to identify the assistant section to modify."""
     current_context = labels.get('current_assistant', '')
     for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_context)
+      self.extract_entity(entity, current_context)
     return self.is_filled()
 
 
@@ -210,7 +210,7 @@ class DeliverParentFlow(BaseFlow):
     """Deliver flows expect NLU to identify the assistant and output format."""
     current_context = labels.get('current_assistant', '')
     for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_context)
+      self.extract_entity(entity, current_context)
     return self.is_filled()
 
 

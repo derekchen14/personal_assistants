@@ -383,24 +383,15 @@ class NLU:
         return [name for name, cat in FLOW_CATALOG.items() if cat['intent'] == intent or name in edges]
 
     def _fill_slots(self, flow, payload:dict={}):
-        snippet_exact_map = {'find': 'query', 'reference': 'word'}
         last_turn = self.world.context.last_user_turn
 
         if payload:
-            entity_slots = [s for s in flow.slots.values() if s.slot_type in ('source', 'target', 'removal')]
             entity_dict, filtered_payload = self._split_payload(payload)
 
-            # Phase 1a: Fill entity slots
-            if entity_dict and entity_slots:
-                for slot in entity_slots:
-                    slot.add_one(**entity_dict)
-            # Phase 1b: Fill ExactSlot with snippets. Only for FindFLow and ReferenceFlow.
-            elif 'snip' in entity_dict and flow.name() in snippet_exact_map:
-                slot_name = snippet_exact_map[flow.name()]
-                if not flow.slots[slot_name].filled:
-                    flow.slots[slot_name].add_one(entity_dict['snip'])
+            # Sub-task of slot filling: entity extraction from payload (Phase 1a + 1b).
+            extracted = self._extract_entities(flow, entity_dict)
             # Phase 1c: Capture slot-values when a user clicks on a button or interacts with UI.
-            elif last_turn.turn_type == 'action' and filtered_payload:
+            if not extracted and last_turn.turn_type == 'action' and filtered_payload:
                 self.unpack_user_actions(flow, filtered_payload)
 
         # Phase 2: Transfer entity grounding from previous flow to active flow. Gate on `slot.values` (not `slot.filled`)
@@ -422,6 +413,26 @@ class NLU:
                 log.warning('[fill_slots] filled-state: %s', {n: s.filled for n, s in flow.slots.items()})
             cleaned = self.engineer._strip_nulls(pred_slots['slots'])
             flow.fill_slot_values(cleaned)
+
+    def _extract_entities(self, flow, entity_dict:dict) -> bool:
+        """Entity extraction (sub-task of slot filling): write entities from the payload
+        into the flow's grounding slots. Covers two cases:
+          - Phase 1a: entity_dict maps directly into source/target/removal slots.
+          - Phase 1b: a snippet entity routes into the flow's ExactSlot for FindFlow / ReferenceFlow.
+        Returns True if the payload was consumed (caller should skip Phase 1c)."""
+        snippet_exact_map = {'find': 'query', 'reference': 'word'}
+        entity_slots = [s for s in flow.slots.values() if s.slot_type in ('source', 'target', 'removal')]
+
+        if entity_dict and entity_slots:
+            for slot in entity_slots:
+                slot.add_one(**entity_dict)
+            return True
+        if 'snip' in entity_dict and flow.name() in snippet_exact_map:
+            slot_name = snippet_exact_map[flow.name()]
+            if not flow.slots[slot_name].filled:
+                flow.slots[slot_name].add_one(entity_dict['snip'])
+            return True
+        return False
 
     def unpack_user_actions(self, flow, payload:dict):
         """Transfer a frontend action payload into flow slots. Default is a generic

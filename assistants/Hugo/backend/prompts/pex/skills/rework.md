@@ -29,7 +29,7 @@ This skill describes how to rework a blog post given user-supplied items: a list
 
 - Vague guidance (no concrete spans, no numbered list): emit JSON with empty `changes` and `done`; describe the confusion in `summary`. Do not save anything.
 - Wrong flow: if the request reads as Polish (sentence cleanup inside one paragraph) or Simplify (cutting a few words/sentences), call `call_flow_stack(action='fallback', flow='polish' | 'simplify')`. The policy re-routes through the flow stack — you still emit the JSON with empty arrays and a `summary` line naming the right flow.
-- If `revise_content` fails twice, the policy emits a `failed_to_save` error frame. Do not attempt a third call from the skill.
+- If `revise_content` fails twice, the policy emits a `failed_to_save` error artifact. Do not attempt a third call from the skill.
 
 ## Tools
 

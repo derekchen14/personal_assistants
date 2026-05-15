@@ -102,7 +102,7 @@ class BaseFlow(object):
       'plan_id': self.plan_id, 'turn_ids': self.turn_ids,
     }
 
-  def validate_entity(self, entity, current_context):
+  def extract_entity(self, entity, current_context):
     """Add entity to the primary grounding slot. Override in domain parents for validation."""
     if self.entity_slot in self.slots:
       self.slots[self.entity_slot].add_one(**entity)
@@ -148,7 +148,7 @@ class CleanParentFlow(BaseFlow):
     for entity in prediction.get('target', []):
       if prediction['action'] == 'clear':
         entity['ver'] = True
-      self.validate_entity(entity, current_tab)
+      self.extract_entity(entity, current_tab)
 
     if prediction['action'] == 'peek':
       self.fall_back = 'peek'
@@ -166,7 +166,7 @@ class TransformParentFlow(BaseFlow):
     """
     current_tab = labels.get('current_tab', '')
     for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_tab)
+      self.extract_entity(entity, current_tab)
     if self.entity_values(size=True) == 0:
       self.is_uncertain = True
     return self.is_filled()
@@ -194,7 +194,7 @@ class AnalyzeParentFlow(BaseFlow):
     """
     current_tab = labels.get('current_tab', '')
     for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_tab)
+      self.extract_entity(entity, current_tab)
       if entity.get('rel', '') == 'ambiguous':
         self.is_uncertain = True
 
@@ -212,7 +212,7 @@ class ReportParentFlow(BaseFlow):
     """Report flows expect NLU to identify data entities for visualization."""
     current_tab = labels.get('current_tab', '')
     for entity in labels['prediction'].get('result', []):
-      self.validate_entity(entity, current_tab)
+      self.extract_entity(entity, current_tab)
     if 'operation' in self.slots:
       self.slots['operation'].extract(labels)
     return self.is_filled()
