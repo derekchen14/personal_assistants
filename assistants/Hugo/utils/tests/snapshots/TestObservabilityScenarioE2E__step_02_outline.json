@@ -1,4 +1,26 @@
 {
+  "artifact": {
+    "block_data_keys": [
+      [
+        "options",
+        "title"
+      ]
+    ],
+    "block_panels": [
+      "bottom"
+    ],
+    "block_types": [
+      "selection"
+    ],
+    "entity": null,
+    "has_code": false,
+    "has_thoughts": false,
+    "missing": null,
+    "origin": "outline",
+    "parts_keys": [],
+    "reason": null,
+    "violation": null
+  },
   "flow_stack": [
     {
       "flow_type": "outline",
@@ -47,27 +69,6 @@
       "status": "Active"
     }
   ],
-  "frame": {
-    "block_data_keys": [
-      [
-        "options",
-        "title"
-      ]
-    ],
-    "block_locations": [
-      "bottom"
-    ],
-    "block_types": [
-      "selection"
-    ],
-    "has_code": false,
-    "has_thoughts": false,
-    "metadata_keys": [],
-    "missing_entity": null,
-    "missing_slot": null,
-    "origin": "outline",
-    "violation": null
-  },
   "state": {
     "active_post_set": true,
     "flow_dax": "{002}",

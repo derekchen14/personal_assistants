@@ -89,11 +89,11 @@ def _cleanup(post_ids:list[str]) -> None:
 
 
 def _frame_origin(result:dict) -> str:
-    return (result.get('frame') or {}).get('origin', '')
+    return (result.get('artifact') or {}).get('origin', '')
 
 
 def _block_types(result:dict) -> list[str]:
-    blocks = (result.get('frame') or {}).get('blocks') or []
+    blocks = (result.get('artifact') or {}).get('blocks') or []
     return [b.get('type') for b in blocks]
 
 
@@ -132,7 +132,7 @@ def test_simplify_multiturn_resolves_suggestions():
         # Turn 1: section named, no direction.
         result1 = agent.take_turn('simplify the methods section')
         assert _frame_origin(result1) == 'simplify', \
-            f'turn 1 frame origin: {_frame_origin(result1)!r}'
+            f'turn 1 artifact origin: {_frame_origin(result1)!r}'
         assert agent.ambiguity.present(), \
             f'expected ambiguity declared on turn 1; result.message={result1.get("message")!r}'
         assert agent.ambiguity.level == 'specific', \
@@ -148,7 +148,7 @@ def test_simplify_multiturn_resolves_suggestions():
             f'observation={agent.ambiguity.observation!r} ' \
             f'message={result2.get("message")!r}'
         assert _frame_origin(result2) == 'simplify', \
-            f'turn 2 frame origin: {_frame_origin(result2)!r}'
+            f'turn 2 artifact origin: {_frame_origin(result2)!r}'
 
         # Side-effect checks: simplify must call revise_content and the section content must change.
         assert _called(agent, 'revise_content'), \
@@ -186,7 +186,7 @@ def test_polish_multiturn_confirms_direction(turn2_utterance):
             'Please clean up the first paragraph in the Methods section to flow better'
         )
         assert _frame_origin(result1) == 'polish', \
-            f'turn 1 frame origin: {_frame_origin(result1)!r}'
+            f'turn 1 artifact origin: {_frame_origin(result1)!r}'
         assert agent.ambiguity.present(), \
             f'expected ambiguity declared on turn 1; result.message={result1.get("message")!r}'
         assert agent.ambiguity.level == 'confirmation', \
@@ -202,7 +202,7 @@ def test_polish_multiturn_confirms_direction(turn2_utterance):
             f'level={agent.ambiguity.level!r} ' \
             f'observation={agent.ambiguity.observation!r} message={result2.get("message")!r}'
         assert _frame_origin(result2) == 'polish', \
-            f'turn 2 frame origin: {_frame_origin(result2)!r}'
+            f'turn 2 artifact origin: {_frame_origin(result2)!r}'
 
         # Side-effect checks: polish must call revise_content and content must change.
         assert _called(agent, 'revise_content'), \
@@ -242,7 +242,7 @@ def test_compare_multiturn_resolves_category():
             'compare my Multiturn Alpha Test post and my Multiturn Beta Test post'
         )
         assert _frame_origin(result1) == 'compare', \
-            f'turn 1 frame origin: {_frame_origin(result1)!r}'
+            f'turn 1 artifact origin: {_frame_origin(result1)!r}'
         assert agent.ambiguity.present(), \
             f'expected ambiguity declared on turn 1; message={result1.get("message")!r}'
         assert agent.ambiguity.level == 'specific', \
@@ -258,7 +258,7 @@ def test_compare_multiturn_resolves_category():
             f'observation={agent.ambiguity.observation!r} ' \
             f'message={result2.get("message")!r}'
         assert _frame_origin(result2) == 'compare', \
-            f'turn 2 frame origin: {_frame_origin(result2)!r}'
+            f'turn 2 artifact origin: {_frame_origin(result2)!r}'
 
         # Side-effect checks: tone-category must route to read_section per post and
         # NOT to the inspect/check branches.
@@ -266,9 +266,9 @@ def test_compare_multiturn_resolves_category():
             'expected read_section to be called for tone-category compare'
         assert not _called(agent, 'inspect_post'), \
             'inspect_post was called — that is the inspect branch, not tone'
-        # The frame should carry a compare block with both post payloads.
+        # The artifact should carry a compare block with both post payloads.
         assert 'compare' in _block_types(result2), \
-            f'expected compare block in frame; got {_block_types(result2)!r}'
+            f'expected compare block in artifact; got {_block_types(result2)!r}'
     finally:
         agent.close()
         _cleanup([_COMPARE_POST_A, _COMPARE_POST_B])

@@ -1,6 +1,5 @@
 {
-  "flow_stack": [],
-  "frame": {
+  "artifact": {
     "block_data_keys": [
       [
         "post_id",
@@ -8,20 +7,22 @@
         "title"
       ]
     ],
-    "block_locations": [
+    "block_panels": [
       "bottom"
     ],
     "block_types": [
       "card"
     ],
+    "entity": null,
     "has_code": false,
     "has_thoughts": false,
-    "metadata_keys": [],
-    "missing_entity": null,
-    "missing_slot": null,
+    "missing": null,
     "origin": "create",
+    "parts_keys": [],
+    "reason": null,
     "violation": null
   },
+  "flow_stack": [],
   "state": {
     "active_post_set": true,
     "flow_dax": "{05A}",

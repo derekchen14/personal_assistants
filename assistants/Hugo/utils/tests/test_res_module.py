@@ -1,11 +1,11 @@
 """RES module-level golden tests.
 
-One parameterized test exercises RES.respond(frame) across the distinct template
+One parameterized test exercises RES.respond(artifact) across the distinct template
 variants and early-return branches. config['debug']=True suppresses naturalize
 so no LLM call fires.
 
-Each row constructs a state + flow + frame, calls respond, and asserts on the
-returned (utterance, frame) tuple."""
+Each row constructs a state + flow + artifact, calls respond, and asserts on the
+returned (utterance, artifact) tuple."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from backend.modules.res import RES
 from backend.components.world import World
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 
 
 @pytest.fixture
@@ -67,7 +67,7 @@ RES_CASES = [
         'frame_thoughts': '',
         'ambiguity': None,
         'state_kwargs': {},
-        # create template reads `flow.slots['title'].value` directly (not frame.thoughts).
+        # create template reads `flow.slots['title'].value` directly (not artifact.thoughts).
         'slot_setup': lambda flow: flow.slots['title'].add_one('My Post'),
         'utterance_contains': 'My Post',
     },
@@ -107,7 +107,7 @@ RES_CASES = [
         'frame_thoughts': 'My refine thoughts',
         'ambiguity': None,
         'state_kwargs': {},
-        # refine template is "{message}" → frame.thoughts passes through;
+        # refine template is "{message}" → artifact.thoughts passes through;
         # config.debug=True suppresses naturalize.
         'utterance_equals': 'My refine thoughts',
     },
@@ -117,7 +117,7 @@ RES_CASES = [
         'frame_origin': 'inspect',
         'frame_blocks': [],
         'frame_thoughts': '',
-        # inspect template reads metrics from frame.metadata
+        # inspect template reads metrics from artifact.data (the first data Part)
         'frame_metadata': {'metrics': {'word_count': 1234, 'num_sections': 5,
                                         'time_to_read': 6, 'image_count': 2,
                                         'num_links': 4, 'post_size': 12}},
@@ -154,7 +154,7 @@ RES_CASES = [
         'frame_thoughts': '',
         'ambiguity': None,
         'state_kwargs': {},
-        # Internal intent → respond returns ('', frame) early
+        # Internal intent → respond returns ('', artifact) early
         'utterance_equals': '',
     },
     {
@@ -165,7 +165,7 @@ RES_CASES = [
         'frame_thoughts': '',
         'ambiguity': None,
         'state_kwargs': {'keep_going': True},
-        # Plan + keep_going → respond returns ('', frame) early
+        # Plan + keep_going → respond returns ('', artifact) early
         'utterance_equals': '',
     },
     {
@@ -200,6 +200,10 @@ def test_res_respond(case, res_config):
     res, world, ambiguity = _build_res(res_config)
 
     flow = _push_flow(world, case['flow_name'])
+    # Ambiguity cases need the flow on the stack when RES._clarify reads it; un-complete
+    # so start() doesn't pop it. The pop is only relevant for completion-template tests.
+    if case.get('ambiguity'):
+        flow.status = 'Active'
 
     # Optional slot setup (e.g., create reads flow.slots['title'].value)
     slot_setup = case.get('slot_setup')
@@ -212,20 +216,20 @@ def test_res_respond(case, res_config):
         setattr(state, k, v)
 
     # Frame setup
-    frame = DisplayFrame(
+    artifact = TaskArtifact(
         origin=case['frame_origin'],
         thoughts=case['frame_thoughts'],
-        metadata=case.get('frame_metadata', {}),
+        parts=case.get('frame_metadata', {}),
     )
     for block in case['frame_blocks']:
-        frame.add_block(block)
+        artifact.add_block(block)
 
     # Ambiguity
     if case['ambiguity']:
         level, metadata = case['ambiguity']
         ambiguity.declare(level, metadata=metadata)
 
-    utterance, frame_out = res.respond(frame)
+    utterance, frame_out = res.respond(artifact)
 
     if 'utterance_equals' in case:
         assert utterance == case['utterance_equals'], (

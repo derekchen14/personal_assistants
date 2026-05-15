@@ -1,19 +1,20 @@
 {
-  "flow_stack": [],
-  "frame": {
+  "artifact": {
     "block_data_keys": [],
-    "block_locations": [],
+    "block_panels": [],
     "block_types": [],
+    "entity": null,
     "has_code": false,
     "has_thoughts": false,
-    "metadata_keys": [
+    "missing": null,
+    "origin": "inspect",
+    "parts_keys": [
       "metrics"
     ],
-    "missing_entity": null,
-    "missing_slot": null,
-    "origin": "inspect",
+    "reason": null,
     "violation": null
   },
+  "flow_stack": [],
   "state": {
     "active_post_set": true,
     "flow_dax": "{1AD}",

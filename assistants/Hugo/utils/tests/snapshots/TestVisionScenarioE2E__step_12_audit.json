@@ -1,4 +1,31 @@
 {
+  "artifact": {
+    "block_data_keys": [
+      [
+        "options",
+        "submit_dax",
+        "submit_label",
+        "title"
+      ]
+    ],
+    "block_panels": [
+      "bottom"
+    ],
+    "block_types": [
+      "checklist"
+    ],
+    "entity": null,
+    "has_code": false,
+    "has_thoughts": false,
+    "missing": null,
+    "origin": "audit",
+    "parts_keys": [
+      "findings",
+      "summary"
+    ],
+    "reason": null,
+    "violation": null
+  },
   "flow_stack": [
     {
       "flow_type": "audit",
@@ -42,32 +69,6 @@
       "status": "Active"
     }
   ],
-  "frame": {
-    "block_data_keys": [
-      [
-        "options",
-        "submit_dax",
-        "submit_label",
-        "title"
-      ]
-    ],
-    "block_locations": [
-      "bottom"
-    ],
-    "block_types": [
-      "checklist"
-    ],
-    "has_code": false,
-    "has_thoughts": false,
-    "metadata_keys": [
-      "findings",
-      "summary"
-    ],
-    "missing_entity": null,
-    "missing_slot": null,
-    "origin": "audit",
-    "violation": null
-  },
   "state": {
     "active_post_set": true,
     "flow_dax": "{13A}",

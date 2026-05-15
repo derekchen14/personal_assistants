@@ -4,7 +4,7 @@ Covers:
   - PromptEngineer: model resolution, provider dispatch
   - Ensemble voting: config invariants, _tally_votes, _detect_flow (mocked)
   - NLU react(): DAX routing, slot parsing, utterance fill
-  - Template fill: frame.thoughts / data fallback
+  - Template fill: artifact.thoughts / data fallback
   - Services: PostService, ContentService, AnalysisService, PlatformService
   - Snapshot infrastructure
 """
@@ -206,9 +206,9 @@ class TestAgent:
 
         result = mock_agent.take_turn(
             'Make a post about cheetahs', dax='{05A}', payload={'post': '17be00f6'})
-        assert result['frame'] is not None, 'agent.py must not return the fallback payload'
-        assert result['frame']['origin'] == 'create'
-        block_types = [b['type'] for b in result['frame']['blocks']]
+        assert result['artifact'] is not None, 'agent.py must not return the fallback payload'
+        assert result['artifact']['origin'] == 'create'
+        block_types = [b['type'] for b in result['artifact']['blocks']]
         assert block_types == ['card']
 
 @pytest.fixture
@@ -255,6 +255,109 @@ def _seed_test_post(tmp_db, title='Test Post', status='draft', body=None):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# TaskArtifact + Part (A2A v1.0)
+# ═══════════════════════════════════════════════════════════════════
+
+class TestArtifactParts:
+    """A2A v1.0 Part oneof contract + TaskArtifact helper-property surface."""
+
+    def test_part_rejects_zero_set(self):
+        from backend.components.task_artifact import Part
+        with pytest.raises(ValueError):
+            Part()
+
+    def test_part_rejects_multiple_set(self):
+        from backend.components.task_artifact import Part
+        with pytest.raises(ValueError):
+            Part(text='x', data={})
+
+    def test_part_data_serializes(self):
+        from backend.components.task_artifact import Part
+        assert Part(data={'a': 1}).to_dict() == {'data': {'a': 1}}
+
+    def test_part_raw_serializes_base64(self):
+        from backend.components.task_artifact import Part
+        out = Part(raw=b'\x00\x01\xff').to_dict()
+        assert out == {'raw': 'AAH/'}
+
+    def test_part_metadata_round_trips(self):
+        from backend.components.task_artifact import Part
+        out = Part(text='hi', metadata={'kind': 'thoughts'}).to_dict()
+        assert out == {'text': 'hi', 'metadata': {'kind': 'thoughts'}}
+
+    def test_artifact_wraps_parts_dict_as_data_part(self):
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(parts={'violation': 'tool_error'})
+        assert isinstance(artifact.parts, list)
+        assert len(artifact.parts) == 1
+        assert artifact.parts[0].data == {'violation': 'tool_error'}
+        assert artifact.data['violation'] == 'tool_error'
+
+    def test_artifact_thoughts_property_round_trip(self):
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(thoughts='reasoning')
+        assert artifact.thoughts == 'reasoning'
+
+    def test_artifact_code_property_round_trip(self):
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(code='print(1)')
+        assert artifact.code == 'print(1)'
+
+    def test_thoughts_setter_is_idempotent(self):
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact()
+        artifact.thoughts = 'first'
+        artifact.thoughts = 'second'
+        text_parts = [p for p in artifact.parts if p.text is not None]
+        assert len(text_parts) == 1
+        assert artifact.thoughts == 'second'
+
+    def test_code_setter_is_idempotent(self):
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact()
+        artifact.code = 'a'
+        artifact.code = 'b'
+        code_parts = [p for p in artifact.parts
+                      if p.text is not None and (p.metadata or {}).get('kind') == 'code']
+        assert len(code_parts) == 1
+        assert artifact.code == 'b'
+
+    def test_thoughts_and_code_are_distinct_parts(self):
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(thoughts='t', code='c')
+        kinds = sorted((p.metadata or {}).get('kind') for p in artifact.parts if p.text is not None)
+        assert kinds == ['code', 'thoughts']
+        assert artifact.thoughts == 't'
+        assert artifact.code == 'c'
+
+    def test_add_part_appends_independent_parts(self):
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(parts={'v': 1}, thoughts='t', code='c')
+        artifact.add_part(raw=b'\x00', metadata={'mime': 'image/png'})
+        assert len(artifact.parts) == 4
+        assert artifact.data == {'v': 1}
+        assert artifact.thoughts == 't'
+        assert artifact.code == 'c'
+
+    def test_update_data_merges_into_existing_data_part(self):
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(parts={'a': 1})
+        artifact.update_data(b=2)
+        assert artifact.data == {'a': 1, 'b': 2}
+        data_parts = [p for p in artifact.parts if p.data is not None]
+        assert len(data_parts) == 1
+
+    def test_to_dict_emits_a2a_parts_list(self):
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(origin='compose', parts={'v': 1}, thoughts='t', code='c')
+        out = artifact.to_dict()
+        assert out['origin'] == 'compose'
+        assert isinstance(out['parts'], list)
+        kinds = [(p.get('metadata') or {}).get('kind') for p in out['parts']]
+        assert 'thoughts' in kinds and 'code' in kinds
+
+
+# ═══════════════════════════════════════════════════════════════════
 # Template fill functions
 # ═══════════════════════════════════════════════════════════════════
 
@@ -263,28 +366,28 @@ class TestTemplateFill:
 
     def _make_frame(self, minimal_config, block_type='default',
                     thoughts='', content='', origin=None):
-        from backend.components.display_frame import DisplayFrame
-        frame = DisplayFrame(minimal_config)
-        frame.origin = origin or ''
-        frame.thoughts = thoughts
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(minimal_config)
+        artifact.origin = origin or ''
+        artifact.thoughts = thoughts
         if block_type != 'default' or content:
             data = {'content': content} if content else {}
-            frame.add_block({'type': block_type, 'data': data})
-        return frame
+            artifact.add_block({'type': block_type, 'data': data})
+        return artifact
 
     def test_build_payload_serializes_frame(self, minimal_config):
         from backend.agent import Agent
-        frame = self._make_frame(minimal_config, block_type='card',
+        artifact = self._make_frame(minimal_config, block_type='card',
                                  content='Hello', origin='compose')
-        payload = Agent._build_payload(None, 'Some text', frame)
+        payload = Agent._build_payload(None, 'Some text', artifact)
         assert 'panel' not in payload
-        assert payload['frame']['blocks'][0]['type'] == 'card'
-        assert payload['frame']['blocks'][0]['panel'] == 'bottom'
-        assert payload['frame']['blocks'][0]['data']['content'] == 'Hello'
+        assert payload['artifact']['blocks'][0]['type'] == 'card'
+        assert payload['artifact']['blocks'][0]['panel'] == 'bottom'
+        assert payload['artifact']['blocks'][0]['data']['content'] == 'Hello'
 
     def test_audit_message_groups_findings_by_severity(self, minimal_config):
         from backend.modules.templates.revise import _format_audit_message
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
         findings = [
             {'sec_id': None, 'issue': 'sentence structure', 'severity': 'high',
              'note': 'Average sentence length 23.1 vs reference 13.5.'},
@@ -293,9 +396,9 @@ class TestTemplateFill:
             {'sec_id': 'kitty-hawk', 'issue': 'word choice', 'severity': 'low',
              'note': 'False range construction.'},
         ]
-        frame = DisplayFrame(origin='audit',
-            metadata={'findings': findings, 'summary': 'Three findings.'})
-        result = _format_audit_message(frame)
+        artifact = TaskArtifact(origin='audit',
+            parts={'findings': findings, 'summary': 'Three findings.'})
+        result = _format_audit_message(artifact)
         assert 'Found 3 finding(s)' in result
         assert '1 high, 1 medium, 1 low' in result
         assert 'Three findings.' in result
@@ -307,23 +410,23 @@ class TestTemplateFill:
 
     def test_audit_message_empty_findings_uses_summary(self, minimal_config):
         from backend.modules.templates.revise import _format_audit_message
-        from backend.components.display_frame import DisplayFrame
-        frame = DisplayFrame(origin='audit',
-            metadata={'findings': [], 'summary': 'Reads on-voice.'})
-        assert _format_audit_message(frame) == 'Reads on-voice.'
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(origin='audit',
+            parts={'findings': [], 'summary': 'Reads on-voice.'})
+        assert _format_audit_message(artifact) == 'Reads on-voice.'
 
     def test_audit_message_empty_no_summary_falls_back(self, minimal_config):
         from backend.modules.templates.revise import _format_audit_message
-        from backend.components.display_frame import DisplayFrame
-        frame = DisplayFrame(origin='audit', metadata={'findings': [], 'summary': ''})
-        assert 'No findings' in _format_audit_message(frame)
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(origin='audit', parts={'findings': [], 'summary': ''})
+        assert 'No findings' in _format_audit_message(artifact)
 
     def test_audit_message_dispatch_announces_groups(self, minimal_config):
         from backend.modules.templates.revise import _format_audit_message
-        from backend.components.display_frame import DisplayFrame
-        frame = DisplayFrame(origin='audit',
-            metadata={'group_count': 2, 'flow_names': ['rework', 'polish']})
-        result = _format_audit_message(frame)
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(origin='audit',
+            parts={'group_count': 2, 'flow_names': ['rework', 'polish']})
+        result = _format_audit_message(artifact)
         assert 'Working on it' in result
         assert '2 fix' in result
         assert 'rework' in result
@@ -331,10 +434,10 @@ class TestTemplateFill:
 
     def test_audit_message_completed_rolls_up_reports(self, minimal_config):
         from backend.modules.templates.revise import _format_audit_message
-        from backend.components.display_frame import DisplayFrame
-        frame = DisplayFrame(origin='audit',
-            metadata={'reports': {'rework': 'rewrote intro', 'polish': 'tightened phrasing'}})
-        result = _format_audit_message(frame)
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(origin='audit',
+            parts={'reports': {'rework': 'rewrote intro', 'polish': 'tightened phrasing'}})
+        result = _format_audit_message(artifact)
         assert 'Audit complete' in result
         assert 'rework: rewrote intro' in result
         assert 'polish: tightened phrasing' in result
@@ -881,6 +984,67 @@ class TestPlatformService:
         result = svc.cancel_release(post_id, 'substack')
         # Substack's unpublish returns platform_error (not supported)
         assert result['_success'] is False
+
+
+# ═══════════════════════════════════════════════════════════════════
+# FAQService
+# ═══════════════════════════════════════════════════════════════════
+
+class _FakeEngineer:
+    """Minimal engineer stub: returns a canned schema-shaped dict for any call."""
+    def __init__(self, response):
+        self.response = response
+        self.last_prompt = None
+
+    def __call__(self, prompt, task='skill', schema=None, model='med', max_tokens=1024):
+        self.last_prompt = prompt
+        return self.response
+
+
+@pytest.fixture
+def tmp_faq_db(tmp_db):
+    """Extends tmp_db with a tmp faq_data dir. tmp_db already patches services._DB_DIR;
+    FAQService reads `services._DB_DIR / 'faq_data' / 'faqs.json'` at construction."""
+    faq_dir = tmp_db / 'faq_data'
+    faq_dir.mkdir()
+    return faq_dir
+
+
+class TestFAQService:
+    def test_search_returns_top_matches(self, tmp_faq_db):
+        (tmp_faq_db / 'faqs.json').write_text(json.dumps([
+            {'question': 'What can Hugo do?', 'answer': 'Help write blog posts.', 'tags': ['cap']},
+            {'question': 'Who built Hugo?', 'answer': 'Soleda.', 'tags': ['origin']},
+        ]))
+        from backend.utilities.faq_service import FAQService
+        engineer = _FakeEngineer({'matches': [{'idx': 0, 'score': 0.92}]})
+        svc = FAQService(engineer)
+        result = svc.search_faqs(query='what can it do', top_k=3)
+        assert result['_success'] is True
+        assert len(result['matches']) == 1
+        assert result['matches'][0]['question'] == 'What can Hugo do?'
+        assert result['matches'][0]['score'] == 0.92
+
+    def test_search_empty_corpus(self, tmp_faq_db):
+        # No faqs.json written — corpus loads empty.
+        from backend.utilities.faq_service import FAQService
+        svc = FAQService(_FakeEngineer({'matches': []}))
+        result = svc.search_faqs(query='anything')
+        assert result['_success'] is False
+        assert result['_error'] == 'empty_corpus'
+
+    def test_search_drops_out_of_range_indices(self, tmp_faq_db):
+        (tmp_faq_db / 'faqs.json').write_text(json.dumps([
+            {'question': 'Q1', 'answer': 'A1', 'tags': []},
+        ]))
+        from backend.utilities.faq_service import FAQService
+        engineer = _FakeEngineer({'matches': [{'idx': 0, 'score': 0.8},
+            {'idx': 99, 'score': 0.2}]})
+        svc = FAQService(engineer)
+        result = svc.search_faqs(query='q')
+        # Out-of-range idx (99) silently dropped; valid one kept.
+        assert len(result['matches']) == 1
+        assert result['matches'][0]['question'] == 'Q1'
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -245,7 +245,7 @@ STEPS_VISION = [
         'expected_block_data_keys': {'card': ['post_id', 'title']},
     },
     {
-        # Inspect narrates in chat — no block. Findings land in scratchpad and frame.metadata.
+        # Inspect narrates in chat — no block. Findings land in scratchpad and artifact.parts.
         'step': 10,
         'flow': 'inspect',
         'dax': '{1AD}',
@@ -432,7 +432,7 @@ STEPS_OBSERVABILITY = [
         'expected_block_data_keys': {'card': ['post_id', 'title']},
     },
     {
-        # Inspect narrates in chat — no block. Metrics land in scratchpad + frame.metadata.
+        # Inspect narrates in chat — no block. Metrics land in scratchpad + artifact.parts.
         'step': 10,
         'flow': 'inspect',
         'dax': '{1AD}',
@@ -611,7 +611,7 @@ STEPS_VOICE = [
         'expected_block_data_keys': {'card': ['post_id', 'title']},
     },
     {
-        # Inspect narrates in chat — no block. Metrics land in scratchpad + frame.metadata.
+        # Inspect narrates in chat — no block. Metrics land in scratchpad + artifact.parts.
         'step': 10,
         'flow': 'inspect',
         'dax': '{1AD}',
@@ -704,7 +704,7 @@ def _check_level1(step_def, result, tool_log, agent):
 
     Checks:
       - The active flow matches step_def['flow'] (or it was completed this turn).
-      - The frame has the expected block_type.
+      - The artifact has the expected block_type.
       - state.has_issues is False and no ambiguity is present (unless the step expects one).
       - Message length, fallback phrases, tool errors.
     """
@@ -715,8 +715,8 @@ def _check_level1(step_def, result, tool_log, agent):
     max_chars = step_def.get('max_message_chars')
 
     message = result.get('message', '')
-    frame = result.get('frame') or {}
-    blocks = frame.get('blocks') or []
+    artifact = result.get('artifact') or {}
+    blocks = artifact.get('blocks') or []
     block_types = [b.get('type') for b in blocks]
     merged_data = {}
     for b in blocks:
@@ -724,8 +724,8 @@ def _check_level1(step_def, result, tool_log, agent):
         if isinstance(bd, dict):
             merged_data.update(bd)
     frame_content = merged_data.get('content', '')
-    frame_origin = frame.get('origin', '')
-    frame_meta = frame.get('metadata') or {}
+    frame_origin = artifact.get('origin', '')
+    frame_meta = artifact.get('metadata') or {}
 
     # Active-flow check: either still on the stack, or it just completed this turn.
     active_flow = agent.world.flow_stack.get_flow()
@@ -738,7 +738,7 @@ def _check_level1(step_def, result, tool_log, agent):
     expected_amb = step_def.get('expected_ambiguity') or set()
     expected_origin = step_def.get('expected_frame_origin')
     expected_failed_tool = step_def.get('expected_failed_tool') or set()
-    # An error frame (metadata['violation'] set) is a legitimate non-ambiguity failure mode.
+    # An error artifact (metadata['violation'] set) is a legitimate non-ambiguity failure mode.
     is_error_frame = bool(frame_meta.get('violation'))
     allow_has_issues = bool(expected_amb) or is_error_frame
     if state.has_issues and not allow_has_issues:
@@ -748,21 +748,21 @@ def _check_level1(step_def, result, tool_log, agent):
         if amb_label not in expected_amb:
             issues.append(f'unexpected ambiguity: {amb_label!r}')
 
-    # Error-frame assertions: tool-call failure surfaces as
-    # DisplayFrame(origin=flow.name(), metadata={'violation': 'tool_error', 'failed_tool': ...}).
+    # Error-artifact assertions: tool-call failure surfaces as
+    # TaskArtifact(origin=flow.name(), parts={'violation': 'tool_error', 'failed_tool': ...}).
     if expected_origin and frame_origin != expected_origin:
-        issues.append(f'expected frame origin={expected_origin!r}, got {frame_origin!r}')
+        issues.append(f'expected artifact origin={expected_origin!r}, got {frame_origin!r}')
     if expected_failed_tool:
         actual_failed_tool = frame_meta.get('failed_tool')
         if actual_failed_tool not in expected_failed_tool:
-            issues.append(f'expected frame.metadata.failed_tool in {expected_failed_tool}, got {actual_failed_tool!r}')
+            issues.append(f'expected artifact.parts.failed_tool in {expected_failed_tool}, got {actual_failed_tool!r}')
 
-    # For block-expecting steps, the payload must live in frame.blocks, not the chat utterance.
+    # For block-expecting steps, the payload must live in artifact.blocks, not the chat utterance.
     if expected_bt in ('card', 'selection', 'checklist', 'list', 'compare', 'confirmation', 'toast'):
         if not blocks:
-            issues.append(f'empty {expected_bt} — no blocks in frame')
+            issues.append(f'empty {expected_bt} — no blocks in artifact')
     elif is_error_frame:
-        # Error frames carry context in frame.metadata + frame.code + frame.thoughts, not blocks/content.
+        # Error frames carry context in artifact.parts + artifact.code + artifact.thoughts, not blocks/content.
         pass
     else:
         content = frame_content or message
@@ -866,7 +866,7 @@ def _check_level3(step_def, result, tool_log, agent):
 
     Deterministic checks run on every step that declares any of:
       - expected_block_data_keys: dict like {block_type: [required keys in block.data]}
-      - expected_metadata_keys: list of keys that must appear in frame.metadata
+      - expected_metadata_keys: list of keys that must appear in artifact.parts
       - expected_post_content: dict of post-shape checks (title_regex, sections_in_order,
         section_count_min, bullet_count_min)
 
@@ -875,9 +875,9 @@ def _check_level3(step_def, result, tool_log, agent):
     aren't enough.
     """
     issues = []
-    frame = result.get('frame') or {}
-    blocks = frame.get('blocks') or []
-    frame_meta = frame.get('metadata') or {}
+    artifact = result.get('artifact') or {}
+    blocks = artifact.get('blocks') or []
+    frame_meta = artifact.get('metadata') or {}
 
     # --- Block data-key checks ---
     expected_block_data_keys = step_def.get('expected_block_data_keys') or {}
@@ -899,7 +899,7 @@ def _check_level3(step_def, result, tool_log, agent):
     expected_metadata_keys = step_def.get('expected_metadata_keys') or []
     missing_meta = [k for k in expected_metadata_keys if k not in frame_meta]
     if missing_meta:
-        issues.append(f'frame.metadata missing keys {missing_meta!r} (got {sorted(frame_meta.keys())!r})')
+        issues.append(f'artifact.parts missing keys {missing_meta!r} (got {sorted(frame_meta.keys())!r})')
 
     # --- Post-content checks (read from disk) ---
     post_checks = step_def.get('expected_post_content') or {}
@@ -966,9 +966,9 @@ def _llm_rubric_judge(utterance, rubric, result, tool_log, agent):
     """Opus-based judge. Returns issues list. Reserved for steps 6 and 13."""
     issues = []
     message = result.get('message', '')
-    frame = result.get('frame') or {}
+    artifact = result.get('artifact') or {}
     merged = {}
-    for b in (frame.get('blocks') or []):
+    for b in (artifact.get('blocks') or []):
         bd = b.get('data') or {}
         if isinstance(bd, dict):
             merged.update(bd)
@@ -1348,7 +1348,7 @@ class _BaseScenarioE2E:
                 result = future.result(timeout=self._turn_timeout_sec)
                 timed_out = False
             except FuturesTimeoutError:
-                result = {'message': '', 'frame': {'origin': '', 'blocks': [], 'metadata': {}}}
+                result = {'message': '', 'artifact': {'origin': '', 'blocks': [], 'metadata': {}}}
                 timed_out = True
         turn_duration = time.perf_counter() - turn_start
         state = agent.world.current_state()

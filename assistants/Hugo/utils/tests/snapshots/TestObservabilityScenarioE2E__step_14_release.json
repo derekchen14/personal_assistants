@@ -1,26 +1,27 @@
 {
-  "flow_stack": [],
-  "frame": {
+  "artifact": {
     "block_data_keys": [
       [
         "level",
         "message"
       ]
     ],
-    "block_locations": [
+    "block_panels": [
       "top"
     ],
     "block_types": [
       "toast"
     ],
+    "entity": null,
     "has_code": false,
     "has_thoughts": true,
-    "metadata_keys": [],
-    "missing_entity": null,
-    "missing_slot": null,
+    "missing": null,
     "origin": "release",
+    "parts_keys": [],
+    "reason": null,
     "violation": null
   },
+  "flow_stack": [],
   "state": {
     "active_post_set": true,
     "flow_dax": "{04A}",
