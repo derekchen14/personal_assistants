@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from backend.components.dialogue_state import DialogueState
     from backend.components.context_coordinator import ContextCoordinator
-    from backend.components.display_frame import DisplayFrame
+    from backend.components.task_artifact import TaskArtifact
     from backend.components.flow_stack.parents import BaseFlow
 
 
@@ -19,18 +19,18 @@ class InternalPolicy:
         self.config = components['config']
 
     def execute(self, flow: 'BaseFlow', state: 'DialogueState',
-                context: 'ContextCoordinator', tools) -> 'DisplayFrame':
+                context: 'ContextCoordinator', tools) -> 'TaskArtifact':
         handler = getattr(self, f'_do_{flow.name()}', None)
         if handler:
             return handler(flow, tools)
 
-        from backend.components.display_frame import DisplayFrame
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': ''})
-        return frame
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {'content': ''})
+        return artifact
 
     def _do_recap(self, flow, tools):
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
 
         slot = flow.slots.get('key')
         key = slot.to_dict() if slot and slot.filled else None
@@ -40,12 +40,12 @@ class InternalPolicy:
         else:
             content = str(self.memory.read_scratchpad())
 
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': content})
-        return frame
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {'content': content})
+        return artifact
 
     def _do_recall(self, flow, tools):
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
 
         slot = flow.slots.get('key')
         key = slot.to_dict() if slot and slot.filled else None
@@ -55,12 +55,12 @@ class InternalPolicy:
         else:
             content = ''
 
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': content})
-        return frame
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {'content': content})
+        return artifact
 
     def _do_calculate(self, flow, tools):
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
 
         slot = flow.slots.get('expression')
         expression = slot.to_dict() if slot and slot.filled else ''
@@ -72,12 +72,12 @@ class InternalPolicy:
 
         self.memory.write_scratchpad('last_calculation', content)
 
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': content})
-        return frame
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {'content': content})
+        return artifact
 
     def _do_search(self, flow, tools):
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
         from backend.utilities.services import _workspace
 
         slot = flow.slots.get('query')
@@ -95,12 +95,12 @@ class InternalPolicy:
         if matches:
             self.memory.write_scratchpad(f'search:{query}', str(matches[:10]))
 
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': str(matches[:10]) if matches else ''})
-        return frame
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {'content': str(matches[:10]) if matches else ''})
+        return artifact
 
     def _do_peek(self, flow, tools):
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
         from backend.utilities.services import _workspace
 
         slot = flow.slots.get('dataset')
@@ -116,12 +116,12 @@ class InternalPolicy:
 
         self.memory.write_scratchpad('peek', content)
 
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': content})
-        return frame
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {'content': content})
+        return artifact
 
     def _do_retrieve(self, flow, tools):
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
         from backend.utilities.services import _workspace
 
         slot_ds = flow.slots.get('dataset')
@@ -143,6 +143,6 @@ class InternalPolicy:
 
         self.memory.write_scratchpad('retrieve', content)
 
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': content})
-        return frame
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {'content': content})
+        return artifact

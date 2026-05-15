@@ -1,8 +1,8 @@
 """User-facing copy for the violation-vocabulary error codes.
 
-RES consumes this when rendering an error frame — the `violation` key in `frame.metadata` maps to a
+RES consumes this when rendering an error artifact — the `violation` key in `artifact.data` maps to a
 single-sentence user-facing description. Keep the copy short and neutral; technical detail belongs
-in `frame.thoughts` (for the agent's voice) or `frame.code` (for payloads), not in this map."""
+in `artifact.thoughts` (for the agent's voice) or `artifact.code` (for payloads), not in this map."""
 
 
 VIOLATION_COPY = {

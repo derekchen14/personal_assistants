@@ -89,8 +89,8 @@
     $effect(() => {
         const msgs = $conversation.messages;
         const last = msgs[msgs.length - 1];
-        if (last?.frame && last.role === 'agent') {
-            setFrame(last.frame as any);
+        if (last?.artifact && last.role === 'agent') {
+            setFrame(last.artifact as any);
         }
     });
 
@@ -236,7 +236,7 @@
                 {#if $displayLayout === 'top' || $displayLayout === 'split'}
                     <div class="flex flex-col grow-[2] h-0 overflow-y-auto p-4 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
                         {#if $topFrame}
-                            <BlockRenderer frame={$topFrame} />
+                            <BlockRenderer artifact={$topFrame} />
                         {/if}
                     </div>
                 {/if}
@@ -274,7 +274,7 @@
                                 <p class="text-sm text-[var(--muted)] italic">Press 'Enter' to save, or 'Esc' to cancel.</p>
                             </div>
                         {:else if $bottomFrame}
-                            <BlockRenderer frame={$bottomFrame} />
+                            <BlockRenderer artifact={$bottomFrame} />
                         {:else}
                             <div class="flex items-center justify-center h-full text-[var(--muted)] text-sm">
                                 Blocks will appear here

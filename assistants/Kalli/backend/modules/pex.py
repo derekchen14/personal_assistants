@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from backend.components.context_coordinator import ContextCoordinator
 from backend.components.dialogue_state import DialogueState
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.memory_manager import MemoryManager
@@ -68,12 +68,12 @@ class PEX:
         }
 
     def execute(self, state: DialogueState,
-                context: ContextCoordinator) -> tuple[DisplayFrame, bool]:
+                context: ContextCoordinator) -> tuple[TaskArtifact, bool]:
         flow_name = state.flow_name
         flow_info = FLOW_CATALOG.get(flow_name)
         if not flow_info:
-            frame = DisplayFrame(self.config)
-            return frame, False
+            artifact = TaskArtifact(self.config)
+            return artifact, False
 
         flow_entry = self.world.flow_stack.get_active_flow()
 
@@ -83,8 +83,8 @@ class PEX:
 
         if flow_name in _UNSUPPORTED:
             self.world.flow_stack.mark_complete(result={'unsupported': True})
-            frame = self.world.latest_frame() or DisplayFrame(self.config)
-            return frame, False
+            artifact = self.world.latest_artifact() or TaskArtifact(self.config)
+            return artifact, False
 
         # Policy keys are Intent enums; state.pred_intent is a string
         policy = None
@@ -99,16 +99,16 @@ class PEX:
 
             flow_info = {**flow_info, 'name': flow_name}
             filled_slots = flow_entry.slot_values_dict() if flow_entry else {}
-            frame = policy.execute(flow_info, state, context, filled_slots, tool_dispatcher)
+            artifact = policy.execute(flow_info, state, context, filled_slots, tool_dispatcher)
         else:
-            frame = DisplayFrame(self.config)
+            artifact = TaskArtifact(self.config)
 
         if state.pred_intent != Intent.PLAN.value:
             self.world.flow_stack.mark_complete(result={'flow_name': flow_name})
-        self.world.insert_frame(frame)
+        self.world.insert_artifact(artifact)
 
-        if frame.has_content():
-            text_summary = frame.data.get('content', '')
+        if artifact.has_content():
+            text_summary = artifact.data.get('content', '')
             if text_summary:
                 turn_num = state.turn_number if hasattr(state, 'turn_number') else 0
                 self.memory.write_scratchpad(flow_name, {
@@ -121,11 +121,11 @@ class PEX:
         self._verify()
 
         keep_going = state.keep_going
-        return frame, keep_going
+        return artifact, keep_going
 
     # ── Pre-hook ─────────────────────────────────────────────────────
 
-    def _check(self, flow_entry, context: ContextCoordinator) -> DisplayFrame | None:
+    def _check(self, flow_entry, context: ContextCoordinator) -> TaskArtifact | None:
         if not flow_entry:
             return None
 
@@ -156,9 +156,9 @@ class PEX:
                 metadata={'missing_slots': required_missing},
                 observation=f'I need the following to proceed: {", ".join(required_missing)}',
             )
-            frame = DisplayFrame(self.config)
-            frame.set_frame('default', {'message': self.ambiguity.ask()})
-            return frame
+            artifact = TaskArtifact(self.config)
+            artifact.set_artifact('default', {'message': self.ambiguity.ask()})
+            return artifact
         return None
 
     def _fill_from_context(self, slot_name: str,

@@ -11,7 +11,7 @@ from backend.prompts.mixins.for_clean import *
 from backend.prompts.grounding.clean_prompts import update_flow_prompt
 from backend.assets.ontology import style_mapping, common_tlds, NA_string, default_limit
 from backend.components.engineer import PromptEngineer
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.components.metadata import MetaData
 from backend.utilities.manipulations import *
 
@@ -26,8 +26,8 @@ class CleanMixin:
       self.actions.add('CLARIFY')
       flow.is_uncertain = False
       state.ambiguity.declare('specific')
-      frame = DisplayFrame(state.current_tab)
-      return frame, state
+      artifact = TaskArtifact(state.current_tab)
+      return artifact, state
 
     if flow.is_newborn:
       reroute, flow = self.update_rerouting(context, flow, state, world)
@@ -50,12 +50,12 @@ class CleanMixin:
       else:
         updated_tabs = [state.current_tab]
 
-      if 'rename' in frame.code:   # column header has likely been renamed
+      if 'rename' in artifact.code:   # column header has likely been renamed
         self.replace_shadow_keys(flow)
         self.update_system_prompt(updated_tabs, world, context, flow)
       else:
         self.database.db.complete_registration(state.current_tab)
-    return frame, state
+    return artifact, state
 
   def update_rerouting(self, context, flow, state, world):
     # first check if the user is trying to trigger a different flow
@@ -117,7 +117,7 @@ class CleanMixin:
       self.actions.add("CLARIFY")
       frame.signal_failure('custom', 'it is unclear what the user would like to update')
       state.ambiguity.declare('partial', flow='update')
-    return frame, state
+    return artifact, state
 
   def predict_grounding_slots(self, convo_history, flow, state, world):
     """ Predicts the source and target entities for the update flow when the user has not provided them """

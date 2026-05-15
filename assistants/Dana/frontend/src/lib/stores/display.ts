@@ -17,7 +17,7 @@ export function toggleTheme() {
     document.documentElement.dataset.theme = next;
 }
 
-export interface FrameData {
+export interface ArtifactData {
     type: string;
     show: boolean;
     data: Record<string, unknown>;
@@ -29,9 +29,9 @@ export interface FrameData {
 export type DisplayLayout = 'top' | 'split' | 'bottom';
 export type ActivePage = 'sheets' | 'queries' | 'metrics';
 
-export const activeFrame = writable<FrameData | null>(null);
-export const topFrame = writable<FrameData | null>(null);
-export const bottomFrame = writable<FrameData | null>(null);
+export const activeFrame = writable<ArtifactData | null>(null);
+export const topFrame = writable<ArtifactData | null>(null);
+export const bottomFrame = writable<ArtifactData | null>(null);
 export const activePage = writable<ActivePage>('sheets');
 export const searchQuery = writable('');
 export const creatingItem = writable<boolean>(false);
@@ -61,14 +61,14 @@ export function clearFrames() {
     creatingItem.set(false);
 }
 
-export function setFrame(frame: FrameData) {
-    console.log('[display] setFrame type=%s panel=%s show=%s', frame.type, frame.panel, frame.show);
-    activeFrame.set(frame);
-    const panel = frame.panel || 'bottom';
+export function setFrame(artifact: ArtifactData) {
+    console.log('[display] setFrame type=%s panel=%s show=%s', artifact.type, artifact.panel, artifact.show);
+    activeFrame.set(artifact);
+    const panel = artifact.panel || 'bottom';
     if (panel === 'top') {
-        topFrame.set(frame);
+        topFrame.set(artifact);
     } else {
-        bottomFrame.set(frame);
+        bottomFrame.set(artifact);
     }
 }
 

@@ -8,7 +8,7 @@ SLOT_TYPES = {
     'SpecSlot': (
         'A spec file name from _specs/. Common values: nlu, pex, res, '
         'dialogue_state, flow_stack, context_coordinator, prompt_engineer, '
-        'display_frame, ambiguity_handler, memory_manager, blocks, '
+        'task_artifact, ambiguity_handler, memory_manager, blocks, '
         'evaluation, server_setup, configuration, tool_smith, style_guide.'
     ),
     'FlowSlot': 'A flow name from the FLOW_CATALOG.',

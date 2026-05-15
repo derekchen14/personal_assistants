@@ -9,7 +9,7 @@ export interface Message {
     actions?: unknown[];
     interaction?: Record<string, unknown>;
     code_snippet?: Record<string, unknown> | null;
-    frame?: Record<string, unknown> | null;
+    artifact?: Record<string, unknown> | null;
     timestamp: number;
 }
 
@@ -44,11 +44,11 @@ function createConversationStore() {
             return;
         }
 
-        const frame = data.frame as Record<string, unknown> | null;
-        if (frame) {
-            console.log('[frame] received:', frame.type, 'panel:', frame.panel, 'data:', frame.data);
+        const artifact = data.artifact as Record<string, unknown> | null;
+        if (artifact) {
+            console.log('[artifact] received:', artifact.type, 'panel:', artifact.panel, 'data:', artifact.data);
         } else {
-            console.log('[frame] none');
+            console.log('[artifact] none');
         }
 
         const msg: Message = {
@@ -59,7 +59,7 @@ function createConversationStore() {
             actions: data.actions as unknown[],
             interaction: data.interaction as Record<string, unknown>,
             code_snippet: data.code_snippet as Record<string, unknown> | null,
-            frame,
+            artifact,
             timestamp: Date.now(),
         };
 

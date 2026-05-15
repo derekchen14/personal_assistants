@@ -857,21 +857,6 @@ class RememberFlow(PlanParentFlow):
 
 # ── Internal (7 flows) ──────────────────────────────────────────────────────
 
-class RecapFlow(InternalParentFlow):
-  def __init__(self):
-    super().__init__()
-    self.flow_type = 'recap'
-    self.dax = '{018}'
-    self.goal = 'read back a previously noted fact from the current session scratchpad (L1); a decision, constraint, topic preference, or reference the agent stored earlier via store'
-    self.slots = {
-      'topic': FreeTextSlot(priority='optional'),
-    }
-    self.tools = []
-
-  def fill_slot_values(self, values):
-    for item in values.get('topic', []):
-      self.slots['topic'].add_one(item)
-
 class StoreFlow(InternalParentFlow):
   def __init__(self):
     super().__init__()
@@ -889,6 +874,21 @@ class StoreFlow(InternalParentFlow):
       self.slots['target'].add_one(item)
     if 'origin' in values:
       self.slots['origin'].add_one(values['origin'])
+
+class RecapFlow(InternalParentFlow):
+  def __init__(self):
+    super().__init__()
+    self.flow_type = 'recap'
+    self.dax = '{018}'
+    self.goal = 'read back a previously noted fact from the current session scratchpad (L1); a decision, constraint, topic preference, or reference the agent stored earlier via store'
+    self.slots = {
+      'topic': FreeTextSlot(priority='optional'),
+    }
+    self.tools = []
+
+  def fill_slot_values(self, values):
+    for item in values.get('topic', []):
+      self.slots['topic'].add_one(item)
 
 class RecallFlow(InternalParentFlow):
   def __init__(self):
@@ -913,7 +913,7 @@ class RetrieveFlow(InternalParentFlow):
     super().__init__()
     self.flow_type = 'retrieve'
     self.dax = '{049}'
-    self.goal = 'fetch general business context from Memory Manager; unvetted documents, style guides, or domain knowledge (L3)'
+    self.goal = 'fetch general business context from Memory Manager (L3); unvetted documents, style guides, or domain knowledge'
     self.slots = {
       'topic': ExactSlot(),
       'context': ExactSlot(priority='optional'),
@@ -931,11 +931,11 @@ class SearchFlow(InternalParentFlow):
     super().__init__()
     self.flow_type = 'search'
     self.dax = '{189}'
-    self.goal = 'look up vetted FAQs and curated editorial guidelines; the unstructured equivalent of a style manual'
+    self.goal = 'look up vetted FAQs and curated editorial guidelines; most often used to answer questions about Hugo'
     self.slots = {
       'query': ExactSlot(),
     }
-    self.tools = ['find_posts']
+    self.tools = ['search_faqs']
 
   def fill_slot_values(self, values):
     if 'query' in values:

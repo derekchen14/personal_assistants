@@ -21,7 +21,7 @@
         // click; the conversation log is the surviving record of what was on screen before.
         const msgs = $conversation.messages;
         for (let idx = msgs.length - 1; idx >= 0; idx--) {
-            const block = (msgs[idx].frame as any)?.blocks?.[0];
+            const block = (msgs[idx].artifact as any)?.blocks?.[0];
             if (block?.type === 'card') return (block.data ?? {}) as Record<string, unknown>;
         }
         return {};

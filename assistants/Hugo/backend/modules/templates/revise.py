@@ -13,19 +13,19 @@ TEMPLATES = {
 _SEVERITY_ORDER = {'high': 0, 'medium': 1, 'low': 2}
 
 
-def fill_revise_template(template:str, flow, frame) -> str:
+def fill_revise_template(template:str, flow, artifact) -> str:
     template = TEMPLATES[flow.name()]['template']
     if flow.name() == 'audit':
-        return template.format(message=_format_audit_message(frame))
-    return template.format(message=frame.thoughts)
+        return template.format(message=_format_audit_message(artifact))
+    return template.format(message=artifact.thoughts)
 
 
-def _format_audit_message(frame) -> str:
+def _format_audit_message(artifact) -> str:
     """Spoken readout for an audit turn. Branches on which metadata key is present:
       'reports'      → per-delegate rollup, audit just completed delegation
       'group_count'  → routing announcement, dispatch just stacked children
       otherwise      → discovery breakdown (findings + summary, may be empty for the no-findings path)"""
-    metadata = frame.metadata
+    metadata = artifact.data
     if 'reports' in metadata:
         reports = metadata['reports']
         if not reports:

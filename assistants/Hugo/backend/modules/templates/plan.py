@@ -7,6 +7,6 @@ TEMPLATES = {
     'remember':  {'template': "{message}"},
 }
 
-def fill_plan_template(template:str, flow, frame) -> str:
+def fill_plan_template(template:str, flow, artifact) -> str:
     template = TEMPLATES[flow.name()]['template']
-    return template.format(message=frame.thoughts)
+    return template.format(message=artifact.thoughts)

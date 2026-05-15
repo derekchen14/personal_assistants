@@ -9,7 +9,7 @@ from backend.modules.nlu import NLU
 from backend.modules.pex import PEX
 from backend.modules.res import RES
 from backend.components.dialogue_state import DialogueState
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.memory_manager import MemoryManager
@@ -59,12 +59,12 @@ class Agent:
             fallback_message = "I'm having trouble understanding. Could you try rephrasing?"
             return self._fallback_response(fallback_message)
 
-        frame = None
+        artifact = None
         keep_going = True
         rounds = 0
 
         while keep_going and rounds < _MAX_KEEP_GOING:
-            frame, keep_going = self.pex.execute(state, self.world.context)
+            artifact, keep_going = self.pex.execute(state, self.world.context)
             rounds += 1
             log.info('  pex round=%d  keep_going=%s', rounds, keep_going)
 
@@ -83,7 +83,7 @@ class Agent:
                 self.world.insert_state(new_state)
                 state = new_state
 
-        agent_utt, frame = self.res.respond(frame)
+        agent_utt, artifact = self.res.respond(artifact)
         if agent_utt:
             self.world.context.add_turn('Agent', agent_utt, turn_type='utterance')
 
@@ -92,23 +92,23 @@ class Agent:
             self.world.context.save_checkpoint('auto_summarize', data=turn_data)
 
         log.info(f'AGENT: {agent_utt[:256]}')
-        # Phase-2 logging: rich frame dump so the CLI↔UI gap is visible. frame.metadata + block
+        # Phase-2 logging: rich artifact dump so the CLI↔UI gap is visible. artifact.data + block
         # summary surface the data shape that RES emits — diff this against what the frontend
-        # console.log shows for "[frame] received" to find serialization gaps.
+        # console.log shows for "[artifact] received" to find serialization gaps.
         block_summary = [
             {'type': b.block_type, 'data_keys': sorted((b.data or {}).keys()), 'panel': b.panel}
-            for b in frame.blocks
+            for b in artifact.blocks
         ]
         log.info(
-            f'AGENT-FRAME: origin={frame.origin!r} '
-            f'metadata={dict(frame.metadata)!r} '
-            f'thoughts={(frame.thoughts or "")[:120]!r} '
+            f'AGENT-FRAME: origin={artifact.origin!r} '
+            f'metadata={dict(artifact.data)!r} '
+            f'thoughts={(artifact.thoughts or "")[:120]!r} '
             f'blocks={block_summary}'
         )
-        # Opt-in full frame dump. Set HUGO_DEBUG_FRAMES=1 to enable.
+        # Opt-in full artifact dump. Set HUGO_DEBUG_FRAMES=1 to enable.
         if os.environ.get('HUGO_DEBUG_FRAMES'):
-            log.info(f'AGENT-FRAME-FULL: {json.dumps(frame.to_dict(), indent=2, default=str)}')
-        return self._build_payload(agent_utt, frame)
+            log.info(f'AGENT-FRAME-FULL: {json.dumps(artifact.to_dict(), indent=2, default=str)}')
+        return self._build_payload(agent_utt, artifact)
 
     def _self_check(self, state: DialogueState) -> bool:
         if state.confidence < 0.1:
@@ -119,11 +119,11 @@ class Agent:
 
     def _fallback_response(self, message: str) -> dict:
         self.world.context.add_turn('Agent', message, turn_type='agent_response')
-        payload = {'message': message, 'actions': [], 'frame': None, 'block': 'default'}
+        payload = {'message': message, 'actions': [], 'artifact': None, 'block': 'default'}
         return payload
 
-    def _build_payload(self, utterance: str, frame: DisplayFrame) -> dict:
-        return {'message': utterance, 'actions': [], 'frame': frame.to_dict()}
+    def _build_payload(self, utterance: str, artifact: TaskArtifact) -> dict:
+        return {'message': utterance, 'actions': [], 'artifact': artifact.to_dict()}
 
     # ── Session management ────────────────────────────────────────────
 

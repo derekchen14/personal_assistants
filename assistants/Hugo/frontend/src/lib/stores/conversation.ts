@@ -8,7 +8,7 @@ export interface Message {
     text: string;
     raw_utterance?: string;
     actions?: unknown[];
-    frame?: Record<string, unknown> | null;
+    artifact?: Record<string, unknown> | null;
     timestamp: number;
 }
 
@@ -43,15 +43,15 @@ function createConversationStore() {
             return;
         }
 
-        const frame = data.frame as Record<string, unknown> | null;
-        if (frame) {
-            // Phase-2 logging: rich frame snapshot to diff against the
+        const artifact = data.artifact as Record<string, unknown> | null;
+        if (artifact) {
+            // Phase-2 logging: rich artifact snapshot to diff against the
             // backend WS-HANDOFF log line. Look for shape mismatches
             // (missing keys, wrong block types, empty data).
-            const blocks = (frame.blocks as Array<Record<string, unknown>>) || [];
-            console.log('[frame] received:', {
-                origin: frame.origin,
-                metadata_keys: Object.keys((frame.metadata as object) || {}),
+            const blocks = (artifact.blocks as Array<Record<string, unknown>>) || [];
+            console.log('[artifact] received:', {
+                origin: artifact.origin,
+                metadata_keys: Object.keys((artifact.parts as object) || {}),
                 blocks: blocks.map((b) => ({
                     type: b.type,
                     data_keys: Object.keys((b.data as object) || {}),
@@ -60,7 +60,7 @@ function createConversationStore() {
                 msg_len: ((data.message as string) || '').length,
             });
         } else {
-            console.log('[frame] none', { msg_len: ((data.message as string) || '').length });
+            console.log('[artifact] none', { msg_len: ((data.message as string) || '').length });
         }
 
         const msg: Message = {
@@ -69,7 +69,7 @@ function createConversationStore() {
             text: (data.message as string) || '',
             raw_utterance: data.raw_utterance as string,
             actions: data.actions as unknown[],
-            frame,
+            artifact,
             timestamp: Date.now(),
         };
 

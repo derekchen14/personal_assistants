@@ -8,7 +8,7 @@ TEMPLATES = {
     'survey':    {'template': "{message}", 'block_hint': 'list'},
 }
 
-def fill_publish_template(template:str, flow, frame) -> str:
+def fill_publish_template(template:str, flow, artifact) -> str:
     template = TEMPLATES[flow.name()]['template']
-    message = frame.thoughts
+    message = artifact.thoughts
     return template.format(message=message)

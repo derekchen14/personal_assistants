@@ -17,27 +17,27 @@ class RES(object):
         self.world = world
         self.flow_stack = world.flow_stack
 
-    def respond(self, frame):
+    def respond(self, artifact):
         completed_flows = self.start()
 
         if self.ambiguity.present():
-            return self._clarify(), frame
+            return self._clarify(), artifact
 
         state = self.world.current_state()
         flow = completed_flows[-1] if completed_flows else self.flow_stack.get_flow()
 
         if flow.intent == Intent.INTERNAL:
-            return '', frame
+            return '', artifact
         if flow.intent == Intent.PLAN and state.keep_going:
-            self.finish('', frame, flow)
+            self.finish('', artifact, flow)
             self._save_turn_checkpoint()
-            return '', frame
+            return '', artifact
 
-        agent_utt = self.generate(frame, state, flow)
+        agent_utt = self.generate(artifact, state, flow)
 
-        self.finish(agent_utt, frame, flow)
+        self.finish(agent_utt, artifact, flow)
         self._save_turn_checkpoint()
-        return agent_utt, frame
+        return agent_utt, artifact
 
     def _save_turn_checkpoint(self):
         """Single end-of-turn checkpoint. Future conversation-rewind correlates to a
@@ -52,22 +52,22 @@ class RES(object):
         self.world.context.add_turn('Agent', text, turn_type='clarification')
         return text
 
-    def generate(self, frame, state, flow) -> str:
+    def generate(self, artifact, state, flow) -> str:
         template_info = _get_template(flow.name(), flow.intent)
         template = template_info.get('template', '{message}')
 
         match flow.intent:
-            case 'Research': filled = fill_research_template(template, flow, frame)
-            case 'Draft': filled = fill_draft_template(template, flow, frame)
-            case 'Revise': filled = fill_revise_template(template, flow, frame)
-            case 'Publish': filled = fill_publish_template(template, flow, frame)
-            case 'Converse': filled = fill_converse_template(template, flow, frame)
-            case 'Plan': filled = fill_plan_template(template, flow, frame)
+            case 'Research': filled = fill_research_template(template, flow, artifact)
+            case 'Draft': filled = fill_draft_template(template, flow, artifact)
+            case 'Revise': filled = fill_revise_template(template, flow, artifact)
+            case 'Publish': filled = fill_publish_template(template, flow, artifact)
+            case 'Converse': filled = fill_converse_template(template, flow, artifact)
+            case 'Plan': filled = fill_plan_template(template, flow, artifact)
 
-        response = filled if template_info.get('skip_naturalize') else self.naturalize(filled, frame)
+        response = filled if template_info.get('skip_naturalize') else self.naturalize(filled, artifact)
         return response
 
-    def naturalize(self, raw_text:str, frame) -> str:
+    def naturalize(self, raw_text:str, artifact) -> str:
         if self.config.get('debug', False):
             return raw_text
         if not raw_text.strip():
@@ -75,7 +75,7 @@ class RES(object):
         if len(raw_text) < 80:
             return raw_text
 
-        block_desc = ', '.join([block.block_type for block in frame.blocks])
+        block_desc = ', '.join([block.block_type for block in artifact.blocks])
         convo_history = self.world.context.compile_history(look_back=3)
         prompt = get_naturalize_prompt(raw_text, convo_history, block_desc)
 
@@ -102,7 +102,7 @@ class RES(object):
 
         return completed
 
-    def finish(self, text:str, frame, flow):
+    def finish(self, text:str, artifact, flow):
         if flow.intent not in (Intent.INTERNAL, Intent.PLAN):
-            if not text and not frame.blocks:
+            if not text and not artifact.blocks:
                 pass  # orchestrator handles fallback

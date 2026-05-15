@@ -8,6 +8,6 @@ TEMPLATES = {
     'dismiss':    {'template': "{message}", 'skip_naturalize': True},
 }
 
-def fill_converse_template(template:str, flow, frame) -> str:
+def fill_converse_template(template:str, flow, artifact) -> str:
     template = TEMPLATES[flow.name()]['template']
-    return template.format(message=frame.thoughts)
+    return template.format(message=artifact.thoughts)

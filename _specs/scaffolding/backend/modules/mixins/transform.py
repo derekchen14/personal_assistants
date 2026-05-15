@@ -12,7 +12,7 @@ from backend.assets.ontology import type_hierarchy, default_limit
 
 from utils.help import dax2flow, flow2dax
 from backend.components.engineer import PromptEngineer
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.components.metadata import MetaData
 from backend.utilities.manipulations import *
 
@@ -31,8 +31,8 @@ class TransformMixin:
       self.actions.add('CLARIFY')
       flow.is_uncertain = False
       state.ambiguity.declare('specific')
-      frame = DisplayFrame(state.current_tab)
-      return frame, state
+      artifact = TaskArtifact(state.current_tab)
+      return artifact, state
 
     if state.has_issues:
       frame, state = self.interpolate_issues(flow, context, state, world)
@@ -53,7 +53,7 @@ class TransformMixin:
         updated_tabs = [state.current_tab]
 
       self.update_system_prompt(updated_tabs, world, context, flow)
-    return frame, state
+    return artifact, state
 
   def interpolate_issues(self, flow, context, state, world):
     raise NotImplementedError("Trimmed for scaffold reference")
@@ -157,7 +157,7 @@ class TransformMixin:
 
     if flow.slots['source'].is_verified() and not flow.is_uncertain:
       flow, grounding, reroute = self.ground_to_reality(flow, state, world)
-      if reroute: return frame, state
+      if reroute: return artifact, state
 
       if any([entity['rel'] == '' for entity in flow.slots['source'].values]):
         flow = self.align_connection_columns(context, flow, grounding)
@@ -190,7 +190,7 @@ class TransformMixin:
 
     # we are dealing with two tables rather than just one, so the alignment check won't set the raw table
     frame.raw_table = state.current_tab  # therefore we set it manually to ensure the data can be fetched
-    return frame, state
+    return artifact, state
 
   def verify_table_join(self, context, flow, state, world):
     raise NotImplementedError("Trimmed for scaffold reference")

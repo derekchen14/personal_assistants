@@ -284,10 +284,10 @@ _Output_
 ```
 ---
 Intent: Explore
-User: "look up the display frame spec"
+User: "look up the display artifact spec"
 _Output_
 ```json
-{{"thought": "Looking up a specific spec file.", "flow_name": "browse", "confidence": 0.95, "slots": {{"source": "display_frame"}}}}
+{{"thought": "Looking up a specific spec file.", "flow_name": "browse", "confidence": 0.95, "slots": {{"source": "task_artifact"}}}}
 ```
 ---
 Intent: Explore

@@ -6,21 +6,21 @@
     import GridBlock from './GridBlock.svelte';
     import SelectionBlock from './SelectionBlock.svelte';
     import ChecklistBlock from './ChecklistBlock.svelte';
-    import type { FrameData } from '$lib/stores/display';
+    import type { ArtifactData } from '$lib/stores/display';
 
-    let { frame, panel = 'bottom' }:
-        { frame: FrameData; panel?: 'top' | 'bottom' } = $props();
+    let { artifact, panel = 'bottom' }:
+        { artifact: ArtifactData; panel?: 'top' | 'bottom' } = $props();
 
     let renderable = $derived(
-        (frame?.blocks ?? []).filter(b => (b.panel ?? 'bottom') === panel),
+        (artifact?.blocks ?? []).filter(b => (b.panel ?? 'bottom') === panel),
     );
 </script>
 
 {#each renderable as block}
     {#if block.type === 'card'}
-        <CardBlock data={block.data} origin={frame.origin ?? ''} />
+        <CardBlock data={block.data} origin={artifact.origin ?? ''} />
     {:else if block.type === 'list'}
-        <ListBlock data={block.data} origin={frame.origin ?? ''} />
+        <ListBlock data={block.data} origin={artifact.origin ?? ''} />
     {:else if block.type === 'confirmation'}
         <ConfirmationBlock data={block.data} />
     {:else if block.type === 'compare'}
@@ -28,7 +28,7 @@
     {:else if block.type === 'grid'}
         <GridBlock data={block.data} />
     {:else if block.type === 'selection'}
-        <SelectionBlock data={block.data} origin={frame.origin ?? ''} />
+        <SelectionBlock data={block.data} origin={artifact.origin ?? ''} />
     {:else if block.type === 'checklist'}
         <ChecklistBlock data={block.data} />
     {:else if block.type !== 'default'}

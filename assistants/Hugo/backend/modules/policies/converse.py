@@ -1,5 +1,5 @@
 from backend.modules.policies.base import BasePolicy
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 
 
 class ConversePolicy(BasePolicy):
@@ -21,13 +21,23 @@ class ConversePolicy(BasePolicy):
             case 'dismiss': return self.dismiss_policy(flow, state, context, tools)
             case 'undo': return self.undo_policy(flow, state, context, tools)
             case _:
-                return DisplayFrame()
+                return TaskArtifact()
 
     def chat_policy(self, flow, state, context, tools):
-        convo_history = context.compile_history()
-        raw_output = self.engineer(convo_history)
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        ok, result = self.engineer.tool_succeeded(tool_log, 'call_flow_stack')
+
+        if flow.stage == 'default' and ok and result.get('stacked'):
+            flow.stage = 'dispatch'
+            state.has_plan = True
+            state.keep_going = True
+            return TaskArtifact(origin='chat')
+
+        flow.stage = 'direct'
         flow.status = 'Completed'
-        return DisplayFrame(origin='chat', thoughts=raw_output)
+        state.has_plan = False
+        state.keep_going = False
+        return TaskArtifact(origin='chat', thoughts=text)
 
     def preference_policy(self, flow, state, context, tools):
         if not flow.slots['target'].check_if_filled():
@@ -39,7 +49,7 @@ class ConversePolicy(BasePolicy):
                 flow.fill_slots_by_label({'target': parsed})
             if not flow.slots['target'].check_if_filled():
                 self.ambiguity.declare('specific', metadata={'missing': 'target'})
-                return DisplayFrame(flow.name())
+                return TaskArtifact(flow.name())
 
         slots = flow.slot_values_dict()
         setting = slots.get('target', {})
@@ -52,7 +62,7 @@ class ConversePolicy(BasePolicy):
         convo_history = context.compile_history()
         text = self.engineer.skill_call(flow, convo_history, self.memory.read_scratchpad(), skill_name='preference')
         flow.status = 'Completed'
-        return DisplayFrame(origin='preference', thoughts=text)
+        return TaskArtifact(origin='preference', thoughts=text)
 
     def suggest_policy(self, flow, state, context, tools):
         scratchpad = self.memory.read_scratchpad()
@@ -77,7 +87,7 @@ class ConversePolicy(BasePolicy):
 
         text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad())
         flow.status = 'Completed'
-        return DisplayFrame(origin='suggest', thoughts=text)
+        return TaskArtifact(origin='suggest', thoughts=text)
 
     def explain_policy(self, flow, state, context, tools):
         params = {}
@@ -90,48 +100,48 @@ class ConversePolicy(BasePolicy):
         result = tools('explain_action', params)
         flow.status = 'Completed'
         if not result['_success']:
-            return self.error_frame(flow, 'tool_error',
+            return self.error_artifact(flow, 'tool_error',
                 thoughts=f'explain_action failed: {result["_error"]}.',
                 code=result['_message'],
                 failed_tool='explain_action')
-        return DisplayFrame(origin='explain', thoughts=result.get('explanation', ''))
+        return TaskArtifact(origin='explain', thoughts=result.get('explanation', ''))
 
     def endorse_policy(self, flow, state, context, tools):
-        frame = DisplayFrame(origin='endorse')
+        artifact = TaskArtifact(origin='endorse')
         if self.flow_stack.stack_size() > 1:
             state.keep_going = True
             endorsement = 'User accepted the suggestion and wants to proceed.'
-            frame.thoughts = endorsement
+            artifact.thoughts = endorsement
             self.memory.write_scratchpad('endorse', endorsement)
         else:
             convo_history = context.compile_history()
             scratch = self.memory.read_scratchpad()
-            frame.thoughts = self.engineer.skill_call(flow, convo_history, scratch, skill_name='endorse')
+            artifact.thoughts = self.engineer.skill_call(flow, convo_history, scratch, skill_name='endorse')
 
         flow.status = 'Completed'
-        return frame
+        return artifact
 
     def dismiss_policy(self, flow, state, context, tools):
-        frame = DisplayFrame(origin='dismiss')
+        artifact = TaskArtifact(origin='dismiss')
         if self.flow_stack.stack_size() > 1:
             state.keep_going = True
             self.memory.write_scratchpad('dismiss', 'User rejected the suggestion and wants to proceed.')
         else:
             convo_history = context.compile_history()
             scratch = self.memory.read_scratchpad()
-            frame.thoughts = self.engineer.skill_call(flow, convo_history, scratch, skill_name='dismiss')
+            artifact.thoughts = self.engineer.skill_call(flow, convo_history, scratch, skill_name='dismiss')
 
         flow.status = 'Completed'
-        return frame
+        return artifact
 
     def undo_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
         post_id = flow.slots['target'].values[0]['post']
 
         rewind = flow.slots['rewind']
         if not rewind.check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing': 'rewind'})
-            return DisplayFrame(origin='undo')
+            return TaskArtifact(origin='undo')
 
         snapshot_ids = self.content.list_snapshots()
         max_steps = min(self.content.max_snapshots, len(snapshot_ids))
@@ -153,9 +163,9 @@ class ConversePolicy(BasePolicy):
 
             state.active_post = post_id
             flow.status = 'Completed'
-            frame = DisplayFrame(origin='undo', thoughts='Reverted your change.')
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-            frame.add_block({'type': 'toast', 'data': {'message': 'Undo successful', 'level': 'success'}})
-            return frame
+            artifact = TaskArtifact(origin='undo', thoughts='Reverted your change.')
+            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            artifact.add_block({'type': 'toast', 'data': {'message': 'Undo successful', 'level': 'success'}})
+            return artifact
         error_msg = f"rollback_post {post_id} failed: {result['_message']}"
         return self.toast_error(flow, 'tool_error', error_msg)

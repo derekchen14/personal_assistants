@@ -1,5 +1,5 @@
 from backend.modules.policies.base import BasePolicy
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 
 
 class PublishPolicy(BasePolicy):
@@ -20,7 +20,7 @@ class PublishPolicy(BasePolicy):
             case 'cancel': return self.cancel_policy(flow, state, context, tools)
             case 'survey': return self.survey_policy(flow, state, context, tools)
             case _:
-                return DisplayFrame()
+                return TaskArtifact()
 
     def _slot_steps(self, flow):
         steps = []
@@ -34,17 +34,17 @@ class PublishPolicy(BasePolicy):
         """Publish-specific clarifier: toast-block showing the step the user
         needs to fill. Called when ambiguity is already declared."""
         steps, current = self._slot_steps(flow)
-        frame = DisplayFrame(flow.name())
-        frame.add_block({'type': 'toast', 'data': {
+        artifact = TaskArtifact(flow.name())
+        artifact.add_block({'type': 'toast', 'data': {
             'message': self.ambiguity.ask(),
             'level': 'info',
             'steps': steps,
             'current_step': current,
         }})
-        return frame
+        return artifact
 
     def release_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
@@ -52,20 +52,20 @@ class PublishPolicy(BasePolicy):
 
         failed = self._first_failed_platform_tool(tool_log)
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=text)
+        artifact = TaskArtifact(flow.name(), thoughts=text)
         if failed:
             failed_tool, result = failed
             err_msg = result['_message'] if '_message' in result else result.get('_error', f'{failed_tool} failed')
             toast = {'message': f'{failed_tool} failed: {err_msg}'}
             if 'level' in result:
                 toast['level'] = result['level']
-            frame.add_block({'type': 'toast', 'data': toast})
+            artifact.add_block({'type': 'toast', 'data': toast})
         else:
             self.retry_tool(tools, 'update_post',
                 {'post_id': post_id, 'updates': {'status': 'published'}})
             title = tools('read_metadata', {'post_id': post_id})['title']
-            frame.add_block({'type': 'toast', 'data': {'message': f'Published "{title}".', 'level': 'success'}})
-        return frame
+            artifact.add_block({'type': 'toast', 'data': {'message': f'Published "{title}".', 'level': 'success'}})
+        return artifact
 
     @staticmethod
     def _first_failed_platform_tool(tool_log):
@@ -79,25 +79,25 @@ class PublishPolicy(BasePolicy):
     def syndicate_policy(self, flow, state, context, tools):
         if not flow.slots['channel'].check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing': 'channel'})
-            frame = self._clarify_with_steps(flow)
+            artifact = self._clarify_with_steps(flow)
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools)
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=text)
-            frame.add_block({'type': 'toast', 'data': {'message': text}})
-        return frame
+            artifact = TaskArtifact(flow.name(), thoughts=text)
+            artifact.add_block({'type': 'toast', 'data': {'message': text}})
+        return artifact
 
     def schedule_policy(self, flow, state, context, tools):
         missing = self._first_missing_required(flow, (flow.entity_slot, 'channel'))
         if missing:
             self.ambiguity.declare('specific', metadata={'missing': missing})
-            frame = self._clarify_with_steps(flow)
+            artifact = self._clarify_with_steps(flow)
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools)
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=text)
-            frame.add_block({'type': 'toast', 'data': {'message': text}})
-        return frame
+            artifact = TaskArtifact(flow.name(), thoughts=text)
+            artifact.add_block({'type': 'toast', 'data': {'message': text}})
+        return artifact
 
     @staticmethod
     def _first_missing_required(flow, slot_names):
@@ -108,30 +108,30 @@ class PublishPolicy(BasePolicy):
         return None
 
     def preview_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=text)
-        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-        return frame
+        artifact = TaskArtifact(flow.name(), thoughts=text)
+        artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        return artifact
 
     def promote_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         source_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=text)
-        frame.add_block({'type': 'card', 'data': self._read_post_content(source_id, tools)})
-        return frame
+        artifact = TaskArtifact(flow.name(), thoughts=text)
+        artifact.add_block({'type': 'card', 'data': self._read_post_content(source_id, tools)})
+        return artifact
 
     def cancel_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
@@ -142,16 +142,16 @@ class PublishPolicy(BasePolicy):
 
         if result['_success']:
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name())
-            frame.add_block({'type': 'toast', 'data': {'message': 'Publication cancelled.'}})
+            artifact = TaskArtifact(flow.name())
+            artifact.add_block({'type': 'toast', 'data': {'message': 'Publication cancelled.'}})
         else:
-            frame = self.error_frame(flow, 'tool_error',
+            artifact = self.error_artifact(flow, 'tool_error',
                 thoughts='Could not cancel publication.',
                 code=result['_message'],
                 failed_tool='update_post')
-        return frame
+        return artifact
 
     def survey_policy(self, flow, state, context, tools):
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        return DisplayFrame(flow.name(), thoughts=text)
+        return TaskArtifact(flow.name(), thoughts=text)

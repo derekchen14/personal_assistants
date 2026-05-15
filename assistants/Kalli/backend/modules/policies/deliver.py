@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from backend.components.context_coordinator import ContextCoordinator
     from backend.components.dialogue_state import DialogueState
-    from backend.components.display_frame import DisplayFrame
+    from backend.components.task_artifact import TaskArtifact
 
 
 _SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'skills'
@@ -24,7 +24,7 @@ class DeliverPolicy:
 
     def execute(self, flow_info: dict, state: 'DialogueState',
                 context: 'ContextCoordinator',
-                filled_slots: dict, tool_dispatcher) -> 'DisplayFrame':
+                filled_slots: dict, tool_dispatcher) -> 'TaskArtifact':
         handler = getattr(self, f'_do_{flow_info["name"]}', None)
         if handler:
             return handler(flow_info, state, context, filled_slots, tool_dispatcher)
@@ -35,7 +35,7 @@ class DeliverPolicy:
         return self._llm_execute(flow_info, state, context, filled_slots, tool_dispatcher)
 
     def _llm_execute(self, flow_info, state, context, filled_slots, tool_dispatcher):
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
         flow_name = flow_info['name']
 
         skill_prompt = self._load_skill_template(flow_name)
@@ -51,7 +51,7 @@ class DeliverPolicy:
             system, messages, tools, tool_dispatcher, call_site='skill',
         )
 
-        frame = DisplayFrame(self.config)
+        artifact = TaskArtifact(self.config)
         block_type = flow_info.get('output', 'list')
         block_data = {'flow_name': flow_name, 'content': text}
         for entry in tool_log:
@@ -62,8 +62,8 @@ class DeliverPolicy:
                     block_data.update(result_data)
                 elif isinstance(result_data, list):
                     block_data['items'] = result_data
-        frame.set_frame(block_type, block_data, source=flow_name)
-        return frame
+        artifact.set_artifact(block_type, block_data, source=flow_name)
+        return artifact
 
     def _load_skill_template(self, flow_name: str) -> str | None:
         path = _SKILL_DIR / f'{flow_name}.md'

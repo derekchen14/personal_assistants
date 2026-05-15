@@ -30,14 +30,14 @@ def _build_list_frame(datasets, queries, metrics) -> dict:
     }
 
 
-def _silent(frame) -> dict:
+def _silent(artifact) -> dict:
     return {
         'message': '',
         'raw_utterance': '',
         'actions': [],
         'interaction': {'type': 'default', 'show': False, 'data': {}},
         'code_snippet': None,
-        'frame': frame,
+        'artifact': artifact,
     }
 
 
@@ -73,7 +73,7 @@ async def chat(websocket: WebSocket):
             'actions': [],
             'interaction': {'type': 'default', 'show': False, 'data': {}},
             'code_snippet': None,
-            'frame': welcome_frame,
+            'artifact': welcome_frame,
         })
 
         async def sender(q: asyncio.Queue):
@@ -108,7 +108,7 @@ async def chat(websocket: WebSocket):
                         'actions': [],
                         'interaction': {'type': 'default', 'show': False, 'data': {}},
                         'code_snippet': None,
-                        'frame': reset_frame,
+                        'artifact': reset_frame,
                     })
                     continue
 

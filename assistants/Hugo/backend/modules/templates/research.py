@@ -21,18 +21,18 @@ _INSPECT_LABELS = {
 }
 
 
-def fill_research_template(template:str, flow, frame) -> str:
+def fill_research_template(template:str, flow, artifact) -> str:
     template = TEMPLATES[flow.name()]['template']
     if flow.name() == 'inspect':
-        return template.format(message=_format_inspect_message(frame))
-    return template.format(message=frame.thoughts)
+        return template.format(message=_format_inspect_message(artifact))
+    return template.format(message=artifact.thoughts)
 
 
-def _format_inspect_message(frame) -> str:
+def _format_inspect_message(artifact) -> str:
     """Produce the spoken utterance for the inspect flow directly from metadata."""
-    metrics = frame.metadata.get('metrics') or {}
+    metrics = artifact.data.get('metrics') or {}
     if not metrics:
-        return frame.thoughts or 'No metrics available for that post.'
+        return artifact.thoughts or 'No metrics available for that post.'
 
     parts = []
     if 'word_count' in metrics:

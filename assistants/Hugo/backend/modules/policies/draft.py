@@ -1,7 +1,7 @@
 import logging
 
 from backend.modules.policies.base import BasePolicy
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class DraftPolicy(BasePolicy):
     def outline_policy(self, flow, state, context, tools):
         if not flow.slots['source'].check_if_filled():
             self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
-            return DisplayFrame()
+            return TaskArtifact()
 
         depth_slot = flow.slots['depth']
         depth = int(depth_slot.level) if depth_slot.check_if_filled() else 2
@@ -94,18 +94,18 @@ class DraftPolicy(BasePolicy):
             saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_outline')
 
             if not text or not saved:
-                frame = self.error_frame(flow, 'failed_to_save',
+                artifact = self.error_artifact(flow, 'failed_to_save',
                     thoughts='LLM failed to generate outline.')
             else:
                 for step in flow.slots['sections'].steps:
                     flow.slots['sections'].mark_as_complete(step['name'])
                 flow.status = 'Completed'
-                frame = DisplayFrame(origin='outline', thoughts=text)
-                frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+                artifact = TaskArtifact(origin='outline', thoughts=text)
+                artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
         elif flow.slots['topic'].check_if_filled():
-            flow.stage = 'propose'
-            frame = self._propose_outline(flow, state, context, tools, depth=depth)
+            flow.stage = 'discovery'
+            artifact = self._propose_outline(flow, state, context, tools, depth=depth)
 
         else:
             convo_history = context.compile_history(look_back=3)
@@ -114,20 +114,19 @@ class DraftPolicy(BasePolicy):
             flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})
 
             if flow.slots['topic'].filled:
-                flow.stage = 'propose'
-                frame = self._propose_outline(flow, state, context, tools)
+                flow.stage = 'discovery'
+                artifact = self._propose_outline(flow, state, context, tools)
             else:
-                flow.stage = 'error'  # Missing topic is an error state
                 self.ambiguity.declare('specific', metadata={'missing': 'topic'})
-                frame = DisplayFrame(flow.name())
+                artifact = TaskArtifact(flow.name())
 
-        return frame
+        return artifact
 
     def _propose_outline(self, flow, state, context, tools, depth:int=2):
         post_id = state.active_post
         # Defensive guard: Remove persistence tools from the skill's tool registry for Propose mode.
         # Also pass propose_mode=True in the resolved-context hint so the skill knows to stay text-only.
-        frame = DisplayFrame(origin='outline')
+        artifact = TaskArtifact(origin='outline')
 
         raw, tool_log = self.llm_execute(flow, state, context, tools,
             extra_resolved={'depth': depth, 'propose_mode': True},
@@ -142,11 +141,11 @@ class DraftPolicy(BasePolicy):
                 'payload': {'proposals': [cand]},
                 'body': '\n\n'.join(f"**{sec['name']}**\n\n{sec.get('description', '')}" for sec in cand),
             } for idx, cand in enumerate(candidates)]
-            frame.add_block({'type': 'selection', 'data': {
+            artifact.add_block({'type': 'selection', 'data': {
                 'title': 'Outline options',
                 'options': options,
             }})
-        return frame
+        return artifact
 
     def refine_policy(self, flow, state, context, tools):
         if not flow.is_filled():
@@ -154,7 +153,7 @@ class DraftPolicy(BasePolicy):
                 self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
             elif not flow.slots['feedback'].filled or not flow.slots['steps'].filled:
                 self.ambiguity.declare('specific', metadata={'missing': 'refine_details'})
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
 
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
@@ -166,7 +165,7 @@ class DraftPolicy(BasePolicy):
         if _count_bullets(content) == 0:
             self.flow_stack.stackon('outline')
             state.keep_going = True
-            return DisplayFrame(thoughts='No bullets in the outline yet, outlining first.')
+            return TaskArtifact(thoughts='No bullets in the outline yet, outlining first.')
 
         self.record_snapshot(self.content, flow, context, post_id)
         text, tool_log = self.llm_execute(flow, state, context, tools,
@@ -178,9 +177,9 @@ class DraftPolicy(BasePolicy):
         saved = revised or inserted or renamed or removed
 
         if not text or not saved:
-            return DisplayFrame(
+            return TaskArtifact(
                 origin=flow.name(),
-                metadata={'violation': 'failed_to_save'},
+                parts={'violation': 'failed_to_save'},
                 thoughts='The refine skill did not save any changes (revise_content, insert_section, update_post rename, or remove_content).',
             )
 
@@ -192,9 +191,9 @@ class DraftPolicy(BasePolicy):
         new_bullets = _count_bullets(new_outline)
         if new_bullets < prior_bullets and not _has_removal_intent(flow):
             thoughts = f'Outline shrunk from {prior_bullets} bullets to {new_bullets} without an explicit removal directive.'
-            return DisplayFrame(
+            return TaskArtifact(
                 origin=flow.name(),
-                metadata={
+                parts={
                     'violation': 'failed_to_save',
                     'prior_bullets': prior_bullets,
                     'new_bullets': new_bullets,
@@ -203,16 +202,16 @@ class DraftPolicy(BasePolicy):
             )
 
         flow.status = 'Completed'
-        frame = DisplayFrame(origin='refine', thoughts=text)
-        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-        return frame
+        artifact = TaskArtifact(origin='refine', thoughts=text)
+        artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        return artifact
 
     def cite_policy(self, flow, state, context, tools):
         target_slot = flow.slots['target']
         url_slot = flow.slots['url']
         if not target_slot.check_if_filled() and not url_slot.check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing': 'target'})
-            return DisplayFrame()
+            return TaskArtifact()
 
         if state.active_post:
             sec_id = target_slot.values[0].get('sec') if target_slot.check_if_filled() else None
@@ -221,13 +220,13 @@ class DraftPolicy(BasePolicy):
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        return DisplayFrame(origin='cite', thoughts=text)
+        return TaskArtifact(origin='cite', thoughts=text)
 
     def compose_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing': flow.entity_slot})
-            return DisplayFrame()
+            return TaskArtifact()
 
         # Stack-on: compose needs an outline only when the post has no structure yet.
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
@@ -236,31 +235,31 @@ class DraftPolicy(BasePolicy):
         if result['_success'] and not result.get('section_ids'):
             self.flow_stack.stackon('outline')
             state.keep_going = True
-            return DisplayFrame(thoughts='No sections yet, outlining first.')
+            return TaskArtifact(thoughts='No sections yet, outlining first.')
 
         # Preload title + section preview into resolved-entities so the skill plans without re-fetching.
         # Skill owns persistence (calls revise_content per section); the post-read below refreshes the card.
         self.record_snapshot(self.content, flow, context, post_id)
         text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
         flow.status = 'Completed'
-        frame = DisplayFrame(origin='compose', thoughts=text)
-        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-        return frame
+        artifact = TaskArtifact(origin='compose', thoughts=text)
+        artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        return artifact
 
     def add_policy(self, flow, state, context, tools):
         grounding = flow.slots[flow.entity_slot]
         if not grounding.check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing': flow.entity_slot})
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
 
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         self.record_snapshot(self.content, flow, context, post_id)
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = DisplayFrame(origin='add', thoughts=text)
-        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-        return frame
+        artifact = TaskArtifact(origin='add', thoughts=text)
+        artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        return artifact
 
     def create_policy(self, flow, state, context, tools):
         if not flow.is_filled():
@@ -270,7 +269,7 @@ class DraftPolicy(BasePolicy):
                 self.ambiguity.declare('specific', metadata={'missing': 'type'})
             else:
                 self.ambiguity.declare('partial', metadata={'missing': 'source'})
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
 
         slots = flow.slot_values_dict()
         create_params = { 'title': slots['title'], 'type': slots['type'] }
@@ -282,9 +281,9 @@ class DraftPolicy(BasePolicy):
             new_id = result['post_id']
             state.active_post = new_id
             flow.status = 'Completed'
-            frame = DisplayFrame(origin='create')
+            artifact = TaskArtifact(origin='create')
             block_data = {'post_id': new_id, 'title': result['title'], 'status': result['status']}
-            frame.add_block({'type': 'card', 'data': block_data, 'expand': True})
+            artifact.add_block({'type': 'card', 'data': block_data, 'expand': True})
             # If topic provided, chain into OutlineFlow to propose an initial outline.
             # if 'topic' in slots:
             #     self.flow_stack.stackon('outline')
@@ -292,7 +291,7 @@ class DraftPolicy(BasePolicy):
             #     outline_flow = self.flow_stack.get_flow()
             #     outline_flow.slots['source'].add_one(post=new_id)
             #     outline_flow.slots['topic'].add_one(slots['topic'])
-            #     frame.thoughts = 'Created the post, moving on to outline.'
+            #     artifact.thoughts = 'Created the post, moving on to outline.'
 
         elif result.get('_error') == 'duplicate':
             observation = f'A post titled "{slots["title"]}" already exists. Overwrite it, or pick a different title?'
@@ -300,13 +299,13 @@ class DraftPolicy(BasePolicy):
                 'missing': 'overwrite_intent', 'question': observation,
                 'duplicate_title': slots['title'],
             })
-            frame = DisplayFrame(flow.name(), metadata={'duplicate_title': slots['title']})
+            artifact = TaskArtifact(flow.name(), parts={'duplicate_title': slots['title']})
         else:
             frame_meta = {'violation': 'tool_error', 'failed_tool': 'create_post'}
             reason = result.get('_message', 'unknown error')
             message = f"Could not create {slots['type']} _{slots['title']}_: {reason}."
-            frame = DisplayFrame(origin='create', metadata=frame_meta, thoughts=message)
-        return frame
+            artifact = TaskArtifact(origin='create', parts=frame_meta, thoughts=message)
+        return artifact
 
     def brainstorm_policy(self, flow, state, context, tools):
         if flow.slots['topic'].check_if_filled():
@@ -324,11 +323,11 @@ class DraftPolicy(BasePolicy):
             flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})
             if not flow.slots['topic'].filled:
                 self.ambiguity.declare('specific', metadata={'missing': 'topic'})
-                return DisplayFrame(flow.name())
+                return TaskArtifact(flow.name())
             else:
                 text, _ = self.llm_execute(flow, state, context, tools)
 
         flow.status = 'Completed'
         parsed = self.engineer.apply_guardrails(text)
         thoughts = _format_brainstorm(parsed) if isinstance(parsed, dict) else text
-        return DisplayFrame(origin='brainstorm', thoughts=thoughts)
+        return TaskArtifact(origin='brainstorm', thoughts=thoughts)

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 
 
 _SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'pex' / 'skills'
@@ -21,9 +21,9 @@ class BasePolicy:
         self.world = components['world']
         self._get_tools_fn = components['get_tools']
 
-    def execute(self, flow, state, tool_dispatcher) -> DisplayFrame:
+    def execute(self, flow, state, tool_dispatcher) -> TaskArtifact:
         if flow.name() in _BATCH_2:
-            return DisplayFrame(origin=flow.name(),
+            return TaskArtifact(origin=flow.name(),
                                 thoughts="That feature is coming soon — stay tuned!")
         return self.llm_execute(flow, state, self.world.context, tool_dispatcher)
 

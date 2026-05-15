@@ -586,4 +586,20 @@ tools:
     timeout_ms: 5000
     capabilities: {accesses_private_data: false, receives_untrusted_input: false, communicates_externally: false}
 
+  # -- FAQService -----------------------------------------------------------
+  search_faqs:
+    tool_id: search_faqs
+    name: "Search FAQs"
+    description: "Look up vetted FAQ entries about Hugo (capabilities, scope, privacy, channels, voice tooling). Returns the top matches ranked by relevance. Use for meta-questions about the assistant; use find_posts for the user's own blog content."
+    input_schema:
+      type: object
+      properties:
+        query: {type: string, description: "User question or topic keywords"}
+        top_k: {type: integer, default: 3, description: "Maximum number of matches to return"}
+      required: [query]
+      additionalProperties: false
+    idempotent: true
+    timeout_ms: 8000
+    capabilities: {accesses_private_data: false, receives_untrusted_input: false, communicates_externally: false}
+
 # Template registry populated in Phase 7 (Prompt Writing)

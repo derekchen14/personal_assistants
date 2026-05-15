@@ -86,12 +86,12 @@
     $effect(() => {
         const msgs = $conversation.messages;
         const last = msgs[msgs.length - 1];
-        if (last?.frame && last.role === 'agent' && last.id !== lastFrameMsgId) {
+        if (last?.artifact && last.role === 'agent' && last.id !== lastFrameMsgId) {
             lastFrameMsgId = last.id;
             // setPanel walks blocks: toast-typed blocks divert to the drawer, others land in
             // top/bottom panels by their `panel` field. Card/list in the persistent containers
-            // survive when the new frame doesn't target their panel.
-            setPanel(last.frame as any);
+            // survive when the new artifact doesn't target their panel.
+            setPanel(last.artifact as any);
         }
     });
 
@@ -238,7 +238,7 @@
                 {#if $displayLayout === 'top' || $displayLayout === 'split'}
                     <div class="flex flex-col grow-[2] h-0 overflow-y-auto p-4 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
                         {#if $topPanel}
-                            <BlockRenderer frame={$topPanel} panel="top" />
+                            <BlockRenderer artifact={$topPanel} panel="top" />
                         {/if}
                     </div>
                 {/if}
@@ -259,7 +259,7 @@
                                 <p class="text-sm text-[var(--muted)] italic">Press 'Enter' to save your draft, or 'Esc' to cancel.</p>
                             </div>
                         {:else if $bottomPanel}
-                            <BlockRenderer frame={$bottomPanel} panel="bottom" />
+                            <BlockRenderer artifact={$bottomPanel} panel="bottom" />
                         {:else}
                             <div class="flex items-center justify-center h-full text-[var(--muted)] text-sm">
                                 Blocks will appear here

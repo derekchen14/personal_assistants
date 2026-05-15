@@ -103,7 +103,7 @@ class IssueTracker(BaseExpert):
         self.cardset_index += 1
 
     frame.properties['cardset_index'] = self.cardset_index - 1
-    return frame
+    return artifact
 
   def still_resolving(self) -> bool:
     not_done_with_batch = self.cardset_index < self.batch_size

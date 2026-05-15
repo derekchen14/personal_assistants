@@ -46,14 +46,14 @@ def style_issues_message(query, issue_type):
 def build_json_response_for_frame(knowledge):
   frame, show_msg, flow_type = knowledge, True, 'Default(flow)'
   if frame.source == 'pandas':
-    frame_msg = style_pandas_message(frame.code)
+    frame_msg = style_pandas_message(artifact.code)
   elif frame.source == 'sql':
-    frame_msg, show_msg = style_sql_message(frame.code)
+    frame_msg, show_msg = style_sql_message(artifact.code)
     flow_type = 'Analyze(query)'
   elif frame.source == 'plotly':
-    frame_msg, show_msg = style_sql_message(frame.code)
+    frame_msg, show_msg = style_sql_message(artifact.code)
   elif frame.source in ['concern', 'blank', 'problem']:
-    frame_msg = style_issues_message(frame.code, frame.source)
+    frame_msg = style_issues_message(artifact.code, frame.source)
   elif frame.source in ['typo', 'interaction', 'default', 'error', 'change']:
     frame_msg, show_msg = '', False
 

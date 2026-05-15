@@ -105,7 +105,7 @@ class DialogueStateRecord(Base):
     utterance = relationship('Utterance')
 
 
-class DisplayFrameRecord(Base):
+class TaskArtifactRecord(Base):
     __tablename__ = 'display_frame'
 
     id = Column(String(36), primary_key=True, default=_uuid)

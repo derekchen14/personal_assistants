@@ -6,7 +6,7 @@ import pandas as pd
 from backend.prompts.mixins.for_internal import * # Assuming prompts like think_prompt exist here
 from backend.utilities.pex_helpers import *
 from backend.components.engineer import PromptEngineer
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from utils.help import dax2flow, dax2dact, flow2dax
 
 class InternalMixin:
@@ -34,7 +34,7 @@ class InternalMixin:
       self.actions.add('CLARIFY')
       state.thought = "I need more specific information or context to think effectively about this."
       frame.message = state.thought
-    return frame, state
+    return artifact, state
 
   def peek_at_data(self, context, state, world):
     """ Peeks at data, formats it, and uses it with the task description to inform the next step {39B}"""
@@ -106,7 +106,7 @@ class InternalMixin:
       self.actions.add('CLARIFY')
       state.ambiguity.declare('partial', flow='peek', slot='source table or column')
 
-    return frame, state
+    return artifact, state
 
   def search_meta_data(self, context, state, world):
     """ Searches meta-data like schema or issues before moving forward {149} """
@@ -164,7 +164,7 @@ class InternalMixin:
       state.ambiguity.declare('specific', flow='search', slot='target metadata type')
       frame.message = "What type of metadata should I search for (e.g., schema, problems, docs)?"
       state.thought = "I need to know what kind of metadata to search for."
-    return frame, state
+    return artifact, state
 
   def compute_action(self, context, state, world):
     """ Performs calculations or data science operations {129} """
@@ -230,7 +230,7 @@ class InternalMixin:
     else:
       flow.completed = True
       state.flow_stack.pop()  # remove the compute flow
-    return frame, state
+    return artifact, state
 
   def stage_action(self, context, state, world):
     """ Creates a temporary derived table for further analysis {19A} """
@@ -268,7 +268,7 @@ class InternalMixin:
       frame.message = "What data should be included in the staged table?"
       state.thought = "I need to know the source data or query for staging."
 
-    return frame, state
+    return artifact, state
 
   def consider_preferences(self, context, state, world):
     """ Considers user preferences before taking the next action {489} """
@@ -303,7 +303,7 @@ class InternalMixin:
       state.ambiguity.declare('specific', flow='consider', slot='preference type')
       frame.message = "Which user preference should I consider (e.g. goals, timing, caution)?"
       state.thought = "I need to know which user preference to look up."
-    return frame, state
+    return artifact, state
 
   def handle_uncertainty(self, context, state, world):
     """ Clarifies user intent when uncertainty is detected {9DF} """
@@ -345,4 +345,4 @@ class InternalMixin:
     state.thought = f"Handling uncertainty: Asking for clarification: {clarification_question}"
 
     # Do NOT mark flow completed - it requires user response.
-    return frame, state
+    return artifact, state

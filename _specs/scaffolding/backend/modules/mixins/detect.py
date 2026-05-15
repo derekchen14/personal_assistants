@@ -9,7 +9,7 @@ from backend.utilities.manipulations import unique_value_distribution
 from backend.utilities.pex_helpers import count_tab_cols
 from backend.components.engineer import PromptEngineer
 from backend.components.metadata import MetaData
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.modules.flow import flow_selection
 
 class DetectMixin:
@@ -66,7 +66,7 @@ class DetectMixin:
         state.has_issues = False
         return previous_frame, state
 
-      frame = DisplayFrame(tab_name)
+      artifact = TaskArtifact(tab_name)
       frame.issues_entity = {'tab': tab_name, 'col': col_name, 'flow': flow.name()}
 
     state.has_issues = True
@@ -101,7 +101,7 @@ class DetectMixin:
           state.flow_stack.pop()    # drop the interjected flow
         flow, state = wrap_up_issues(flow, state)
 
-    return frame, state
+    return artifact, state
 
   def identify_concerns(self, context, state, world):
     # Supports {46C} by resolving concerns such as outliers, anomalies, and other issues

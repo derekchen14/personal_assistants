@@ -5,7 +5,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from backend.components.dialogue_state import DialogueState
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 
 log = logging.getLogger(__name__)
 from backend.components.flow_stack.parents import BaseFlow
@@ -33,46 +33,46 @@ class RES:
         self.world = world
         self.flow_stack = world.flow_stack
 
-    def respond(self, frame:DisplayFrame) -> tuple[str, DisplayFrame]:
+    def respond(self, artifact:TaskArtifact) -> tuple[str, TaskArtifact]:
         completed_flows = self._start()
 
         if self.ambiguity.present():
             text = self._clarify()
-            return text, frame
+            return text, artifact
 
         state = self.world.current_state()
         intent = state.pred_intent if state else 'Converse'
 
         log.info('  res intent=%s  keep_going=%s  has_frame=%s',
                  intent, state.keep_going if state else False,
-                 frame.has_content())
+                 artifact.has_content())
 
         flow = self.flow_stack.get_active_flow()
         if flow and flow.result and flow.result.get('unsupported'):
             text = _UNSUPPORTED_MESSAGE
             self.world.context.add_turn('Agent', text, turn_type='agent_response')
-            return text, frame
+            return text, artifact
 
         if intent == Intent.INTERNAL:
-            self._finish('', frame)
-            return '', frame
+            self._finish('', artifact)
+            return '', artifact
 
         if intent == Intent.PLAN and state and state.keep_going:
-            self._finish('', frame)
-            return '', frame
+            self._finish('', artifact)
+            return '', artifact
 
-        text = self._generate(frame, state, completed_flows)
+        text = self._generate(artifact, state, completed_flows)
 
-        block = self.display(frame, state, text)
+        block = self.display(artifact, state, text)
         if block:
-            frame.data['_rendered_block'] = block
+            artifact.data['_rendered_block'] = block
 
-        self._finish(text, frame)
+        self._finish(text, artifact)
 
         if text:
             self.world.context.add_turn('Agent', text, turn_type='agent_response')
 
-        return text, frame
+        return text, artifact
 
     # ── Pre-hook ──────────────────────────────────────────────────────
 
@@ -114,9 +114,9 @@ class RES:
 
     # ── Generate ──────────────────────────────────────────────────────
 
-    def _generate(self, frame:DisplayFrame, state:DialogueState|None,
+    def _generate(self, artifact:TaskArtifact, state:DialogueState|None,
                   completed_flows:list[BaseFlow]) -> str:
-        content = frame.data.get('content', '') if frame.has_content() else ''
+        content = artifact.data.get('content', '') if artifact.has_content() else ''
         if not content:
             return ''
 
@@ -129,7 +129,7 @@ class RES:
         if tmpl_info.get('skip_naturalize'):
             return raw
 
-        return self._naturalize(raw, frame.block_type if frame.has_content() else None)
+        return self._naturalize(raw, artifact.block_type if artifact.has_content() else None)
 
     def _template_fill(self, message:str, state:DialogueState|None,
                        intent:str, flow_name:str) -> str:
@@ -180,27 +180,27 @@ class RES:
 
     # ── Display ───────────────────────────────────────────────────────
 
-    def display(self, frame:DisplayFrame, state:DialogueState|None,
+    def display(self, artifact:TaskArtifact, state:DialogueState|None,
                 text:str) -> dict | None:
-        if not frame or not frame.has_content():
+        if not artifact or not artifact.has_content():
             return None
-        if not frame.data or frame.block_type == 'default':
+        if not artifact.data or artifact.block_type == 'default':
             return None
 
         flow_name = state.flow_name if state else ''
-        block_hint = output_for_flow(flow_name) if flow_name else frame.block_type
-        block_type = block_hint if block_hint != '(internal)' else frame.block_type
+        block_hint = output_for_flow(flow_name) if flow_name else artifact.block_type
+        block_type = block_hint if block_hint != '(internal)' else artifact.block_type
 
-        block = frame.compose(block_type, dict(frame.data))
-        block['panel'] = frame.panel
+        block = artifact.compose(block_type, dict(artifact.data))
+        block['panel'] = artifact.panel
         block['location'] = ['top', 'bottom']
-        block['display_name'] = frame.display_name
-        block['source'] = frame.source
-        if frame.code:
-            block['code'] = frame.code
+        block['display_name'] = artifact.display_name
+        block['source'] = artifact.source
+        if artifact.code:
+            block['code'] = artifact.code
 
         has_text = bool(text and text.strip())
-        has_frame = frame.has_content()
+        has_frame = artifact.has_content()
         if has_text and has_frame:
             block['display_panel'] = 'split'
         elif has_frame:
@@ -214,10 +214,10 @@ class RES:
 
     # ── Post-hook ─────────────────────────────────────────────────────
 
-    def _finish(self, text:str, frame:DisplayFrame):
+    def _finish(self, text:str, artifact:TaskArtifact):
         state = self.world.current_state()
         intent = state.pred_intent if state else 'Converse'
 
         if intent not in (Intent.INTERNAL, Intent.PLAN):
-            if not text and not frame.has_content():
+            if not text and not artifact.has_content():
                 pass  # orchestrator handles fallback

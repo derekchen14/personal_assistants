@@ -3,12 +3,13 @@ import logging
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 
 from backend.utilities.services import (
     PostService, ContentService, AnalysisService, PlatformService,
     OutlineValidationError, PostNotFoundError,
 )
+from backend.utilities.faq_service import FAQService
 from backend.modules.policies import *
 from schemas.ontology import Intent
 
@@ -16,10 +17,10 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
-class FrameCheck:
+class ArtifactCheck:
     passed: bool
     reason: str = ''
-    is_error_frame: bool = False  # Policy classified this as an error frame
+    is_error_frame: bool = False  # Policy classified this as an error artifact
 
 
 _GENERAL_MISSING = {'intent', 'flow'}
@@ -66,6 +67,7 @@ class PEX:
         self._content_service = ContentService()
         self._analysis_service = AnalysisService()
         self._platform_service = PlatformService()
+        self._faq_service = FAQService(engineer)
 
         self.tools: dict[str, tuple[object, str]] = {
             # PostService (9)
@@ -104,6 +106,8 @@ class PEX:
             'cancel_release':    (self._platform_service, 'cancel_release'),
             'list_channels':     (self._platform_service, 'list_channels'),
             'channel_status':    (self._platform_service, 'channel_status'),
+            # FAQService (1)
+            'search_faqs':       (self._faq_service, 'search_faqs'),
         }
 
         components = {'engineer': engineer, 'memory': memory, 'config': config, 'ambiguity': ambiguity,
@@ -134,33 +138,33 @@ class PEX:
             return check_result, False
 
         policy = self._policies[active_flow.intent]
-        frame = policy.execute(state, context, self._dispatch_tool)
+        artifact = policy.execute(state, context, self._dispatch_tool)
         log.info(
             f'PEX: flow={active_flow.name()!r} stage={active_flow.stage} '
-            f'metadata_keys={sorted(frame.metadata.keys())} '
-            f'block_types={[b.block_type for b in frame.blocks]} '
-            f'thoughts_len={len(frame.thoughts or "")}'
+            f'metadata_keys={sorted(artifact.data.keys())} '
+            f'block_types={[b.block_type for b in artifact.blocks]} '
+            f'thoughts_len={len(artifact.thoughts or "")}'
         )
 
-        check = self._validate_frame(frame, active_flow)
+        check = self._validate_artifact(artifact, active_flow)
         if not check.passed:
             # Error frames are already classified by the policy — no generic retry. Pass them
-            # straight to RES; the template keys off metadata['violation'] and frame.thoughts.
+            # straight to RES; the template keys off metadata['violation'] and artifact.thoughts.
             if check.is_error_frame:
                 state.has_issues = True
-                self.world.insert_frame(frame)
+                self.world.insert_artifact(artifact)
                 self._verify(active_flow)
-                return frame, False
-            frame, escalated = self.recover(check, active_flow, context)
+                return artifact, False
+            artifact, escalated = self.recover(check, active_flow, context)
             if escalated:
                 state.has_issues = True
-                self.world.insert_frame(frame)
+                self.world.insert_artifact(artifact)
                 self._verify(active_flow)
-                return frame, False
+                return artifact, False
 
-        self.world.insert_frame(frame)
+        self.world.insert_artifact(artifact)
         keep_going = self._verify(active_flow)
-        return frame, keep_going
+        return artifact, keep_going
 
     # -- Pre-hook ---------------------------------------------------------
 
@@ -185,13 +189,13 @@ class PEX:
                         'risk_type': 'lethal_trifecta',
                     },
                 )
-                frame = DisplayFrame(flow.name())
-                frame.add_block({'type': 'confirmation', 'data': {
+                artifact = TaskArtifact(flow.name())
+                artifact.add_block({'type': 'confirmation', 'data': {
                     'prompt': self.ambiguity.ask(),
                     'confirm_label': 'Approve',
                     'cancel_label': 'Cancel',
                 }})
-                return frame
+                return artifact
 
         return None
 
@@ -205,36 +209,36 @@ class PEX:
 
     # -- Validation -------------------------------------------------------
 
-    def _validate_frame(self, frame, flow):
-        """Check whether a frame is good enough to show to the user. A frame with a 'violation'
-        set is already recognized as an error frame, so it does NOT need Tier-1 retry. Return
+    def _validate_artifact(self, artifact, flow):
+        """Check whether a artifact is good enough to show to the user. A artifact with a 'violation'
+        set is already recognized as an error artifact, so it does NOT need Tier-1 retry. Return
         passed=False + is_error_frame=True so the outer caller routes it directly to RES."""
         if self.ambiguity.present():
-            return FrameCheck(passed=True)
-        if 'violation' in frame.metadata:
-            violation = frame.metadata['violation']
-            return FrameCheck(passed=False, reason=f'violation:{violation}', is_error_frame=True)
-        block_data, block_types = self._merge_block_data(frame)
+            return ArtifactCheck(passed=True)
+        if 'violation' in artifact.data:
+            violation = artifact.data['violation']
+            return ArtifactCheck(passed=False, reason=f'violation:{violation}', is_error_frame=True)
+        block_data, block_types = self._merge_block_data(artifact)
 
-        has_data = ('default' in block_types or block_data or frame.thoughts or frame.metadata)
+        has_data = ('default' in block_types or block_data or artifact.thoughts or artifact.data)
         if not has_data:
-            return FrameCheck(passed=False, reason='Frame has no data')
+            return ArtifactCheck(passed=False, reason='Frame has no data')
         last_user = self.world.context.last_user_text
-        thoughts = frame.thoughts
+        thoughts = artifact.thoughts
         if last_user and thoughts.strip() == last_user.strip():
-            return FrameCheck(passed=False, reason='Response echoes user input verbatim')
+            return ArtifactCheck(passed=False, reason='Response echoes user input verbatim')
         if flow.name() in self.config['content_validation']:
             card_content = block_data.get('content', '')
             slot_text = "collected_slot_evidence(flow)"
             visible = '\n'.join(part for part in (thoughts, card_content, slot_text) if part)
             # return self._llm_quality_check(visible)
-        return FrameCheck(passed=True)
+        return ArtifactCheck(passed=True)
 
     @staticmethod
-    def _merge_block_data(frame):
+    def _merge_block_data(artifact):
         merged = {}
         block_types = []
-        for block in frame.blocks:
+        for block in artifact.blocks:
             merged.update(block.data)
             block_types.append(block.block_type)
         return merged, block_types
@@ -250,18 +254,18 @@ class PEX:
             raw_output = self.engineer(prompt, 'quality_check', model='low', max_tokens=128)
             verdict = raw_output.strip().lower()
             if verdict.startswith('pass'):
-                return FrameCheck(passed=True)
+                return ArtifactCheck(passed=True)
             reason = verdict.removeprefix('fail:').strip() or 'LLM quality check failed'
-            return FrameCheck(passed=False, reason=reason)
+            return ArtifactCheck(passed=False, reason=reason)
         except Exception:
-            return FrameCheck(passed=True)
+            return ArtifactCheck(passed=True)
 
     # -- Recovery ---------------------------------------------------------
 
     def recover(self, check, flow, context):
-        """Attempt to recover from a failed frame validation.
+        """Attempt to recover from a failed artifact validation.
 
-        Returns (frame, escalated). escalated=True means the caller should flip state.has_issues
+        Returns (artifact, escalated). escalated=True means the caller should flip state.has_issues
         and surface the ambiguity to the user; False means the retry succeeded.
 
         Only runs when `check.is_error_frame` is False — error frames bypass this path and go
@@ -284,7 +288,7 @@ class PEX:
         retry_frame = policy.execute(
             self.world.current_state(), context, self._dispatch_tool,
         )
-        retry_check = self._validate_frame(retry_frame, flow)
+        retry_check = self._validate_artifact(retry_frame, flow)
         if retry_check.passed:
             log.info('recover: tier-1 retry succeeded')
             return retry_frame, False
@@ -297,8 +301,8 @@ class PEX:
             f'Could you provide more details or try a different approach?'
         )
         self.ambiguity.declare('partial', metadata={'missing': 'query'}, observation=observation)
-        frame = DisplayFrame(flow.name())
-        return frame, True
+        artifact = TaskArtifact(flow.name())
+        return artifact, True
 
     # -- Tool dispatch ----------------------------------------------------
 
@@ -478,7 +482,7 @@ class PEX:
                     "Confirmation-level uses `metadata.question` instead — `observation` is ignored at that level.\n\n"
                     "General-level ambiguity is only authored by `rework`, `refine`, `explain`. Other skills should declare specific/partial.\n\n"
                     "Do NOT use this tool for tool-call failures or skill output-contract violations "
-                    "— those route through the violation-metadata DisplayFrame path via `execution_error`, not the user."
+                    "— those route through the violation-metadata TaskArtifact path via `execution_error`, not the user."
                 ),
                 'input_schema': {
                     'type': 'object',
@@ -559,7 +563,7 @@ class PEX:
                 'name': 'execution_error',
                 'description': (
                     "Signal a systemic error from inside a skill. The policy "
-                    "consumes this from the tool log and routes the resulting frame "
+                    "consumes this from the tool log and routes the resulting artifact "
                     "to RES with metadata['violation'] set.\n\n"
                     "Pick `violation` from the 8-item vocabulary:\n"
                     "- failed_to_save: a persistence tool didn't run or had no effect\n"

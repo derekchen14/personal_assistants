@@ -168,7 +168,7 @@ def attach_issues_entity(flow, frame, state, world):
       issue_df = world.database.db.shadow.issues[tab_name]
       if tab_metadata.issues_exist(issue_df, [col_name]):
         frame.issues_entity = {'tab': tab_name, 'col': col_name, 'row': {}, 'flow': flow_name}
-  return frame
+  return artifact
 
 def query_rerouting(flow):
     # Determines if re-routing to a different flow through fallbacks is needed

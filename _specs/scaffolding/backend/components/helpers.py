@@ -18,7 +18,7 @@ from backend.db import get_db
 from backend.assets.ontology import error_responses, date_mappings, date_formats, time_formats, default_limit
 from backend.assets.ontology import missing_tokens, default_tokens, NA_string
 from backend.assets.descriptions import preloaded_descriptions
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.components.engineer import PromptEngineer
 from backend.components.metadata.typechecks import TypeCheck
 from database.tables import UserDataSource
@@ -479,10 +479,10 @@ class MemoryDB(object):
         print(f"Error when attempting to display column {col_name} from shadow:", err)
         continue
 
-    frame = DisplayFrame(tab_name)
+    artifact = TaskArtifact(tab_name)
     frame.set_data(db_output, fetch_query)
     frame.primary_key = self.primary_keys.get(tab_name, None)
-    return frame
+    return artifact
     
   def delete_table(self, tab_name):
     # Validate that the object exists in our tracking dictionary

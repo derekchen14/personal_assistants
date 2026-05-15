@@ -7,25 +7,25 @@
     import ConfirmationBlock from './ConfirmationBlock.svelte';
     import CompareBlock from './CompareBlock.svelte';
 
-    let { frame }: { frame: { type: string; data: Record<string, unknown>; show: boolean } } = $props();
+    let { artifact }: { artifact: { type: string; data: Record<string, unknown>; show: boolean } } = $props();
 </script>
 
-{#if frame.type === 'table'}
-    <TableBlock data={frame.data} />
-{:else if frame.type === 'card'}
-    <CardBlock data={frame.data} />
-{:else if frame.type === 'list'}
-    <ListBlock data={frame.data} />
-{:else if frame.type === 'form'}
-    <FormBlock data={frame.data} />
-{:else if frame.type === 'toast'}
-    <ToastBlock data={frame.data} />
-{:else if frame.type === 'confirmation'}
-    <ConfirmationBlock data={frame.data} />
-{:else if frame.type === 'compare'}
-    <CompareBlock data={frame.data} />
+{#if artifact.type === 'table'}
+    <TableBlock data={artifact.data} />
+{:else if artifact.type === 'card'}
+    <CardBlock data={artifact.data} />
+{:else if artifact.type === 'list'}
+    <ListBlock data={artifact.data} />
+{:else if artifact.type === 'form'}
+    <FormBlock data={artifact.data} />
+{:else if artifact.type === 'toast'}
+    <ToastBlock data={artifact.data} />
+{:else if artifact.type === 'confirmation'}
+    <ConfirmationBlock data={artifact.data} />
+{:else if artifact.type === 'compare'}
+    <CompareBlock data={artifact.data} />
 {:else}
     <div class="text-sm text-[var(--color-text-muted)]">
-        Unknown block type: {frame.type}
+        Unknown block type: {artifact.type}
     </div>
 {/if}

@@ -1,7 +1,7 @@
 import re
 import difflib
 
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.utilities.services import ToolService
 
 class BasePolicy:
@@ -43,7 +43,7 @@ class BasePolicy:
     # -- Content readback ---------------------------------------------------
 
     def _read_post_content(self, post_id, tools) -> dict:
-        """Read back full post content from disk for frame display.
+        """Read back full post content from disk for artifact display.
 
         Pulls the raw outline via `read_metadata(include_outline=True)` so markdown structure
         (newlines between bullets, blank lines between paragraphs) is preserved. Going through
@@ -109,7 +109,7 @@ class BasePolicy:
         """Extract (post_id, sec_id, error) from entity slot. Picks the first entity
         that satisfies the slot's entity_part criteria. Syncs state.active_post and
         returns both ids come back canonical form.
-        The third return is a missing-reference error frame when the slot was filled
+        The third return is a missing-reference error artifact when the slot was filled
         with a title/id that doesn't resolve to a real post; callers early-return via
         `post_id, _, error = self.resolve_source_ids(...); if error: return error`."""
         grounding = flow.slots[flow.entity_slot]
@@ -120,7 +120,7 @@ class BasePolicy:
                     grounding.values[0])
         post_id = self._resolve_post_id(vals['post'], tools)
         if not post_id:
-            error = self.error_frame(flow, 'missing_reference',
+            error = self.error_artifact(flow, 'missing_reference',
                 thoughts='Could not find the specified post.', missing_entity='post')
             return None, None, error
         else:
@@ -154,31 +154,31 @@ class BasePolicy:
         return resolved
 
     def _guard_entity(self, flow):
-        """Entity-missing guard. Declares `partial` and returns an empty frame with
+        """Entity-missing guard. Declares `partial` and returns an empty artifact with
         origin=flow.name() when the entity slot is unfilled. Callers early-return on a
-        non-None result via `if frame := self._guard_entity(flow): return frame`."""
+        non-None result via `if artifact := self._guard_entity(flow): return artifact`."""
         ent_slot = flow.entity_slot
         if not flow.slots[ent_slot].check_if_filled():
             self.ambiguity.declare('partial', metadata={'missing': ent_slot, 'entity': 'post'})
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
         return None
 
     # -- Helper Functions --------------------------------------
 
-    def error_frame(self, flow, violation:str, thoughts:str='', code:str|None=None, **extra_metadata):
-        """Construct an error frame with the standard violation classification. `violation` must
+    def error_artifact(self, flow, violation:str, thoughts:str='', code:str|None=None, **extra_parts):
+        """Construct an error artifact with the standard violation classification. `violation` must
         be one of the 8-item vocabulary (failed_to_save, scope_mismatch, missing_reference,
         parse_failure, empty_output, invalid_input, conflict, tool_error). `thoughts` carries the
         human-readable description; `code` carries the raw payload (failing JSON, tool error
-        string). `extra_metadata` merges into metadata alongside `violation`."""
-        metadata = {'violation': violation, **extra_metadata}
-        return DisplayFrame(origin=flow.name(), metadata=metadata, thoughts=thoughts, code=code)
+        string). `extra_parts` merges into the artifact's `parts` alongside `violation`."""
+        parts = {'violation': violation, **extra_parts}
+        return TaskArtifact(origin=flow.name(), parts=parts, thoughts=thoughts, code=code)
 
     def toast_error(self, flow, violation, message):
         """Render errors as toast blocks to surface failures visually to the user."""
-        frame = self.error_frame(flow, violation, thoughts=message)
-        frame.add_block({'type': 'toast', 'data': {'message': message, 'level': 'warning'}})
-        return frame
+        artifact = self.error_artifact(flow, violation, thoughts=message)
+        artifact.add_block({'type': 'toast', 'data': {'message': message, 'level': 'warning'}})
+        return artifact
 
     def record_snapshot(self, content, flow, context, post_id,
                         sec_ids:list|None=None, summary:str|None=None) -> str:

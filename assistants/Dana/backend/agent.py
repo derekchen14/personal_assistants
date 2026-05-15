@@ -7,7 +7,7 @@ from backend.modules.nlu import NLU
 from backend.modules.pex import PEX
 from backend.modules.res import RES
 from backend.components.dialogue_state import DialogueState
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.memory_manager import MemoryManager
@@ -62,12 +62,12 @@ class Agent:
                 "I'm having trouble understanding. Could you try rephrasing?"
             )
 
-        frame = None
+        artifact = None
         keep_going = True
         rounds = 0
 
         while keep_going and rounds < _MAX_KEEP_GOING:
-            frame, keep_going = self.pex.execute(state, self.world.context)
+            artifact, keep_going = self.pex.execute(state, self.world.context)
             rounds += 1
             log.info('  pex round=%d  keep_going=%s', rounds, keep_going)
 
@@ -81,10 +81,10 @@ class Agent:
                     self.world.insert_state(new_state)
                     state = new_state
 
-        if frame and frame.has_content():
-            log.info('  frame=%s  source=%s', frame.block_type, frame.source)
+        if artifact and artifact.has_content():
+            log.info('  artifact=%s  source=%s', artifact.block_type, artifact.source)
 
-        utterance, frame = self.res.respond(frame)
+        utterance, artifact = self.res.respond(artifact)
 
         if self.memory.should_summarize(state.turn_count):
             self.world.context.save_checkpoint(
@@ -92,7 +92,7 @@ class Agent:
                 data={'turn_count': state.turn_count},
             )
 
-        return self._build_payload(utterance, frame)
+        return self._build_payload(utterance, artifact)
 
     # ── Self-check gate ───────────────────────────────────────────────
 
@@ -111,26 +111,26 @@ class Agent:
             'actions': [],
             'interaction': {'type': 'default', 'show': False, 'data': {}},
             'code_snippet': None,
-            'frame': None,
+            'artifact': None,
         }
 
-    def _build_payload(self, utterance: str, frame: DisplayFrame) -> dict:
+    def _build_payload(self, utterance: str, artifact: TaskArtifact) -> dict:
         frame_data = None
-        if frame and frame.has_content():
+        if artifact and artifact.has_content():
             frame_data = {
-                'type': frame.block_type,
+                'type': artifact.block_type,
                 'show': True,
-                'data': frame.data,
-                'source': frame.source,
-                'display_name': frame.display_name,
-                'panel': frame.panel,
+                'data': artifact.data,
+                'source': artifact.source,
+                'display_name': artifact.display_name,
+                'panel': artifact.panel,
             }
 
         state = self.world.current_state()
         interaction = {
-            'type': frame.block_type if frame and frame.has_content() else 'default',
-            'show': frame.block_type != 'default' if frame else False,
-            'data': frame.data if frame and frame.has_content() else {},
+            'type': artifact.block_type if artifact and artifact.has_content() else 'default',
+            'show': artifact.block_type != 'default' if artifact else False,
+            'data': artifact.data if artifact and artifact.has_content() else {},
         }
 
         message = utterance
@@ -147,7 +147,7 @@ class Agent:
             'actions': [],
             'interaction': interaction,
             'code_snippet': None,
-            'frame': frame_data,
+            'artifact': frame_data,
         }
 
     # ── Session management ────────────────────────────────────────────

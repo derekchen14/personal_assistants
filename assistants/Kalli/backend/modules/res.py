@@ -5,7 +5,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from backend.components.dialogue_state import DialogueState
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 
 log = logging.getLogger(__name__)
 from backend.components.ambiguity_handler import AmbiguityHandler
@@ -30,43 +30,43 @@ class RES:
         self.engineer = engineer
         self.world = world
 
-    def respond(self, frame: DisplayFrame) -> tuple[str, DisplayFrame]:
+    def respond(self, artifact: TaskArtifact) -> tuple[str, TaskArtifact]:
         completed_flows = self._start()
 
         if self.ambiguity.present():
             text = self._clarify()
-            return text, frame
+            return text, artifact
 
         state = self.world.current_state()
         intent = state.pred_intent if state else 'Converse'
 
         log.info('  res intent=%s  keep_going=%s  has_frame=%s',
                  intent, state.keep_going if state else False,
-                 frame.has_content())
+                 artifact.has_content())
 
-        # Check if flow was unsupported (PEX returned carryover frame)
+        # Check if flow was unsupported (PEX returned carryover artifact)
         active = self.world.flow_stack.get_active_flow()
         if active and active.result and active.result.get('unsupported'):
             text = _UNSUPPORTED_MESSAGE
             self.world.context.add_turn('Agent', text, turn_type='agent_response')
-            return text, frame
+            return text, artifact
 
         if intent == Intent.INTERNAL.value:
-            self._finish('', frame)
-            return '', frame
+            self._finish('', artifact)
+            return '', artifact
 
         if intent == Intent.PLAN.value and state and state.keep_going:
-            self._finish('', frame)
-            return '', frame
+            self._finish('', artifact)
+            return '', artifact
 
-        text = self._generate(frame, state, completed_flows)
+        text = self._generate(artifact, state, completed_flows)
 
-        self._finish(text, frame)
+        self._finish(text, artifact)
 
         if text:
             self.world.context.add_turn('Agent', text, turn_type='agent_response')
 
-        return text, frame
+        return text, artifact
 
     # ── Pre-hook ──────────────────────────────────────────────────────
 
@@ -110,9 +110,9 @@ class RES:
 
     # ── Generate ──────────────────────────────────────────────────────
 
-    def _generate(self, frame: DisplayFrame, state: DialogueState | None,
+    def _generate(self, artifact: TaskArtifact, state: DialogueState | None,
                   completed_flows: list) -> str:
-        content = frame.data.get('content', '') if frame.has_content() else ''
+        content = artifact.data.get('content', '') if artifact.has_content() else ''
         if not content:
             return ''
 
@@ -125,7 +125,7 @@ class RES:
         if tmpl_info.get('skip_naturalize'):
             return raw
 
-        return self._naturalize(raw, frame.block_type if frame.has_content() else None)
+        return self._naturalize(raw, artifact.block_type if artifact.has_content() else None)
 
     def _template_fill(self, message: str, state: DialogueState | None,
                        intent: str, flow_name: str) -> str:
@@ -175,12 +175,12 @@ class RES:
 
     # ── Post-hook ─────────────────────────────────────────────────────
 
-    def _finish(self, text: str, frame: DisplayFrame):
+    def _finish(self, text: str, artifact: TaskArtifact):
         state = self.world.current_state()
         intent = state.pred_intent if state else 'Converse'
 
         if intent not in (Intent.INTERNAL.value, Intent.PLAN.value):
-            if not text and not frame.has_content():
+            if not text and not artifact.has_content():
                 pass  # orchestrator handles fallback
 
         # No display.clear() needed — frames are per-turn now

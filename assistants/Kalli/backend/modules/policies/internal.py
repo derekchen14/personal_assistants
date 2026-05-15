@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from backend.components.context_coordinator import ContextCoordinator
     from backend.components.dialogue_state import DialogueState
-    from backend.components.display_frame import DisplayFrame
+    from backend.components.task_artifact import TaskArtifact
 
 
 _SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'skills'
@@ -24,13 +24,13 @@ class InternalPolicy:
 
     def execute(self, flow_name: str, flow_info: dict,
                 state: 'DialogueState', context: 'ContextCoordinator',
-                filled_slots: dict, tool_dispatcher) -> 'DisplayFrame':
-        from backend.components.display_frame import DisplayFrame
+                filled_slots: dict, tool_dispatcher) -> 'TaskArtifact':
+        from backend.components.task_artifact import TaskArtifact
 
         if flow_name in _BATCH_2:
-            frame = DisplayFrame(self.config)
-            frame.set_frame('default', {'content': ''}, source=flow_name)
-            return frame
+            artifact = TaskArtifact(self.config)
+            artifact.set_artifact('default', {'content': ''}, source=flow_name)
+            return artifact
 
         skill_prompt = self._load_skill_template(flow_name)
         system, messages = self.engineer.build_skill_prompt(
@@ -46,9 +46,9 @@ class InternalPolicy:
         if text:
             self.memory.write_scratchpad(f'internal:{flow_name}', text[:500])
 
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': ''}, source=flow_name)
-        return frame
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {'content': ''}, source=flow_name)
+        return artifact
 
     def _load_skill_template(self, flow_name: str) -> str | None:
         path = _SKILL_DIR / f'{flow_name}.md'

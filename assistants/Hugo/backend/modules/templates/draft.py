@@ -8,17 +8,17 @@ TEMPLATES = {
     'add':        {'template': "{message}", 'block_hint': 'card'},
 }
 
-def fill_draft_template(template:str, flow, frame) -> str:
+def fill_draft_template(template:str, flow, artifact) -> str:
     flow_name = flow.name()
 
     if flow_name == 'create':
         return TEMPLATES['create']['template'].format(title=flow.slots['title'].value)
 
     if flow_name == 'outline':
-        if flow.stage == 'propose':
+        if flow.stage == 'discovery':
             n = len(flow.slots['proposals'].options) if flow.slots['proposals'].options else 0
             return f"I drafted {n} outline options — click one to continue, or tell me what to adjust."
         n = len(flow.slots['sections'].steps) if flow.slots['sections'].filled else 0
         return f"Saved the outline with {n} sections." if n else "Saved the outline."
 
-    return TEMPLATES[flow_name]['template'].format(message=frame.thoughts)
+    return TEMPLATES[flow_name]['template'].format(message=artifact.thoughts)

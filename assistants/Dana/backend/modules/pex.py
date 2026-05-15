@@ -5,7 +5,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from backend.components.dialogue_state import DialogueState
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.memory_manager import MemoryManager
@@ -76,11 +76,11 @@ class PEX:
         }
 
     def execute(self, state:DialogueState,
-                context:'ContextCoordinator') -> tuple[DisplayFrame, bool]:
+                context:'ContextCoordinator') -> tuple[TaskArtifact, bool]:
         active_flow = self.flow_stack.get_active_flow()
         if not active_flow:
-            frame = DisplayFrame(self.config)
-            return frame, False
+            artifact = TaskArtifact(self.config)
+            return artifact, False
 
         flow_name = active_flow.name()
 
@@ -90,23 +90,23 @@ class PEX:
 
         if flow_name in _UNSUPPORTED:
             self.flow_stack.mark_complete(result={'unsupported': True})
-            frame = self.world.latest_frame() or DisplayFrame(self.config)
-            return frame, False
+            artifact = self.world.latest_artifact() or TaskArtifact(self.config)
+            return artifact, False
 
         policy = self._policies.get(active_flow.intent)
         if policy:
-            frame = policy.execute(
+            artifact = policy.execute(
                 active_flow, state, context, self._dispatch_tool,
             )
         else:
-            frame = DisplayFrame(self.config)
+            artifact = TaskArtifact(self.config)
 
         if active_flow.intent != Intent.PLAN:
             self.flow_stack.mark_complete(result={'flow_name': flow_name})
-        self.world.insert_frame(frame)
+        self.world.insert_artifact(artifact)
 
-        if frame.has_content():
-            text_summary = frame.data.get('content', '')
+        if artifact.has_content():
+            text_summary = artifact.data.get('content', '')
             if text_summary:
                 turn_num = state.turn_number if hasattr(state, 'turn_number') else 0
                 self.memory.write_scratchpad(flow_name, {
@@ -119,12 +119,12 @@ class PEX:
         self._verify()
 
         keep_going = state.keep_going
-        return frame, keep_going
+        return artifact, keep_going
 
     # -- Pre-hook ---------------------------------------------------------
 
     def _check(self, flow,
-               context:'ContextCoordinator') -> DisplayFrame | None:
+               context:'ContextCoordinator') -> TaskArtifact | None:
         if flow.name() in _UNSUPPORTED:
             return None
 
@@ -146,9 +146,9 @@ class PEX:
                 metadata={'missing_slots': required_missing},
                 observation=f'I need the following to proceed: {", ".join(required_missing)}',
             )
-            frame = DisplayFrame(self.config)
-            frame.set_frame('default', {'message': self.ambiguity.ask()})
-            return frame
+            artifact = TaskArtifact(self.config)
+            artifact.set_artifact('default', {'message': self.ambiguity.ask()})
+            return artifact
 
         tools = self.get_tools_for_flow(flow)
         for tool in tools:
@@ -165,13 +165,13 @@ class PEX:
                         f'user input, and communicates externally.'
                     ),
                 )
-                frame = DisplayFrame(self.config)
-                frame.set_frame('confirmation', {
+                artifact = TaskArtifact(self.config)
+                artifact.set_artifact('confirmation', {
                     'prompt': self.ambiguity.ask(),
                     'confirm_label': 'Approve',
                     'cancel_label': 'Cancel',
                 })
-                return frame
+                return artifact
 
         return None
 

@@ -2,7 +2,7 @@ import json
 import re
 
 from backend.modules.policies.base import BasePolicy
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from schemas.ontology import Intent
 
 
@@ -50,7 +50,7 @@ class PlanPolicy(BasePolicy):
             content = str(self.memory.read_scratchpad())
 
         flow.status = 'Completed'
-        return DisplayFrame(origin='remember', thoughts=content)
+        return TaskArtifact(origin='remember', thoughts=content)
 
     # -- Mode A: Generate plan ----------------------------------------------
 
@@ -63,7 +63,7 @@ class PlanPolicy(BasePolicy):
 
         flow.structured_plan = structured_plan
 
-        return DisplayFrame(origin=flow.name(), thoughts=freeform)
+        return TaskArtifact(origin=flow.name(), thoughts=freeform)
 
     # -- Mode B: Handle approval --------------------------------------------
 
@@ -81,7 +81,7 @@ class PlanPolicy(BasePolicy):
         state.has_plan=True
         state.keep_going=True
 
-        return DisplayFrame(origin=flow.name())
+        return TaskArtifact(origin=flow.name())
 
     # -- Mode C: Verify and continue ----------------------------------------
 
@@ -115,13 +115,13 @@ class PlanPolicy(BasePolicy):
             self.flow_stack.get_flow().status = 'Completed'
             state.keep_going=False
             summary = f'Plan completed: {structured_plan["description"]}'
-            return DisplayFrame(origin=flow.name(), thoughts=summary)
+            return TaskArtifact(origin=flow.name(), thoughts=summary)
 
         plan_id = self.flow_stack.get_flow().flow_id
         self._push_next_sub_flow(flow, plan_id)
         state.keep_going = True
 
-        return DisplayFrame(origin=flow.name())
+        return TaskArtifact(origin=flow.name())
 
     # -- Helpers ------------------------------------------------------------
 

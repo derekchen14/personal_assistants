@@ -14,7 +14,7 @@ from backend.utilities.manipulations import get_row_limit
 from utils.help import flow2dax
 from backend.modules.flow.formulas import Formula, Expression, Clause
 from backend.components.engineer import PromptEngineer
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 
 class AnalyzeMixin:
   """ Methods that calculate metrics or KPI without changing the underlying data """
@@ -29,7 +29,7 @@ class AnalyzeMixin:
 
       if flow.slots['operation'].filled:
         flow, reroute = query_rerouting(flow)
-        if reroute: return frame, state
+        if reroute: return artifact, state
         flow = self.decide_time_range(context, flow, state, world, required=False)
         db_output, sql_query = self.database.query_data(context, flow, state, world)
 
@@ -65,7 +65,7 @@ class AnalyzeMixin:
       flow, world = query_visualization(self.api, context, flow, frame, world)
       state, world = proactive_validation(self.api, context, flow, frame, state, world)
       flow.completed = True
-    return frame, state
+    return artifact, state
 
   def measure_action(self, context, state, world):
     """ generates a complex SQL query for the users's request based on Analyze(measure) Flow {002}

@@ -1,6 +1,6 @@
 SPEC_READ_GUIDANCE = (
     'When reading spec files:\n'
-    '- Use the exact spec name (e.g., "nlu", "pex", "display_frame")\n'
+    '- Use the exact spec name (e.g., "nlu", "pex", "task_artifact")\n'
     '- Request specific sections when possible to reduce context\n'
     '- Spec files are in _specs/ directory organized by category: '
     'modules/, components/, utilities/\n'

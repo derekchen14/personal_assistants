@@ -1,5 +1,5 @@
 from backend.modules.policies.base import BasePolicy
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.prompts.pex.support.revise_prompts import ROUTE_FINDINGS_SCHEMA, build_route_findings_prompt
 
 class RevisePolicy(BasePolicy):
@@ -21,10 +21,10 @@ class RevisePolicy(BasePolicy):
             case 'remove': return self.remove_policy(flow, state, context, tools)
             case 'tidy': return self.tidy_policy(flow, state, context, tools)
             case _:
-                return DisplayFrame()
+                return TaskArtifact()
 
     def rework_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
 
@@ -35,14 +35,14 @@ class RevisePolicy(BasePolicy):
         # Null-category agentic path: skill handles itemized changes via `suggestions` / `remove`.
         if not flow.slots['suggestions'].check_if_filled() and not flow.slots['remove'].check_if_filled():
             self.ambiguity.declare('specific', metadata={'missing': 'category_or_suggestions'})
-            return DisplayFrame(origin=flow.name())
+            return TaskArtifact(origin=flow.name())
 
         self.record_snapshot(self.content, flow, context, post_id)
         text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
         parsed = self.engineer.apply_guardrails(text)
         saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
 
-        frame = DisplayFrame(flow.name(), thoughts=text)
+        artifact = TaskArtifact(flow.name(), thoughts=text)
         if saved:
             for step_name in parsed['done']:
                 flow.slots['suggestions'].mark_as_complete(step_name)
@@ -54,11 +54,11 @@ class RevisePolicy(BasePolicy):
                 audit.slots['delegates'].mark_as_complete(flow.name())
 
             flow.status = 'Completed'
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         else:
-            frame.set_frame(new_data={'violation': 'failed_to_save'})
+            artifact.set_artifact(new_data={'violation': 'failed_to_save'})
 
-        return frame
+        return artifact
 
     def _dispatch_rework_category(self, flow, state, post_id, context, tools):
         cat = flow.slots['category'].value
@@ -69,11 +69,11 @@ class RevisePolicy(BasePolicy):
         if cat == 'trim':
             self.flow_stack.fallback('simplify')
             state.keep_going = True
-            return DisplayFrame(flow.name(), thoughts='Trimming reads as Simplify, rerouting.')
+            return TaskArtifact(flow.name(), thoughts='Trimming reads as Simplify, rerouting.')
         if cat == 'sharpen':
             self.flow_stack.fallback('add')
             state.keep_going = True
-            return DisplayFrame(flow.name(), thoughts='Sharpening reads as Add, rerouting.')
+            return TaskArtifact(flow.name(), thoughts='Sharpening reads as Add, rerouting.')
         # cat == 'reframe'
         self.ambiguity.declare(
             'confirmation',
@@ -84,13 +84,13 @@ class RevisePolicy(BasePolicy):
             },
         )
         flow.slots['category'].reset()
-        return DisplayFrame(origin=flow.name())
+        return TaskArtifact(origin=flow.name())
 
     def _rework_swap(self, flow, context, post_id, tools):
         sec_ids = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if len(sec_ids) < 2:
             self.ambiguity.declare('specific', metadata={'missing': 'second_section'})
-            return DisplayFrame(origin=flow.name())
+            return TaskArtifact(origin=flow.name())
         section_ids = list(tools('read_metadata', {'post_id': post_id})['section_ids'])
         sec_a, sec_b = sec_ids[0], sec_ids[1]
         if section_ids.index(sec_a) > section_ids.index(sec_b):
@@ -109,15 +109,15 @@ class RevisePolicy(BasePolicy):
         tools('insert_section', {'post_id': post_id, 'sec_id': anchor_a,
             'section_title': a['title'], 'content': a['content']})
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=f'Swapped sections {sec_a} and {sec_b}.')
-        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-        return frame
+        artifact = TaskArtifact(flow.name(), thoughts=f'Swapped sections {sec_a} and {sec_b}.')
+        artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        return artifact
 
     def _rework_move(self, flow, context, post_id, tools, where):
         sec_ids = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if not sec_ids:
             self.ambiguity.declare('specific', metadata={'missing': 'section'})
-            return DisplayFrame(origin=flow.name())
+            return TaskArtifact(origin=flow.name())
         sec = sec_ids[0]
         section_ids = list(tools('read_metadata', {'post_id': post_id})['section_ids'])
         body = tools('read_section', {'post_id': post_id, 'sec_id': sec})
@@ -129,12 +129,12 @@ class RevisePolicy(BasePolicy):
         tools('insert_section', {'post_id': post_id, 'sec_id': anchor,
             'section_title': body['title'], 'content': body['content']})
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=f'Moved {sec} to {where}.')
-        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-        return frame
+        artifact = TaskArtifact(flow.name(), thoughts=f'Moved {sec} to {where}.')
+        artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        return artifact
 
     def polish_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
         post_id, sec_id, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         self.record_snapshot(self.content, flow, context, post_id,
@@ -144,7 +144,7 @@ class RevisePolicy(BasePolicy):
         # Skill may declare ambiguity (e.g. confirmation on vague direction); leave flow
         # Active so the next turn can resolve rather than treating completion as final.
         if self.ambiguity.present():
-            return DisplayFrame(origin=flow.name())
+            return TaskArtifact(origin=flow.name())
 
         # Bump used_count on scratchpad entries the skill actually consumed.
         parsed = self.engineer.apply_guardrails(text)
@@ -161,16 +161,16 @@ class RevisePolicy(BasePolicy):
         if inspect_result.get('structural_issues'):
             self.flow_stack.fallback('rework')
             state.keep_going = True
-            return DisplayFrame(flow.name(), thoughts='Structural issues found, rerouting to rework.')
+            return TaskArtifact(flow.name(), thoughts='Structural issues found, rerouting to rework.')
 
         saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
         if not saved:
             error_msg = 'Polish flow did not persist any content; revise_content was not called or returned as failed.'
-            return self.error_frame(flow, 'failed_to_save', thoughts=error_msg, code=text)
+            return self.error_artifact(flow, 'failed_to_save', thoughts=error_msg, code=text)
 
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=text)
-        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        artifact = TaskArtifact(flow.name(), thoughts=text)
+        artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         if state.has_plan:
             self.memory.write_scratchpad(flow.name(), {
                 'version': '1', 'turn_number': context.turn_id,
@@ -178,10 +178,10 @@ class RevisePolicy(BasePolicy):
             })
             audit = self.flow_stack.find_by_name('audit')
             audit.slots['delegates'].mark_as_complete(flow.name())
-        return frame
+        return artifact
 
     def tone_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         # Default-commit: at least one tone elective must land before dispatch.
         if not flow.slots['chosen_tone'].check_if_filled() and not flow.slots['custom_tone'].check_if_filled():
@@ -194,8 +194,8 @@ class RevisePolicy(BasePolicy):
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=text)
-        frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+        artifact = TaskArtifact(flow.name(), thoughts=text)
+        artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         # Record brief result for downstream plan steps to consume.
         if state.has_plan:
             self.memory.write_scratchpad(flow.name(), {
@@ -206,10 +206,10 @@ class RevisePolicy(BasePolicy):
             })
             audit = self.flow_stack.find_by_name('audit')
             audit.slots['delegates'].mark_as_complete(flow.name())
-        return frame
+        return artifact
 
     def audit_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         if flow.slots['delegates'].is_verified():
             flow.status = 'Completed'
@@ -222,12 +222,12 @@ class RevisePolicy(BasePolicy):
             finish_msg = f'Audit completed with {len(flow.slots["delegates"].steps)} delegated flows.'
             post_id, _, error = self.resolve_source_ids(flow, state, tools)
             if error: return error
-            frame = DisplayFrame('audit', thoughts=finish_msg, metadata={'reports': reports})
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            artifact = TaskArtifact('audit', thoughts=finish_msg, parts={'reports': reports})
+            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
         elif flow.stage == 'discovery' and len(state.slices['choices']) > 0:
             flow.stage = 'delegation'
-            frame = self._audit_dispatch(flow, state)
+            artifact = self._audit_dispatch(flow, state)
 
         else:
             self.resolve_source_ids(flow, state, tools)
@@ -236,7 +236,7 @@ class RevisePolicy(BasePolicy):
             if saved:
                 flow.stage = 'discovery'
                 findings, summary = saved['findings'], saved['summary']
-                frame = DisplayFrame(flow.name(), metadata={'findings': findings, 'summary': summary})
+                artifact = TaskArtifact(flow.name(), parts={'findings': findings, 'summary': summary})
                 if findings:
                     options = []
                     for idx, f in enumerate(findings):
@@ -246,15 +246,15 @@ class RevisePolicy(BasePolicy):
 
                     block_msg = f'Audit found {len(findings)} issues — pick which to fix'
                     block_data = {'title': block_msg, 'options': options, 'submit_dax': '{13A}', 'submit_label': 'Send to fix'}
-                    frame.add_block({'type': 'checklist', 'data': block_data})
+                    artifact.add_block({'type': 'checklist', 'data': block_data})
                 else:
                     flow.status = 'Completed'
             else:
                 state.has_plan = False
                 state.keep_going = False
-                frame = self.error_frame(flow, 'parse_failure', thoughts='Audit did not emit structured findings.')
+                artifact = self.error_artifact(flow, 'parse_failure', thoughts='Audit did not emit structured findings.')
 
-        return frame
+        return artifact
 
     def _audit_dispatch(self, flow, state):
         saved = self.memory.read_scratchpad('audit')
@@ -291,25 +291,25 @@ class RevisePolicy(BasePolicy):
         state.has_plan = True
         state.keep_going = True
         num_picks, num_delegates = len(picked), len(groups)
-        frame = DisplayFrame('audit', thoughts=f'Routing {num_picks} fix(es) to {num_delegates} flow(s).',
-            metadata={'group_count': num_delegates, 'flow_names': [g['flow_name'] for g in groups]})
-        return frame
+        artifact = TaskArtifact('audit', thoughts=f'Routing {num_picks} fix(es) to {num_delegates} flow(s).',
+            parts={'group_count': num_delegates, 'flow_names': [g['flow_name'] for g in groups]})
+        return artifact
 
     def simplify_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         post_id, sec_id, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         if not sec_id:
             self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'section'})
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
 
         if not any(flow.slots[name].check_if_filled() for name in ('suggestions', 'guidance', 'image')):
             obs_message = f'What did you want to simplify within the {sec_id} section?'
             self.ambiguity.declare('specific', observation=obs_message, metadata={'missing': 'suggestions'})
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
 
-        frame = DisplayFrame(origin='simplify')
+        artifact = TaskArtifact(origin='simplify')
         extra = {}
         sec = tools('read_section', {'post_id': post_id, 'sec_id': sec_id})
         if sec['_success']:
@@ -318,27 +318,27 @@ class RevisePolicy(BasePolicy):
         text, tool_log = self.llm_execute(flow, state, context, tools, extra_resolved=extra or None)
 
         if self.ambiguity.present():
-            return frame
+            return artifact
         already_saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
         if text and already_saved:
-            frame.thoughts = text
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            artifact.thoughts = text
+            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
             flow.status = 'Completed'
         else:
             error_msg = 'Simplify flow did not persist any content; revise_content was not called or returned as failed.'
-            return self.error_frame(flow, 'failed_to_save', thoughts=error_msg, code=text)
+            return self.error_artifact(flow, 'failed_to_save', thoughts=error_msg, code=text)
 
         if state.has_plan:
             new_memory = {'version': '1', 'turn_number': context.turn_id, 'used_count': 0, 'summary': text[:200]}
             self.memory.write_scratchpad('simplify', new_memory)
             audit = self.flow_stack.find_by_name('audit')
             audit.slots['delegates'].mark_as_complete('simplify')
-        return frame
+        return artifact
 
     def remove_policy(self, flow, state, context, tools):
         if not flow.is_filled():
             self.ambiguity.declare('partial', metadata={'missing': 'target'})
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
 
         if flow.slots['type'].check_if_filled():
             post_id, _, error = self.resolve_source_ids(flow, state, tools)
@@ -346,22 +346,22 @@ class RevisePolicy(BasePolicy):
             self.record_snapshot(self.content, flow, context, post_id)
             text, tool_log = self.llm_execute(flow, state, context, tools)
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=text)
-            frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
+            artifact = TaskArtifact(flow.name(), thoughts=text)
+            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         else:
             self.ambiguity.declare('specific', metadata={'missing': 'type'})
-            frame = DisplayFrame(flow.name())
+            artifact = TaskArtifact(flow.name())
 
-        return frame
+        return artifact
 
     def tidy_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         if not flow.slots['settings'].check_if_filled():
             self.ambiguity.declare('specific',
                 observation='Which formatting rules should I apply?',
                 metadata={'missing': 'settings'})
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
 
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
@@ -379,10 +379,10 @@ class RevisePolicy(BasePolicy):
         text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad(), max_tokens=4096)
 
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=text)
-        frame.add_block({'type': 'card', 'data': {
+        artifact = TaskArtifact(flow.name(), thoughts=text)
+        artifact.add_block({'type': 'card', 'data': {
             'post_id': post_id,
             'title': result['title'],
             'content': text,
         }})
-        return frame
+        return artifact

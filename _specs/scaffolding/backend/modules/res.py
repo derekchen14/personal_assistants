@@ -5,7 +5,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from backend.components.dialogue_state import DialogueState
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
 from schemas.ontology import FLOW_CATALOG, Intent
@@ -26,7 +26,7 @@ class RES:
         self._debug = config.get('logging', {}).get('debug', False)
 
     def respond(self, state: DialogueState,
-                frame: DisplayFrame) -> dict:
+                frame: TaskArtifact) -> dict:
         self._start(state)
 
         if self.ambiguity.present():
@@ -74,13 +74,13 @@ class RES:
     # ── Generate ─────────────────────────────────────────────────────
 
     def _generate(self, state: DialogueState,
-                  frame: DisplayFrame) -> str:
+                  frame: TaskArtifact) -> str:
         raw_text = self._template_fill(state, frame)
         text = self._naturalize(raw_text, state)
         return text
 
     def _template_fill(self, state: DialogueState,
-                       frame: DisplayFrame) -> str:
+                       frame: TaskArtifact) -> str:
         flow_name = state.flow_name
         intent = state.intent
         template_data = self.engineer.get_template(flow_name, intent)
@@ -129,7 +129,7 @@ class RES:
     # ── Display ──────────────────────────────────────────────────────
 
     def display(self, state: DialogueState,
-                frame: DisplayFrame) -> dict | None:
+                frame: TaskArtifact) -> dict | None:
         if not frame.has_content():
             return None
 
@@ -147,18 +147,18 @@ class RES:
 
         if output_type == 'form':
             fields = frame.data.get('fields', [])
-            return frame.form(fields)
+            return artifact.form(fields)
         elif output_type == 'confirmation':
             prompt = frame.data.get('prompt', content)
-            return frame.confirmation(prompt)
+            return artifact.confirmation(prompt)
         elif output_type == 'toast':
-            return frame.toast(content)
+            return artifact.toast(content)
         elif output_type == 'list':
             items = frame.data.get('items', [])
-            return frame.listing(title, items)
+            return artifact.listing(title, items)
         else:
             actions = frame.data.get('actions', [])
-            return frame.card(title, content, actions)
+            return artifact.card(title, content, actions)
 
     # ── Finish ───────────────────────────────────────────────────────
 

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from backend.components.context_coordinator import ContextCoordinator
     from backend.components.dialogue_state import DialogueState
-    from backend.components.display_frame import DisplayFrame
+    from backend.components.task_artifact import TaskArtifact
 
 
 _SKILL_DIR = Path(__file__).resolve().parents[2] / 'prompts' / 'skills'
@@ -25,14 +25,14 @@ class ConversePolicy:
 
     def execute(self, flow_info: dict, state: 'DialogueState',
                 context: 'ContextCoordinator',
-                filled_slots: dict, tool_dispatcher) -> 'DisplayFrame':
-        from backend.components.display_frame import DisplayFrame
+                filled_slots: dict, tool_dispatcher) -> 'TaskArtifact':
+        from backend.components.task_artifact import TaskArtifact
         flow_name = flow_info['name']
 
         if flow_name in _BATCH_2:
-            frame = DisplayFrame(self.config)
-            frame.set_frame('default', {'content': "That feature is coming soon — stay tuned!"}, source=flow_name)
-            return frame
+            artifact = TaskArtifact(self.config)
+            artifact.set_artifact('default', {'content': "That feature is coming soon — stay tuned!"}, source=flow_name)
+            return artifact
 
         handler = getattr(self, f'_do_{flow_name}', None)
         if handler:
@@ -50,7 +50,7 @@ class ConversePolicy:
         return self._llm_execute(flow_info, state, context, filled_slots, tool_dispatcher)
 
     def _llm_execute(self, flow_info, state, context, filled_slots, tool_dispatcher):
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
         flow_name = flow_info['name']
 
         skill_prompt = self._load_skill_template(flow_name)
@@ -66,9 +66,9 @@ class ConversePolicy:
             system, messages, tools, tool_dispatcher, call_site='skill',
         )
 
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {'content': text}, source=flow_name)
-        return frame
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {'content': text}, source=flow_name)
+        return artifact
 
     def _load_skill_template(self, flow_name: str) -> str | None:
         path = _SKILL_DIR / f'{flow_name}.md'

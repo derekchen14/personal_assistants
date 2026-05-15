@@ -1,5 +1,5 @@
 from backend.modules.policies.base import BasePolicy
-from backend.components.display_frame import DisplayFrame
+from backend.components.task_artifact import TaskArtifact
 
 
 class ResearchPolicy(BasePolicy):
@@ -26,13 +26,13 @@ class ResearchPolicy(BasePolicy):
             case 'compare': return self.compare_policy(flow, state, context, tools)
             case 'diff': return self.diff_policy(flow, state, context, tools)
             case _:
-                return DisplayFrame()
+                return TaskArtifact()
 
     def browse_policy(self, flow, state, context, tools):
         query_slot = flow.slots['query']
         if not query_slot.check_if_filled():
             self.ambiguity.declare('partial', metadata={'missing': 'query'})
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
 
         target_slot = flow.slots['target']
         # Default-commit: target is elective; commit 'note' when unset.
@@ -55,18 +55,18 @@ class ResearchPolicy(BasePolicy):
         text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad())
 
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=text)
-        frame.add_block({'type': 'list', 'data': {'items': items}})
-        return frame
+        artifact = TaskArtifact(flow.name(), thoughts=text)
+        artifact.add_block({'type': 'list', 'data': {'items': items}})
+        return artifact
 
     def summarize_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
 
         flow_metadata = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         if not flow_metadata['_success']:
-            frame = self.error_frame(flow, 'missing_reference',
+            artifact = self.error_artifact(flow, 'missing_reference',
                 thoughts='Could not find the specified post.',
                 missing_entity='post')
         else:
@@ -84,8 +84,8 @@ class ResearchPolicy(BasePolicy):
                 skill_prompt=skill_prompt,
             )
             flow.status = 'Completed'
-            frame = DisplayFrame(flow.name(), thoughts=summary)
-        return frame
+            artifact = TaskArtifact(flow.name(), thoughts=summary)
+        return artifact
 
     def check_policy(self, flow, state, context, tools):
         # Check treats grounding as optional — a filled tab narrows the search.
@@ -114,10 +114,10 @@ class ResearchPolicy(BasePolicy):
 
         flow.status = 'Completed'
         # Check narrates the result in chat — no Display-Container update.
-        return DisplayFrame(flow.name(), thoughts=text)
+        return TaskArtifact(flow.name(), thoughts=text)
 
     def inspect_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
@@ -130,7 +130,7 @@ class ResearchPolicy(BasePolicy):
 
         result = tools('inspect_post', params)
         if not result['_success']:
-            frame = self.error_frame(flow, 'tool_error',
+            artifact = self.error_artifact(flow, 'tool_error',
                 thoughts=result['_message'],
                 failed_tool='inspect_post')
         else:
@@ -146,8 +146,8 @@ class ResearchPolicy(BasePolicy):
             flow.status = 'Completed'
             # Inspect narrates in chat — the metrics stay in metadata for
             # downstream policy consumers, but no block updates the UI.
-            frame = DisplayFrame(flow.name(), metadata={'metrics': metrics})
-        return frame
+            artifact = TaskArtifact(flow.name(), parts={'metrics': metrics})
+        return artifact
 
     def find_policy(self, flow, state, context, tools):
         query_slot = flow.slots['query']
@@ -194,9 +194,9 @@ class ResearchPolicy(BasePolicy):
         })
 
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name())
-        frame.add_block({'type': 'list', 'data': list_data, 'expand': True})
-        return frame
+        artifact = TaskArtifact(flow.name())
+        artifact.add_block({'type': 'list', 'data': list_data, 'expand': True})
+        return artifact
 
     def _expand_query(self, query:str) -> list[str]:
         """LLM-generate 3-4 semantically similar search terms."""
@@ -216,7 +216,7 @@ class ResearchPolicy(BasePolicy):
         return [query]
 
     def compare_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         # Comparison kind drives both the metrics surfaced and the prose framing.
         # Ask before dispatching when none was named.
@@ -224,14 +224,14 @@ class ResearchPolicy(BasePolicy):
             self.ambiguity.declare('specific',
                 observation='Should I compare metrics, metadata, or tone?',
                 metadata={'missing': 'category'})
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
 
         grounding = flow.slots[flow.entity_slot]
         posts = [self._read_post_content(self._resolve_post_id(e['post'], tools), tools)
                  for e in grounding.values[:2]]
         if not (posts[0] and posts[1]):
             named = [e['post'] for e in grounding.values[:2]]
-            return self.error_frame(flow, 'missing_reference',
+            return self.error_artifact(flow, 'missing_reference',
                 thoughts=f"Could not find one or both posts: {named}.",
                 missing_entity='post')
 
@@ -240,28 +240,28 @@ class ResearchPolicy(BasePolicy):
         # Skill may declare ambiguity (e.g. missing category); leave flow Active so the
         # next turn can resolve rather than treating completion as final.
         if self.ambiguity.present():
-            return DisplayFrame(flow.name())
+            return TaskArtifact(flow.name())
 
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=text)
-        frame.add_block({'type': 'compare', 'data': {'left': posts[0], 'right': posts[1]}, 'expand': True})
-        return frame
+        artifact = TaskArtifact(flow.name(), thoughts=text)
+        artifact.add_block({'type': 'compare', 'data': {'left': posts[0], 'right': posts[1]}, 'expand': True})
+        return artifact
 
     def diff_policy(self, flow, state, context, tools):
-        if frame := self._guard_entity(flow): return frame
+        if artifact := self._guard_entity(flow): return artifact
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
         flow.status = 'Completed'
-        frame = DisplayFrame(flow.name(), thoughts=text)
+        artifact = TaskArtifact(flow.name(), thoughts=text)
         # Diff compares two code versions — users need to SEE the diff visually, not just hear it
         # narrated. Surface the structured diff via a compare block so the frontend can render it.
         # extract_tool_result returns the success payload (with _* keys stripped) or {} if the
         # tool wasn't called or its call failed. Non-empty dict = success path.
         diff_result = self.engineer.extract_tool_result(tool_log, 'diff_section')
         if diff_result:
-            frame.add_block({'type': 'compare', 'data': {
+            artifact.add_block({'type': 'compare', 'data': {
                 'left':    {'title': 'Original', 'content': diff_result['source']},
                 'right':   {'title': 'Updated',  'content': diff_result['target']},
                 'content': diff_result['diff'],
             }})
-        return frame
+        return artifact

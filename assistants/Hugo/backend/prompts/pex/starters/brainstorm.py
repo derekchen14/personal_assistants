@@ -32,7 +32,7 @@ def build(flow, resolved:dict, user_text:str) -> str:
         tool_sequence = 'Optionally call `read_section` for tone context, then propose 2–3 alternatives'
         end_condition = 'Emit alternatives as JSON'
     else:
-        # Should not happen — policy guards against this. Render a generic frame.
+        # Should not happen — policy guards against this. Render a generic artifact.
         verb = 'Brainstorm based on the latest utterance'
         tool_sequence = 'Pick the right helper from your tool list'
         end_condition = 'Emit results as JSON'

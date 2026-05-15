@@ -10,7 +10,7 @@ from schemas.ontology import Intent
 if TYPE_CHECKING:
     from backend.components.dialogue_state import DialogueState
     from backend.components.context_coordinator import ContextCoordinator
-    from backend.components.display_frame import DisplayFrame
+    from backend.components.task_artifact import TaskArtifact
     from backend.components.flow_stack.parents import BaseFlow
 
 
@@ -35,13 +35,13 @@ class PlanPolicy:
         self._get_tools_fn = components['get_tools']
 
     def execute(self, flow: 'BaseFlow', state: 'DialogueState',
-                context: 'ContextCoordinator', tools) -> 'DisplayFrame':
-        from backend.components.display_frame import DisplayFrame
+                context: 'ContextCoordinator', tools) -> 'TaskArtifact':
+        from backend.components.task_artifact import TaskArtifact
 
         if flow.name() in _BATCH_2:
-            frame = DisplayFrame(self.config)
-            frame.set_frame('default', {'content': "That feature is coming soon — stay tuned!"})
-            return frame
+            artifact = TaskArtifact(self.config)
+            artifact.set_artifact('default', {'content': "That feature is coming soon — stay tuned!"})
+            return artifact
 
         structured_plan = state.structured_plan
 
@@ -54,7 +54,7 @@ class PlanPolicy:
     # -- Mode A: Generate plan ────────────────────────────────────────
 
     def _generate_plan(self, flow, state, context, tools):
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
 
         skill_prompt = self._load_skill_template(flow.name())
         system, messages = self.engineer.build_skill_prompt(
@@ -76,12 +76,12 @@ class PlanPolicy:
 
         state.structured_plan = structured_plan
 
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {
             'flow_name': flow.name(),
             'content': freeform,
         }, source=flow.name())
-        return frame
+        return artifact
 
     # -- Mode B: Handle approval ──────────────────────────────────────
 
@@ -99,18 +99,18 @@ class PlanPolicy:
 
         state.update_flags(has_plan=True, keep_going=True)
 
-        from backend.components.display_frame import DisplayFrame
-        frame = DisplayFrame(self.config)
-        frame.set_frame('default', {
+        from backend.components.task_artifact import TaskArtifact
+        artifact = TaskArtifact(self.config)
+        artifact.set_artifact('default', {
             'flow_name': flow.name(),
             'content': 'Plan approved — executing now.',
         }, source=flow.name())
-        return frame
+        return artifact
 
     # -- Mode C: Verify and continue ──────────────────────────────────
 
     def _verify_and_continue(self, flow, state, context, tools):
-        from backend.components.display_frame import DisplayFrame
+        from backend.components.task_artifact import TaskArtifact
 
         structured_plan = state.structured_plan
         sub_flows = structured_plan.get('sub_flows', [])
@@ -139,26 +139,26 @@ class PlanPolicy:
 
         if all_done:
             self.flow_stack.mark_complete(result={'flow_name': flow.name()})
-            frame = DisplayFrame(self.config)
-            frame.set_frame('default', {
+            artifact = TaskArtifact(self.config)
+            artifact.set_artifact('default', {
                 'flow_name': flow.name(),
                 'content': f'Plan completed: {structured_plan.get("description", flow.name())}',
             }, source=flow.name())
             state.update_flags(keep_going=False)
-            return frame
+            return artifact
 
         plan_flow = self.flow_stack.get_active_flow()
         plan_id = plan_flow.flow_id if plan_flow else None
         self._push_next_sub_flow(state, plan_id)
         state.update_flags(keep_going=True)
 
-        frame = DisplayFrame(self.config)
+        artifact = TaskArtifact(self.config)
         completed_names = [sf['flow_name'] for sf in sub_flows if sf['status'] == 'completed']
-        frame.set_frame('default', {
+        artifact.set_artifact('default', {
             'flow_name': flow.name(),
             'content': f'Completed: {", ".join(completed_names)}. Continuing to next step.',
         }, source=flow.name())
-        return frame
+        return artifact
 
     # -- Helpers ───────────────────────────────────────────────────────
 
