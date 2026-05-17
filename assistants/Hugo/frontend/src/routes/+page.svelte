@@ -5,11 +5,13 @@
     import BlockRenderer from '$lib/components/blocks/BlockRenderer.svelte';
     import Drawer from '$lib/components/blocks/Drawer.svelte';
     import IconMagnifyingGlass from '$lib/assets/IconMagnifyingGlass.svelte';
+    import { FLOW_TO_DAX } from '$lib/config/flows';
     import { tick, onMount } from 'svelte';
 
     let usernameInput = $state('');
     let messageInput = $state('');
     let chatContainer: HTMLElement | undefined = $state();
+    let inputEl: HTMLTextAreaElement | undefined = $state();
     let sidebarOpen = $state(false);
     let newDraftTitle = $state('');
 
@@ -41,9 +43,17 @@
     function handleSend() {
         const raw = messageInput.trim();
         if (!raw) return;
-        const match = raw.match(/^\/([0-9A-Fa-f]{3})\s*(.*)/s);
-        const dax = match ? `{${match[1].toUpperCase()}}` : null;
-        const text = match ? match[2].trim() : raw;
+        const match = raw.match(/^\/(\w+)\s*(.*)/s);
+        let dax: string | null = null;
+        let text = raw;
+        if (match) {
+            const token = match[1].toLowerCase();
+            const code = FLOW_TO_DAX[token] ?? (/^[0-9a-f]{3}$/i.test(match[1]) ? match[1] : null);
+            if (code) {
+                dax = `{${code.toUpperCase()}}`;
+                text = match[2].trim();
+            }
+        }
         const payload: Record<string, string> = {};
         if ($activePost) payload.post = $activePost;
         if ($activeSection) payload.section = $activeSection;
@@ -52,6 +62,7 @@
         activeHighlight.set('');
         activeSection.set('');
         messageInput = '';
+        if (inputEl) inputEl.style.height = 'auto';
     }
 
     function handleKeydown(e: KeyboardEvent) {
@@ -59,6 +70,12 @@
             e.preventDefault();
             handleSend();
         }
+    }
+
+    function autoGrow() {
+        if (!inputEl) return;
+        inputEl.style.height = 'auto';
+        inputEl.style.height = `${inputEl.scrollHeight}px`;
     }
 
     function handleUsernameKey(e: KeyboardEvent) {
@@ -214,13 +231,15 @@
                 <!-- Input -->
                 <div class="p-4 border-t border-[var(--border)] bg-[var(--bg)] rounded-b-lg">
                     <div class="flex gap-2">
-                        <input
-                            type="text"
+                        <textarea
+                            bind:this={inputEl}
                             bind:value={messageInput}
                             onkeydown={handleKeydown}
+                            oninput={autoGrow}
+                            rows={1}
                             placeholder="Message Hugo..."
-                            class="flex-1 px-4 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-                        />
+                            class="flex-1 px-4 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] outline-none focus:border-[var(--accent)] resize-none overflow-y-auto max-h-[150px]"
+                        ></textarea>
                         <button
                             onclick={handleSend}
                             class="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-dark)] text-white font-medium transition-colors"

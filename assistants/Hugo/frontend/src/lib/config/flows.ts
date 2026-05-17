@@ -59,3 +59,7 @@ export const FLOW_MENU: IntentGroup[] = [
         ],
     },
 ];
+
+export const FLOW_TO_DAX: Record<string, string> = Object.fromEntries(
+    FLOW_MENU.flatMap(g => g.flows.map(f => [f.name, f.dax]))
+);
