@@ -199,24 +199,29 @@ class PromptEngineer:
 
     def tool_call(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], tool_dispatcher,
                   skill_name:str|None=None, skill_prompt:str|None=None, resolved:dict|None=None,
-                  max_tokens:int=4096, user_text:str|None=None) -> tuple[str, list[dict]]:
-        """Skill execution WITH tool use. Sibling of skill_call."""
+                  max_tokens:int=4096, user_text:str|None=None,
+                  model:str='med', schema:dict|None=None) -> tuple[str, list[dict]]:
+        """Skill execution WITH tool use. Sibling of skill_call.
+
+        Pass `model='high'` for skills that need stronger reasoning (e.g. brainstorm). Pass
+        `schema=<json-schema dict>` to force a schema-constrained final emit — applied as a
+        no-tools follow-up call when the tool loop terminates with empty text."""
         if skill_prompt is None:
             skill_prompt = self.load_skill_template(skill_name or flow.name())
         base_system = build_system(self.persona)
         system = build_skill_system(base_system, flow, skill_prompt)
         msgs = list(build_skill_messages(flow, convo_history, user_text, resolved))
-        model_id = self._resolve_model('med')
+        model_id = self._resolve_model(model)
 
         max_num_calls = 8
         if flow.name() in ['audit', 'refine', 'rework', 'compose', 'simplify', 'add']:
             max_num_calls *= 2
 
-        family = self._model_family('med')
+        family = self._model_family(model)
         adapted = self._adapt_tool_defs(family, tool_defs)
         match family:
             case 'claude':   return self._call_claude_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
-            case 'gemini':   return self._call_gemini_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
+            case 'gemini':   return self._call_gemini_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls, schema_dict=schema)
             case 'gpt':      return self._call_gpt_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
             case 'together': return self._call_together_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
 
@@ -446,7 +451,8 @@ class PromptEngineer:
                 out[key] = val
         return out
 
-    def _call_gemini_with_tools(self, system, messages, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):
+    def _call_gemini_with_tools(self, system, messages, model_id, tool_defs, tool_dispatcher,
+                                max_tokens, max_num_calls, schema_dict=None):
         from google.genai import types
         contents = [
             types.Content(role=('model' if m['role'] == 'assistant' else 'user'),
@@ -474,7 +480,7 @@ class PromptEngineer:
             function_calls = [p.function_call for p in parts if getattr(p, 'function_call', None)]
             text = ''.join(p.text for p in parts if getattr(p, 'text', None))
             if not function_calls:
-                return text, tool_log
+                break
             contents.append(candidate.content)
             response_parts = []
             for fc in function_calls:
@@ -486,6 +492,19 @@ class PromptEngineer:
                     name=fc.name, response={'result': result},
                 ))
             contents.append(types.Content(role='user', parts=response_parts))
+        # Schema-enforced terminal emit: if the tool loop returned empty text and the caller
+        # supplied a schema, do one more no-tools call so the model is forced to produce JSON.
+        if schema_dict is not None and not text.strip():
+            final_config = types.GenerateContentConfig(
+                system_instruction=system, max_output_tokens=max_tokens,
+                thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+                response_mime_type='application/json', response_json_schema=schema_dict,
+            )
+            response = self._retry(
+                lambda: client.models.generate_content(model=model_id, contents=contents, config=final_config),
+                Exception,
+            )
+            text = response.text or ''
         return text, tool_log
 
     def _call_gpt_with_tools(self, system, messages, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):

@@ -19,23 +19,26 @@ class RES(object):
 
     def respond(self, artifact):
         completed_flows = self.start()
+        current_flow = completed_flows[-1] if completed_flows else self.flow_stack.get_flow()
 
         if self.ambiguity.present():
-            return self._clarify(), artifact
+            flows = completed_flows or [current_flow]
+            responses = [self.ambiguity.ask(flow.name()) for flow in flows]
+            response_text = ' '.join(responses)
+            return response_text, artifact
 
         state = self.world.current_state()
-        flow = completed_flows[-1] if completed_flows else self.flow_stack.get_flow()
 
-        if flow.intent == Intent.INTERNAL:
+        if current_flow.intent == Intent.INTERNAL:
             return '', artifact
-        if flow.intent == Intent.PLAN and state.keep_going:
-            self.finish('', artifact, flow)
+        if current_flow.intent == Intent.PLAN and state.keep_going:
+            self.finish('', artifact, current_flow)
             self._save_turn_checkpoint()
             return '', artifact
 
-        agent_utt = self.generate(artifact, state, flow)
+        agent_utt = self.generate(artifact, state, current_flow)
 
-        self.finish(agent_utt, artifact, flow)
+        self.finish(agent_utt, artifact, current_flow)
         self._save_turn_checkpoint()
         return agent_utt, artifact
 
@@ -44,13 +47,6 @@ class RES(object):
         snapshot via `content.list_snapshots()` + matching turn_id from the bundle."""
         turn_id = self.world.context.turn_id
         self.world.context.save_checkpoint(f'turn_{turn_id}', data={})
-
-    # ── Helpers ──────────────────────────────────────────────────────
-
-    def _clarify(self) -> str:
-        text = self.ambiguity.ask(self.flow_stack.get_flow().name())
-        self.world.context.add_turn('Agent', text, turn_type='clarification')
-        return text
 
     def generate(self, artifact, state, flow) -> str:
         template_info = _get_template(flow.name(), flow.intent)

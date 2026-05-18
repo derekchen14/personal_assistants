@@ -19,23 +19,47 @@ def _count_bullets(outline:str) -> int:
     return total
 
 
+_BRAINSTORM_TOPIC_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'topic': {'type': 'string'},
+        'ideas': {
+            'type': 'array',
+            'items': {
+                'type': 'object',
+                'properties': {'title': {'type': 'string'}, 'hook': {'type': 'string'}},
+                'required': ['title', 'hook'],
+            },
+        },
+    },
+    'required': ['topic', 'ideas'],
+}
+
+_BRAINSTORM_SNIPPET_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'original': {'type': 'string'},
+        'alternatives': {'type': 'array', 'items': {'type': 'string'}},
+    },
+    'required': ['original', 'alternatives'],
+}
+
+
 def _format_brainstorm(parsed:dict) -> str:
-    """Skill returns JSON in two shapes (topic mode / highlight mode). Render either as readable prose so RES doesn't ship raw JSON to the user."""
-    mode = parsed.get('mode')
-    if mode == 'topic':
+    """Skill returns JSON in two shapes (topic ideas / snippet alternatives). Dispatch on the
+    presence of `ideas` vs `alternatives` so RES ships readable prose, not raw JSON."""
+    if 'ideas' in parsed:
         topic = parsed.get('topic', '')
-        ideas = parsed.get('ideas') or []
         header = f'Angles for "{topic}":' if topic else 'Angles:'
         lines = [header]
-        for idea in ideas:
+        for idea in parsed['ideas'] or []:
             title, hook = idea.get('title', ''), idea.get('hook', '')
             lines.append(f'- {title}: {hook}' if title and hook else f'- {title or hook}')
         return '\n'.join(lines)
-    if mode == 'highlight':
+    if 'alternatives' in parsed:
         original = parsed.get('original', '')
-        alts = parsed.get('alternatives') or []
         header = f'Alternatives for "{original}":' if original else 'Alternatives:'
-        return '\n'.join([header] + [f'- {alt}' for alt in alts])
+        return '\n'.join([header] + [f'- {alt}' for alt in parsed['alternatives'] or []])
     return ''
 
 
@@ -308,13 +332,18 @@ class DraftPolicy(BasePolicy):
         return artifact
 
     def brainstorm_policy(self, flow, state, context, tools):
+        snippet = ''
+        if flow.slots['source'].check_if_filled():
+            snippet = (flow.slots['source'].values[0] or {}).get('snip') or ''
+        schema = _BRAINSTORM_SNIPPET_SCHEMA if snippet else _BRAINSTORM_TOPIC_SCHEMA
+
         if flow.slots['topic'].check_if_filled():
-            text, _ = self.llm_execute(flow, state, context, tools)
+            text, _ = self.llm_execute(flow, state, context, tools, model='high', schema=schema)
         elif flow.slots['source'].check_if_filled():
             entity = flow.slots['source'].values[0]
             post_title = tools('read_metadata', {'post_id': entity['post']})['title']
             flow.slots['topic'].add_one(post_title) # use the title as a pseudo-topic
-            text, _ = self.llm_execute(flow, state, context, tools)
+            text, _ = self.llm_execute(flow, state, context, tools, model='high', schema=schema)
         else:
             convo_history = context.compile_history(look_back=3)
             prompt = f'{convo_history}\n\nExtract the topic the user wants to brainstorm about. Reply with JSON: {{"topic": "..."}}.'
@@ -325,7 +354,7 @@ class DraftPolicy(BasePolicy):
                 self.ambiguity.declare('specific', metadata={'missing': 'topic'})
                 return TaskArtifact(flow.name())
             else:
-                text, _ = self.llm_execute(flow, state, context, tools)
+                text, _ = self.llm_execute(flow, state, context, tools, model='high', schema=schema)
 
         flow.status = 'Completed'
         parsed = self.engineer.apply_guardrails(text)

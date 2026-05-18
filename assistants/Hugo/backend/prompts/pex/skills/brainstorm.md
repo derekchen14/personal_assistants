@@ -1,7 +1,7 @@
 ---
 name: "brainstorm"
 description: "come up with new ideas or angles for a given topic, word, or phrase; may include hooks, opening lines, synonyms, or new perspectives the user can choose from"
-version: 2
+version: 3
 tools:
   - brainstorm_ideas
   - find_posts
@@ -9,36 +9,37 @@ tools:
   - read_section
 ---
 
-This skill produces creative angles for a topic OR alternative phrasings for a highlighted phrase. Two modes, decided by which slot is filled.
+This skill produces creative angles for a topic, or alternative phrasings for a highlighted snippet. Which case applies depends on the filled slots: `topic` drives idea generation, `source.snip` drives phrase alternatives.
+
+**Your turn ends only when you emit the JSON output described below. Tool calls are optional context-gathering — do not stop after a tool call.**
 
 ## Process
 
-1. Read `<resolved_details>` for the active slots:
-   a. `topic` filled → Mode A (topic angles).
-   b. `source.snip` filled → Mode B (phrase alternatives).
-2. **Mode A — Topic angles:**
-   a. Call `brainstorm_ideas(topic=<topic>)` for candidate angles.
-   b. Optionally call `find_posts(query=<topic>)` to avoid duplicating prior coverage.
-   c. Produce 3–5 distinct ideas, varying format, audience, and angle.
-3. **Mode B — Phrase alternatives:**
-   a. Call `read_section(post_id, sec_id)` if you need surrounding context for tone matching.
-   b. Suggest 2–3 alternatives that match the post's existing tone.
+1. Read `<resolved_details>` for the active slots.
+2. When `topic` is filled:
+  a. If a `source` post is also resolved, you may call `read_section(post_id, sec_id)` once to gain context. Skip when no source is resolved.
+  b. You may call `find_posts(query=<topic>)` or `search_notes(query=<topic>)` to check prior coverage. Do NOT call these tools if you already have enough material to ideate.
+  c. If `ideas` is filled, treat its items as the user's own seed list — do NOT repeat them. Generate complementary ideas that extend the seeded direction.
+  d. Emit the final JSON (see Output) as your last message. Produce 3–5 distinct, diverse ideas varying angle and style.
+3. When `source.snip` is filled:
+  a. Call `read_section(post_id, sec_id)` for surrounding tone context.
+  b. Emit the final JSON (see Output) as your last message. Suggest 2–3 alternatives that match the post's existing tone.
 4. Cap at 5 ideas / 3 alternatives. Fewer strong ideas beat many weak ones.
 
 ## Error Handling
 
 If neither `topic` nor `source.snip` is filled, call `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`.
 
-If `brainstorm_ideas` fails for Mode A, fall back to LLM-only ideation based on the topic. Do NOT call `execution_error` — brainstorming is tolerant of tool gaps.
+Brainstorming is tolerant of tool gaps — if `read_section` or `find_posts` fails, fall back to LLM-only ideation based on the topic. Do NOT call `execution_error`.
 
 ## Tools
 
 ### Task-specific tools
 
-- `brainstorm_ideas(topic=...)` — main worker for Mode A.
+- `brainstorm_ideas(topic=...)` — gathers prior coverage (posts + notes) for the topic, useful as a single dedup pass.
 - `find_posts(query=...)` — dedup check against prior coverage.
 - `search_notes(query=...)` — surface user's saved notes on the topic.
-- `read_section(post_id, sec_id)` — context for Mode B tone matching.
+- `read_section(post_id, sec_id)` — fetch existing content for context (topic depth or snippet tone).
 
 ### General tools
 
@@ -49,10 +50,9 @@ If `brainstorm_ideas` fails for Mode A, fall back to LLM-only ideation based on 
 
 ## Output
 
-Mode A (topic):
+When `topic` is filled:
 ```json
 {
-  "mode": "topic",
   "topic": "...",
   "ideas": [
     {"title": "...", "hook": "<one-line thesis>"},
@@ -61,10 +61,9 @@ Mode A (topic):
 }
 ```
 
-Mode B (highlight):
+When `source.snip` is filled:
 ```json
 {
-  "mode": "highlight",
   "original": "the highlighted phrase",
   "alternatives": ["option 1", "option 2", "option 3"]
 }
@@ -76,15 +75,15 @@ Mode B (highlight):
 
 Resolved Details:
 - Topic: synthetic data generation
+- Source: post=abc12345
 
 Trajectory:
-1. `brainstorm_ideas(topic='synthetic data generation')` → 5 candidate angles.
+1. `read_section(post_id='abc12345', sec_id='motivation')` → existing framing focuses on cost; leaves quality/QA gaps unaddressed.
 2. `find_posts(query='synthetic data')` → 1 prior coverage post.
 
 Final reply:
 ```json
 {
-  "mode": "topic",
   "topic": "synthetic data generation",
   "ideas": [
     {"title": "When synthetic data beats human labels", "hook": "A cost/quality tradeoff teardown"},
@@ -94,7 +93,28 @@ Final reply:
 }
 ```
 
-### Example 2: Phrase alternatives
+### Example 2: Topic angles seeded by the user
+
+Resolved Details:
+- Topic: sales playbook
+- Ideas: ["prospecting", "qualifying", "closing"]
+
+Trajectory:
+1. `find_posts(query='sales playbook')` → no prior coverage.
+
+Final reply:
+```json
+{
+  "topic": "sales playbook",
+  "ideas": [
+    {"title": "Discovery rituals", "hook": "How top reps run the first 15 minutes"},
+    {"title": "Objection handling under pressure", "hook": "Scripts vs. improvisation"},
+    {"title": "Post-sale handoff", "hook": "Why deals churn after the win"}
+  ]
+}
+```
+
+### Example 3: Phrase alternatives
 
 Resolved Details:
 - Source: post=abcd0123, section=motivation, snippet="dirt cheap"
@@ -105,7 +125,6 @@ Trajectory:
 Final reply:
 ```json
 {
-  "mode": "highlight",
   "original": "dirt cheap",
   "alternatives": ["radically cheap", "an order of magnitude cheaper", "vanishingly inexpensive"]
 }

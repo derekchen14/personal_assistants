@@ -958,15 +958,17 @@
     },
     {
       "post_id": "7c390a3e",
-      "title": "Making AI Agents Reliable",
+      "title": "Reliable Agents from Unreliable Parts",
       "status": "draft",
       "category": null,
-      "tags": [],
+      "tags": [
+        "ai"
+      ],
       "color": "",
       "created_at": "2026-05-16T23:57:41.125083+00:00",
-      "updated_at": "2026-05-17T00:29:28.595523+00:00",
-      "preview": "* Is it possible to increase the reliability of an agent to an acceptable level if each component probabilistic?",
-      "word_count": 385,
+      "updated_at": "2026-05-17T13:27:37.228506+00:00",
+      "preview": "* Is it possible to increase the reliability of an agent to an acceptable level if each component is probabilistic?\n* Reliability compounds across steps\n  - A 95%-reliable component sounds fine until you chain ten of them and end up at 60% end-to-end\n  - This is why naive approaches hit a wall:...",
+      "word_count": 864,
       "filename": "drafts/how-to-make-more-reliable-ai-agents.md"
     }
   ]

@@ -160,9 +160,9 @@ class BrainstormFlow(DraftParentFlow):
     self.goal = 'come up with new ideas or angles for a given topic, word, or phrase; may include hooks, opening lines, synonyms, or new perspectives the user can choose from'
 
     self.slots = {
-      'source': SourceSlot(1, entity_part='', priority='elective'),
+      'source': SourceSlot(1, entity_part=''),
       'topic': ExactSlot(priority='elective'),
-      'ideas': ProposalSlot(priority='optional'),
+      'ideas': ProposalSlot(priority='elective'),
     }
     self.tools = ['brainstorm_ideas', 'find_posts', 'search_notes', 'read_section']
 

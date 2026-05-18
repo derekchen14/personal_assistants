@@ -47,7 +47,7 @@ class AmbiguityHandler:
         else:
             return bool(self.level)
 
-    def ask(self, flow_name:str='') -> str:
+    def ask(self, flow_name:str) -> str:
         if self.observation:
             return self.observation
 

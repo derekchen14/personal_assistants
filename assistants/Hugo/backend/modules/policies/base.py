@@ -18,7 +18,8 @@ class BasePolicy:
         self._get_tools_fn = components['get_tools']
 
     def llm_execute(self, flow, state, context, tools, include_preview:bool=False,
-                    extra_resolved:dict|None=None, exclude_tools:tuple=()):
+                    extra_resolved:dict|None=None, exclude_tools:tuple=(),
+                    model:str='med', schema:dict|None=None):
         """Agentic tool-use loop for multi-tool flows. Returns (text, tool_log).
 
         Pass include_preview=True to preload per-section previews in the resolved-entities block,
@@ -26,7 +27,9 @@ class BasePolicy:
         data (e.g. the current outline) into the resolved-entities block so the skill skips a
         redundant tool call. Pass exclude_tools to hard-strip tool names from the skill's tool
         registry for this call (e.g. forbid `generate_outline` in propose mode). The tool call
-        will error on the model side if it tries anyway."""
+        will error on the model side if it tries anyway. Pass `model='high'` to swap the skill
+        onto a stronger tier; pass `schema=<json-schema dict>` to force a schema-constrained
+        terminal emit when the tool loop would otherwise return empty text."""
         resolved = self._build_resolved_context(flow, state, tools, include_preview=include_preview)
         if extra_resolved:
             resolved = {**(resolved or {}), **extra_resolved}
@@ -38,6 +41,7 @@ class BasePolicy:
             flow, convo_history, self.memory.read_scratchpad(),
             tool_defs, tools, resolved=resolved,
             user_text=context.last_user_text,
+            model=model, schema=schema,
         )
 
     # -- Content readback ---------------------------------------------------

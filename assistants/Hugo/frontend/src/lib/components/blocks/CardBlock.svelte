@@ -148,6 +148,7 @@
 
     let outlineMode = $state(false);
     let openSections = $state<Set<number>>(new Set());
+    let openSubs = $state<Set<string>>(new Set());
     let editSections = $state<Section[]>([]);
     let lastContent = $state('');
 
@@ -156,6 +157,7 @@
         if (content !== lastContent) {
             editSections = sections.map(s => ({ ...s }));
             openSections = new Set();
+            openSubs = new Set();
             lastContent = content;
         }
     });
@@ -165,6 +167,12 @@
         if (next.has(i)) next.delete(i);
         else next.add(i);
         openSections = next;
+    }
+
+    function toggleSub(k: string) {
+        const next = new Set(openSubs);
+        if (next.has(k)) next.delete(k); else next.add(k);
+        openSubs = next;
     }
 
     function onSectionInput(i: number) {
@@ -324,12 +332,23 @@
                             {section.title}
                         </button>
                         {#if openSections.has(i)}
-                            <textarea
-                                bind:value={editSections[i].content}
-                                oninput={() => onSectionInput(i)}
-                                class="block w-full min-h-[40vh] py-2 border-0 bg-transparent text-[var(--text)] text-sm leading-[1.7] resize-y outline-none mb-2"
-                                placeholder="Section content..."
-                            ></textarea>
+                            {@const subs = section.content.split(/^### /m).slice(1)}
+                            {#each subs as sub, j}
+                                {@const nl = sub.indexOf('\n')}
+                                <button onclick={() => toggleSub(`${i}.${j}`)} class="ml-4 flex items-center gap-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--accent)] cursor-pointer transition-colors">
+                                    <span class="transition-transform {openSubs.has(`${i}.${j}`) ? 'rotate-90' : ''}"><IconChevronRight size={12} /></span>
+                                    {nl === -1 ? sub.trim() : sub.slice(0, nl).trim()}
+                                </button>
+                                {#if openSubs.has(`${i}.${j}`) && nl !== -1}<div class="ml-6 mb-2 prose-content text-sm">{@html md(sub.slice(nl + 1).trim())}</div>{/if}
+                            {/each}
+                            {#if subs.length === 0}
+                                <textarea
+                                    bind:value={editSections[i].content}
+                                    oninput={() => onSectionInput(i)}
+                                    class="block w-full min-h-[40vh] py-2 border-0 bg-transparent text-[var(--text)] text-sm leading-[1.7] resize-y outline-none mb-2"
+                                    placeholder="Section content..."
+                                ></textarea>
+                            {/if}
                         {/if}
                     </div>
                 {/each}
