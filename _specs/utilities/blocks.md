@@ -6,7 +6,7 @@ Tech stack: Svelte 5, SvelteKit 2, TypeScript, Tailwind.
 
 ## Purpose
 
-Standardized UI components that any domain agent can use to render its display frames. These are the atomic visual elements that RES composes into full responses.
+Standardized UI components that any domain agent can use to render its Task Artifacts. These are the atomic visual elements that PEX composes into full responses (and the main Agent delivers).
 
 ## Block Categories
 
@@ -15,7 +15,7 @@ Standardized UI components that any domain agent can use to render its display f
 - **Navigation**: Tabs, breadcrumbs, pagination
 - **Feedback**: Toasts, progress indicators, loading states
 
-Each block type has a baked-in **`inline` attribute** — a property of the type itself, not set per-turn by PEX or RES. Inline blocks render within the conversation stream; all other blocks render on the right panel (see [Rendering Model](#rendering-model) below). RES knows where each block renders based on which block type it selects.
+Each block type has a baked-in **`inline` attribute** — a property of the type itself, not set per-turn by PEX. Inline blocks render within the conversation stream; all other blocks render on the right panel (see [Rendering Model](#rendering-model) below). PEX knows where each block renders based on which block type it selects.
 
 Display types map directly to atomic blocks. There is no intermediate composite layer — everything is flat. Domain-specific display types (defined in [Configuration](configuration.md)) resolve to the same atomic block set.
 
@@ -30,7 +30,7 @@ Blocks render in one of two locations:
 | **Right panel** | Default. Rendered in a persistent panel alongside the conversation (analogous to Claude's artifacts pane). |
 | **Inline** | Rendered within the conversation stream, interspersed with text (the dialogue panel). |
 
-Placement is determined by the block type's `inline` attribute — a fixed property of the type, not a per-turn decision. RES selects a block type via `display()`, and the frontend places it accordingly. The agent never controls placement directly.
+Placement is determined by the block type's `inline` attribute — a fixed property of the type, not a per-turn decision. PEX selects a block type onto the Task Artifact, and the frontend places it accordingly. The agent never controls placement directly.
 
 ### Layout Modes
 
@@ -53,9 +53,9 @@ Block types that carry `inline: true`:
 
 All other block types (tables, charts, cards, forms, navigation) render on the right panel by default.
 
-### One Frame, One Block
+### One Block Per Flow
 
-Each turn produces at most one display frame, which maps to one block. If a turn requires two visuals, use `keep_going` to split across multiple flows — each flow gets its own frame and block. Reference: [Display Frame](../components/task_artifact.md)
+Each flow **proposes** at most one block; PEX curates the active flows' proposed blocks onto the single turn [Task Artifact](../components/task_artifact.md) — by default passing them through, optionally rewriting for a clearer, more concise summary. If a turn requires two visuals, split across multiple flows — each flow contributes its own block, and PEX aggregates them.
 
 ### Panel Interactions
 
@@ -63,11 +63,11 @@ User actions on panel-rendered blocks (clicking a table row, submitting a form, 
 
 ### Deliverable Persistence
 
-Deliverables (published blog posts, scheduled events, submitted applications) are stored in domain-specific external systems (CMS, calendar, ATS) — not in the blocks layer or Memory Manager. Blocks are transient views; persistence is the domain tool's responsibility.
+Deliverables (published blog posts, scheduled events, submitted applications) are stored in domain-specific external systems (CMS, calendar, ATS) — not in the blocks layer or MEM. Blocks are transient views; persistence is the domain tool's responsibility.
 
-### Template Fill Reference
+### Referencing the Panel
 
-When a block renders on the right panel alongside text, the text response can reference the visual. RES templates support a `panel_ref` metadata field so filled text can include phrases like "Here's your draft — preview it on the right." Reference: [RES](../modules/res.md)
+When a block renders on the right panel alongside text, the text response can reference the visual. There are no response templates — PEX composes the text directly and may point at the on-screen block, e.g. "Here's your draft — preview it on the right." Reference: [PEX](../modules/pex.md)
 
 ---
 
@@ -95,7 +95,7 @@ Controlled by a `displayLayout` store with three modes:
 | `top` | top_container only | Form or confirmation without artifact |
 | `split` | Both | Form + artifact simultaneously |
 
-The frame's `panel` property (`'top'` or `'bottom'`, default `'bottom'`) determines which zone receives it. `displayLayout` is derived from which frames are populated: if both exist → `split`, top only → `top`, bottom only or neither → `bottom`.
+Each block's `panel` property (`'top'` or `'bottom'`, default `'bottom'`) determines which zone receives it. `displayLayout` is derived from which panels are populated: if both exist → `split`, top only → `top`, bottom only or neither → `bottom`.
 
 ## Light Theme
 
@@ -162,43 +162,9 @@ No domain config involved — resolution is purely within the blocks utility and
 
 ---
 
-## Block-Template Coordination
+## Block Selection
 
-RES templates (the dact overrides in the [Template Registry](../modules/res.md)) coordinate text responses with building blocks. This is not a separate layer — it extends the existing template system.
-
-### Block Hint
-
-Domain override templates can specify a `block_hint` — a suggested block type for `display()` to use when this template is active. `display()` uses the hint but can override it based on frame attributes (e.g., if data shape doesn't match the hinted type).
-
-```
-# Example dact override template entry
-draft_preview:
-  template: "Here's your draft — {title}. Preview it on the right."
-  block_hint: card
-  skip_naturalize: false
-```
-
-### Naturalization Opt-Out
-
-Templates can flag `skip_naturalize: true` for structured confirmations where the filled template is already natural enough. This skips the LLM naturalization call, saving latency and cost. Best for short, formulaic responses like "Event created: {title} on {date}."
-
-### Conditional Sections
-
-Templates support simple if/else on slot values or flags. One template handles multiple cases rather than requiring separate templates:
-
-```
-# Example conditional in a template
-event_created:
-  template: |
-    {title} scheduled for {date}.
-    {% if conflict %}Note: this overlaps with {conflict_event}.{% endif %}
-    {% if recurring %}Repeats {frequency}.{% endif %}
-  block_hint: card
-```
-
-### Versioning
-
-Templates follow the same `{template_id, version}` versioning scheme as [Prompt Engineer](../components/prompt_engineer.md). Evaluation tracks template performance uniformly via `prompt_version_id`. Reference: [Evaluation](evaluation.md)
+There are no response templates. PEX picks the block type directly from the artifact's data shape — a given flow/artifact maps to a block type, and PEX chooses it based on what the data looks like (e.g., a single grounding entity → `card`, a set of candidates → `selection`). The mapping is a guideline; PEX makes the final call from the data on hand.
 
 ---
 
@@ -211,7 +177,7 @@ The frontend organizes state into four store categories. Framework-agnostic — 
 | **Conversation** | Current session | WebSocket connection, message history, conversation ID, typing state |
 | **Data** | Active data context | Tab data (rows, pagination cursor, visibility), active table, column properties |
 | **UI** | Layout and chrome | Layout mode (top/split/bottom), alerts, loading states, sidebar |
-| **Display** | Block rendering | Active block, frame data, chart config, interaction panels |
+| **Display** | Block rendering | Active block, artifact data, chart config, interaction panels |
 
 ### Auto-Save and Interaction History
 

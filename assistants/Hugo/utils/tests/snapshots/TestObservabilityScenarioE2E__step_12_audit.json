@@ -29,7 +29,6 @@
   "flow_stack": [
     {
       "flow_type": "audit",
-      "interjected": false,
       "is_newborn": true,
       "is_uncertain": false,
       "parent_type": "Revise",

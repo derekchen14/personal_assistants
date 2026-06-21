@@ -13,8 +13,6 @@ models:
   overrides:
     skill:
       model_id: claude-opus-4-6
-    naturalize:
-      temperature: 0.5
     nlu:
       model_id: claude-sonnet-4-5-20250929
     nlu_vote_haiku:
@@ -26,6 +24,13 @@ models:
     nlu_vote_gemini:
       provider: google
       model_id: gemini-3-flash-preview
+    orchestrator:                    # the orchestrator-loop model; tier pick is one config change
+      provider: anthropic
+      model_id: claude-sonnet-4-6
+
+compression:                         # context compactor, scaled to the model context window
+  threshold_tokens: 64000            # 50% trigger x context_window.max_input_tokens (128k)
+  protect_tail: 20                   # protect the last ~6 turns, tool calls intact
 
 persona:
   tone: conversational
@@ -57,10 +62,9 @@ guardrails:
 content_validation:
   - compose
   - rework
-  - polish
-  - simplify
+  - write
 
-key_entities: [post, section, note, platform]
+key_entities: [post, section, snippet, channel]
 
 display:
   types: [Default, Dynamic]
@@ -601,5 +605,3 @@ tools:
     idempotent: true
     timeout_ms: 8000
     capabilities: {accesses_private_data: false, receives_untrusted_input: false, communicates_externally: false}
-
-# Template registry populated in Phase 7 (Prompt Writing)

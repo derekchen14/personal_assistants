@@ -54,7 +54,7 @@ class Part:
 class TaskArtifact:
     """A2A-aligned artifact: origin + list[Part] + visual BuildingBlocks.
 
-    Internal storage is `parts: list[Part]`. The constructor accepts the legacy
+    Internal storage is `parts: list[Part]`. The constructor accepts a
     `parts={dict}` shape (wrapped as a single data Part) plus `thoughts`/`code`
     (each wrapped as a text Part tagged via Part.metadata.kind). Consumer-facing
     properties `artifact.thoughts`, `artifact.code`, `artifact.data` unpack from parts."""

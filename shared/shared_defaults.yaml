@@ -4,7 +4,7 @@
 
 environment: dev                    # dev | prod — controls logging, guardrails
 tier: basic                         # basic | pro | advanced — controls auth and deployment complexity
-debug: false                        # true = skip RES naturalize, deterministic output for testing
+debug: false                        # true = skip naturalize, deterministic output for testing
 
 models:
   default:
@@ -17,7 +17,7 @@ models:
   overrides:                        # named overrides for specific call sites
     skill:                          # PEX skill invocation uses Opus
       model_id: claude-opus-4-6
-    naturalize:                     # RES naturalization benefits from variety
+    naturalize:                     # naturalization benefits from variety
       temperature: 0.5
   cost:
     token_budget_per_session: null   # max total tokens (in+out) per session; null = unlimited
@@ -57,6 +57,7 @@ session:
     backend: postgres               # memory | postgres | redis
     ttl_hours: 24                   # how long to keep persisted sessions
     timing: session_end             # session_end | per_turn
+    max_sessions: 20                # close() prunes database/sessions/ to the most recent N
 
 memory:
   scratchpad:
@@ -126,7 +127,7 @@ display:
   page_size: 512                    # rows before pagination
 
 thresholds:
-  stream_threshold_tokens: 200      # above this, RES streams response
+  stream_threshold_tokens: 200      # above this, PEX streams the response
   nlu_confidence_min: 0.64          # below this, NLU triggers round-2 vote
   nlu_vote_agreement_min: 0.67      # minimum agreement ratio for majority vote
   ambiguity_escalation_turns: 3     # max turns in ambiguity loop before escalating
@@ -135,8 +136,6 @@ thresholds:
 
 feature_flags:                      # all flags default false
   proactive_issue_detection: false
-
-template_registry: templates/base/  # path to base intent templates
 
 response_constraints:
   length_bounds:

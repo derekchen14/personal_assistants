@@ -185,7 +185,7 @@ Every policy method receives `(state, context, tools)` from `PEX.execute` (`pex.
 4. **Dispatch** — either direct tool call (`create`, `inspect`, `find` per `policy_spec.md § Theme execution status`) or skill loop via `self.llm_execute(...)` with success check `self.engineer.tool_succeeded(tool_log, name)` (Theme 7).
 5. **Persist** if owned by policy (ownership per `inventory/SUMMARY.md § Theme 1`).
 6. **Build frame** — origin = flow name; blocks per `inventory/<flow>.md § Frame shape`; thoughts only when LLM wording *is* the response.
-7. **Complete** — `flow.status = 'Completed'` on success; PEX post-hooks (`_verify`, `_verify_active_post`) handle invariants.
+7. **Complete** — call `self.complete_flow(flow, state, summary)` on success; it sets the status via `write_state` (grounding-gated) and appends the completion record. The completing flow must be top of stack.
 
 ### Error-recovery flowchart (AD-6 codified)
 

@@ -4,12 +4,6 @@ from backend.components.task_artifact import TaskArtifact
 
 class ResearchPolicy(BasePolicy):
 
-    _TAB_TO_STATUS = {
-        'drafts': 'draft', 'draft': 'draft',
-        'posts': 'published', 'post': 'published', 'published': 'published',
-        'notes': 'note', 'note': 'note',
-    }
-
     def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
@@ -20,11 +14,8 @@ class ResearchPolicy(BasePolicy):
         match flow.name():
             case 'browse': return self.browse_policy(flow, state, context, tools)
             case 'summarize': return self.summarize_policy(flow, state, context, tools)
-            case 'check': return self.check_policy(flow, state, context, tools)
-            case 'inspect': return self.inspect_policy(flow, state, context, tools)
             case 'find': return self.find_policy(flow, state, context, tools)
             case 'compare': return self.compare_policy(flow, state, context, tools)
-            case 'diff': return self.diff_policy(flow, state, context, tools)
             case _:
                 return TaskArtifact()
 
@@ -52,9 +43,9 @@ class ResearchPolicy(BasePolicy):
 
         convo_history = context.compile_history()
         history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
-        text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad())
+        text = self.engineer.skill_call(flow, history_with_data, self.scratchpad.read())
 
-        flow.status = 'Completed'
+        self.complete_flow(flow, state, summary, metadata={'tags': tags, 'target': target})
         artifact = TaskArtifact(flow.name(), thoughts=text)
         artifact.add_block({'type': 'list', 'data': {'items': items}})
         return artifact
@@ -80,73 +71,12 @@ class ResearchPolicy(BasePolicy):
             )
             skill_prompt = self.engineer.load_skill_template(flow.name()) + length_hint
             summary = self.engineer.skill_call(
-                flow, history_with_data, self.memory.read_scratchpad(),
+                flow, history_with_data, self.scratchpad.read(),
                 skill_prompt=skill_prompt,
             )
-            flow.status = 'Completed'
+            self.complete_flow(flow, state, f"Summarized '{flow_metadata['title']}'.",
+                metadata={'post_id': post_id})
             artifact = TaskArtifact(flow.name(), thoughts=summary)
-        return artifact
-
-    def check_policy(self, flow, state, context, tools):
-        # Check treats grounding as optional — a filled tab narrows the search.
-        # No entity guard fires; the flow is happy to list everything.
-        grounding = flow.slots[flow.entity_slot]
-        status = None
-        if grounding.check_if_filled():
-            tab = grounding.values[0]['post']
-            status = self._TAB_TO_STATUS.get(tab.lower())
-
-        params = {'status': status} if status else {}
-        result = tools('find_posts', params)
-        items = result['items'] if result['_success'] else []
-
-        summary = f"Found {len(items)} item(s)"
-        if status:
-            summary += f" with status '{status}'"
-        summary += '.'
-        if items:
-            titles = [it['title'] for it in items[:10]]
-            summary += ' Titles: ' + ', '.join(titles)
-
-        convo_history = context.compile_history()
-        history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
-        text = self.engineer.skill_call(flow, history_with_data, self.memory.read_scratchpad())
-
-        flow.status = 'Completed'
-        # Check narrates the result in chat — no Display-Container update.
-        return TaskArtifact(flow.name(), thoughts=text)
-
-    def inspect_policy(self, flow, state, context, tools):
-        if artifact := self._guard_entity(flow): return artifact
-
-        post_id, _, error = self.resolve_source_ids(flow, state, tools)
-        if error: return error
-
-        # Elective-with-default: limit metrics when aspect is filled.
-        params = {'post_id': post_id}
-        aspect_slot = flow.slots['aspect']
-        if aspect_slot.filled:
-            params['metrics'] = [str(aspect_slot.to_dict())]
-
-        result = tools('inspect_post', params)
-        if not result['_success']:
-            artifact = self.error_artifact(flow, 'tool_error',
-                thoughts=result['_message'],
-                failed_tool='inspect_post')
-        else:
-            metrics = {key: val for key, val in result.items() if key != '_success'}
-            # Scratchpad write for cross-turn findings consumption.
-            self.memory.write_scratchpad(flow.name(), {
-                'version': '1',
-                'turn_number': context.turn_id,
-                'used_count': 0,
-                'post_id': post_id,
-                'metrics': metrics,
-            })
-            flow.status = 'Completed'
-            # Inspect narrates in chat — the metrics stay in metadata for
-            # downstream policy consumers, but no block updates the UI.
-            artifact = TaskArtifact(flow.name(), parts={'metrics': metrics})
         return artifact
 
     def find_policy(self, flow, state, context, tools):
@@ -179,8 +109,8 @@ class ResearchPolicy(BasePolicy):
         if items and len(items) <= 8:
             list_data['expanded_ids'] = [it['post_id'] for it in items]
 
-        # Scratchpad write — downstream audit/polish can reference matches.
-        self.memory.write_scratchpad(flow.name(), {
+        # Scratchpad write — downstream audit can reference matches.
+        self.scratchpad.write(flow.name(), {
             'version': '1',
             'turn_number': context.turn_id,
             'used_count': 0,
@@ -191,31 +121,50 @@ class ResearchPolicy(BasePolicy):
                 }
                 for it in items
             ],
-        })
+        }, writer=flow.name())
 
-        flow.status = 'Completed'
+        found = f"Found {len(items)} post(s) matching '{query}'." if query else f'Listed {len(items)} post(s).'
+        self.complete_flow(flow, state, found, metadata={'query': query})
         artifact = TaskArtifact(flow.name())
         artifact.add_block({'type': 'list', 'data': list_data, 'expand': True})
         return artifact
 
     def _expand_query(self, query:str) -> list[str]:
-        """LLM-generate 3-4 semantically similar search terms."""
+        """LLM-generate 3-4 semantically similar search terms, then always append the query's
+        deterministic sub-phrases (split on or/and/commas) and their head nouns. find_posts is
+        a verbatim substring match, so a multi-clause request ('X or Y') only ever matches a
+        post containing the full phrase — recall must not hinge on the LLM's term luck."""
         import json
+        import re
         prompt = (
             f'Return 3-4 short search terms that are semantically similar or related to "{query}". '
             'Include the original term. Reply with ONLY a JSON array of strings, no explanation.'
         )
+        terms = []
         try:
             raw_output = self.engineer(prompt, max_tokens=128)
             cleaned = raw_output.strip().strip('`').removeprefix('json').strip()
-            terms = json.loads(cleaned)
-            if isinstance(terms, list) and terms:
-                return [str(t) for t in terms[:4]]
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, list):
+                terms = [str(term) for term in parsed[:4]]
         except Exception:
             pass
-        return [query]
+        for part in re.split(r'\s+or\s+|\s+and\s+|,', query):
+            part = part.strip()
+            if not part:
+                continue
+            head = part.split()[-1]
+            for sub_term in (part, head) if len(head) >= 5 else (part,):
+                if sub_term not in terms:
+                    terms.append(sub_term)
+        return terms or [query]
 
     def compare_policy(self, flow, state, context, tools):
+        # Version-diff mode: a single-post comparison across versions, signaled
+        # by lookback/mapping. It needs only one grounded post, so it precedes the two-post guard.
+        if flow.slots['lookback'].check_if_filled() or flow.slots['mapping'].check_if_filled():
+            return self._compare_diff(flow, state, context, tools)
+
         if artifact := self._guard_entity(flow): return artifact
 
         # Comparison kind drives both the metrics surfaced and the prose framing.
@@ -242,26 +191,24 @@ class ResearchPolicy(BasePolicy):
         if self.ambiguity.present():
             return TaskArtifact(flow.name())
 
-        flow.status = 'Completed'
+        self.complete_flow(flow, state, text or 'Compared the two posts.',
+            metadata={'post_ids': [posts[0]['post_id'], posts[1]['post_id']]})
         artifact = TaskArtifact(flow.name(), thoughts=text)
         artifact.add_block({'type': 'compare', 'data': {'left': posts[0], 'right': posts[1]}, 'expand': True})
         return artifact
 
-    def diff_policy(self, flow, state, context, tools):
-        if artifact := self._guard_entity(flow): return artifact
-
-        text, tool_log = self.llm_execute(flow, state, context, tools)
-        flow.status = 'Completed'
-        artifact = TaskArtifact(flow.name(), thoughts=text)
-        # Diff compares two code versions — users need to SEE the diff visually, not just hear it
-        # narrated. Surface the structured diff via a compare block so the frontend can render it.
-        # extract_tool_result returns the success payload (with _* keys stripped) or {} if the
-        # tool wasn't called or its call failed. Non-empty dict = success path.
-        diff_result = self.engineer.extract_tool_result(tool_log, 'diff_section')
-        if diff_result:
-            artifact.add_block({'type': 'compare', 'data': {
-                'left':    {'title': 'Original', 'content': diff_result['source']},
-                'right':   {'title': 'Updated',  'content': diff_result['target']},
-                'content': diff_result['diff'],
-            }})
-        return artifact
+    def _compare_diff(self, flow, state, context, tools):
+        """Single-post version diff. Resolves one post (+ section) and
+        lets the skill call diff_section against the requested prior version (lookback) or a
+        draft-vs-published mapping. Only one grounded post is required, unlike the two-post compare."""
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
+        if error: return error
+        if not post_id:
+            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
+            return TaskArtifact(flow.name())
+        text, _ = self.llm_execute(flow, state, context, tools)
+        if self.ambiguity.present():
+            return TaskArtifact(flow.name())
+        self.complete_flow(flow, state, text or 'Diffed the section against a prior version.',
+            metadata={'post_id': post_id})
+        return TaskArtifact(flow.name(), thoughts=text)

@@ -77,7 +77,7 @@ Create input and output schemas for each tool. Follow these rules:
 - `additionalProperties: false`
 
 **Output schema**:
-- Always include `status` field (success/error)
+- Always include a `_success` boolean field
 - Data in a `result` field (object or array)
 - Include `metadata` for pagination, timestamps, source attribution
 - Shape matches the block type (table data → array, card → object)
@@ -110,25 +110,17 @@ Create input and output schemas for each tool. Follow these rules:
 
 ### Step 5 — Define Error Contracts
 
-Every tool failure returns a structured envelope with `error_category`:
+Every tool returns the same flat dict: a `_success` boolean, plus `_error` and `_message` on failure.
+There is **no** `status`, `error_category`, or `retryable` field — a failed tool is classified into the closed
+8-code violation vocabulary by the policy that called it, not by the tool itself.
 
-| Error category | HTTP analog | Retryable | PEX recovery strategy |
-|---|---|---|---|
-| validation_error | 400 | no | Slot correction |
-| auth_error | 401/403 | no | Credential refresh → retry |
-| not_found | 404 | no | Slot correction (entity doesn't exist) |
-| rate_limit | 429 | yes | Retry with backoff |
-| timeout | 408 | depends on idempotency | Retry if idempotent |
-| server_error | 500 | yes | Retry, then graceful degradation |
-
-Error envelope structure:
+Error dict structure:
 
 ```json
 {
-  "status": "error",
-  "error_category": "not_found",
-  "message": "Recipe 'chicken marsala' not found in database",
-  "retryable": false,
+  "_success": false,
+  "_error": "not_found",
+  "_message": "Recipe 'chicken marsala' not found in database",
   "metadata": { "tool_id": "recipe_search", "attempt": 1 }
 }
 ```
@@ -154,6 +146,8 @@ recipe_search:
   tool_id: recipe_search
   name: "Search recipes"
   description: "Search recipe database by ingredients, cuisine, or dietary restriction"
+  scope: flow                  # only flows that declare it
+  dispatch: service            # external service, routed via _tools
   input_schema: schemas/recipe_search.json
   output_schema: schemas/recipe_search_output.json
   idempotent: true
@@ -185,26 +179,28 @@ class RecipeService:
                exact: bool = False) -> dict:
         """tool_id: recipe_search"""
         rows = self.db.execute(...)
-        return {'status': 'success', 'result': rows,
+        return {'_success': True, 'result': rows,
                 'metadata': {'total_count': len(rows), 'source': 'recipe_db'}}
 ```
 
 **Rules**:
 - One class per system: `RecipeService`, `GitHubService`, `NutritionService`
 - Methods mirror tool naming: `service.verb(params)`
-- All methods return envelopes (success or error, never raw returns)
+- All methods return a result dict (success or error, never raw returns)
 - Instantiated at startup, injected into policies
 - Connection state on the class, methods are stateless beyond `self`
 
-### Step 9 — Component Tools (Not in Manifest)
+### Step 9 — Component Tools (Universal-Scope Manifest Entries)
 
-Some components are exposed as tools to skills during PEX execution. These are NOT registered in the tool manifest — PEX provides them directly.
+Some components are exposed as tools to skills during PEX execution. These ARE in the one unified manifest as universal-scope entries (`scope: universal`, `dispatch: internal`), authored in `shared/schemas/components/` and given to every skill — alongside the per-flow-declared domain tools.
 
 | Component tool | Operations |
 |---|---|
-| context_coordinator | Read conversation history |
-| memory_manager | Read/write scratchpad, read preferences |
-| flow_stack | Read slot values, read flow metadata |
+| `append_to_scratchpad` / `read_from_scratchpad` | append findings (triggers NLU) / read prior findings |
+| `understand` | read the serialized Dialogue State belief |
+| `handle_ambiguity` | declare / present / ask / resolve |
+| `recap` / `recall` / `retrieve` | MEM L1 / L2 / L3 |
+| `flow_stack` | read slot values, prior flow results |
 
 These + 1–3 flow-specific tools = 5–7 total tools per skill invocation.
 
@@ -233,8 +229,10 @@ Store credentials in `.env` (never commit). Verify with a connectivity check scr
 | Create | `<domain>/schemas/<tool_id>.json` | JSON Schema file per tool (input + output) |
 | Create | `shared/schemas/sql_execute.json` | Canonical tool schemas (shared across domains) |
 | Create | `shared/schemas/python_execute.json` | Canonical tool schemas |
-| Create | `shared/schemas/components/context_coordinator.json` | Component tool schemas (not in manifest) |
-| Create | `shared/schemas/components/memory_manager.json` | Component tool schemas |
+| Create | `shared/schemas/components/context_coordinator.json` | Component tool schemas — `recap` (universal-scope manifest entry) |
+| Create | `shared/schemas/components/session_scratchpad.json` | Component tool schemas — scratchpad |
+| Create | `shared/schemas/components/user_preferences.json` | Component tool schemas — `recall` |
+| Create | `shared/schemas/components/business_context.json` | Component tool schemas — `retrieve` |
 | Create | `shared/schemas/components/flow_stack.json` | Component tool schemas |
 | Create | `<domain>/.env.example` | Document required API keys and credentials |
 
@@ -246,13 +244,13 @@ Store credentials in `.env` (never commit). Verify with a connectivity check scr
 - [ ] Tool count ≥ flow count (each flow has at least one tool)
 - [ ] All JSON Schemas are valid and well-formed
 - [ ] Input schemas have `description` on every field
-- [ ] Output schemas include `status` and `result` fields
+- [ ] Output schemas include `_success` and `result` fields
 - [ ] All tools have `idempotent` annotation (true or false)
 - [ ] All tools have `timeout_ms` configured
 - [ ] Lethal Trifecta: no tool has all 3 capability tags true without `requires_approval: true`
-- [ ] Error contract: all 6 error categories are documented
+- [ ] Error contract: failure dict is `_success`/`_error`/`_message` (no `status`/`error_category`/`retryable`)
 - [ ] Tool naming follows `entity_verb` pattern, snake_case, max 30 chars
-- [ ] Service classes return structured envelopes (never raw returns)
+- [ ] Service classes return structured dicts (never raw returns)
 - [ ] External API connections verified (if applicable)
-- [ ] Component tool schemas exist in `shared/schemas/components/`
+- [ ] Component tool schemas exist in `shared/schemas/components/` and are registered as universal-scope manifest entries
 - [ ] `.env.example` documents all required environment variables

@@ -24,7 +24,6 @@ _TASK_SUFFIXES = {
     'contemplate': 'You are re-evaluating a failed flow detection. Respond with only valid JSON.',
     'repair_slot': 'Reply with ONLY the best matching valid option, or "NONE" if no match is reasonable.',
     'skill': '',
-    'naturalize': 'Rewrite the given templated response to sound more natural. Keep the same information. Do not add information. Respond with ONLY the rewritten text.',
     'quality_check': (
         'You are a quality checker. Given recent conversation history, '
         'the user\'s latest request, and the agent\'s output (which may '
@@ -214,7 +213,7 @@ class PromptEngineer:
         model_id = self._resolve_model(model)
 
         max_num_calls = 8
-        if flow.name() in ['audit', 'refine', 'rework', 'compose', 'simplify', 'add']:
+        if flow.name() in ['audit', 'refine', 'rework', 'compose']:
             max_num_calls *= 2
 
         family = self._model_family(model)

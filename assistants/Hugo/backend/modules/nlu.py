@@ -1,10 +1,8 @@
 import logging
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 log = logging.getLogger(__name__)
 
-from backend.components.dialogue_state import DialogueState
 from backend.components.flow_stack import flow_classes
 from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt, render_flow_catalog
 from backend.prompts.for_nlu import build_slot_filling_prompt
@@ -13,14 +11,6 @@ from backend.utilities.services import PostService
 from schemas.ontology import FLOW_CATALOG, Intent
 from utils.helper import _DAX_LOOKUP, edge_flows_for, dax2flow, flow2dax
 
-
-_SHORTCUTS: list[tuple[re.Pattern, str]] = [
-    (re.compile(r'^(hi|hello|hey)\b', re.I), 'chat'),
-    (re.compile(r'^(help|what can you do)\b', re.I), 'chat'),
-    (re.compile(r'^(bye|goodbye|exit|quit)\b', re.I), 'chat'),
-    (re.compile(r'\bwhat.*(next|now)\b', re.I), 'next'),
-    (re.compile(r'\bstatus\b', re.I), 'check'),
-]
 
 _ENSEMBLE_VOTERS = [
     {'model': 'low',  'label': 'low',  'weight': 0.20},
@@ -88,80 +78,69 @@ class NLU:
         self.engineer = engineer
         self.world = world
         self.flow_stack = world.flow_stack
+        self.scratchpad = world.scratchpad
         self._posts = PostService()
 
-    def understand(self, user_text:str, context, dax:str|None=None, payload:dict|None=None):
-        gold_dax = dax or self.prepare(user_text)
-        if gold_dax:
-            branch = 'react'
-            state = self.react(gold_dax, payload or {})
-        elif self.requires_contemplation():
-            branch = 'contemplate'
+    def understand(self, op:str, user_text:str='', dax:str|None=None, payload:dict|None=None):
+        """The single NLU entry the Assistant calls. The Assistant picks the op — `react` (a
+        click; the dax names the flow), `think` (an utterance; ensemble detection), or
+        `contemplate` (a failed-flow re-route). Each mode detects + fills a TRANSIENT flow and
+        writes the detection onto the session state's belief (pred_intent / pred_flows /
+        confidence / pred_slots). NLU never touches the flow stack — PEX stages and activates."""
+        if op == 'react':
+            state = self.react(dax, payload or {})
+        elif op == 'contemplate':
             state = self.contemplate(user_text)
         else:
-            branch = 'think'
             state = self.think(user_text, payload or {})
-        log.info('[ambig-trace] dispatch=%s ambig_level=%s ambig_meta=%s',
-                 branch, self.ambiguity.level, self.ambiguity.metadata)
-
-        if self.ambiguity.present():
-            self.ambiguity.resolve()
         return self.validate(state)
 
     # ── Public operational modes ──────────────────────────────────────
-
-    def prepare(self, user_text:str) -> str | None:
-        text = user_text.strip()
-        if len(text) < 2:
-            raise ValueError('User text is too short')
-        for pattern, flow_name in _SHORTCUTS:
-            if pattern.search(text):
-                return '{000}'
-        return None
 
     def think(self, user_text:str, payload:dict={}):
         result = self.predict(user_text)
         flow_name = result['flow_name']
 
-        flow = self._push_or_get(flow_name)
+        flow = flow_classes[flow_name]()            # transient — detection writes belief, no push
         self._fill_slots(flow, payload)
-        state = self._build_state(flow_name=flow_name, confidence=result['confidence'])
-        state.pred_flows = result.get('pred_flows', [])
+        self._repair_entities(self.world.current_state(), flow)
+        state = self._write_belief(flow_name, result['confidence'], result['pred_flows'], flow)
 
         if self.ambiguity.needs_clarification(state.confidence):
             self.ambiguity.declare(
                 'general',
-                metadata={'top_detection': state.flow_name()},
-                observation=f'Low confidence ({state.confidence:.2f}) on flow "{state.flow_name()}"',
+                metadata={'top_detection': flow_name},
+                observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"',
             )
         return state
 
     def contemplate(self, user_text:str):
-        prev = self.world.current_state()
-        failed_flow = prev.flow_name() if prev else None
-        failure_reason = self.ambiguity.observation
-
-        detection = self._check_routing(user_text, failed_flow, failure_reason)
+        state = self.world.current_state()
+        failed_flow = state.flow_name(string=True)
+        detection = self._check_routing(user_text, failed_flow, self.ambiguity.observation)
         flow_name = detection['flow_name']
-        new_flow = self._push_or_get(flow_name)
-        self._fill_slots(new_flow, payload={})
 
-        return self._build_state(flow_name=flow_name, confidence=detection['confidence'])
+        flow = flow_classes[flow_name]()            # transient — belief-only, no push
+        self._fill_slots(flow, {})
+        return self._write_belief(flow_name, detection['confidence'],
+            [{'flow_name': flow_name, 'confidence': detection['confidence'], 'votes': 1}], flow)
 
     def react(self, gold_dax:str, payload:dict={}):
-        """Automatically create the flow since we know the correct DAX."""
+        """A click resolved the flow via its dax — fill a transient flow and write belief."""
         flow_name = dax2flow(gold_dax)
-        flow = self._push_or_get(flow_name)
-        state = self._build_state(flow_name, confidence=0.99)
-        state, payload = self._fill_slices(state, payload)
+        flow = flow_classes[flow_name]()            # transient — belief-only, no push
+        _, payload = self._fill_slices(self.world.current_state(), payload)
         self._fill_slots(flow, payload)
-        return state
+        self._repair_entities(self.world.current_state(), flow)
+        return self._write_belief(flow_name, 0.99,
+                                  [{'flow_name': flow_name, 'confidence': 0.99, 'votes': 1}], flow)
 
     def validate(self, state):
         cat = FLOW_CATALOG.get(state.flow_name(string=True))
         if not cat:
             state.pred_intent = 'Converse'
             state.pred_flow = flow2dax('chat')
+            state.pred_flows = [{'flow_name': 'chat', 'confidence': 0.3, 'votes': 0}]
             state.confidence = 0.3
             return state
 
@@ -355,7 +334,10 @@ class NLU:
                 return parsed
             except Exception as ecp:
                 log.warning('NLU vote error (%s): %s', voter['label'], ecp)
-                self._raise_if_debug(ecp)
+                # Provider quota/rate-limit loss (e.g. Gemini 429 RESOURCE_EXHAUSTED) degrades
+                # the ensemble by design — debug re-raise is for schema/code bugs, not outages.
+                if 'RESOURCE_EXHAUSTED' not in str(ecp) and '429' not in str(ecp):
+                    self._raise_if_debug(ecp)
                 return None
 
         votes: list[dict] = []
@@ -371,14 +353,14 @@ class NLU:
         if not votes:
             return {
                 'flow_name': 'chat', 'confidence': 0.3,
-                'pred_flows': [{'flow_name': 'chat', 'confidence': 0.3}],
+                'pred_flows': [{'flow_name': 'chat', 'confidence': 0.3, 'votes': 0}],
             }
 
         return self._tally_votes(votes)
 
     def _flow_candidate_names(self, intent:str|None) -> list[str]:
         if intent is None:
-            return [name for name, cat in FLOW_CATALOG.items() if cat['intent'] != Intent.INTERNAL]
+            return list(FLOW_CATALOG)
         edges = _get_edge_flows_for_intent(intent)
         return [name for name, cat in FLOW_CATALOG.items() if cat['intent'] == intent or name in edges]
 
@@ -411,6 +393,7 @@ class NLU:
                 log.warning('[fill_slots] schema violation flow=%s payload=%s', flow.name(), pred_slots)
                 log.warning('[fill_slots] convo_history=\n%s', convo_history)
                 log.warning('[fill_slots] filled-state: %s', {n: s.filled for n, s in flow.slots.items()})
+                return
             cleaned = self.engineer._strip_nulls(pred_slots['slots'])
             flow.fill_slot_values(cleaned)
 
@@ -492,14 +475,6 @@ class NLU:
         candidates.discard(failed_flow)
         return sorted(candidates)
 
-    def requires_contemplation(self) -> bool:
-        if len(self.flow_stack._stack) == 0:
-            return False
-        if self.ambiguity.present() and self.ambiguity.level != 'general':
-            return False
-        prev = self.world.current_state()
-        return prev.has_issues or prev.keep_going
-
     # ── Support (private) ─────────────────────────────────────────────
 
     @staticmethod
@@ -511,36 +486,27 @@ class NLU:
             return [str(v)[:80] for v in slot.values]
         return None
 
-    def _push_or_get(self, flow_name:str):
-        """Push a new flow or return existing one on the stack."""
-        existing = self.flow_stack.find_by_name(flow_name)
-        if existing:
-            return existing
-        try:
-            return self.flow_stack.stackon(flow_name)
-        except (ValueError, RuntimeError):
-            return None
-
-    def _build_state(self, flow_name:str, confidence:float):
-        prev = self.world.current_state()
+    def _write_belief(self, flow_name:str, confidence:float, pred_flows:list, flow):
+        """Write the detection onto the session state's belief IN PLACE — the single source of
+        truth for predictions. Mutates current_state; never inserts a new per-turn state and
+        never pushes a flow (PEX stages and activates)."""
+        state = self.world.current_state()
         cat = FLOW_CATALOG.get(flow_name, {})
-        pred_intent = cat.get('intent', Intent.CONVERSE)
-
-        state = DialogueState(intent=pred_intent, dax=flow2dax(flow_name),
-            turn_count=prev.turn_count + 1, confidence=confidence)
-        state.has_plan = prev.has_plan
-        state.natural_birth = prev.natural_birth
-        state.active_post = prev.active_post
-
-        self.world.insert_state(state)
+        state.pred_intent = cat.get('intent', Intent.CONVERSE)
+        state.pred_flow = flow2dax(flow_name)
+        state.confidence = confidence
+        state.pred_flows = pred_flows
+        state.pred_slots = flow.slot_values_dict()
         return state
 
     def _tally_votes(self, votes:list[dict]) -> dict:
         flow_weights: dict[str, float] = {}
+        flow_votes: dict[str, int] = {}
         for vote in votes:
             name = vote['flow_name']
             weight = vote.get('_weight', 1.0 / len(votes))
             flow_weights[name] = flow_weights.get(name, 0.0) + weight
+            flow_votes[name] = flow_votes.get(name, 0) + 1
 
         total_weight = sum(flow_weights.values())
         best_flow = max(flow_weights, key=flow_weights.get)
@@ -548,7 +514,7 @@ class NLU:
 
         ranked = sorted(flow_weights.items(), key=lambda x: x[1], reverse=True)
         pred_flows = [
-            {'flow_name': name, 'confidence': weight / total_weight}
+            {'flow_name': name, 'confidence': weight / total_weight, 'votes': flow_votes[name]}
             for name, weight in ranked
         ]
 

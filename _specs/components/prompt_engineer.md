@@ -1,6 +1,9 @@
 # Prompt Engineer
 
-Provider-agnostic prompt interface. Assembles, executes, and validates prompts for any calling component. Owns model dispatch, prompt caching, retry/backoff, and structured-output parsing.
+A [PEX](../modules/pex.md) surface: the provider-agnostic prompt interface that every module's model call
+routes through (NLU detection, MEM summarization, PEX skills), owned by PEX as the module that executes. It
+assembles, executes, and validates prompts for any calling component, and owns model dispatch, prompt caching,
+retry/backoff, and structured-output parsing.
 
 ## Provider-Agnostic Dispatch
 
@@ -12,7 +15,7 @@ Provider-agnostic prompt interface. Assembles, executes, and validates prompts f
 
 | Tier | Used for |
 |---|---|
-| `low` | Fast classification, lightweight tools, naturalization |
+| `low` | Fast classification, lightweight tools |
 | `med` | Skill execution, slot-filling, default flow detection |
 | `high` | Difficult re-routing, plan decomposition, ensemble tiebreakers |
 
@@ -41,7 +44,7 @@ text, tool_log = engineer.tool_call(flow, convo_history, scratchpad, tool_defs,
 - `skill_call` — single-shot LLM call; returns text only. Used when the skill produces prose or structured output that the policy parses.
 - `tool_call` — agentic loop with an 8-iteration cap; returns `(text, tool_log)`. Used when the skill must select tools and persist results.
 
-`PromptEngineer` is also **callable** for one-shot prompts outside the skill envelope: `engineer(prompt, task='<task>', max_tokens=N)` uses `_TASK_SUFFIXES[task]` for the system prompt.
+`PromptEngineer` is also **callable** for one-shot prompts that don't go through a skill: `engineer(prompt, task='<task>', max_tokens=N)` uses `_TASK_SUFFIXES[task]` for the system prompt.
 
 The deterministic-vs-agentic split is implied by the policy code — a deterministic flow calls `tools(name, params)` directly and never enters the engineer's skill path. There is no `flow.deterministic` flag.
 
@@ -103,7 +106,6 @@ Templates live under `backend/prompts/`, split by consumer:
 | `for_experts.py` | Intent & flow classification | NLU detection |
 | `for_nlu.py` | Slot-filling templates | NLU slot phase |
 | `for_pex.py` | Policy execution helpers | PEX policies |
-| `for_res.py` | Naturalization templates | RES generate |
 | `for_contemplate.py` | Re-routing prompts | NLU contemplate |
 | `nlu/<intent>_slots.py` | Per-intent slot-filling prompt blocks | NLU slot phase |
 | `pex/sys_prompts.py` | Per-intent Background blocks | Skill system prompt |

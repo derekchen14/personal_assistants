@@ -1,0 +1,1306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Assistant Factory — Vol. I, Hugo</title>
+<meta name="description" content="A framework for building AI assistants that ask before they act." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=Geist:wght@300..800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --paper:    #f4f0e8;
+    --paper-2:  #ebe6d9;
+    --ink:      #15161a;
+    --mute:     #6b6e75;
+    --rule:     #d6cfbe;
+    --rule-2:   #c2b9a2;
+    --surface:  #fbf8f1;
+    --vermil:   #c8431e;
+    --vermil-2: #9b3014;
+    --cobalt:   #1c3aa3;
+    --tint:     #f7e9e3;
+    --grain-op: 0.04;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Geist', system-ui, sans-serif;
+    font-feature-settings: 'ss01', 'ss02', 'cv11';
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: geometricPrecision;
+  }
+
+  /* Subtle paper grain overlay */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    opacity: var(--grain-op);
+    mix-blend-mode: multiply;
+  }
+
+  /* Type primitives */
+  .display {
+    font-family: 'Fraunces', Georgia, serif;
+    font-variation-settings: 'opsz' 144, 'SOFT' 30, 'WONK' 1;
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 0.94;
+  }
+  .display-italic {
+    font-family: 'Fraunces', Georgia, serif;
+    font-style: italic;
+    font-variation-settings: 'opsz' 144, 'SOFT' 100, 'WONK' 1;
+    font-weight: 400;
+    letter-spacing: -0.018em;
+  }
+  .pull {
+    font-family: 'Fraunces', Georgia, serif;
+    font-style: italic;
+    font-variation-settings: 'opsz' 24, 'SOFT' 100, 'WONK' 1;
+    font-weight: 400;
+    letter-spacing: -0.012em;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'ss02', 'cv01'; }
+  .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--mute);
+  }
+  .accent { color: var(--vermil); }
+  .ink    { color: var(--ink); }
+  .mute   { color: var(--mute); }
+
+  /* Layout primitives */
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 32px; position: relative; z-index: 2; }
+  @media (max-width:720px) { .wrap { padding: 0 22px; } }
+
+  .grid-12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 24px; }
+  @media (max-width:900px) { .grid-12 { grid-template-columns: repeat(6, 1fr); gap: 16px; } }
+
+  .rule { height: 1px; background: var(--rule); width: 100%; }
+  .rule-strong { height: 1px; background: var(--rule-2); }
+
+  /* Visible grid backdrop on desktop only — engineering-document feel */
+  .grid-bg {
+    position: absolute; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(to right, transparent calc((100%/12) - 1px), var(--rule) calc((100%/12) - 1px), var(--rule) calc(100%/12), transparent 100%);
+    background-size: calc(100% + 1px) 100%;
+    opacity: .35;
+    -webkit-mask-image: linear-gradient(180deg, transparent, black 40px, black calc(100% - 40px), transparent);
+            mask-image: linear-gradient(180deg, transparent, black 40px, black calc(100% - 40px), transparent);
+  }
+  @media (max-width:900px) { .grid-bg { display: none; } }
+
+  /* Section numerals */
+  .num {
+    font-family: 'Fraunces', Georgia, serif;
+    font-style: italic;
+    font-variation-settings: 'opsz' 144, 'SOFT' 100, 'WONK' 1;
+    font-weight: 400;
+    font-size: clamp(96px, 14vw, 200px);
+    line-height: 0.85;
+    color: var(--vermil);
+    letter-spacing: -0.04em;
+    user-select: none;
+  }
+  .num-light { color: var(--rule-2); }
+
+  /* Top masthead */
+  .masthead {
+    border-bottom: 1px solid var(--rule);
+    background: var(--paper);
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: saturate(120%);
+  }
+  .masthead-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 32px; gap: 24px;
+    max-width: 1240px; margin: 0 auto;
+  }
+  .mark {
+    display: inline-flex; align-items: baseline; gap: 8px;
+  }
+  .mark .glyph {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-variation-settings: 'opsz' 24, 'SOFT' 100, 'WONK' 1;
+    font-size: 22px;
+    color: var(--vermil);
+    line-height: 1;
+  }
+  .mark .name {
+    font-family: 'Geist', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: -0.005em;
+  }
+  .mark .vol {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--mute);
+  }
+  nav.top { display: flex; gap: 26px; font-size: 13.5px; font-weight: 500; }
+  nav.top a {
+    color: var(--ink); text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color .18s ease, color .18s ease;
+  }
+  nav.top a:hover { color: var(--vermil); border-color: var(--vermil); }
+  @media (max-width:760px) { nav.top { display: none; } }
+
+  /* Hairline animation utility */
+  @keyframes drawX { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes rise  { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes fadeIn{ from { opacity: 0; } to { opacity: 1; } }
+
+  .stage > * { animation: rise .8s cubic-bezier(.2,.7,.1,1) both; }
+  .stage > *:nth-child(1) { animation-delay: .05s; }
+  .stage > *:nth-child(2) { animation-delay: .18s; }
+  .stage > *:nth-child(3) { animation-delay: .34s; }
+  .stage > *:nth-child(4) { animation-delay: .5s; }
+  .stage > *:nth-child(5) { animation-delay: .64s; }
+  .stage > *:nth-child(6) { animation-delay: .8s; }
+
+  .draw-rule {
+    transform-origin: left center;
+    animation: drawX .9s cubic-bezier(.2,.7,.1,1) both;
+    animation-delay: .1s;
+  }
+
+  /* Hero */
+  .hero {
+    padding: 88px 0 96px;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+  }
+  .hero-h1 {
+    font-size: clamp(64px, 10.5vw, 156px);
+  }
+  .hero-h1 .lt {
+    color: var(--vermil);
+  }
+  .kicker-row {
+    display: flex; align-items: center; gap: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--rule-2);
+    margin-bottom: 36px;
+  }
+  .kicker-row .label { color: var(--ink); }
+  .kicker-row .dot {
+    width: 8px; height: 8px; background: var(--vermil); border-radius: 999px; display: inline-block;
+  }
+  .lede {
+    font-family: 'Fraunces', Georgia, serif;
+    font-variation-settings: 'opsz' 60, 'SOFT' 30, 'WONK' 0;
+    font-weight: 350;
+    font-size: clamp(20px, 2.4vw, 26px);
+    line-height: 1.32;
+    letter-spacing: -0.012em;
+    max-width: 26ch;
+    margin-top: 28px;
+  }
+  .lede em {
+    font-style: italic;
+    font-variation-settings: 'opsz' 60, 'SOFT' 100, 'WONK' 1;
+    color: var(--vermil);
+  }
+  .sublede {
+    color: var(--mute);
+    font-size: 16.5px;
+    line-height: 1.6;
+    max-width: 60ch;
+    margin-top: 28px;
+  }
+  .cta-row { margin-top: 36px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 12px 18px; border-radius: 999px;
+    font-family: 'Geist', sans-serif; font-weight: 600; font-size: 14px;
+    text-decoration: none;
+    transition: transform .15s ease, background .15s ease, color .15s ease;
+  }
+  .btn-primary { background: var(--ink); color: var(--paper); }
+  .btn-primary:hover { background: var(--vermil); }
+  .btn-ghost { color: var(--ink); border: 1px solid var(--ink); }
+  .btn-ghost:hover { background: var(--ink); color: var(--paper); }
+  .btn .arrow { transition: transform .2s ease; }
+  .btn:hover .arrow { transform: translateX(3px); }
+
+  /* Sidebar manifesto */
+  .manifesto {
+    border: 1px solid var(--rule-2);
+    background: var(--surface);
+    padding: 22px 22px;
+    position: relative;
+  }
+  .manifesto::before {
+    content: ""; position: absolute; left: 0; top: 0; height: 4px; width: 56px;
+    background: var(--vermil);
+  }
+  .manifesto .label { display: block; margin-bottom: 12px; }
+  .manifesto p {
+    font-family: 'Fraunces', Georgia, serif;
+    font-style: italic;
+    font-variation-settings: 'opsz' 24, 'SOFT' 100, 'WONK' 1;
+    font-weight: 400;
+    font-size: 19px; line-height: 1.4;
+    margin: 0;
+    letter-spacing: -0.008em;
+  }
+  .manifesto .footnote {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--mute);
+    margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--rule);
+  }
+
+  /* Section frame */
+  section.s {
+    padding: 96px 0;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+  }
+  section.s.alt { background: var(--paper-2); }
+
+  .section-head {
+    display: grid; grid-template-columns: 1fr auto; gap: 24px;
+    margin-bottom: 64px; align-items: end;
+  }
+  .section-head h2 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-variation-settings: 'opsz' 96, 'SOFT' 30, 'WONK' 1;
+    font-weight: 400;
+    font-size: clamp(40px, 6vw, 76px);
+    line-height: 0.95;
+    letter-spacing: -0.022em;
+    margin: 6px 0 0;
+  }
+  .section-head h2 em {
+    font-style: italic;
+    font-variation-settings: 'opsz' 96, 'SOFT' 100, 'WONK' 1;
+    color: var(--vermil);
+  }
+  .section-head .meta {
+    text-align: right;
+    color: var(--mute);
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.14em;
+    text-transform: uppercase;
+    line-height: 1.5;
+  }
+
+  /* Specimen card (numbered card style) */
+  .specimen {
+    border: 1px solid var(--rule-2);
+    background: var(--surface);
+    padding: 32px;
+    position: relative;
+  }
+  .specimen .spec-num {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-variation-settings: 'opsz' 96, 'SOFT' 100, 'WONK' 1;
+    font-size: 56px; line-height: 1;
+    color: var(--vermil);
+    margin-bottom: 16px;
+  }
+  .specimen h3 {
+    font-family: 'Fraunces', serif;
+    font-variation-settings: 'opsz' 36, 'SOFT' 30, 'WONK' 0;
+    font-weight: 500;
+    font-size: 26px; line-height: 1.18;
+    letter-spacing: -0.014em;
+    margin: 8px 0 16px;
+  }
+  .specimen h3 em {
+    font-style: italic;
+    font-variation-settings: 'opsz' 36, 'SOFT' 100, 'WONK' 1;
+    color: var(--vermil);
+  }
+
+  /* Mark/highlight */
+  .hl {
+    background: linear-gradient(120deg, rgba(200,67,30,.18), rgba(200,67,30,.18));
+    background-size: 100% 38%;
+    background-repeat: no-repeat;
+    background-position: 0 86%;
+    padding: 0 2px;
+  }
+
+  /* Bottleneck contrast cards */
+  .compare {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 28px;
+  }
+  @media (max-width:820px) { .compare { grid-template-columns: 1fr; } }
+  .compare .col {
+    border: 1px solid var(--rule-2);
+    background: var(--surface);
+    padding: 26px;
+    position: relative;
+  }
+  .compare .col.bad { background: var(--surface); }
+  .compare .col.good { background: #fff8f3; border-color: var(--vermil); }
+  .compare .col h4 {
+    font-family: 'Geist', sans-serif; font-weight: 700;
+    font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase;
+    margin: 0 0 18px; color: var(--mute);
+  }
+  .compare .col.good h4 { color: var(--vermil); }
+  .compare .col pre {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13.5px; line-height: 1.7;
+    margin: 0; white-space: pre-wrap;
+    color: var(--ink);
+  }
+  .compare .col .pin {
+    margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--rule);
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-variation-settings: 'opsz' 24, 'SOFT' 100, 'WONK' 1;
+    font-size: 16px; color: var(--mute);
+  }
+  .compare .col.good .pin { color: var(--vermil-2); }
+  .slash { color: var(--vermil); }
+
+  /* Three principles row */
+  .principles {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
+    border-top: 1px solid var(--rule-2);
+  }
+  @media (max-width:900px) { .principles { grid-template-columns: 1fr; } }
+  .principle {
+    padding: 36px 28px 36px 0;
+    border-right: 1px solid var(--rule-2);
+    border-bottom: 1px solid var(--rule-2);
+    position: relative;
+  }
+  .principle:last-child { border-right: none; }
+  .principle .px-num {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-variation-settings: 'opsz' 96, 'SOFT' 100, 'WONK' 1;
+    font-size: 80px; line-height: .85;
+    color: var(--vermil);
+    letter-spacing: -0.04em;
+  }
+  .principle h3 {
+    font-family: 'Fraunces', serif;
+    font-variation-settings: 'opsz' 36, 'SOFT' 30, 'WONK' 0;
+    font-weight: 500;
+    font-size: 26px; line-height: 1.18;
+    letter-spacing: -0.014em;
+    margin: 18px 0 12px;
+  }
+  .principle p { color: var(--ink); font-size: 16px; line-height: 1.6; margin: 0; }
+  .principle .marg {
+    margin-top: 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--mute); letter-spacing: 0.06em;
+  }
+  @media (min-width:901px) {
+    .principle { padding-left: 28px; }
+    .principle:first-child { padding-left: 0; }
+    .principle:nth-child(2) { padding-left: 28px; }
+  }
+
+  /* 10-step Hugo workflow — engineering spec table */
+  .workflow {
+    border: 1px solid var(--rule-2);
+    background: var(--surface);
+  }
+  .work-row {
+    display: grid;
+    grid-template-columns: 90px 1.4fr 2fr 140px;
+    gap: 24px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--rule);
+    align-items: baseline;
+  }
+  .work-row:last-child { border-bottom: none; }
+  .work-row .step {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-variation-settings: 'opsz' 36, 'SOFT' 100, 'WONK' 1;
+    font-size: 28px; line-height: 1; color: var(--vermil);
+  }
+  .work-row .name {
+    font-family: 'Geist', sans-serif; font-weight: 700; font-size: 16px;
+  }
+  .work-row .desc { color: var(--mute); font-size: 14.5px; line-height: 1.55; }
+  .work-row .stage {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--mute);
+    text-align: right;
+  }
+  .work-row.head {
+    background: var(--paper-2);
+  }
+  .work-row.head .name,
+  .work-row.head .desc,
+  .work-row.head .step,
+  .work-row.head .stage {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink);
+    font-weight: 500; font-style: normal;
+  }
+  .work-row.gate {
+    background: #fff8f3;
+  }
+  .work-row.gate .stage { color: var(--vermil); }
+  @media (max-width:760px) {
+    .work-row { grid-template-columns: 60px 1fr; }
+    .work-row .desc, .work-row .stage { grid-column: 2 / -1; }
+  }
+
+  .channels {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px;
+  }
+  .channel {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 6px 12px;
+    border: 1px solid var(--rule-2);
+    background: var(--surface);
+    border-radius: 999px;
+  }
+
+  /* Architecture five components */
+  .arch-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
+    border: 1px solid var(--rule-2); background: var(--surface);
+  }
+  @media (max-width:1000px) { .arch-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width:560px)  { .arch-grid { grid-template-columns: 1fr; } }
+  .arch-cell {
+    padding: 28px 22px;
+    border-right: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    min-height: 220px;
+  }
+  .arch-cell:last-child { border-right: none; }
+  @media (max-width:1000px) {
+    .arch-cell:nth-child(2n) { border-right: none; }
+  }
+  .arch-cell .ax {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--vermil);
+  }
+  .arch-cell h4 {
+    font-family: 'Fraunces', serif;
+    font-variation-settings: 'opsz' 36, 'SOFT' 30, 'WONK' 0;
+    font-weight: 500; font-size: 22px; line-height: 1.2;
+    margin: 12px 0 10px; letter-spacing: -0.014em;
+  }
+  .arch-cell .q {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-variation-settings: 'opsz' 24, 'SOFT' 100, 'WONK' 1;
+    color: var(--vermil-2); font-size: 14px;
+    margin-bottom: 10px;
+  }
+  .arch-cell p { font-size: 14.5px; color: var(--ink); margin: 0; line-height: 1.55; }
+
+  /* Ambiguity meter */
+  .meter {
+    border: 1px solid var(--rule-2);
+    background: var(--surface);
+    padding: 28px;
+    margin-top: 28px;
+  }
+  .meter-bar {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--rule-2);
+    margin-top: 18px;
+    overflow: hidden;
+  }
+  .meter-cell {
+    padding: 18px 16px;
+    border-right: 1px solid var(--rule);
+    background: var(--surface);
+    position: relative;
+  }
+  .meter-cell:last-child { border-right: none; }
+  .meter-cell .lvl {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--vermil);
+  }
+  .meter-cell strong { display: block; margin-top: 8px; font-size: 15px; }
+  .meter-cell em {
+    display: block; margin-top: 6px;
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-variation-settings: 'opsz' 24, 'SOFT' 100, 'WONK' 1;
+    font-size: 13.5px; color: var(--mute);
+  }
+  .meter-cell.fill {
+    background:
+      linear-gradient(90deg, rgba(200,67,30,.16), rgba(200,67,30,0));
+  }
+
+  /* Lineup (the four assistants) */
+  .line {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    border: 1px solid var(--rule-2);
+  }
+  @media (max-width:900px) { .line { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width:540px) { .line { grid-template-columns: 1fr; } }
+  .line .who {
+    padding: 28px;
+    border-right: 1px solid var(--rule-2);
+    background: var(--surface);
+    position: relative;
+  }
+  .line .who:last-child { border-right: none; }
+  @media (max-width:900px) {
+    .line .who:nth-child(2n) { border-right: none; }
+    .line .who:nth-child(-n+2) { border-bottom: 1px solid var(--rule-2); }
+  }
+  .line .num-tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--mute);
+  }
+  .line h3 {
+    font-family: 'Fraunces', serif;
+    font-variation-settings: 'opsz' 96, 'SOFT' 30, 'WONK' 1;
+    font-weight: 400;
+    font-size: 56px; line-height: 1;
+    letter-spacing: -0.025em;
+    margin: 8px 0 14px;
+  }
+  .line h3 em {
+    font-style: italic;
+    font-variation-settings: 'opsz' 96, 'SOFT' 100, 'WONK' 1;
+    color: var(--vermil);
+  }
+  .line p { font-size: 14.5px; color: var(--ink); margin: 0 0 16px; line-height: 1.55; }
+  .stat-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--rule-2); background: var(--paper);
+    color: var(--mute);
+  }
+  .stat-pill.live { color: var(--vermil); border-color: var(--vermil); }
+
+  /* Closing */
+  footer.close {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 96px 0 64px;
+    position: relative;
+  }
+  footer.close .display {
+    font-size: clamp(40px, 7vw, 96px);
+    line-height: 0.95;
+  }
+  footer.close .display em {
+    font-style: italic;
+    font-variation-settings: 'opsz' 144, 'SOFT' 100, 'WONK' 1;
+    color: #ff7a55;
+  }
+  footer.close .meta { color: #b9b3a4; font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+  footer.close a { color: #ff7a55; text-decoration: none; border-bottom: 1px solid currentColor; }
+
+  /* Marginalia (small annotations) */
+  .marginalia {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.04em;
+    color: var(--mute);
+    line-height: 1.5;
+  }
+
+  /* Drop shadow line under hero number */
+  .stamp {
+    display: inline-flex; align-items: baseline; gap: 14px;
+    padding: 6px 14px;
+    border: 1px solid var(--rule-2);
+    background: var(--surface);
+  }
+  .stamp .stamp-num {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-variation-settings: 'opsz' 36, 'SOFT' 100, 'WONK' 1;
+    font-size: 22px; color: var(--vermil); line-height: 1;
+  }
+  .stamp .stamp-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+  }
+
+  /* Small utility */
+  .gap-8  { margin-top: 8px; }
+  .gap-16 { margin-top: 16px; }
+  .gap-24 { margin-top: 24px; }
+  .gap-40 { margin-top: 40px; }
+  .gap-64 { margin-top: 64px; }
+  .col-7 { grid-column: span 7; }
+  .col-5 { grid-column: span 5; }
+  .col-8 { grid-column: span 8; }
+  .col-4 { grid-column: span 4; }
+  .col-12 { grid-column: span 12; }
+  @media (max-width:900px) {
+    .col-7,.col-5,.col-8,.col-4 { grid-column: 1 / -1; }
+  }
+
+  /* Horizontal rule with index */
+  .index-rule {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 18px;
+    align-items: center; margin-bottom: 14px;
+  }
+  .index-rule .label {
+    color: var(--vermil);
+  }
+  .index-rule hr {
+    border: 0; height: 1px; background: var(--rule-2); margin: 0;
+  }
+
+  /* Diagonal accent stripe */
+  .stripe {
+    position: relative; overflow: hidden;
+  }
+  .stripe::after {
+    content: ""; position: absolute; right: -40px; top: -40px;
+    width: 220px; height: 220px;
+    background:
+      repeating-linear-gradient(45deg, var(--vermil) 0 6px, transparent 6px 14px);
+    opacity: .12; pointer-events: none;
+  }
+
+  /* Selectable text accent */
+  ::selection { background: rgba(200,67,30,.22); color: var(--ink); }
+
+  /* Smooth focus */
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--vermil); outline-offset: 2px;
+  }
+
+  /* Reduce motion */
+  @media (prefers-reduced-motion: reduce) {
+    .stage > * { animation: none; }
+    .draw-rule { animation: none; }
+  }
+</style>
+</head>
+
+<body>
+
+<!-- Masthead ============================================================ -->
+<div class="masthead">
+  <div class="masthead-inner">
+    <a class="mark" href="#top" aria-label="Assistant Factory home">
+      <span class="glyph">§</span>
+      <span class="name">Assistant&nbsp;Factory</span>
+      <span class="vol">Vol.&nbsp;I — Hugo</span>
+    </a>
+    <nav class="top">
+      <a href="#bottleneck">The bottleneck</a>
+      <a href="#principles">Principles</a>
+      <a href="#hugo">Hugo</a>
+      <a href="#turn">One turn</a>
+      <a href="#how">How it works</a>
+      <a href="#line">The line</a>
+    </nav>
+  </div>
+</div>
+
+<!-- Hero ================================================================ -->
+<section id="top" class="hero">
+  <div class="grid-bg"></div>
+  <div class="wrap">
+    <div class="grid-12 stage">
+      <div class="col-8" style="display:flex; flex-direction:column;">
+        <div class="kicker-row">
+          <span class="dot"></span>
+          <span class="label">Assistant Factory · The Thesis</span>
+          <span class="mute mono" style="font-size:11px; letter-spacing:.14em; text-transform:uppercase;">a framework for AI assistants</span>
+        </div>
+        <h1 class="display hero-h1">
+          Most agents are<br/>
+          a prompt and a<br/>
+          <span class="display-italic lt">while&nbsp;loop.</span>
+        </h1>
+        <p class="lede">
+          Ours are built around <em>belief</em>, <em>memory</em>,
+          and <em>uncertainty</em> — tracked structurally, so the agent knows what
+          it knows, what it remembers, and what it should ask before acting.
+        </p>
+        <p class="sublede">
+          Assistant Factory builds AI assistants that hold a conversation the way
+          a junior employee does — they keep their place across turns, learn what
+          you mean, and refuse to guess when they shouldn't. Hugo writes posts.
+          Dana works with data. Rowan recruits. Kalli onboards the next assistant.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#principles">See the principles <span class="arrow">→</span></a>
+          <a class="btn btn-ghost" href="#turn">Watch one turn</a>
+        </div>
+      </div>
+
+      <aside class="col-4 manifesto" aria-label="Manifesto">
+        <span class="label">In one sentence</span>
+        <p>
+          "An assistant with a model of you, the conversation, and the work —
+          not a chatbot with a longer context window."
+        </p>
+        <div class="footnote">
+          Long-form thinking →
+          <a href="https://morethanoneturn.com" style="color:var(--vermil);">morethanoneturn.com</a>
+        </div>
+        <div style="margin-top:18px; padding-top:18px; border-top:1px solid var(--rule); display:grid; grid-template-columns:repeat(3,1fr); gap:8px; text-align:center;">
+          <div>
+            <div class="display" style="font-size:36px; color:var(--vermil); line-height:1;">04</div>
+            <div class="label" style="margin-top:4px;">assistants</div>
+          </div>
+          <div>
+            <div class="display" style="font-size:36px; color:var(--vermil); line-height:1;">10</div>
+            <div class="label" style="margin-top:4px;">turn pipeline</div>
+          </div>
+          <div>
+            <div class="display" style="font-size:36px; color:var(--vermil); line-height:1;">04</div>
+            <div class="label" style="margin-top:4px;">levels of unsure</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- § 01 — The bottleneck =============================================== -->
+<section id="bottleneck" class="s">
+  <div class="wrap">
+    <div class="index-rule">
+      <span class="label">§ 01 / Premise</span>
+      <hr class="draw-rule"/>
+      <span class="marginalia">Why another framework</span>
+    </div>
+
+    <div class="section-head">
+      <div>
+        <span class="num">01</span>
+        <h2 class="display">The <em class="display-italic">ambiguity</em><br/>bottleneck.</h2>
+      </div>
+      <div class="meta">
+        Diagnosis<br/>
+        Read time · 90s
+      </div>
+    </div>
+
+    <div class="grid-12">
+      <div class="col-7">
+        <p style="font-size:18px; line-height:1.6;">
+          Most "agent" frameworks live in the same loop: read input, fill a prompt
+          with the tool list and history, parse a tool call, run, repeat. The loop
+          works on demos because demo inputs are well-formed. Production inputs
+          aren't.
+        </p>
+        <p style="font-size:18px; line-height:1.6; margin-top:18px;">
+          Real users say <span class="mono" style="background:var(--paper-2); padding:1px 8px; font-size:14px;">"rework the marathon post"</span>
+          and mean one of six things. They say <span class="mono" style="background:var(--paper-2); padding:1px 8px; font-size:14px;">"end of day"</span>
+          and that means 5pm at a law firm and midnight at a startup. They say
+          <span class="mono" style="background:var(--paper-2); padding:1px 8px; font-size:14px;">"make it pop"</span>
+          and the model has no shared context to ground it.
+        </p>
+        <p style="font-size:18px; line-height:1.6; margin-top:18px;">
+          A typical agent guesses, commits, and hopes. It's not an intelligence
+          problem — the model is plenty smart. It's that the
+          <span class="hl">cost of being wrong</span> is hidden inside a confident
+          answer, and the loop has no way to see it.
+        </p>
+        <p class="pull" style="font-size:22px; line-height:1.4; margin-top:30px; max-width:34ch;">
+          The last mile of agent design isn't tool-use. It's knowing when to stop
+          and ask.
+        </p>
+      </div>
+
+      <div class="col-5">
+        <div class="compare">
+          <div class="col bad">
+            <h4>Typical agent</h4>
+            <pre><span class="slash">user&nbsp;›</span> rework the marathon post
+
+<span style="color:var(--mute)">// model picks a tool, guesses, commits</span>
+<span class="slash">agent&nbsp;›</span> edit_post(id="three-hour-marathon",
+            mode="polish")
+
+<span class="slash">agent&nbsp;›</span> Here is a polished version…</pre>
+            <div class="pin">Wrong post. Wrong scope. No way to notice.</div>
+          </div>
+          <div class="col good">
+            <h4>An Assistant Factory agent</h4>
+            <pre><span class="slash">user&nbsp;›</span> rework the marathon post
+
+<span style="color:var(--mute)">// state.entity has 2 candidates</span>
+<span style="color:var(--mute)">// state.scope is missing</span>
+<span style="color:var(--mute)">// uncertainty.level = "partial" + "specific"</span>
+
+<span class="slash">hugo&nbsp;›</span> Two posts about marathons —
+       <em>How I finally broke three hours</em>
+       or <em>What marathon training taught
+       me about discipline</em>? Rework how —
+       re-outline, re-voice, or polish?</pre>
+            <div class="pin">One question. Two clarifications. Plan held.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- § 02 — Principles =================================================== -->
+<section id="principles" class="s alt">
+  <div class="wrap">
+    <div class="index-rule">
+      <span class="label">§ 02 / Principles</span>
+      <hr/>
+      <span class="marginalia">What every assistant inherits</span>
+    </div>
+
+    <div class="section-head">
+      <div>
+        <span class="num num-light">02</span>
+        <h2 class="display">Three things every<br/>assistant <em class="display-italic">inherits.</em></h2>
+      </div>
+      <div class="meta">
+        Architecture<br/>
+        domain-agnostic
+      </div>
+    </div>
+
+    <div class="principles">
+      <div class="principle">
+        <div class="px-num">A</div>
+        <span class="label">Belief, not transcript</span>
+        <h3>What we think we're <em>doing</em> right now.</h3>
+        <p>
+          The agent carries an explicit object — current goal, entities in play,
+          what's filled, what's missing — that survives between turns. Not a
+          string of past messages re-read every call.
+        </p>
+        <div class="marg">→ stable across long conversations</div>
+      </div>
+      <div class="principle">
+        <div class="px-num">B</div>
+        <span class="label">Memory, layered</span>
+        <h3>What we <em>remember</em>, by horizon.</h3>
+        <p>
+          A short-horizon scratchpad for what we just learned, a per-account
+          preference store for how you work, and slow-moving context about your
+          team. Different reads, different writes.
+        </p>
+        <div class="marg">→ "the usual tone" actually means something</div>
+      </div>
+      <div class="principle">
+        <div class="px-num">C</div>
+        <span class="label">Uncertainty, declared</span>
+        <h3>What we <em>don't</em> know — at what level.</h3>
+        <p>
+          Calibrated and inspectable. Each turn the agent rates how unsure it is
+          about each part of the request, and that rating decides whether to
+          ask, confirm, or proceed.
+        </p>
+        <div class="marg">→ asking one good question is a feature</div>
+      </div>
+    </div>
+
+    <p class="pull gap-40" style="font-size:24px; max-width:46ch;">
+      Together these are why the agent doesn't reset on turn 7 — it
+      <em style="color:var(--vermil)">resumes.</em>
+    </p>
+  </div>
+</section>
+
+<!-- § 03 — Meet Hugo ==================================================== -->
+<section id="hugo" class="s">
+  <div class="wrap">
+    <div class="index-rule">
+      <span class="label">§ 03 / Specimen No. 01</span>
+      <hr/>
+      <span class="marginalia">Vol. I — shipped</span>
+    </div>
+
+    <div class="section-head">
+      <div>
+        <span class="num">03</span>
+        <h2 class="display">Meet <em class="display-italic">Hugo.</em></h2>
+      </div>
+      <div class="meta">
+        Domain · Blog writing<br/>
+        Status · Shipped
+      </div>
+    </div>
+
+    <div class="grid-12 gap-16" style="align-items: start;">
+      <div class="col-5">
+        <p style="font-size:19px; line-height:1.55; margin-top:0;">
+          Hugo takes you from a topic to a published post. He sketches an outline,
+          expands it into prose, references your prior writing for tone, and
+          ships across your channels — pausing whenever something is unclear.
+        </p>
+        <p style="font-size:16px; line-height:1.6; color:var(--mute); margin-top:18px;">
+          The same skeleton runs Dana, Rowan, and Kalli. Hugo is the first
+          working specimen.
+        </p>
+
+        <div class="gap-40">
+          <div class="label">Cross-posting</div>
+          <div class="channels">
+            <span class="channel">Blog</span>
+            <span class="channel">Substack</span>
+            <span class="channel">LinkedIn</span>
+            <span class="channel">Twitter</span>
+          </div>
+        </div>
+
+        <div class="gap-40 stripe" style="border:1px solid var(--rule-2); background:var(--surface); padding:22px;">
+          <span class="label">Voice consistency</span>
+          <p class="pull" style="font-size:18px; margin-top:8px;">
+            "Reads your earlier posts before revising. So tone stays consistent
+            across the archive — without you copy-pasting style notes into a
+            prompt every time."
+          </p>
+        </div>
+      </div>
+
+      <div class="col-7">
+        <div class="workflow">
+          <div class="work-row head">
+            <div class="step">No.</div>
+            <div class="name">Step</div>
+            <div class="desc">What happens</div>
+            <div class="stage">Stage</div>
+          </div>
+
+          <div class="work-row gate">
+            <div class="step">01</div>
+            <div class="name">Topic</div>
+            <div class="desc">Seeded by you, or generated by Hugo from your archive.</div>
+            <div class="stage">Composing</div>
+          </div>
+          <div class="work-row">
+            <div class="step">02</div>
+            <div class="name">Outline</div>
+            <div class="desc">Three candidate outlines, two levels deep.</div>
+            <div class="stage">Composing</div>
+          </div>
+          <div class="work-row">
+            <div class="step">03</div>
+            <div class="name">Refine</div>
+            <div class="desc">You pick one and iterate the structure with Hugo.</div>
+            <div class="stage">Composing</div>
+          </div>
+          <div class="work-row">
+            <div class="step">04</div>
+            <div class="name">Expand</div>
+            <div class="desc">Main points and subpoints, three levels deep.</div>
+            <div class="stage">Composing</div>
+          </div>
+          <div class="work-row gate">
+            <div class="step">05</div>
+            <div class="name">Review</div>
+            <div class="desc">You leave anchored feedback on the expanded post.</div>
+            <div class="stage">Composing</div>
+          </div>
+
+          <div class="work-row gate">
+            <div class="step">06</div>
+            <div class="name">Revise</div>
+            <div class="desc">Phrases and sentences. Pulls voice from prior posts.</div>
+            <div class="stage">Revision</div>
+          </div>
+          <div class="work-row">
+            <div class="step">07</div>
+            <div class="name">Approve</div>
+            <div class="desc">Final read of the prose before format.</div>
+            <div class="stage">Revision</div>
+          </div>
+          <div class="work-row">
+            <div class="step">08</div>
+            <div class="name">Format</div>
+            <div class="desc">Markdown, links, image placement, channel-specific shaping.</div>
+            <div class="stage">Revision</div>
+          </div>
+          <div class="work-row gate">
+            <div class="step">09</div>
+            <div class="name">Preview</div>
+            <div class="desc">Final preview before anything goes out.</div>
+            <div class="stage">Revision</div>
+          </div>
+
+          <div class="work-row gate">
+            <div class="step">10</div>
+            <div class="name">Release</div>
+            <div class="desc">Publish or schedule across the four channels.</div>
+            <div class="stage">Publish</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- § 04 — One turn ===================================================== -->
+<section id="turn" class="s alt">
+  <div class="wrap">
+    <div class="index-rule">
+      <span class="label">§ 04 / Field Study</span>
+      <hr/>
+      <span class="marginalia">Inside a single turn</span>
+    </div>
+
+    <div class="section-head">
+      <div>
+        <span class="num num-light">04</span>
+        <h2 class="display">One turn,<br/><em class="display-italic">on display.</em></h2>
+      </div>
+      <div class="meta">
+        Mode · Side-by-side<br/>
+        Duration · ≈30s
+      </div>
+    </div>
+
+    <div class="grid-12">
+      <div class="col-7">
+        <p style="font-size:18px; line-height:1.55;">
+          Same prompt, two responses. The user's request contains two ambiguities
+          — which post and which scope of edit. Watch where each agent's loop
+          either notices or doesn't.
+        </p>
+        <div class="gap-40">
+          <div class="compare">
+            <div class="col bad">
+              <h4>Typical agent</h4>
+              <pre><span class="slash">user&nbsp;›</span> rework the marathon post
+
+<span style="color:var(--mute)">// guesses, commits, moves on</span>
+<span class="slash">agent&nbsp;›</span> edit_post(id="three-hour-marathon",
+            mode="polish")
+<span class="slash">agent&nbsp;›</span> Here is a polished version…</pre>
+              <div class="pin">No belief object. No uncertainty. No memory of which post you mean.</div>
+            </div>
+            <div class="col good">
+              <h4>Hugo</h4>
+              <pre><span class="slash">user&nbsp;›</span> rework the marathon post
+
+<span style="color:var(--mute)">// state.entity = ambiguous (2)</span>
+<span style="color:var(--mute)">// state.scope = missing</span>
+<span style="color:var(--mute)">// declared: partial + specific</span>
+<span class="slash">hugo&nbsp;›</span> Two posts about marathons —
+       <em>How I finally broke three hours</em>
+       or <em>What marathon training taught me
+       about discipline</em>? Rework how —
+       re-outline, re-voice, or polish?</pre>
+              <div class="pin">Belief, memory, uncertainty — all inspectable. All testable.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-5">
+        <div class="meter">
+          <span class="label">Ambiguity meter · this turn</span>
+          <p class="pull" style="font-size:17px; margin:10px 0 4px;">
+            Four levels of unsure. The agent rates each, and the rating chooses
+            the response.
+          </p>
+          <div class="meter-bar">
+            <div class="meter-cell">
+              <span class="lvl">A · general</span>
+              <strong>Intent unclear</strong>
+              <em>"can you help"</em>
+            </div>
+            <div class="meter-cell fill">
+              <span class="lvl">B · partial</span>
+              <strong>Entity unresolved</strong>
+              <em>"the marathon post" → 2 match</em>
+            </div>
+            <div class="meter-cell fill">
+              <span class="lvl">C · specific</span>
+              <strong>Slot missing</strong>
+              <em>"rework" → which scope?</em>
+            </div>
+            <div class="meter-cell">
+              <span class="lvl">D · confirm</span>
+              <strong>Sign-off needed</strong>
+              <em>before publishing</em>
+            </div>
+          </div>
+          <p class="marginalia gap-16">
+            Two declared ambiguities this turn → one targeted question that
+            resolves both.
+          </p>
+        </div>
+
+        <div class="gap-24" style="border:1px solid var(--rule-2); background:var(--surface); padding:22px;">
+          <span class="label">Why this is the unlock</span>
+          <p style="font-size:15px; line-height:1.6; margin:8px 0 0;">
+            Once uncertainty is a tracked object, every interesting agent
+            property becomes implementable: multi-turn coherence, calibrated
+            abstention, debuggable failures. They were unreachable when state
+            lived inside a prompt.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- § 05 — How it works (5 components) ================================= -->
+<section id="how" class="s">
+  <div class="wrap">
+    <div class="index-rule">
+      <span class="label">§ 05 / Inside</span>
+      <hr/>
+      <span class="marginalia">Five questions, five answers</span>
+    </div>
+
+    <div class="section-head">
+      <div>
+        <span class="num">05</span>
+        <h2 class="display">How an Assistant Factory<br/>agent <em class="display-italic">actually thinks.</em></h2>
+      </div>
+      <div class="meta">
+        Components · 5<br/>
+        Domain-agnostic
+      </div>
+    </div>
+
+    <p style="font-size:18px; line-height:1.6; max-width:62ch;">
+      Each piece of the agent answers one question a non-engineer would actually
+      ask. We picked the five that matter most — left out the plumbing.
+    </p>
+
+    <div class="arch-grid gap-40">
+      <div class="arch-cell">
+        <span class="ax">A</span>
+        <h4>World Model</h4>
+        <div class="q">"Does it know what my work is?"</div>
+        <p>A typed model of your domain — for Hugo: posts, sections, snippets, channels. The agent grounds requests against real things, not strings.</p>
+      </div>
+      <div class="arch-cell">
+        <span class="ax">B</span>
+        <h4>Dialogue State</h4>
+        <div class="q">"Does it know what we're doing now?"</div>
+        <p>The current goal, entities in play, what's filled and what's missing — held as a structured object that survives between turns.</p>
+      </div>
+      <div class="arch-cell">
+        <span class="ax">C</span>
+        <h4>Context Coordinator</h4>
+        <div class="q">"Does it remember this conversation?"</div>
+        <p>Conversation history, structured. Not a transcript blob — a coordinator that turns the back-and-forth into something the agent can index.</p>
+      </div>
+      <div class="arch-cell">
+        <span class="ax">D</span>
+        <h4>Memory Manager</h4>
+        <div class="q">"Does it remember <em>me</em>?"</div>
+        <p>Three horizons: a session scratchpad, account preferences, and slow-moving context about your team and your work. Different reads. Different writes.</p>
+      </div>
+      <div class="arch-cell">
+        <span class="ax">E</span>
+        <h4>Ambiguity Handler</h4>
+        <div class="q">"Does it know when to ask?"</div>
+        <p>Four levels of unsure — general, partial, specific, confirmation — declared per turn, with the response strategy bound to each level.</p>
+      </div>
+    </div>
+
+    <p class="pull gap-40" style="font-size:22px; max-width:54ch;">
+      "Belief lives in the dialogue state. Memory is the manager.
+      Uncertainty is its own first-class citizen. The model of <em>you</em> and
+      your <em>work</em> is the world model. That's the system."
+    </p>
+  </div>
+</section>
+
+<!-- § 06 — The line ===================================================== -->
+<section id="line" class="s alt">
+  <div class="wrap">
+    <div class="index-rule">
+      <span class="label">§ 06 / The line</span>
+      <hr/>
+      <span class="marginalia">Same skeleton, different domains</span>
+    </div>
+
+    <div class="section-head">
+      <div>
+        <span class="num num-light">06</span>
+        <h2 class="display">The <em class="display-italic">line.</em></h2>
+      </div>
+      <div class="meta">
+        Specimens · 04<br/>
+        Built on the same bet
+      </div>
+    </div>
+
+    <div class="line">
+      <div class="who">
+        <div class="num-tag">No. 01 · Domain · Writing</div>
+        <h3><em>Hugo</em></h3>
+        <p>Writes blog posts with you. Topic to publication, voice intact across the archive.</p>
+        <span class="stat-pill live">● shipped</span>
+      </div>
+      <div class="who">
+        <div class="num-tag">No. 02 · Domain · Data</div>
+        <h3>Dana</h3>
+        <p>Lives in your tables. Cleans, transforms, analyzes — and remembers what's been answered.</p>
+        <span class="stat-pill">● in build</span>
+      </div>
+      <div class="who">
+        <div class="num-tag">No. 03 · Domain · Hiring</div>
+        <h3>Rowan</h3>
+        <p>A recruiting partner. Listings, applications, candidates — patient with a long pipeline.</p>
+        <span class="stat-pill">● queued</span>
+      </div>
+      <div class="who">
+        <div class="num-tag">No. 04 · Domain · Onboarding</div>
+        <h3>Kalli</h3>
+        <p>Asks a few questions and produces the next assistant — a factory's first move.</p>
+        <span class="stat-pill">● in design</span>
+      </div>
+    </div>
+
+    <p class="pull gap-40" style="font-size:22px; max-width:46ch;">
+      Personal assistants are a <em style="color:var(--vermil)">different species</em>
+      of agent. They need a factory that treats them that way.
+    </p>
+  </div>
+</section>
+
+<!-- Closing ============================================================= -->
+<footer class="close">
+  <div class="wrap">
+    <div class="grid-12" style="align-items:end;">
+      <div class="col-8">
+        <span class="meta">A discipline:</span>
+        <h2 class="display gap-16">
+          Ask the question.<br/>
+          Then <em>do the work.</em>
+        </h2>
+        <p class="gap-24" style="max-width:48ch; color:#d8d2c4; font-size:16px; line-height:1.6;">
+          The last mile of agents — the part that makes them actually useful in
+          real, hostile environments — is the most valuable layer to get right.
+          That's what we build.
+        </p>
+        <p class="gap-24" style="color:#d8d2c4; font-size:14px;">
+          Long-form discussion lives at <a href="https://morethanoneturn.com">morethanoneturn.com</a>.
+        </p>
+      </div>
+      <div class="col-4" style="text-align:right;">
+        <span class="meta">Colophon</span>
+        <p style="margin-top:14px; color:#b9b3a4; font-size:14px; line-height:1.6;">
+          Set in <em style="font-family:'Fraunces',serif; font-style:italic; color:#ff7a55;">Fraunces</em>,
+          Geist, and JetBrains Mono. Built on Claude models.
+        </p>
+        <p class="meta gap-24">© Soleda Inc · 2026</p>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

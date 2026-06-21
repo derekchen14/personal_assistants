@@ -160,9 +160,9 @@ Core flow API:
 - `needs_to_think() -> bool`  (:161)
 - `match_action(action_name) -> bool`  →  starts-with `self.parent_type.upper()`  (:166)
 
-Attributes every flow has: `slots`, `tools`, `interjected`, `is_newborn`, `is_uncertain`, `fall_back`, `stage`, `entity_slot` (default `'source'`), `flow_id`, `plan_id`, `turn_ids`, `status` ∈ `Pending / Active / Completed / Invalid`.
+Attributes every flow has: `slots`, `tools`, `is_newborn`, `is_uncertain`, `stage`, `entity_slot` (default `'source'`), `flow_id`, `plan_id`, `turn_ids`, `status` ∈ `Pending / Active / Completed / Invalid`.
 
-Parent classes (each sets `parent_type` only): `InternalParentFlow` (also sets `interjected=True`), `ResearchParentFlow`, `DraftParentFlow`, `ReviseParentFlow`, `PublishParentFlow`, `ConverseParentFlow`, `PlanParentFlow`.
+Parent classes (each sets `parent_type` only): `ResearchParentFlow`, `DraftParentFlow`, `ReviseParentFlow`, `PublishParentFlow`, `ConverseParentFlow`.
 
 ## 9. Slot hierarchy — by type
 

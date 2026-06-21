@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Assistant Factory — Beliefs, Not Prompts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper:    #f4f5f7;
+    --surface:  #ffffff;
+    --band:     #e9ebf0;
+    --ink:      #0a0d14;
+    --mute:     #5a6271;
+    --line:     #d2d6e0;
+    --accent:   #1f2937;
+    --accent-2: #111827;
+    --tint:     #eef0f5;
+    --hot:      #2f5fff;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'ss01', 'cv11';
+    -webkit-font-smoothing: antialiased;
+  }
+  .serif   { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
+  .mono    { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .accent  { color: var(--accent); }
+  .hot     { color: var(--hot); }
+  .bg-accent { background: var(--accent); color: #fff; }
+  .bg-band   { background: var(--band); }
+  .bg-surface{ background: var(--surface); }
+  .bg-tint   { background: var(--tint); }
+  .ring-line { box-shadow: inset 0 0 0 1px var(--line); }
+  .border-line { border-color: var(--line); }
+  .border-ink  { border-color: var(--ink); }
+
+  .kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .mark {
+    background-image: linear-gradient(120deg, rgba(47,95,255,.16) 0%, rgba(47,95,255,.16) 100%);
+    background-size: 100% 42%;
+    background-repeat: no-repeat;
+    background-position: 0 86%;
+    padding: 0 2px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; background: var(--surface); color: var(--ink);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--hot); display:inline-block; }
+
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: var(--ink); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: -0.02em;
+  }
+  .brand-mark::after {
+    content: ""; width: 5px; height: 5px; border-radius: 999px; background: var(--hot);
+    margin-left: 3px; align-self: flex-end; margin-bottom: 4px;
+  }
+
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+
+  .slash  { color: var(--hot); }
+  .ghost  { color: var(--mute); }
+
+  /* Code block — the engineering vibe */
+  .codeblock {
+    background: #0a0d14; color: #e6ebf5;
+    border-radius: 10px; padding: 1.25rem 1.4rem;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 13px; line-height: 1.65;
+    box-shadow: inset 0 0 0 1px #1a2030;
+  }
+  .codeblock .k { color: #8aa6ff; }
+  .codeblock .s { color: #c5d4ff; }
+  .codeblock .c { color: #5d6a86; }
+  .codeblock .v { color: #f6c177; }
+  .pull {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400; font-style: italic; letter-spacing: -0.015em;
+  }
+
+  /* Spec table */
+  .spec-row {
+    display: grid;
+    grid-template-columns: 90px 1fr 1fr;
+    gap: 1.5rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .spec-row:last-child { border-bottom: none; }
+  .spec-row .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--hot);
+    align-self: start;
+    padding-top: 4px;
+  }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- Masthead ------------------------------------------------------------- -->
+<header class="border-b border-line bg-paper">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+    <a href="#top" class="flex items-center gap-3">
+      <span class="brand-mark">AF</span>
+      <span class="font-extrabold tracking-tight text-lg">Assistant&nbsp;Factory</span>
+    </a>
+    <nav class="hidden md:flex gap-6 text-sm font-medium">
+      <a href="#why"    class="hover:text-[color:var(--hot)]">Why prompts break</a>
+      <a href="#three"  class="hover:text-[color:var(--hot)]">Three things we track</a>
+      <a href="#payoff" class="hover:text-[color:var(--hot)]">What it buys you</a>
+      <a href="#line"   class="hover:text-[color:var(--hot)]">The line</a>
+      <a href="#turn"   class="hover:text-[color:var(--hot)]">One turn</a>
+    </nav>
+  </div>
+</header>
+
+<!-- Hero ----------------------------------------------------------------- -->
+<section id="top" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 pt-20 pb-24 md:pt-28 md:pb-32 grid md:grid-cols-12 gap-10 items-end">
+    <div class="md:col-span-8">
+      <div class="kicker mb-5 flex items-center gap-3">
+        <span class="dot"></span> Assistant Factory &middot; An Engineering Thesis
+      </div>
+      <h1 class="font-extrabold tracking-tight leading-[0.98] text-5xl md:text-7xl">
+        Most agents are a prompt
+        <br/>
+        and a <span class="serif hot">while&nbsp;loop.</span>
+      </h1>
+      <p class="mt-8 text-xl md:text-2xl max-w-2xl leading-snug">
+        Ours are built around <span class="mark">explicit beliefs</span> — what
+        the agent currently thinks, what it remembers, and what it knows it
+        doesn't know. Tracked structurally, not implicitly through a context
+        window.
+      </p>
+      <p class="mt-5 text-lg max-w-2xl leading-relaxed text-[color:var(--mute)]">
+        Prompt engineering is a leaky abstraction. The bigger your system, the
+        worse the leak gets. We re-introduced the boring stuff — symbolic state,
+        structured dialogue, calibrated uncertainty — and let the LLM be a
+        component, not the whole brain.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href="#three" class="px-5 py-2.5 rounded-full text-sm font-semibold text-white" style="background:var(--hot)">See what we track &rarr;</a>
+        <a href="#turn"  class="px-5 py-2.5 rounded-full text-sm font-semibold border border-ink hover:bg-ink hover:text-white transition">Watch one turn</a>
+      </div>
+    </div>
+    <div class="md:col-span-4 text-sm leading-relaxed bg-surface ring-line rounded-lg p-6">
+      <div class="kicker mb-2">For engineers</div>
+      <div class="codeblock mt-2">
+<span class="c"># every other framework</span><br/>
+<span class="k">while</span> <span class="v">user_messages</span>:<br/>
+&nbsp;&nbsp;<span class="v">tools</span> = <span class="k">llm</span>(<span class="s">prompt</span> + <span class="s">history</span>)<br/>
+&nbsp;&nbsp;<span class="k">run</span>(<span class="v">tools</span>)<br/>
+<br/>
+<span class="c"># us</span><br/>
+<span class="k">while</span> <span class="v">user_messages</span>:<br/>
+&nbsp;&nbsp;<span class="v">state</span> = <span class="k">update</span>(<span class="v">state</span>, <span class="v">msg</span>)<br/>
+&nbsp;&nbsp;<span class="k">if</span> <span class="v">state</span>.<span class="v">unsure</span>: <span class="k">ask</span>()<br/>
+&nbsp;&nbsp;<span class="k">else</span>: <span class="k">act</span>(<span class="v">state</span>)
+      </div>
+      <p class="mt-4 text-[color:var(--mute)]">
+        Two extra lines. They're the entire pitch.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Why prompts break ---------------------------------------------------- -->
+<section id="why" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 01</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          Where the <span class="serif">while&nbsp;loop</span> hits a wall
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot"></span> The honest pitch</div>
+    </div>
+
+    <div class="grid md:grid-cols-12 gap-10">
+      <div class="md:col-span-7">
+        <p class="text-lg leading-relaxed">
+          Every agent SDK is a thin wrapper around the same loop: read input,
+          shove it back into a prompt with the tool list and the history,
+          parse a tool call, run, repeat. It works for <em>one turn</em>. It
+          mostly works for two. By turn five, the model is reconstructing
+          state by re-reading the transcript every call.
+        </p>
+        <p class="text-lg leading-relaxed mt-5">
+          That's not state. That's a <span class="serif">recap</span>,
+          performed by the LLM, every single time. It's expensive, it's
+          fragile, and it has no opinion about what's actually happening.
+        </p>
+        <p class="text-lg leading-relaxed mt-5">
+          The cost shows up everywhere. Drift across long sessions.
+          Hallucinated history. Confident bad answers because the model
+          can't tell you it isn't sure. Debugging that turns into archaeology
+          on a 30k-token blob. <span class="mark">Prompts don't scale. Beliefs do.</span>
+        </p>
+      </div>
+
+      <div class="md:col-span-5">
+        <div class="bg-tint ring-line rounded-lg p-6">
+          <div class="kicker hot">If you remember one thing</div>
+          <p class="pull text-[19px] mt-2 leading-snug">
+            Prompts encode behavior <em>implicitly</em>, in the model's
+            attention. Beliefs encode behavior <em>explicitly</em>, in
+            structured state.
+          </p>
+        </div>
+        <div class="bg-surface ring-line rounded-lg p-6 mt-4">
+          <div class="kicker">Failure modes that vanish</div>
+          <ul class="mt-3 text-[14px] leading-relaxed space-y-2 list-disc pl-5">
+            <li>"It forgot what we agreed five turns ago."</li>
+            <li>"It's confidently wrong and won't say it isn't sure."</li>
+            <li>"I can't tell why it picked that tool."</li>
+            <li>"It re-asks for the same thing."</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Three things we track ----------------------------------------------- -->
+<section id="three" class="border-b border-line bg-band">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 02</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          Three things we track <span class="serif">explicitly</span>
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot"></span> The pillars</div>
+    </div>
+
+    <p class="text-lg max-w-3xl leading-relaxed">
+      Each one is a structured object with an API, not a paragraph in a
+      prompt. The LLM reads from these and writes back to them. It's the
+      brain in a body, not a brain in a box.
+    </p>
+
+    <div class="mt-12 bg-surface ring-line rounded-lg p-7">
+
+      <div class="spec-row">
+        <div class="label">A · belief</div>
+        <div>
+          <div class="font-extrabold text-2xl tracking-tight">What we think we're doing right now.</div>
+          <p class="mt-3 text-[15px] leading-relaxed">
+            The current goal, the entities in play, what's filled in, what's
+            still missing. A real object the agent updates each turn.
+          </p>
+        </div>
+        <div class="codeblock">
+<span class="c"># dialogue state, abridged</span><br/>
+<span class="v">state</span>.<span class="v">goal</span> = <span class="s">"rework post"</span><br/>
+<span class="v">state</span>.<span class="v">entity</span> = <span class="s">"three-hour-marathon"</span><br/>
+<span class="v">state</span>.<span class="v">scope</span> = <span class="k">None</span> <span class="c"># missing</span>
+        </div>
+      </div>
+
+      <div class="spec-row">
+        <div class="label">B · memory</div>
+        <div>
+          <div class="font-extrabold text-2xl tracking-tight">What we remember, layered by horizon.</div>
+          <p class="mt-3 text-[15px] leading-relaxed">
+            Three tiers: a session scratchpad for what we just learned, a
+            per-account preferences store, and slow-moving context about your
+            team and your work. Different reads. Different writes.
+          </p>
+        </div>
+        <div class="codeblock">
+<span class="c"># memory tiers</span><br/>
+<span class="v">memory</span>.<span class="v">session</span>.<span class="k">read</span>()<br/>
+<span class="v">memory</span>.<span class="v">prefs</span>.<span class="k">get</span>(<span class="s">"tone"</span>)<br/>
+<span class="v">memory</span>.<span class="v">context</span>.<span class="k">retrieve</span>(<span class="s">q</span>)
+        </div>
+      </div>
+
+      <div class="spec-row">
+        <div class="label">C · uncertainty</div>
+        <div>
+          <div class="font-extrabold text-2xl tracking-tight">What we don't know — and at what level.</div>
+          <p class="mt-3 text-[15px] leading-relaxed">
+            Calibrated, declared, addressable. The agent rates how unsure it
+            is about each part of the state, and that rating decides whether
+            to ask, confirm, or proceed. Not vibes — a number.
+          </p>
+        </div>
+        <div class="codeblock">
+<span class="c"># declared uncertainty</span><br/>
+<span class="v">amb</span>.<span class="k">declare</span>(<span class="s">"specific"</span>,<br/>
+&nbsp;&nbsp;<span class="v">slot</span>=<span class="s">"scope"</span>)<br/>
+<span class="v">amb</span>.<span class="v">action</span> == <span class="s">"ask"</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="mt-8 grid md:grid-cols-12 gap-5 items-start">
+      <div class="md:col-span-7 bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">The synthesis</div>
+        <p class="pull text-[20px] mt-2 leading-snug">
+          "Belief, memory, and uncertainty are first-class objects. The LLM
+          is a tool that reads and writes them — not the system itself."
+        </p>
+      </div>
+      <div class="md:col-span-5 bg-tint ring-line rounded-lg p-6">
+        <div class="kicker hot">Why this is the unlock</div>
+        <p class="text-[14px] leading-relaxed mt-2">
+          Once these three are objects, every interesting agent property
+          becomes implementable: multi-turn coherence, calibrated abstention,
+          deterministic recovery, debuggable failures. They were unreachable
+          when state lived inside a prompt.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- What it buys you ----------------------------------------------------- -->
+<section id="payoff" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 03</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          What this <span class="serif">buys you</span>
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot"></span> The payoff</div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-5">
+      <div class="bg-surface ring-line rounded-lg p-7">
+        <div class="kicker">01 · debuggability</div>
+        <h3 class="font-extrabold text-xl tracking-tight mt-2">A failure has a place to land.</h3>
+        <p class="mt-3 text-[15px] leading-relaxed">
+          When something goes wrong, you read the state — not a 30k-token
+          transcript. You can write a unit test against the state.
+        </p>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-7">
+        <div class="kicker">02 · recovery</div>
+        <h3 class="font-extrabold text-xl tracking-tight mt-2">Failures don't compound.</h3>
+        <p class="mt-3 text-[15px] leading-relaxed">
+          If a tool returns garbage, the policy can retry, escalate, or
+          re-route — because the state is intact. The agent doesn't unravel
+          the way a one-shot prompt does.
+        </p>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-7">
+        <div class="kicker">03 · calibration</div>
+        <h3 class="font-extrabold text-xl tracking-tight mt-2">It can tell you it isn't sure.</h3>
+        <p class="mt-3 text-[15px] leading-relaxed">
+          Because uncertainty is a tracked object, the agent has a structural
+          way to express it — to you, or to itself before acting. No more
+          confidently-wrong answers as a default mode.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- The line ------------------------------------------------------------- -->
+<section id="line" class="border-b border-line bg-band">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 04</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          Same architecture, <span class="serif">different domains.</span>
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot"></span> The line</div>
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-5">
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 01</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Hugo</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">Blog writing.</p>
+        <div class="mt-5 chip" style="color:var(--hot);border-color:var(--hot)"><span class="dot"></span> shipped</div>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 02</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Dana</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">Data analysis.</p>
+        <div class="mt-5 chip"><span class="dot"></span> in build</div>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 03</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Rowan</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">Recruiting.</p>
+        <div class="mt-5 chip"><span class="dot"></span> queued</div>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 04</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Kalli</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">Onboards new assistants.</p>
+        <div class="mt-5 chip"><span class="dot"></span> in design</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- One turn ------------------------------------------------------------- -->
+<section id="turn" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 05</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          State, <span class="serif">visible.</span>
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot"></span> Optional reading</div>
+    </div>
+
+    <p class="text-lg max-w-3xl leading-relaxed">
+      Same prompt, two responses. Below: what each agent's state looks like
+      mid-turn. The difference isn't the answer — it's whether you can see
+      what the agent is doing.
+    </p>
+
+    <details class="mt-8 bg-surface ring-line rounded-lg p-7">
+      <summary class="flex items-center justify-between">
+        <span class="font-semibold text-lg">Open the side-by-side</span>
+        <span class="mono text-xs ghost">~30 seconds</span>
+      </summary>
+
+      <div class="mt-6 grid md:grid-cols-2 gap-5">
+        <div class="ring-line rounded-lg p-5">
+          <div class="flex items-center justify-between">
+            <div class="kicker">Typical agent</div>
+            <span class="mono text-xs ghost">state = transcript</span>
+          </div>
+          <div class="mt-4 mono text-sm leading-relaxed">
+            <div><span class="slash">user&nbsp;›</span> rework the marathon post</div>
+            <div class="mt-3 ghost">// agent picks a tool, guesses, commits</div>
+            <div class="mt-1"><span class="slash">agent&nbsp;›</span> edit_post(id="three-hour-marathon", mode="polish")</div>
+            <div class="mt-3"><span class="slash">agent&nbsp;›</span> Here is a polished version…</div>
+          </div>
+          <p class="mt-4 text-sm ghost serif">
+            What was its belief? What was unsure? You don't know. There's no
+            object to inspect.
+          </p>
+        </div>
+
+        <div class="bg-tint ring-line rounded-lg p-5">
+          <div class="flex items-center justify-between">
+            <div class="kicker hot">Hugo</div>
+            <span class="mono text-xs hot">state = object</span>
+          </div>
+          <div class="mt-4 mono text-sm leading-relaxed">
+            <div><span class="slash">user&nbsp;›</span> rework the marathon post</div>
+            <div class="mt-3 ghost">// state.entity ambiguous (2 candidates)</div>
+            <div class="ghost">// state.scope missing</div>
+            <div class="ghost">// uncertainty.declare("partial"), declare("specific")</div>
+            <div class="mt-3"><span class="slash">hugo&nbsp;›</span> Two posts about marathons — <em class="serif">How I finally broke three hours</em> or <em class="serif">What marathon training taught me about discipline</em>? And rework how — re-outline, re-voice, or polish a section?</div>
+          </div>
+          <p class="mt-4 text-sm serif hot">
+            Belief, memory, uncertainty — all inspectable. All testable.
+          </p>
+        </div>
+      </div>
+
+      <p class="mt-6 text-sm leading-relaxed text-[color:var(--mute)]">
+        Same answer would be possible from either system. Only one of them is
+        debuggable.
+      </p>
+    </details>
+  </div>
+</section>
+
+<!-- Closing -------------------------------------------------------------- -->
+<footer class="bg-accent">
+  <div class="max-w-6xl mx-auto px-6 py-20 grid md:grid-cols-12 gap-10 items-end text-white">
+    <div class="md:col-span-8">
+      <div class="kicker" style="color:#9aa5bd">The bet:</div>
+      <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-2 leading-[1.02]">
+        Prompts don't scale.
+        <br/>
+        <span class="serif" style="color:#7e9bff">Beliefs do.</span>
+      </h2>
+      <p class="mt-6 text-md opacity-90 max-w-xl">
+        Long-form discussion lives at
+        <a href="https://morethanoneturn.com" class="underline underline-offset-4">morethanoneturn.com</a>.
+      </p>
+    </div>
+    <div class="md:col-span-4 text-sm leading-relaxed">
+      <p class="opacity-90">© Soleda Inc · 2026</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

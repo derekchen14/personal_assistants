@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from backend.modules.nlu import NLU
+from backend.components.flow_stack import flow_classes
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.world import World
@@ -55,12 +56,14 @@ def nlu(minimal_config):
 def _stub_engineer(nlu, monkeypatch, phase3_slots):
     """Replace nlu.engineer. dict → mock returns {'slots': dict}; None → raises."""
     real_apply = nlu.engineer.apply_guardrails
+    real_strip = nlu.engineer._strip_nulls
     if phase3_slots is None:
         mock = MagicMock(side_effect=AssertionError(
             'Phase 3 LLM was called when it should have been skipped'))
     else:
         mock = MagicMock(return_value={'slots': phase3_slots})
     mock.apply_guardrails = real_apply
+    mock._strip_nulls = real_strip
     monkeypatch.setattr(nlu, 'engineer', mock)
 
 
@@ -94,43 +97,6 @@ def _matches(actual, expected) -> bool:
 # - extras: optional dict with post-react checks (e.g. dispatch-not-called)
 
 NLU_REACT_CASES = [
-    {
-        'name': 'create_action_full_payload',
-        'gold_dax': '{05A}',
-        'payload': {'type': 'draft', 'title': 'My Post'},
-        'phase3_slots': None,  # Phase 3 must not fire
-        'expected_flow': 'create',
-        'is_filled': True,
-        'slots': {'title': 'My Post', 'type': 'draft'},
-    },
-    {
-        'name': 'create_action_partial_phase3_completes',
-        'gold_dax': '{05A}',
-        'payload': {'type': 'draft'},
-        'phase3_slots': {'title': 'LLM-Provided'},
-        'expected_flow': 'create',
-        'is_filled': True,
-        'slots': {'title': 'LLM-Provided', 'type': 'draft'},
-    },
-    {
-        'name': 'create_action_partial_phase3_empty_failure_mode',
-        'gold_dax': '{05A}',
-        'payload': {'type': 'draft'},
-        'phase3_slots': {},  # LLM returns empty — title stays unfilled
-        'expected_flow': 'create',
-        'is_filled': False,
-        'slots': {'type': 'draft'},
-    },
-    {
-        'name': 'create_context_only_payload_skips_dispatch',
-        'gold_dax': '{05A}',
-        'payload': {'post': '17be00f6'},  # entity-only key, no slots to fill
-        'phase3_slots': {'title': 'L', 'type': 'draft'},  # Phase 3 will fire
-        'expected_flow': 'create',
-        'is_filled': True,
-        'slots': {'title': 'L'},
-        'extras': {'dispatch_not_called': True},  # Phase 1c skipped
-    },
     {
         'name': 'refine_snippet_payload_phase1a',
         'gold_dax': '{02B}',
@@ -166,7 +132,7 @@ NLU_REACT_CASES = [
     },
     {
         'name': 'release_no_payload_partial_phase3',
-        'gold_dax': '{04A}',
+        'gold_dax': '{004}',
         'payload': {},
         'phase3_slots': {},  # no entity → Phase 3 fires but returns empty
         'expected_flow': 'release',
@@ -181,17 +147,6 @@ NLU_REACT_CASES = [
         'expected_flow': 'chat',
         'is_filled': True,
         'slots': {},
-    },
-    {
-        'name': 'inspect_action_phase1a_then_phase3_for_aspect',
-        'gold_dax': '{1AD}',
-        # Phase 1a/1c are mutually exclusive (elif chain): with both entity AND
-        # non-entity keys, Phase 1a wins and aspect is left for Phase 3.
-        'payload': {'post': 'post_abc', 'aspect': 'word_count'},
-        'phase3_slots': {'aspect': 'word_count'},
-        'expected_flow': 'inspect',
-        'is_filled': True,
-        'slots': {'aspect': 'word_count', 'source': [{'post': 'post_abc'}]},
     },
     {
         'name': 'audit_action_with_post',
@@ -213,11 +168,11 @@ NLU_REACT_CASES = [
         'extras': {'source_post_id': 'active-post-id'},
     },
     {
-        'name': 'polish_action_with_section_partial',
-        'gold_dax': '{3BD}',
+        'name': 'write_action_with_section_partial',
+        'gold_dax': '{003}',
         'payload': {'post': 'post_abc', 'section': 'sec_one'},
-        'phase3_slots': {},  # polish has more than just source required; stays unfilled
-        'expected_flow': 'polish',
+        'phase3_slots': {},  # write has more than just source required; stays unfilled
+        'expected_flow': 'write',
         'is_filled': False,
         'slots': {'source': [{'post': 'post_abc', 'sec': 'sec_one'}]},
     },
@@ -226,8 +181,8 @@ NLU_REACT_CASES = [
 
 @pytest.mark.parametrize('case', NLU_REACT_CASES, ids=lambda c: c['name'])
 def test_nlu_react(nlu, monkeypatch, case):
-    # Set active_post for the Phase 2 row. _build_state copies it forward to the
-    # new state, so Phase 2's `prev = self.world.current_state()` sees it.
+    # Set active_post for the Phase 2 row. react mutates the session state in place, so
+    # Phase 2's `prev = self.world.current_state()` sees it.
     if case['name'] == 'phase2_grounding_uses_active_post':
         nlu.world.current_state().active_post = 'active-post-id'
 
@@ -241,7 +196,15 @@ def test_nlu_react(nlu, monkeypatch, case):
 
     _stub_engineer(nlu, monkeypatch, case['phase3_slots'])
     nlu.react(case['gold_dax'], case['payload'])
-    flow = nlu.flow_stack.get_flow()
+
+    # react writes belief only (no flow stacked). Reconstruct the flow from pred_slots —
+    # slot_values_dict round-trips through fill_slot_values — to inspect the filled slots.
+    state = nlu.world.current_state()
+    assert state.pred_flows[0]['flow_name'] == case['expected_flow'], (
+        f"pred_flow expected {case['expected_flow']!r} got {state.pred_flows[0]['flow_name']!r}")
+    flow = flow_classes[case['expected_flow']]()
+    flow.fill_slot_values(state.pred_slots)
+    flow.is_filled()
 
     assert flow.flow_type == case['expected_flow'], (
         f"flow_type expected {case['expected_flow']!r} got {flow.flow_type!r}")

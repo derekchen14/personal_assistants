@@ -30,9 +30,8 @@ def _user_turns(convo):
 
 def _detect_flow(agent, utterance):
     agent.world.context.add_turn('User', utterance, 'utterance')
-    state = agent.nlu.understand(utterance, agent.world.context)
-    agent.world.insert_state(state)
-    return state
+    # understand(op='think') writes the detection onto the session state in place and returns it.
+    return agent.nlu.understand(op='think', user_text=utterance)
 
 
 # ═══════════════════════════════════════════════════════════════════

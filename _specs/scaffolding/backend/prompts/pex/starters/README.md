@@ -4,7 +4,7 @@ One Python module per agentic flow: `<flow_name>.py`. Exports a `TEMPLATE`
 string and a `build(flow, resolved, user_text)` function that returns the
 per-turn user message — Layer 2 of the three-layer prompt architecture.
 
-## Canonical envelope
+## Canonical message structure
 
 ```xml
 <task>

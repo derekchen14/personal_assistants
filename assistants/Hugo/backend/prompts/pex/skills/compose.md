@@ -22,7 +22,7 @@ This skill describes how to convert an outline into prose. The current outline i
    b. Asked for the whole post ("convert the entire outline to prose") → process each section one at a time.
 3. For each in-scope section, run this three-step loop:
    a. `read_section(post_id, sec_id)` — get the full bullets.
-   b. `convert_to_prose(content)` — get a rough prose draft; polish for flow.
+   b. `convert_to_prose(content)` — get a rough prose draft; smooth it for flow.
    c. `revise_content(post_id, sec_id, content)` — save the prose back to the section.
    d. When revising content, focus on transitions to make the content flow smoothly. Avoid using em-dashes or short, punchy fragments which are signs of AI slop. Write like an human expert. 
 4. Follow the Draft intent's output format — prose paragraphs separated by blank lines, no bullets inside a prose section.
@@ -63,8 +63,8 @@ Resolved Details:
 
 Trajectory:
 1. `read_section(post_id=abcd0123, sec_id=motivation)` → bullets.
-2. `convert_to_prose(content=<bullets>)` → rough prose; polish with a hook sentence.
-3. `revise_content(post_id=abcd0123, sec_id=motivation, content=<polished prose>)` → `_success=True`. End turn.
+2. `convert_to_prose(content=<bullets>)` → rough prose; smooth it with a hook sentence.
+3. `revise_content(post_id=abcd0123, sec_id=motivation, content=<smoothed prose>)` → `_success=True`. End turn.
 
 ### Example 2 — whole post with skip-on-failure
 

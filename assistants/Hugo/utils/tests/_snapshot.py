@@ -116,7 +116,6 @@ def _project_flow(entry) -> dict:
         'status': entry.status,
         'is_newborn': entry.is_newborn,
         'is_uncertain': entry.is_uncertain,
-        'interjected': entry.interjected,
         'slot_shape': _slot_shape(entry),
     }
 

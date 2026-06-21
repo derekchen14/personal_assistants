@@ -1,6 +1,12 @@
 # Context Coordinator
 
-The conversation log. Stores the complete turn history exactly as it happened and holds summaries computed by Memory Manager. CC does not perform summarization itself — it is the storage layer for both raw turns and MM-produced summaries.
+[MEM](../modules/mem.md)'s **L1** memory — the append-only **event stream** that records the session exactly
+as it happened: user utterances and actions, agent utterances and actions (PEX actions tagged), and system
+events (NLU decisions, networking issues, code errors, anything harness-related). Self-check / verify failures
+land here too, logged as `system` actions — this is the channel that notifies MEM of a violation (the parallel
+limbs being a `TaskArtifact` carrying the violation and a Session-Scratchpad `violation` entry that notifies
+NLU). It also holds the rolling summaries MEM computes; CC does not summarize itself — it is the durable
+storage layer for both raw events and MEM-produced summaries.
 
 ## Turn Structure
 
@@ -28,7 +34,7 @@ Each turn has four attributes:
 
 ### Turn–Flow Mapping
 
-A single turn may involve multiple flows (e.g., when `keep_going` chains flows within one turn), and a single flow may span multiple user turns. The Context Coordinator and Dialogue State each own one side of this relationship:
+A single turn may involve multiple flows (e.g., when PEX chains flows within one turn), and a single flow may span multiple user turns. The Context Coordinator and Dialogue State each own one side of this relationship:
 
 - **Context Coordinator** stores turns with `turn_id` — it knows nothing about flows.
 - **Dialogue State** stores flows with `flow_id` — each flow holds pointers to the `turn_id`s in which it was active.
@@ -62,9 +68,20 @@ Checkpoints are created automatically at the end of a conversation session. They
 
 Checkpoints are not user-visible — they are a developer/system tool for diagnostics and recovery.
 
-## Boundary with Memory Manager
+## Boundary with the higher MEM tiers
 
-The Context Coordinator and Memory Manager serve complementary roles:
+Within [MEM](../modules/mem.md), L1 (this event stream) is the per-session record; the higher tiers persist
+beyond the session — [User Preferences](./user_preferences.md) (L2, per-account) and
+[Business Context](./business_context.md) (L3, per-client). CC is the storage layer: it stores the raw event
+log and holds rolling conversation summaries as special turn entries, but it does not compute them.
 
-- **Context Coordinator**: Stores the raw turn log and holds MM-computed conversation summaries as special turn entries. CC is the storage layer — it does not summarize, but it is the source of truth for both raw turns and their summaries.
-- **Memory Manager**: Owns all summarization of conversation history for context-limit management. MM calculates rolling summaries (using scratchpad insights for higher quality) and writes them to CC. The Session Scratchpad stores flow-level insights (what each flow discovered), not raw turns.
+## Conversation Summarization
+
+A rolling summary of older events keeps the context window bounded.
+
+- **Trigger**: when turn count or token budget grows too large (specific threshold TBD).
+- **Ownership**: MEM computes the summary; CC stores the result as a special turn entry in its log.
+- **Effect**: replaces older turns in the context window, freeing space while preserving key information.
+
+This complements [compaction](../modules/mem.md#1--context-coordinator-l1): compaction protects the message
+window mid-run, while the rolling summary condenses the broader narrative across turns.

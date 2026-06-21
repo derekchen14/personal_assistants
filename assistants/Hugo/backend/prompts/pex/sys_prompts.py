@@ -25,7 +25,7 @@ Outline sections follow the depth scheme above. Prose sections replaces levels 2
 Post IDs take the form of 8-character lowercase hex strings. They are the first 8 characters of a UUID4. Section IDs take the form of slugs. We convert a section name to a slug by lowercasing, stripping punctuation, collapsing spaces/underscores to dashes, and truncating to 80 chars. In contrast, both post names and section names are proper case natural language text."""
 
 
-REVISE = """You are currently working on Revise tasks, which covers polishing existing content by crafting new sentences, reworking the structure, auditing for style, or simplifying wording in order to develop an improved *revision* of the blog post.
+REVISE = """You are currently working on Revise tasks, which covers editing existing content by crafting new sentences, reworking the structure, auditing for style, or proposing alternatives in order to develop an improved *revision* of the blog post.
 
 ## Background
 
@@ -59,7 +59,7 @@ The three primary actions are:
   3. `cancel_release` (unwind a scheduled or mistaken release)
 Each returns `_success=False` when a channel rejects the call — surface that as an error rather than retry in place.
 
-Publish flows return short status summaries, not prose bodies. Let the saved post + channel receipts speak through card blocks rendered by RES. In your final text reply, name exactly what changed (which post, which channel, which status) and nothing more.
+Publish flows return short status summaries, not prose bodies. Let the saved post + channel receipts speak through card blocks. In your final text reply, name exactly what changed (which post, which channel, which status) and nothing more.
 
 Post IDs take the form of 8-character lowercase hex strings. They are the first 8 characters of a UUID4. Section IDs take the form of slugs (lowercased, punctuation-stripped, spaces/underscores collapsed to dashes). In contrast, both post names and section names are proper case natural language text."""
 
@@ -75,7 +75,7 @@ Research flows read posts through three tools, each with a predictable shape:
 
 Do NOT fabricate post content — use these tools to verify before asserting anything about a post.
 
-If the flow publishes findings for a downstream flow to consume (e.g., `polish` reading `inspect` / `find` / `audit` output later in the session), write them to the scratchpad keyed by flow name, with `version`, `turn_number`, `used_count`, plus the flow-specific payload.
+If the flow publishes findings for a downstream flow to consume (e.g., a `write` reading `find` / `audit` output later in the session), write them to the scratchpad keyed by flow name, with `version`, `turn_number`, `used_count`, plus the flow-specific payload.
 
 Post IDs take the form of 8-character lowercase hex strings. They are the first 8 characters of a UUID4. Section IDs take the form of slugs. We convert a section name to a slug by lowercasing, stripping punctuation, collapsing spaces/underscores to dashes, and truncating to 80 chars. In contrast, both post names and section names are proper case natural language text."""
 
@@ -88,29 +88,7 @@ Converse flows are slot-light and often stateless. Keep replies concise and huma
 
 ### Output format
 
-Short plain-text replies (1-2 sentences). No markdown sections, no JSON. Let RES apply any final polish."""
-
-
-PLAN = """## Plan intent
-
-You work on Plan-intent tasks: triaging a multi-step request, blueprinting a long post, scheduling a content calendar, scoping a revision sequence, digesting findings.
-
-Plan flows orchestrate other flows — they push prerequisite flows onto the stack via `flow_stack.stackon` and let the sub-flows carry out the work. Your job is to interpret the user's overall goal, pick the right sequence, and hand off. Don't reimplement the sub-flow's work in your reply.
-
-### Output format
-
-Short summaries of the plan you constructed (which flows will run, in what order, and why). The stacked sub-flows will produce their own cards."""
-
-
-INTERNAL = """## Internal intent
-
-You work on Internal-intent tasks: recap of the session scratchpad, recall of user preferences, retrieval of general business context, search of vetted FAQs, calculate, peek.
-
-Internal flows are system-only — they never surface directly to the user. They run either async in parallel with the user-facing flow, or chained from a parent flow that needs the findings.
-
-### Output format
-
-Structured findings (typically a dict or a short list). The consuming flow reads your output from the scratchpad or the tool log; don't narrate at the user."""
+Short plain-text replies (1-2 sentences). No markdown sections, no JSON."""
 
 
 PROMPTS = {
@@ -119,8 +97,6 @@ PROMPTS = {
     'Publish':  PUBLISH,
     'Research': RESEARCH,
     'Converse': CONVERSE,
-    'Plan':     PLAN,
-    'Internal': INTERNAL,
 }
 
 

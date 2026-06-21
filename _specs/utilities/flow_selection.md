@@ -37,7 +37,7 @@ Steps a–e produce a good first draft. Step f happens during implementation as 
 
 ### Step A: Choose Intents
 
-7 total: 3 universal (Converse, Plan, Internal) + 4 domain-specific.
+7 total: 3 universal (Converse, Plan, Clarify) + 4 domain-specific.
 
 The 4 domain intents map to abstract slots that describe the semantic role of each intent. Names should reflect domain activities, not generic operations:
 
@@ -60,15 +60,17 @@ Each domain names its own 4 intents; the abstract slot provides the semantic cri
 | Schedule | Creates time-based events or multi-session outputs |
 | Converse | Handles open-ended conversation, Q&A, chitchat |
 | Plan | Decomposes a request into sub-flows (diagnose/plan) |
-| Internal | Gathers supporting info invisibly (no user-facing output) |
+| Clarify | Recognizes the request is unclear/underspecified and resolves it (internally or by asking) |
 
-> **Mandatory Internal flows.** Three Internal flows must appear in every domain: **recap** (session scratchpad, L1), **recall** (user preferences, L2), and **retrieve** (general business context from Memory Manager, L3). These handle the agent's three-tier memory system and are domain-agnostic. A fourth Internal flow, **search**, is strongly recommended: it looks up vetted FAQs and curated reference content — the unstructured equivalent of `lookup` in the semantic layer. The distinction mirrors structured data: `lookup` (vetted definitions) vs `query` (raw data) parallels `search` (vetted FAQs) vs `retrieve` (unvetted context from anywhere). The remaining Internal flows (calculate, peek, etc.) may vary by domain.
+> **No Internal intent — utilities are tools and MEM skills.** Earlier designs bundled memory reads, lookups, and checks into an *Internal* intent of invisible, agent-facing flows. That intent is gone, because **PEX calls tools directly** — it never stacks a flow just to obtain a tool's output. The former Internal members redistribute:
+> - **Memory** → MEM's `recap` (L1), `recall` (L2), and `retrieve` (L3) skills — not flows.
+> - **Web search** (vetted FAQs, market/industry research) → a `web_search` tool given to PEX.
+> - **Deterministic checks / compute** (a calculator, a data-state peek, a risk/safety gate) → tools.
+> - A multi-step, agent-facing *gathering* task **may** be a domain **sub-agent** (a flow under a domain intent), but it is opt-in per domain — there is no universal set.
 
-> **Internal flows are sub-agents, not tools.** Every flow — including Internal flows — is a sub-agent with its own decision-making power: it contains multiple prompts, can choose from multiple tools, and has a distinctly targeted purpose. This distinguishes flows from tools, which are largely deterministic (implemented as a Python function or a single-prompt LLM call). For example, the `retrieve` flow decides which Memory Manager tier to query, formulates the search, evaluates relevance, and may refine its query — a multi-step reasoning process. A tool like `memory_read(key)` simply returns a value.
->
-> Internal flows can be invoked **asynchronously** by a parent flow, running in parallel with the user-facing flow that triggered them. For example, while a `query` flow is building a SQL statement, a `peek` flow can check data state in the background and a `recall` flow can fetch the user's preferred date format — all concurrently. The parent flow chains Internal flows as needed: `recap` reads from the scratchpad, and based on what it finds, the parent may trigger `retrieve` to fetch business context. The async execution mechanism is implemented in Python (design TBD).
+> **Flows vs tools.** Every flow is a sub-agent with decision-making power — multiple prompts, a choice of tools, a targeted purpose. A tool is deterministic: a Python function or single-prompt LLM call that PEX invokes **inline**. The boundary moved with direct tool access: anything that used to be an "Internal flow" merely to fetch a value (memory reads, lookups, a calculator) is now a tool or a MEM skill.
 
-> **Mandatory Plan flow.** The **outline** flow must appear in every domain's Plan intent. It handles multi-step user requests (numbered lists, complex instructions) by orchestrating flows across all domain-specific intents. While `insight` chains Analyze + Report and `pipeline` chains Transform flows, `outline` is the catch-all that covers every intent other than the universal three (Converse, Plan, Internal).
+> **Mandatory Plan flow.** The **outline** flow must appear in every domain's Plan intent. It handles multi-step user requests (numbered lists, complex instructions) by orchestrating flows across all domain-specific intents. While `insight` chains Analyze + Report and `pipeline` chains Transform flows, `outline` is the catch-all that covers every intent other than the universal three (Converse, Plan, Clarify).
 
 ### Step B: Choose Key Entities
 
@@ -108,7 +110,7 @@ Hex digit assignment is fluid — assign digits 0–F to the 16 core dacts in wh
 3. **Decompose complex actions into composable primitives.** Instead of one verb "cook", use "heat" and "mix" — this lets you compose specific methods (grill = heat + hot, steam = heat + wet, bake = heat + mix + ingredient). The compositionality of the grammar is its strength.
 4. **Each flow = a real task.** Every flow is a policy the agent executes. It should match something a user would actually ask for — not a theoretical composition. Quality test: MECE (mutually exclusive, collectively exhaustive), well-scoped (not too trivial or too broad).
 5. **Flows are defined by their slots.** Each flow is uniquely identified by its slot signature — the set of slots it needs to fill, with their types (required, elective, optional). If two flows have the exact same slots with the same types, they are the same flow. Different slot type assignments (e.g., Slot B required in one flow vs optional in another) make them distinct. This is the ground-truth test for flow uniqueness.
-6. **Flows can invoke flows from any intent.** At runtime, any flow may call other flows across all 7 intents — not just Internal or Plan flows. For example, a Source flow like `timing` can invoke a Cook flow to resolve a cooking method's temperature. Plan flows are distinguished by *composing* multi-flow sequences, but cross-intent invocation is available to all flows.
+6. **Flows can compose across intents.** A flow that needs another flow's output **stacks it on** (PEX routes the stack-on — sub-agents don't activate flows directly). Composition spans all 7 intents, not just Plan. For example, a Source flow like `timing` can stack on a Cook flow to resolve a cooking method's temperature. Plan flows are distinguished by *composing* multi-flow sequences, but cross-intent composition is available to all flows.
 
 ### Step D: Choose Remaining Dacts
 
@@ -122,7 +124,7 @@ At **48 flows** (target), distribute **5-8 flows per intent**. Fewer than 5 → 
 2. **Brainstorm 10 candidate flows.** Each candidate must be fully specified:
    - **Description**: What does the flow accomplish? One sentence that draws the line against similar flows.
    - **Slots**: What information is needed? 2-3 slots typical, 5 max. Mark each as required, elective, or optional. Most flows have reasonable defaults, so few slots are truly required.
-   - **Output**: What goes to the Display Frame? (e.g., a table, a confirmation, a generated artifact, a chart.)
+   - **Output**: What goes to the Task Artifact? (e.g., a table, a confirmation, a generated artifact, a chart.)
 3. **Compare each candidate to existing flows.** For each, identify its most similar existing flow and check for a clear point of differentiation: a different slot, a clear task division, or a distinct output. If none, either modify the existing flow to accommodate or skip the candidate and add it to a reject list.
 4. Early rounds: expect to drop 0-2 candidates (most ideas are fresh). Later rounds: expect to drop 5-7, even 9 (the remaining design space is crowded).
 5. **Brainstorm 10 more candidates** (fully specified), informed by gaps. Compare, cull, repeat until convergence at the target count (48 flows).
@@ -144,16 +146,16 @@ At **48 flows** (target), distribute **5-8 flows per intent**. Fewer than 5 → 
 **Good patterns — signs a flow is pulling its weight:**
 
 1. **Broad task coverage.** Flows should cover the full semantic range of user requests, not just literal readings. A flow like `exist` should handle "do I have data about X?" broadly — scanning table names, column headers, and cell values — not just exact keyword matching. If users might phrase a task loosely, the flow should accommodate that.
-2. **Similar flows as contemplate() candidates.** Near-similar flows are a feature, not a bug. When NLU `contemplate()` re-detects, it narrows from 48 flows to 3-5 candidates. Flows that are legitimately similar (e.g., `freeze` vs `safety` in cooking, `read` vs `inspect` in programming) form each other's contemplate search space. If every flow were maximally distinct, contemplate would have no useful candidates.
+2. **Similar flows as contemplate() candidates.** Near-similar flows are a feature, not a bug. When NLU `contemplate()` re-detects, it narrows the flow set to 3-5 candidates. Flows that are legitimately similar (near-synonym domain flows that share a slot shape) form each other's contemplate search space. If every flow were maximally distinct, contemplate would have no useful candidates.
 3. **Temporal distinction.** Pre-action and post-action flows are legitimately different even when they touch the same entity. `review` (pre-launch assessment) and `troubleshoot` (post-launch diagnosis) have different slot signatures, different tools, and different outputs — even though both examine a campaign.
 4. **Composed flows.** A flow that calls other flows as sub-steps is distinct from those sub-flows. `post` (review quality → then publish) is a Plan flow that invokes `publish` as a sub-step — it's not a duplicate of `publish`. The composed flow owns the orchestration; the sub-flow owns the action.
-5. **Internal validation.** Validation and safety-check flows belong in the Internal intent. `caution` (check if spend is risky) and `safety` (check food safety) are lightweight gates that run before user-facing actions. They don't produce user-visible output — they set flags that other flows consume.
-6. **Interaction granularity.** Flows that interact with different system components are distinct even when they seem similar. `read` (reads a file into the display frame) and `inspect` (reads a file into the scratchpad for agent reasoning) produce different outputs and serve different purposes — one is user-facing, the other is agent-facing.
+5. **Validation is a tool, not a flow.** A lightweight gate — `caution` (is this spend risky?), `safety` (food-safe temps?) — runs before a user-facing action and returns a result the policy reads. PEX calls it directly as a tool; it is **not** a flow (no stacking, no user-visible block).
+6. **User-facing vs agent-facing maps to flow vs tool.** `read` (reads a file into the Task Artifact for the user) is a flow. Reading a file into the scratchpad purely for the agent's own reasoning is a **tool** PEX calls directly — not a second flow. The component a flow touches still distinguishes flows, but agent-facing reads are tools.
 7. **Test affordances.** Testing workflow flows are distinct from production flows. `mock` (generate test doubles) and `implement` (write production code) share a slot signature shape but serve different roles in the development lifecycle. The test flow's output is consumed by test runners, not by the application.
 
 ### Step E: Define Slots and Outputs
 
-After finalizing all flows (Step D), fully specify each flow's **slot signature** (what input the flow needs) and **output block** (what goes to the Display Frame). This makes design rule 5 concrete — each flow's slot signature is its ground-truth identity.
+After finalizing all flows (Step D), fully specify each flow's **slot signature** (what input the flow needs) and **output block** (what goes to the Task Artifact). This makes design rule 5 concrete — each flow's slot signature is its ground-truth identity.
 
 **Slot notation** (compact, inline in the flow table):
 
@@ -185,14 +187,12 @@ After finalizing all flows (Step D), fully specify each flow's **slot signature*
 | Agent suggest | — | `recommend`: — |
 | Confirm/reject | action (req) | `approve`: action (req) |
 | Plan flow | goal (req), constraints (opt) | `insight`: question (req), dataset (req) |
-| Internal flow | — or key (opt) | `think`: — |
-| Memory L1 | key (opt) | `recap`: key (opt) |
-| Memory L2 | key (opt), scope (opt) | `recall`: key (opt), scope (opt) |
-| Memory L3 | key (opt), source (opt) | `context`: key (opt), source (opt) |
+
+(Memory access — `recap` / `recall` / `retrieve` — is not a flow; it's a MEM skill PEX calls directly. See [mem.md](../modules/mem.md).)
 
 **Output blocks:**
 
-Each flow produces exactly one output block — the visual frame type that RES renders for the user. The block set is domain-specific because different domains have different UX surfaces. A data analyst works in a dashboard; a chef controls a robot; a programmer works in a terminal and IDE; a marketer operates through CRMs and ad platforms.
+Each flow produces exactly one output block — the visual block type that PEX renders for the user (and the main Agent delivers). The block set is domain-specific because different domains have different UX surfaces. A data analyst works in a dashboard; a chef controls a robot; a programmer works in a terminal and IDE; a marketer operates through CRMs and ad platforms.
 
 Choose the domain's block palette before assigning outputs. Canonical categories:
 
@@ -203,25 +203,25 @@ Choose the domain's block palette before assigning outputs. Canonical categories
 | Physical action | `timer` | Chef-specific. Cooking operations with time and temperature |
 | Input collection | `form`, `confirmation` | `form` for multi-field input (CRM setup, ad targeting); `confirmation` for approve-before-destructive-action |
 | Feedback | `toast` | Brief confirmation message (saved, deleted, deployed) |
-| No frame | `(internal)` | Internal flows that gather info invisibly — no user-facing output |
+
+Every flow produces a **user-visible** block — there is no agent-facing `(internal)` output. Agent-facing gathering is done by tools and MEM skills, which return data to PEX directly (no block).
 
 **Output assignment rules:**
 
 1. **Match the UX surface.** A Programmer `patch` produces a `diff` (code change view), not a `card`. A Chef `grill` produces a `timer` (countdown with target temp), not a `table`.
-2. **Internal flows always produce `(internal)`.** They gather context for other flows — the user never sees their output directly.
-3. **Plan flows always produce `list`.** Plans are multi-step sequences — a list of sub-flows or action items.
-4. **Confirm/reject flows produce `toast`.** Brief acknowledgment that the user's approval or rejection was recorded.
-5. **Delete flows produce `confirmation`.** Destructive actions require explicit approval before executing.
-6. **Flows that call external APIs** (CRM, CI/CD, ad platforms) often produce `form` (to collect API parameters) or `toast` (to confirm the API call succeeded). The output is what RES shows after the API returns — not the API call itself.
+2. **Plan flows always produce `list`.** Plans are multi-step sequences — a list of sub-flows or action items.
+3. **Confirm/reject flows produce `toast`.** Brief acknowledgment that the user's approval or rejection was recorded.
+4. **Delete flows produce `confirmation`.** Destructive actions require explicit approval before executing.
+5. **Flows that call external APIs** (CRM, CI/CD, ad platforms) often produce `form` (to collect API parameters) or `toast` (to confirm the API call succeeded). The output is what PEX shows after the API returns — not the API call itself.
 
 **Domain block palettes** (from the worked examples):
 
 | Domain | Blocks |
 |---|---|
-| Data Analysis | `table`, `chart`, `card`, `list`, `toast`, `confirmation`, `(internal)` |
-| Chef | `card`, `list`, `timer`, `toast`, `confirmation`, `(internal)` |
-| Programmer | `card`, `list`, `diff`, `terminal`, `toast`, `confirmation`, `(internal)` |
-| Digital Marketer | `table`, `chart`, `card`, `list`, `form`, `toast`, `confirmation`, `(internal)` |
+| Data Analysis | `table`, `chart`, `card`, `list`, `toast`, `confirmation` |
+| Chef | `card`, `list`, `timer`, `toast`, `confirmation` |
+| Programmer | `card`, `list`, `diff`, `terminal`, `toast`, `confirmation` |
+| Digital Marketer | `table`, `chart`, `card`, `list`, `form`, `toast`, `confirmation` |
 
 **Verification checklist** (run after assigning all slots and outputs):
 
@@ -229,7 +229,7 @@ Choose the domain's block palette before assigning outputs. Canonical categories
 - [ ] Slot counts: 2-3 typical, never more than 5
 - [ ] Each flow's slot signature is unique within its domain
 - [ ] Output blocks come from the domain's chosen palette
-- [ ] Internal flows use `(internal)` output
+- [ ] Every flow produces a user-visible block (no `(internal)` output)
 - [ ] Plan flows produce `list` output
 - [ ] Delete flows produce `confirmation` output
 
@@ -298,7 +298,7 @@ Each flow (core or composite) belongs to exactly one intent. Assignment follows 
 | Creates time-based events or multi-session outputs | Domain schedule intent |
 | Handles open-ended conversation, Q&A, chitchat | Converse |
 | Decomposes a request into sub-flows (diagnose/plan) | Plan |
-| Gathers supporting info invisibly (no user-facing output) | Internal |
+| Recognizes the request is unclear/underspecified | Clarify |
 
 **Composite intent guidelines:**
 
@@ -332,10 +332,10 @@ Recurring patterns across domains, described by role (not specific dact names). 
 | **Preview** | See what will happen first | read-verb + mutation-verb + target | Self-check gate |
 | **Confirm gate** | Approve before destructive action | operation + positive | — |
 | **Reject gate** | Decline / cancel | operation + negative | — |
-| **Save preference** | Remember user settings | memory-verb + user | Memory Manager L2 |
-| **Save context** | Remember business info | memory-verb + user + batch | Memory Manager L3 |
-| **Lookup cached** | Retrieve from session memory | read-verb + memory-verb | Memory Manager L1 |
-| **Retrieve knowledge** | Deep knowledge search | read-verb + memory-verb + agent | Memory Manager L3 |
+| **Save preference** | Remember user settings | memory-verb + user | MEM L2 (`store_preference`) |
+| **Save context** | Remember business info | memory-verb + user + batch | MEM L3 |
+| **Lookup cached** | Retrieve from session memory | read-verb + memory-verb | MEM L1 (`recap`) |
+| **Retrieve knowledge** | Deep knowledge search | read-verb + memory-verb + agent | MEM L3 (`retrieve`) |
 | **Agent explain** | Agent explains an entity | read-verb + agent + entity | Prompt Engineer |
 | **Agent suggest** | Agent recommends action | agent + positive | — |
 | **Copy** | Duplicate something | create-verb + read-verb + entity | — |
@@ -379,7 +379,7 @@ Recurring patterns across domains, described by role (not specific dact names). 
 | Report | plot, multiple |
 | Converse | chat, user, agent, confirm, deny |
 | Plan | composites only |
-| Internal | composites only |
+| Clarify | composites only |
 
 **48 flows** (7-9-8-4-7-6-7 by intent):
 
@@ -426,12 +426,7 @@ Recurring patterns across domains, described by role (not specific dact names). 
 | | query + update + confirm | validate | `{16E}` | Run business rules on a dataset and flag failing rows. ≠ outlier (statistical); validate checks rules | dataset (req), rules (req) | list |
 | | retrieve + update + row | blank | `{46B}` | Find and address null or empty cells. One of 4 diagnosis types | dataset (req), column (opt), strategy (elective) | list |
 | | retrieve + update + deny | typo | `{46F}` | Detect likely typos or misspellings in text columns. One of 4 diagnosis types | dataset (req), column (opt) | list |
-| **Internal** | chat + query + user | recap | `{018}` | Pull a snippet from the current conversation (session scratchpad L1). ≠ peek (checks data state); ≠ recall (retrieves persistent user prefs) | key (opt) | (internal) |
-| | query + measure + agent | calculate | `{129}` | Perform basic arithmetic or comparison the agent cannot do reliably in its head (e.g., is 9.11 < 9.8) | expression (req) | (internal) |
-| | query + retrieve + agent | search | `{149}` | Look up vetted FAQs and curated reference content (unstructured equivalent of `lookup`). ≠ retrieve (unvetted context from anywhere) | query (req) | (internal) |
-| | query + user + agent | peek | `{189}` | Quick internal check of data state before agent responds | dataset (opt) | (internal) |
-| | retrieve + user + agent | recall | `{489}` | Retrieve from agent memory (user prefs, L2). ≠ recap (session scratchpad) | key (opt), scope (opt) | (internal) |
-| | retrieve | retrieve | `{004}` | Fetch general business context from Memory Manager — unvetted documents, reports, or domain knowledge from any source (L3). ≠ search (vetted FAQs) | topic (opt), source (opt) | (internal) |
+_No Internal section._ The former Internal members are not flows: memory is MEM's `recap` (L1) / `recall` (L2) / `retrieve` (L3) skills; `calculate` and `peek` are tools; `search` is the `web_search` tool. PEX calls all of these directly without stacking a flow.
 
 **Rejected flows:**
 
@@ -439,7 +434,7 @@ Recurring patterns across domains, described by role (not specific dact names). 
 |---|---|---|---|
 | scatter | plot + row | Chart type (scatter, bar, histogram) is a slot of `plot` — the user picks a chart type, they don't invoke a different flow | #8 Slot as flow |
 | scorecard | measure + plot + table | "Show me a summary view" triggers both scorecard and dashboard — NLU can't distinguish them | #6 Near-synonym |
-| context (original) | retrieve + user + agent | "Context" is too broad — what kind? Decomposed into three flows by memory tier: recap (L1 session), recall (L2 user prefs), context (L3 business docs) | #2 Vague umbrella |
+| context (original) | retrieve + user + agent | "Context" is too broad — what kind? Split by memory tier into MEM skills: recap (L1 session), recall (L2 user prefs), retrieve (L3 business docs) | #2 Vague umbrella |
 
 ## Worked Example: Chef
 
@@ -476,7 +471,7 @@ Note: "Cook" is an intent, so no core dact is named "cook". The cooking action d
 | Plate | serve, wet |
 | Converse | chat, user, agent, hot, cold |
 | Plan | composites only |
-| Internal | composites only |
+| Clarify | composites only |
 
 **48 flows** (7-7-7-7-7-7-6 by intent):
 
@@ -524,12 +519,7 @@ Note: "Cook" is an intent, so no core dact is named "cook". The cooking action d
 | | mix + update + cold | troubleshoot | `{46F}` | Diagnose why a dish turned out wrong and suggest corrections | dish (req), symptom (req) | list |
 | | mix + user + agent | consider | `{489}` | Weigh multiple options by combining Source and Prep flows before presenting a recommendation | goal (req) | list |
 | | insert + update + recipe | feast | `{56A}` | Plan a multi-course meal for one event with prep timing. ≠ menu (multi-day planning) | recipes (req), occasion (opt) | list |
-| **Internal** | chat + heat + user | recap | `{018}` | Pull a snippet from the current conversation (session scratchpad L1). ≠ recall (user prefs); ≠ context (cooking knowledge) | key (opt) | (internal) |
-| | user + agent | think | `{089}` | Agent's internal reasoning step | — | (internal) |
-| | heat + user + agent | safety | `{189}` | Check food safety requirements (internal temps, storage times) | ingredient (req), method (opt), temp (opt) | (internal) |
-| | search + user + agent | recall | `{289}` | Retrieve stored user preferences (dietary rules, flavor prefs, L2). ≠ recap (session scratchpad); ≠ context (cooking knowledge) | key (opt), scope (opt) | (internal) |
-| | search + agent + recipe | context | `{29A}` | Retrieve from cooking knowledge base (techniques, food science, cultural context, L3). ≠ recall (user prefs); ≠ pantry (ingredient inventory) | key (opt), source (opt) | (internal) |
-| | search + recipe + ingredient | pantry | `{2AB}` | Internally check pantry inventory before making suggestions | ingredient (opt), recipe (opt) | (internal) |
+_No Internal section._ Its former members are not flows: memory → MEM `recap` / `recall` / `retrieve` skills; deterministic checks (`safety`, `pantry`) → tools; any multi-step agent-facing gathering would be an opt-in domain sub-agent (dropped here for now). PEX calls tools and skills directly.
 
 **Rejected flows:**
 
@@ -574,7 +564,7 @@ Note: domain verbs are `read`, `write`, `run`, `ship` — not "trace" or "code",
 | Deploy | ship, local |
 | Converse | chat, user, agent, approve, decline |
 | Plan | composites only |
-| Internal | composites only |
+| Clarify | composites only |
 
 **48 flows** (7-7-6-7-7-6-8 by intent):
 
@@ -620,14 +610,7 @@ Note: domain verbs are `read`, `write`, `run`, `ship` — not "trace" or "code",
 | | read + update + decline | diagnose | `{16F}` | Narrow down the root cause of a failure. ≠ debug (broad); diagnose reaches a conclusion | error (req), context (opt) | list |
 | | write + update + file | debt | `{26B}` | Identify and prioritize technical debt items for resolution | area (req), priority (opt) | list |
 | | run + update + function | coverage | `{36C}` | Plan test coverage — which functions need tests, what edge cases. ≠ test (runs tests) | target (req), depth (opt) | list |
-| **Internal** | read + folder | browse | `{01A}` | Internally explore source code folder structure before acting. ≠ scan (checks deployment state) | folder (opt), depth (opt) | (internal) |
-| | user + agent | think | `{089}` | Agent's internal reasoning step | — | (internal) |
-| | read + run + agent | benchmark | `{139}` | Internally measure current code performance to inform recommendations. ≠ evaluate (tests proposed changes); benchmark measures existing state | target (req), metric (opt) | (internal) |
-| | read + ship + agent | scan | `{149}` | Scan deployment state (Docker, CI/CD, infra) before recommendations. ≠ browse (explores source code structure) | env (opt) | (internal) |
-| | read + user + agent | recall | `{189}` | Retrieve stored user preferences (coding style, frameworks, L2). ≠ preference (user sets prefs); recall retrieves them internally | key (opt), scope (opt) | (internal) |
-| | read + user + local | recap | `{18D}` | Pull a snippet from the current conversation (session scratchpad L1). ≠ recall (user prefs); ≠ context (project docs) | key (opt) | (internal) |
-| | write + run + agent | evaluate | `{239}` | Internally run the agent's proposed change through tests before suggesting. ≠ test (user runs existing suite); evaluate validates agent-generated code | change (req), tests (opt) | (internal) |
-| | ship + agent + folder | context | `{49A}` | Retrieve from project knowledge base (architecture docs, conventions, L3). ≠ recall (user prefs); ≠ browse (explores current structure) | key (opt), source (opt) | (internal) |
+_No Internal section._ Its former members are not flows: memory → MEM `recap` / `recall` / `retrieve` skills; deterministic checks (`scan`) → tools; multi-step agent-facing gathering (`browse`, `benchmark`, `evaluate`) would be opt-in domain sub-agents (dropped here for now). PEX calls tools and skills directly.
 
 **Rejected flows:**
 
@@ -669,7 +652,7 @@ Note: domain verbs are `read`, `write`, `run`, `ship` — not "trace" or "code",
 | Optimize | tune, paid |
 | Converse | chat, user, agent, boost, cut |
 | Plan | composites only |
-| Internal | composites only |
+| Clarify | composites only |
 
 **48 flows** (6-7-6-6-7-8-8 by intent):
 
@@ -715,14 +698,7 @@ Note: domain verbs are `read`, `write`, `run`, `ship` — not "trace" or "code",
 | | draft + update + campaign | calendar | `{26A}` | Build a content calendar mapping posts to dates. ≠ roadmap (strategic); calendar is tactical scheduling | channel (opt), date_range (opt) | list |
 | | draft + update + ad | experiment | `{26B}` | Design A/B test plan with variants and metrics. ≠ split (runs test); experiment plans the design | ad (req), hypothesis (req) | list |
 | | review + post + channel | post | `{13C}` | Review content quality then publish — a composed flow that calls publish after review passes. ≠ publish (single-step); post plans and executes | content (req), channel (opt) | list |
-| **Internal** | chat + tune + user | recap | `{048}` | Pull a snippet from the current conversation (session scratchpad L1). ≠ recall (user prefs); ≠ context (business docs) | key (opt) | (internal) |
-| | user + agent | think | `{089}` | Agent's internal reasoning step | — | (internal) |
-| | agent + cut | caution | `{09F}` | Internally check if a spend amount or action is risky before proceeding | action (req), threshold (opt) | (internal) |
-| | review + draft + agent | research | `{129}` | Research market trends, competitor data, or industry benchmarks before suggesting (competitor = slot). ≠ context (retrieves stored knowledge); research gathers ad-hoc market intelligence | query (req), market (opt) | (internal) |
-| | review + tune + agent | analyze | `{149}` | Internally analyze optimization data to inform tuning | campaign (req), dimension (opt) | (internal) |
-| | review + user + agent | recall | `{189}` | Retrieve stored user preferences (brand voice, KPI targets, L2). ≠ preference (user sets prefs); recall retrieves them internally | key (opt), scope (opt) | (internal) |
-| | draft + tune + agent | score | `{249}` | Score draft creative quality before presenting to the user. ≠ audit (user checks live ad); score is agent pre-check on drafts | draft (req), criteria (opt) | (internal) |
-| | tune + agent + campaign | context | `{49A}` | Retrieve from business knowledge base (brand guidelines, market research, L3). ≠ recall (user prefs); ≠ research (ad-hoc market trends) | key (opt), source (opt) | (internal) |
+_No Internal section._ Its former members are not flows: memory → MEM `recap` / `recall` / `retrieve` skills; `caution` → a tool; `research` → the `web_search` tool; `analyze` and `score` (multi-step agent-facing) would be opt-in domain sub-agents (dropped here for now). PEX calls tools and skills directly.
 
 **Rejected flows:**
 
@@ -762,7 +738,7 @@ These principles emerged from applying universal DAX codes across multiple domai
 
 4. **Dact labels are domain-specific; dact positions are not.** The hex index of a dact in `DACT_CATALOG` is fixed across all domains, but the human-readable label should match domain vocabulary. An onboarding agent might label its dact `scope` where a blog agent labels the same position `outline`. The position ensures cross-domain consistency; the label ensures domain fluency.
 
-5. **`{001}` is curated search, not retrieval.** The distinction matters: `{001}` is user-initiated keyword search over vetted, curated content. Unvetted retrieval from any source (e.g., a general knowledge base) is a different operation and belongs in a multi-dact Internal flow. This parallels the `search` vs `retrieve` distinction in the Internal intent.
+5. **Curated search vs. unvetted retrieval.** Keyword search over vetted, curated content (the `web_search` tool) is a different operation from unvetted retrieval over any source (MEM's `retrieve` skill, L3). Both are reached directly by PEX — neither is a flow.
 
 6. **`{003}` is the creative/generative slot.** The common thread across domains is producing something new — writing from scratch, proposing a plan, generating a draft. This is distinct from `{006}` (update), which modifies existing content. If a candidate for `{003}` feels more like editing, it probably belongs at `{006}` instead.
 
@@ -772,7 +748,7 @@ These principles emerged from applying universal DAX codes across multiple domai
 
 ## Starter Pack
 
-Every assistant has numerous flows that are fairly domain-agnostic. In addition to the 8 universal DAX codes, there are also some in Converse and Internal that are usually shared. These can kick-start a new domain's flow catalog.
+Every assistant has numerous flows that are fairly domain-agnostic. In addition to the 8 universal DAX codes, there are also some Converse flows that are usually shared, plus the universal MEM skills. These can kick-start a new domain's flow catalog.
 
 ### Converse Flows
 
@@ -785,13 +761,15 @@ Every assistant has numerous flows that are fairly domain-agnostic. In addition 
 | **affirm** | approve, endorse | User accepts the agent's suggestion |
 | **negate** | reject, dismiss | User declines the agent's suggestion |
 
-### Internal Flows
+### Universal MEM Skills & Tools (not flows)
 
-| Semantic slot | Example names | Description |
-|---------------|---------------|-------------|
-| **recap** | recap | Read from session scratchpad (L1) |
-| **recall** | recall | Look up persistent user preferences (L2) |
-| **retrieve** | retrieve | Fetch unvetted business context (L3) |
-| **search** | search | Look up vetted FAQs and curated content |
+Reached directly by PEX — **not** flows in the catalog:
 
-Not every domain needs all of these — Kalli omits `undo` because onboarding actions aren't destructive. But most domains will want the full set of ~18 (8 universal + 6 converse + 4 internal) before designing domain-specific flows.
+| Skill / tool | Reaches | Description |
+|---|---|---|
+| `recap` | MEM L1 | Read from the session scratchpad |
+| `recall` | MEM L2 | Look up persistent user preferences |
+| `retrieve` | MEM L3 | Fetch unvetted business context |
+| `web_search` (tool) | web | Look up vetted FAQs and curated content |
+
+Not every domain needs all of these — Kalli omits `undo` because onboarding actions aren't destructive. But most domains will want the full set of ~14 flows (8 universal + 6 converse), plus the universal MEM skills (`recap`/`recall`/`retrieve`) and the `web_search` tool, before designing domain-specific flows.

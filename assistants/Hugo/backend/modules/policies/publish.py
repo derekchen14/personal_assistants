@@ -7,18 +7,15 @@ class PublishPolicy(BasePolicy):
     def __init__(self, components):
         super().__init__(components)
         self.flow_stack = components['flow_stack']
+        self.content = components['content_service']
 
     def execute(self, state, context, tools):
         flow = self.flow_stack.get_flow()
 
         match flow.name():
             case 'release': return self.release_policy(flow, state, context, tools)
-            case 'syndicate': return self.syndicate_policy(flow, state, context, tools)
             case 'schedule': return self.schedule_policy(flow, state, context, tools)
-            case 'preview': return self.preview_policy(flow, state, context, tools)
-            case 'promote': return self.promote_policy(flow, state, context, tools)
-            case 'cancel': return self.cancel_policy(flow, state, context, tools)
-            case 'survey': return self.survey_policy(flow, state, context, tools)
+            case 'cite': return self.cite_policy(flow, state, context, tools)
             case _:
                 return TaskArtifact()
 
@@ -36,7 +33,7 @@ class PublishPolicy(BasePolicy):
         steps, current = self._slot_steps(flow)
         artifact = TaskArtifact(flow.name())
         artifact.add_block({'type': 'toast', 'data': {
-            'message': self.ambiguity.ask(),
+            'message': self.ambiguity.ask(flow.name()),
             'level': 'info',
             'steps': steps,
             'current_step': current,
@@ -50,8 +47,12 @@ class PublishPolicy(BasePolicy):
         if error: return error
         text, tool_log = self.llm_execute(flow, state, context, tools)
 
+        # Skill may declare ambiguity (e.g. an unknown channel name); leave the flow Active
+        # and ask — never publish in the same breath as the question.
+        if self.ambiguity.present():
+            return self._clarify_with_steps(flow)
+
         failed = self._first_failed_platform_tool(tool_log)
-        flow.status = 'Completed'
         artifact = TaskArtifact(flow.name(), thoughts=text)
         if failed:
             failed_tool, result = failed
@@ -60,32 +61,30 @@ class PublishPolicy(BasePolicy):
             if 'level' in result:
                 toast['level'] = result['level']
             artifact.add_block({'type': 'toast', 'data': toast})
+            self.complete_flow(flow, state, f'Release attempted but {failed_tool} failed: {err_msg}',
+                metadata={'post_id': post_id, 'failed_tool': failed_tool})
         else:
             self.retry_tool(tools, 'update_post',
                 {'post_id': post_id, 'updates': {'status': 'published'}})
             title = tools('read_metadata', {'post_id': post_id})['title']
             artifact.add_block({'type': 'toast', 'data': {'message': f'Published "{title}".', 'level': 'success'}})
+            self.complete_flow(flow, state, f'Published "{title}".',
+                metadata={'post_id': post_id, 'title': title})
         return artifact
 
     @staticmethod
     def _first_failed_platform_tool(tool_log):
+        """First channel whose FINAL platform-tool result failed. Keyed per (tool, platform)
+        so a self-corrected retry clears an earlier transient failure; calls missing the
+        required `platform` arg never reached a channel (arg-shape mistake) and are skipped."""
+        last = {}
         for entry in tool_log:
-            if entry['tool'] not in ('channel_status', 'release_post'):
-                continue
-            if not entry['result']['_success']:
-                return entry['tool'], entry['result']
+            if entry['tool'] in ('channel_status', 'release_post') and 'platform' in entry['input']:
+                last[(entry['tool'], entry['input']['platform'])] = entry['result']
+        for (tool_name, _), result in last.items():
+            if not result['_success']:
+                return tool_name, result
         return None
-
-    def syndicate_policy(self, flow, state, context, tools):
-        if not flow.slots['channel'].check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing': 'channel'})
-            artifact = self._clarify_with_steps(flow)
-        else:
-            text, tool_log = self.llm_execute(flow, state, context, tools)
-            flow.status = 'Completed'
-            artifact = TaskArtifact(flow.name(), thoughts=text)
-            artifact.add_block({'type': 'toast', 'data': {'message': text}})
-        return artifact
 
     def schedule_policy(self, flow, state, context, tools):
         missing = self._first_missing_required(flow, (flow.entity_slot, 'channel'))
@@ -94,7 +93,7 @@ class PublishPolicy(BasePolicy):
             artifact = self._clarify_with_steps(flow)
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools)
-            flow.status = 'Completed'
+            self.complete_flow(flow, state, text or 'Publication scheduled.')
             artifact = TaskArtifact(flow.name(), thoughts=text)
             artifact.add_block({'type': 'toast', 'data': {'message': text}})
         return artifact
@@ -107,51 +106,23 @@ class PublishPolicy(BasePolicy):
                 return name
         return None
 
-    def preview_policy(self, flow, state, context, tools):
-        if artifact := self._guard_entity(flow): return artifact
+    def cite_policy(self, flow, state, context, tools):
+        target_slot = flow.slots['target']
+        url_slot = flow.slots['url']
+        if not target_slot.check_if_filled() and not url_slot.check_if_filled():
+            self.ambiguity.declare('specific', metadata={'missing': 'target'})
+            return TaskArtifact()
 
-        post_id, _, error = self.resolve_source_ids(flow, state, tools)
-        if error: return error
+        # Cite may proceed url-only without a grounded post, so an unresolvable reference is
+        # not an early-return here — fall back to the prior active post and skip the snapshot.
+        post_id, sec_id, _ = self.resolve_source_ids(flow, state, tools)
+        if not post_id and state.active_post:
+            post_id, sec_id = state.active_post, None
+        if post_id:
+            self.record_snapshot(self.content, flow, context, post_id,
+                sec_ids=[sec_id] if sec_id else None)
+
         text, tool_log = self.llm_execute(flow, state, context, tools)
-        flow.status = 'Completed'
-        artifact = TaskArtifact(flow.name(), thoughts=text)
-        artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-        return artifact
-
-    def promote_policy(self, flow, state, context, tools):
-        if artifact := self._guard_entity(flow): return artifact
-
-        source_id, _, error = self.resolve_source_ids(flow, state, tools)
-        if error: return error
-        text, tool_log = self.llm_execute(flow, state, context, tools)
-
-        flow.status = 'Completed'
-        artifact = TaskArtifact(flow.name(), thoughts=text)
-        artifact.add_block({'type': 'card', 'data': self._read_post_content(source_id, tools)})
-        return artifact
-
-    def cancel_policy(self, flow, state, context, tools):
-        if artifact := self._guard_entity(flow): return artifact
-
-        post_id, _, error = self.resolve_source_ids(flow, state, tools)
-        if error: return error
-        result = tools('update_post', {
-            'post_id': post_id,
-            'updates': {'status': 'draft'},
-        })
-
-        if result['_success']:
-            flow.status = 'Completed'
-            artifact = TaskArtifact(flow.name())
-            artifact.add_block({'type': 'toast', 'data': {'message': 'Publication cancelled.'}})
-        else:
-            artifact = self.error_artifact(flow, 'tool_error',
-                thoughts='Could not cancel publication.',
-                code=result['_message'],
-                failed_tool='update_post')
-        return artifact
-
-    def survey_policy(self, flow, state, context, tools):
-        text, tool_log = self.llm_execute(flow, state, context, tools)
-        flow.status = 'Completed'
-        return TaskArtifact(flow.name(), thoughts=text)
+        self.complete_flow(flow, state, 'Added the requested citation.',
+            metadata={'post_id': post_id} if post_id else None)
+        return TaskArtifact(origin='cite', thoughts=text)

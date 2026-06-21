@@ -1,255 +1,233 @@
 # Phase 5 — Core Agent
 
-Implement all 7 components, full NLU/PEX/RES modules, and the Agent orchestrator. Replace the stubs from Phase 4 with working implementations.
+Implement all 9 components, the 3 module-loops (NLU / PEX / MEM), and the deterministic main Agent. Replace the
+Phase 4 stubs with working implementations.
 
 ## Context
 
-This is the largest phase. It implements the full agent pipeline: 7 components that provide the infrastructure (state tracking, context, prompts, display, ambiguity, memory), 3 modules that execute the pipeline (NLU → PEX → RES), and the Agent class that orchestrates everything. While this may seem overwhelming, the components are designed to be reusable across domains, so most of the work is already availble to copy and paste from the scaffolding or other domains. By the end, the agent can handle simple interactions end-to-end with hard-coded test flows.
+This is the largest phase. It implements the three-level system: 9 components that provide the infrastructure,
+3 continuous LLM-loops that run in parallel (NLU understands, PEX acts, MEM remembers), and the **main Agent**
+— deterministic code that governs the turn. There is **no RES**: the dispatched sub-agent builds the
+TaskArtifact and the main Agent delivers it. Most components are reusable across domains, so much is copy-paste
+from the scaffolding. By the end, the agent handles simple interactions end-to-end with hard-coded test flows.
 
 **Prerequisites**: Phase 4 complete — server running, config loaded, database created, all shells exist.
 
-**Outputs**: Fully implemented components, modules, and Agent class handling simple interactions.
+**Outputs**: Fully implemented components, module-loops, and main Agent handling simple interactions.
 
-**Spec references**: [components/*.md](../components/), [modules/*.md](../modules/), [architecture.md § Agent](../architecture.md)
+**Spec references**: [components/*.md](../components/), [modules/*.md](../modules/),
+[architecture.md](../architecture.md)
 
 ---
 
 ## Steps
 
-### Step 1 — Dialogue State
+### Step 1 — Dialogue State  (NLU)
 
-Implement the state tracking component. The dialogue state grounds the agent in its beliefs.
-
-**File**: `backend/components/dialogue_state.py`
+The structured, ontology-filled belief. **File**: `backend/components/dialogue_state.py`
 
 **Implement**:
-- **Predicted state**: `pred_intent` (one of 7 intents) and `flow_name` (up to 64 per domain). No `dax` or `slots` on the state — slots live on the flow instance in the flow stack.
-- **Flow candidates**: `pred_flows: list[dict]` stores alternative flow detections from NLU (replaces `top_detections`)
-- **Flags**: `keep_going`, `has_issues`, `has_plan`, `natural_birth`
-- **Serialization**: `serialize()` → JSON dict, `from_dict(data, config)` → reconstruct from persistence
-- **State history**: Diffs after every turn, full snapshots when >1 completed flows are popped
-- **Rollback**: Reconstruct any prior state by replaying diffs from the nearest snapshot
+- **Four-block document**: `session`, `user_beliefs`, `grounding`, `flow_stack`. There is **no `flags` block**
+  — `keep_going` is PEX loop control, `has_plan` is computed from the agenda, `natural_birth` is a per-flow
+  property.
+- **Predicted state**: `pred_intent` (one of **7** intents) and `flow_name`; `pred_flows: list[dict]` for
+  candidates. No `dax`/`slots` on the state — slots live on the flow instance.
+- **Belief tools** (no generic `write_state`): one read tool `understand` (returns serialized state — flow,
+  intent, confidence, slots, grounding), and three writes — `classify_intent`, `detect_flow`, `fill_slots`
+  (entity extraction, its sub-task, writes `grounding`).
+- **Serialization**: `serialize()` → JSON dict; `from_dict(data, config)`. The main Agent calls `serialize()`
+  in its post-hook — persistence is deterministic code, not a tool.
+- **State history**: a per-turn snapshot (hybrid full-JSON doc + promoted/indexed columns); rollback is the
+  existing `undo` flow replaying snapshots — no separate diff/rollback machinery.
 
 **Reference**: [dialogue_state.md](../components/dialogue_state.md)
 
-### Step 2 — Flow Stack
+### Step 2 — Workflow Planner / FlowStack  (PEX)
 
-Implement the stack data structure within dialogue state.
-
+The FlowStack stores the flows; Workflow Planning / Sub-agent Routing is the activity PEX performs over it.
 **File**: `backend/components/flow_stack/` (stack.py, slots.py, parents.py, flows.py, __init__.py)
 
 **Implement**:
-- **Stack operations**: push, pop, peek — single active flow at top
-- **Flow lifecycle**: Pending → Active → Completed/Invalid states
-- **No FlowEntry**: BaseFlow IS the entry — each flow instance carries both domain definition (slots, tools, intent) and runtime state (flow_id, status, plan_id, turn_ids, result). FlowStack instantiates flow classes directly on push.
-- **`flow_classes` dict**: Maps flow names (not DAX codes) to flow classes (not instances). Passed to FlowStack at construction. `push(flow_name)` looks up the class, instantiates it, and sets runtime fields. Slots are NOT filled during push.
-- **Flow class hierarchy**: BaseFlow with intent-specific parent classes. Key methods: `fill_slots_by_label()`, `fill_slot_values(values: dict)`, `slot_values_dict()`, `is_filled()`, `to_dict()`, `name(full=False)`, `get(key, default)`, `serialize()`
-- **Deduplication**: Check if detected flow already exists on stack in Pending/Active state; carry over if so
-- **Plan flow lifecycle**: Plan flow at stack bottom, sub-flows above, `plan_id` tracking, replanning check between sub-flows
-- **Fallback protocol**: Create new flow, best-effort slot mapping, mark old Invalid, push new
-- **Concurrency model**: Single-threaded user-facing flows, parallel Internal flows with dependency annotations
+- **Stack operations**: `stackon` / `fallback` / `pop_completed`. Hard depth limit **16**; overflow writes a
+  note to the scratchpad to revisit (no unbounded branching).
+- **Multiple active flows**: the Active block must be **contiguous** at the top, Pending strictly beneath.
+- **Flow lifecycle**: Pending → Active → Completed/Invalid. `complete_flow` sets `Completed` (grounding-gated).
+- **No FlowEntry**: BaseFlow IS the entry (flow_id, status, plan_id, turn_ids, result). `flow_classes` dict
+  maps names → classes; `push(flow_name)` instantiates and sets runtime fields. **PEX's Workflow Planner
+  stacks flows** — NLU only records the detection.
+- **Flow class hierarchy**: BaseFlow + intent parents; methods `fill_slots_by_label()`, `fill_slot_values()`,
+  `slot_values_dict()`, `is_filled()`, `to_dict()`, `name(full=False)`, `get(key, default)`, `serialize()`.
+- **Deduplication / carryover**; **fallback protocol** (new flow, best-effort slot mapping, old → Invalid).
+- **Concurrency**: the contiguous Active block runs as **asyncio tasks**; no "Internal" flows.
+- **Plan decomposition**: the Workflow Planner decomposes a Plan request into sub-flows — there is no Plan
+  policy file.
 
-**Reference**: [flow_stack.md](../components/flow_stack.md)
+**Reference**: [workflow_planner.md](../components/workflow_planner.md)
 
-### Step 3 — Context Coordinator
+### Step 3 — Context Coordinator  (MEM · L1)
 
-Implement structured turn storage and retrieval.
-
-**File**: `backend/components/context_coordinator.py`
+The append-only event stream. **File**: `backend/components/context_coordinator.py`
 
 **Implement**:
-- **Turn structure**: `turn_id`, role (agent/user/system), form (text/speech/image/action), content
-- **`compile_history(look_back, keep_system)`**: Returns a formatted string of recent conversation for prompt context
-- **`full_conversation(keep_system)`**: Returns all utterance turns as formatted strings
-- **`recent_turns(n)`**: Returns last n raw turn dicts
-- **`last_user_turn`**: Property returning the last user turn dict
-- **Completed flows tracking**: Convenience index of flows finished during session
-- **Checkpoints**: Bundle full turn history + dialogue state snapshots, created at session end
-- **Turn–flow mapping**: CC stores turns with `turn_id`; flows hold pointers to their `turn_id`s
+- **Turn structure**: `turn_id`, role (agent/user/system), form (text/speech/image/action), content.
+- **`compile_history(look_back, keep_system)`**, **`recent_turns(n)`**, **`last_user_turn`**, completed-flows
+  index, checkpoints (turn history + dialogue-state snapshots), turn→flow mapping.
+- Holds MEM-computed rolling summaries as special turn entries (it stores, it does not summarize).
 
 **Reference**: [context_coordinator.md](../components/context_coordinator.md)
 
-### Step 4 — Prompt Engineer
+### Step 4 — Prompt Engineer  (PEX)
 
-Implement model-agnostic LLM interface.
-
-**File**: `backend/components/prompt_engineer.py`
+Model-agnostic LLM interface. **File**: `backend/components/prompt_engineer.py`
 
 **Implement**:
-- **Model invocation**: Generic prompt function accepting any caller, streaming vs. regular modes
-- **Multi-provider support**: Anthropic, OpenAI, Google — swap providers without changing calling code
-- **Prompt composition**: Assemble prompts following the 8-slot format (grounding data → role/task → instructions → keywords → output shape → exemplars → closing reminder → final request)
-- **Output parsing**: Parse LLM output into structured format, handle malformed responses
-- **Guardrails**: Validate structured output (JSON, SQL, Python), retry with reformulated prompts on failure
-- **Backoff & retry**: Exponential backoff on rate limits/timeouts/server errors, configured via resilience settings
-- **Data preparation**: Format tables, lists, structured data for LLM consumption
-- **Token budget logging**: Track usage across prompt sections
-- **Prompt versioning**: Unique ID + version per template, tied to evaluation results
+- Provider-agnostic dispatch (tier abstraction `low`/`med`/`high` via `ACTIVE_FAMILY`); prompt composition;
+  output parsing + guardrails; exponential backoff/retry; token-budget logging; prompt caching markers.
 
 **Reference**: [prompt_engineer.md](../components/prompt_engineer.md)
 
-### Step 5 — Display Frame
+### Step 5 — Task Artifact  (PEX)
 
-Implement the data-display decoupling layer.
-
-**File**: `backend/components/task_artifact.py`
+The A2A-aligned per-flow output. **File**: `backend/components/task_artifact.py`
 
 **Implement**:
-- **Common attributes**: `data`, `code`, `source`, `display_name`, `display_type`
-- **Frame lifecycle**: Created by policy in PEX, scoped per flow, consumed by RES, discarded on flow completion
-- **Pagination**: First page (512 rows default) with `table_id` reference for full data
-- **Domain-specific attributes**: Extension point for domain-specific fields (e.g., `shadow`, `visual` for data analysis)
-- **One frame = one block rule**: Each frame maps to exactly one block per turn
+- **3 stored attributes** (`origin`, `parts: list[Part]`, `blocks: list[BuildingBlock]`) + **3 helper
+  properties** (`data`, `thoughts`, `code`). Part oneof contract (exactly one of text/raw/url/data).
+- **Lifecycle**: built by the dispatched sub-agent; **PEX curates the concurrent sub-agents' N artifacts → one
+  per turn** (stack order, dedup, single-flow-type origin is trivial, a failed sibling is dropped and logged);
+  the main Agent delivers it. Pagination (first page 512 rows + reference id).
 
 **Reference**: [task_artifact.md](../components/task_artifact.md)
 
-### Step 6 — Ambiguity Handler
+### Step 6 — Ambiguity Handler  (NLU, on the World)
 
-Implement four-level uncertainty tracking and resolution.
-
-**File**: `backend/components/ambiguity_handler.py`
+Four-level uncertainty. **File**: `backend/components/ambiguity_handler.py`
 
 **Implement**:
-- **4 levels**: General (intent unclear), Partial (entity unresolved), Specific (slot missing/invalid), Confirmation (candidate needs sign-off)
-- **State**: Uncertainty counts per level, observation, metadata (key-value, cleared per turn), generation flags
-- **Lifecycle**: Recognize → Declare → Respond → Resolve
-- **Core functions**:
-  - `declare(level, observation, metadata, generation_flags)` — record uncertainty
-  - `ask()` → dispatch to `general_ask`, `partial_ask`, `specific_ask`, `confirmation_ask`
-  - `generate()` — execute LLM call if generation flags set (lexicalize, naturalize, or compile mode)
-  - `resolve()` — clear stored values
-  - `present()` — check if unresolved ambiguity exists
+- **4 levels**: general, partial, specific, confirmation.
+- **Gate → level mapping** (the 3 NLU gates): gate 1 intent/flow failure → `general`; gate 2 grounding-entity
+  failure → `partial`; gate 3 slot-filling failure → `specific`.
+- **4 methods** (the `handle_ambiguity` tool dispatches to these): `declare(level, observation, metadata)`,
+  `present()` (predicate), `ask()` (clarification text), `resolve()`.
+- Lives on the **World** (shared), beside the Session Scratchpad.
 
 **Reference**: [ambiguity_handler.md](../components/ambiguity_handler.md)
 
-### Step 7 — Memory Manager
+### Step 7 — Session Scratchpad  (NLU, on the World)
 
-Implement three-tier cache hierarchy.
-
-**File**: `backend/components/memory_manager.py`
+The append-only swarm ledger. **File**: lives on the World, beside the Ambiguity Handler.
 
 **Implement**:
-- **Session Scratchpad (L1/L2)**: In-context, per-conversation. 3–5 summarized snippets per flow. Hard cap 64 snippets. LRU eviction. Written at end of each flow.
-  - Access: `memory.scratchpad.write(snippet)`, `memory.scratchpad.read()`
-- **User Preferences (RAM)**: Per-account, persists across conversations. Key-value pairs (graph search or ID lookup). Lambda functions that modify agent behavior.
-  - Access: `memory.preferences.update(key, value)`, `memory.preferences.get(key)`
-  - **Trajectory Playbooks**: Store successful flow trajectories (flow_dact, slots, tool_calls, outcome, user_query). Retrieved by semantic similarity on future requests.
-- **Business Context (Hard Disk)**: Per-tenant, shared across users. Documents embedded in vector space. Retrieval: vector search → re-rank to top 10.
-- **Promotion triggers**: Salience, surprisal, frequency, explicit user request
-- **Conversation summarization**: Rolling summary when scratchpad/turn count grows too large. MM calculates summary; CC stores it.
+- Entries are dicts: key = bare flow name; minimal required fields (`version`, `turn_number`, `used_count`) + payload.
+  Hard cap 64; LRU eviction.
+- **API**: `append_to_scratchpad(writer, entry)` (stamps `writer` in code; triggers NLU review),
+  `read_from_scratchpad(...)` (read-only), `update_scratchpad(key, entry)` (**NLU only**).
+- Promotion → L2/L3: a frequency counter (`used_count` ≥ N) plus a low-tier LLM-judge (salience / surprisal),
+  run as a background MEM task; explicit promotion is the `store_preference` path.
 
-**Reference**: [memory_manager.md](../components/memory_manager.md)
+**Reference**: [session_scratchpad.md](../components/session_scratchpad.md)
 
-### Step 8 — NLU Module
+### Step 8 — Memory tiers L2 / L3  (MEM)
 
-Implement full natural language understanding.
+**Files**: `backend/components/user_preferences.py`, `backend/components/business_context.py`
+
+**Implement**:
+- **User Preferences (L2)**: per-account key-value rules (graph search / ID lookup); trajectory playbooks;
+  reached via the `recall` skill.
+- **Business Context (L3)**: per-tenant docs in vector space, retrieve → re-rank top 10; reached via the
+  `retrieve` skill.
+- Conversation summarization: MEM computes a rolling summary; CC stores it.
+
+**Reference**: [user_preferences.md](../components/user_preferences.md) ·
+[business_context.md](../components/business_context.md)
+
+### Step 9 — NLU module-loop
 
 **File**: `backend/modules/nlu.py`
 
 **Implement**:
-- **`prepare()` pre-hook** — 7 checks: empty input, min length (2 chars), max length (1024 tokens), exact repeat, command shortcuts (Tier 0), system-reserved keywords, unsupported language
-- **Constructor**: `NLU(config, ambiguity, engineer, world)` — receives World, accesses context via `world.context`
-- **`understand(user_text, context, gold_dax)`**: Main entry point. Takes user text, context coordinator, and optional gold DAX for eval mode. Returns `DialogueState`.
-- **Output**: Returns `DialogueState` (no intermediate NLUResult). New state inserted into `world.insert_state()` per new flow detection; carryover reuses existing state.
-- **Flow push**: NLU owns flow instantiation via `_push_or_get(flow_name)` — pushes new flows onto the stack or finds existing ones. PEX does not push flows.
-- **`call_text` / `apply_guardrails`**: LLM call helpers for intent/flow prediction with structured output validation
-- **`think()`**:
-  - Step 1 — Intent prediction: single Sonnet call, predict one of 6 user-facing intents (Internal never predicted)
-  - Step 2 — Flow detection: majority vote (3 escalating rounds). Round 1: Sonnet + Gemini Flash (2/2 agree). Round 2: + Opus + Gemini Pro (3/4). Round 3: + Opus with extended thinking (3/5). No majority after 3 → General ambiguity. Flow deduplication check after detection.
-  - Step 3 — Slot-filling: single Sonnet call for domain-specific intents only (Converse/Plan skip). Full conversation context.
-- **`contemplate()`** — single Opus call with narrowed search space: exclude failed flow, restrict to related flows using ambiguity metadata, trust region principle
-- **`react()`** — lightweight processing for user actions (no prompts, deterministic mapping to dialogue state)
-- **`validate()` post-hook** — 5 checks: flow exists in registry, slots match schema, no stack duplicates, confidence well-formed, entity repair
+- **`prepare()` pre-hook** — input guards (empty, min/max length, exact repeat, Tier-0 shortcuts, reserved
+  keywords, unsupported language).
+- **Three modes**: `react` (click path — fills required slots from payload, **no LLM call**), `think`
+  (detection + ambiguity), `contemplate` (narrowed re-routing).
+- **`think()`**: intent (one of 7), flow detection (3 escalating ensemble rounds → `general` ambiguity on no
+  majority), slot-filling (domain intents only).
+- **Detect, don't push**: NLU **records** the detected flow (`detect_flow`); **PEX's Workflow Planner** decides
+  whether to `stackon`. NLU commits belief via the three write tools, or declares ambiguity instead of guessing.
+- **Continuous loop**: always-running asyncio task. The await-critical set is the **3 NLU gates** — gate 1
+  intent+flow (via `understand()`), gate 2 grounding-entity (via `read_from_scratchpad()`), gate 3 slot-filling.
+  A **click awaits gates 1+2**; slot-filling stays **async**, alongside scratchpad review, triggered by
+  changes to the scratchpad / ambiguity handler / dialogue state.
+- **`validate()` post-hook** — flow exists, slots match schema, no stack dupes, confidence well-formed, entity
+  repair.
 
 **Reference**: [nlu.md](../modules/nlu.md)
 
-### Step 9 — PEX Module
-
-Implement the policy execution engine.
+### Step 10 — PEX module-loop
 
 **File**: `backend/modules/pex.py`
 
 **Implement**:
-- **Constructor**: `PEX(config, ambiguity, engineer, memory, world)` — receives World, accesses flow stack via `world.flow_stack`. Stores `self.flow_stack` for convenience. Components dict passes `'config': config` (not `'world': world`).
-- **`execute(state, context)`**: Takes DialogueState and ContextCoordinator as parameters. Gets active flow from flow stack (does NOT push flows — NLU handles that). Returns `tuple[TaskArtifact, bool]`.
-- **`_tools` dict**: Domain tools registered as `(service_instance, method_name)` tuples. Dispatch via `getattr(service, method_name)(**tool_input)`.
-- **`get_tools_for_flow(flow)`**: Takes a flow instance (not `flow_name, flow_info`). Combines component tool definitions with flow's declared tools from config manifest.
-- **`_check(flow, context)` pre-hook**: Reads required slots from `flow.slots` (slot objects with `.priority` and `.filled`). Fills missing slots via `flow.fill_slot_values({name: value})`. Lethal Trifecta gate on tool capabilities.
-- **Policy dispatch**: Routes by `active_flow.intent` to registered policy classes. Policies receive `(active_flow, state, context, dispatch_tool)`.
-- **Tool dispatch**: `_dispatch_tool` routes domain tools via `_tools` dict, component tools via internal methods. All returns use error envelope with `retryable` field.
-- **`_verify()` post-hook**: State consistency, slots intact, output well-formed, no duplicate flows, flags coherent
-
-**Skill output contract** — every skill returns one of:
-- `success`: `{"outcome": "success", "data": {...}, "scratchpad_entries": [...]}`
-- `failure`: `{"outcome": "failure", "error_category": "...", "message": "...", "partial_data": null}`
-- `uncertain`: `{"outcome": "uncertain", "reason": "...", "context": {...}}`
+- **The acting loop** (`_run_loop`, bounded): tool-call hygiene (catalog validation, consecutive de-dup,
+  corrective cap, thinking nudge, no-tool-text-ends-turn, `_final_emit`). Consults NLU (`understand` + the
+  belief writes) and MEM (`recap`/`recall`/`retrieve`) in parallel.
+- **`activate_flow`**: stage + run a flow's policy as a **sub-agent** (level 2 — cannot nest). Every flow is
+  **agentic**; deterministic operations are plain tools.
+- **Sub-agent toolset**: `append_to_scratchpad` / `read_from_scratchpad` / `understand` / `handle_ambiguity`
+  (NLU); `recap` / `recall` / `retrieve` (MEM); plus `flow.tools`.
+- **`check()` pre-hook** (required slots, manifest, Lethal Trifecta gate) and **`verify()` post-hook**.
+- **Reply composition**: PEX composes the spoken reply **directly** via a voice Skill — there is no
+  naturalization / `respond` step and no template registry.
+- **Self-check / verify failure fan-out**: a failure writes a `TaskArtifact(violation)`, appends a violation
+  entry to the Scratchpad (notifies NLU), and records a Context Coordinator system action (notifies MEM). This
+  replaces the removed `has_issues`.
+- **Artifact aggregation**: curate active flows' artifacts into one per turn.
+- **Policies**: net **5 policy files** — a single `converse` sub-agent + 4 domain intents. Plan and Clarify
+  have no policy file (Workflow Planner decomposes Plan; the Ambiguity Handler drives Clarify). Method-shape
+  contract; closed 8-code violation vocabulary; `complete_flow` (grounding-gated).
 
 **Reference**: [pex.md](../modules/pex.md)
 
-### Step 10 — RES Module
+### Step 11 — MEM module-loop
 
-Implement the response generator.
-
-**File**: `backend/modules/res.py`
+**File**: `backend/modules/mem.py`
 
 **Implement**:
-- **Constructor**: `RES(config, ambiguity, engineer, world)` — receives World, accesses state via `world.current_state()`, flow stack via `world.flow_stack`, context via `world.context`
-- **Output**: Returns `tuple[str, TaskArtifact]`. Handles unsupported flow messages (detects `active.result.get('unsupported')`).
-- **`start()` pre-hook** — 4 checks: pop Completed flows (retain as full objects), snapshot trigger (>1 completed), pop Invalid flows, stack integrity
-- **`respond()`** — entry point. Routes to generate/clarify/display via lightweight Haiku call. May invoke multiple sub-functions per turn.
-- **`generate()`**:
-  - Step 1 — Ambiguity check: call `present()`, if present → `ask()` → write clarification to CC → skip to Step 5
-  - Step 2 — Response routing: by intent (Converse/domain → Step 3, Plan with keep_going → post-hook, Internal → post-hook)
-  - Step 3 — Template fill + naturalize: look up template (domain override by dact → base by intent), fill slots, then naturalize via Prompt Engineer. Multi-flow merge if multiple completed flows.
-  - Step 4 — Streaming decision: above threshold → stream, below → buffer
-  - Step 5 — CC write: write final response as agent utterance
-- **`clarify()`** — generate clarification questions when ambiguity is present
-- **`display()`** — no-op if no frame. Pre-hook: frame exists, required attributes set, chart type valid, pagination resolvable. Step 1: map display_type to block type. Step 2: render with data payload. Post-hook: block rendered, truncation bounded, degradation visible.
-- **`finish()` post-hook** — 4 checks: response coherence, silent turn valid, lifecycle complete, state consistency
+- **Three skills, one per tier**: `recap` (L1 Context Coordinator), `recall` (L2 User Preferences),
+  `retrieve` (L3 Business Context, KB + vector DB).
+- **Read-mostly**: MEM does not write the belief file; its durable write path is the append-only event stream
+  plus L2/L3 promotion. Pro-active prefetch runs async.
+- Compaction in the post-hook; long-term TaskArtifact storage (a copy handed in by the main Agent via World).
 
-**Template registry**:
-- Base templates: one per intent
-- Domain overrides: keyed by dact name, full replacement
-- Features: `block_hint`, `skip_naturalize`, conditional sections
+**Reference**: [mem.md](../modules/mem.md)
 
-**Reference**: [res.md](../modules/res.md)
+### Step 12 — Main Agent (the turn)
 
-### Step 11 — Agent Orchestrator
-
-Wire the full turn pipeline in `backend/agent.py`.
+Wire the deterministic turn lifecycle in `backend/agent.py`.
 
 **Implement**:
-- **Turn pipeline**: NLU `understand(user_text, context)` → PEX `execute(state, context)` → RES `respond()`
-- **Turn-type tracking**: User utterances tagged `turn_type='utterance'`, NLU metadata tagged `turn_type='meta'`, agent responses tagged `turn_type='utterance'`, tool calls tagged `turn_type='action'`
-- **Context threading**: Pass `self.world.context` explicitly to `nlu.understand()` and `pex.execute()` — modules receive context as a parameter, not extracted from world internally
-- **`state.pred_intent`**: Use `pred_intent` (not `intent`) throughout the pipeline — in NLU system turns, build_payload, and logging
-- **`keep_going` loop**: After PEX, if flag set, log with `active.intent` and `active.name()` and loop back to PEX with next flow
-- **Mid-plan replanning**: When `has_plan` set, check between RES and PEX iterations whether remaining plan still makes sense
-- **Input validation routing**: NLU `prepare()` failures → skip pipeline → RES rejection message. PEX `has_issues` → Agent receives control.
-- **Failure handling** — two tiers:
-  - Tier 1: PEX repair loop (within execute, up to 4 attempts)
-  - Tier 2: Agent cascade — re-route → skip → escalate
-- **Internal flow triggering**: Agent triggers Internal flows directly, parallelizes independent ones
-- **World instance**: Session-scoped container with `states[]`, `frames[]`, `flow_stack`, `context`. Modules receive World and unpack what they need. Constructor signatures: `NLU(config, ambiguity, engineer, world)`, `PEX(config, ambiguity, engineer, memory, world)`, `RES(config, ambiguity, engineer, world)`
+- **Pre-hook**: append the user turn to the event stream. The turn discriminator is the presence of a `dax`
+  (no `turn_type`): a `dax` present → **click** → run `NLU.react()` (fills required slots, no LLM) → dispatch,
+  no model loop. No `dax` → **utterance** → enter PEX's loop (await NLU on the gating path).
+- **Loop**: run PEX's tool-calling loop; plain text with no tool calls ends the turn.
+- **Post-hook**: record the agent turn, `serialize()` the Dialogue State, run the compaction check, **wait for**
+  pending async NLU/MEM tasks to settle, then deliver the single aggregated TaskArtifact — a
+  processed version to the user (webserver) and a copy to MEM (via the World object).
+- **Three levels**: main Agent (deterministic) → NLU/PEX/MEM loops → PEX sub-agents (no fourth level).
+- **World instance**: session-scoped container holding `states[]`, `flow_stack`, `context`, the Ambiguity
+  Handler, and the Session Scratchpad. Modules receive the World and unpack what they need.
 
-**Reference**: [architecture.md § Agent](../architecture.md)
+**Reference**: [architecture.md](../architecture.md)
 
-### Step 12 — Self-Check Gate
+### Step 13 — Self-Check Gate
 
-Implement evaluation-owned logic injected into the RES pipeline.
+Evaluation-owned checks injected into the **post-hook**, before artifact delivery.
 
-**Position**: After RES pre-hook, before RES Step 1.
-
-**Rule-based checks** (always run, zero LLM cost):
-1. Intent drift — original vs. completed flow intent mismatch
-2. Slot coverage — required slot values missing from response/frame
-3. Empty response — non-empty required for user-facing intents
-4. Length bounds — outside min/max token range
-
-**LLM-based check** (dev only, behind feature flag):
-5. Semantic alignment — Haiku call: "Does the response answer the request?"
-
-On failure: set `has_issues`, emit signal, return to Agent.
+**Rule-based** (always, zero LLM): intent drift, slot coverage, empty response, length bounds.
+**LLM-based** (dev only, behind a flag): semantic alignment (Haiku: "Does the response answer the request?").
+On failure: fan out the D5 violation channel — write a `TaskArtifact(violation)`, append a Scratchpad
+violation entry (notifies NLU), and record a Context Coordinator system action (notifies MEM); then return
+control to the main Agent. (This replaces the removed `has_issues`.)
 
 **Reference**: [evaluation.md § Self-Check Gate](../utilities/evaluation.md)
 
@@ -259,41 +237,38 @@ On failure: set `has_issues`, emit signal, return to Agent.
 
 | Action | File | Description |
 |---|---|---|
-| Modify | `<domain>/backend/components/dialogue_state.py` | Full implementation |
-| Modify | `<domain>/backend/components/flow_stack/` | Full implementation (stack.py, slots.py, parents.py, flows.py, __init__.py) |
-| Modify | `<domain>/backend/components/context_coordinator.py` | Full implementation |
-| Modify | `<domain>/backend/components/prompt_engineer.py` | Full implementation |
-| Modify | `<domain>/backend/components/task_artifact.py` | Full implementation |
-| Modify | `<domain>/backend/components/ambiguity_handler.py` | Full implementation |
-| Modify | `<domain>/backend/components/memory_manager.py` | Full implementation |
-| Modify | `<domain>/backend/modules/nlu.py` | Full implementation |
-| Modify | `<domain>/backend/modules/pex.py` | Full implementation |
-| Modify | `<domain>/backend/modules/res.py` | Full implementation |
-| Modify | `<domain>/backend/agent.py` | Full implementation with turn pipeline |
+| Modify | `backend/components/dialogue_state.py` | four-block belief + `understand`/`classify_intent`/`detect_flow`/`fill_slots` |
+| Modify | `backend/components/flow_stack/` | FlowStack + Workflow Planning (stack.py, slots.py, parents.py, flows.py, __init__.py) |
+| Modify | `backend/components/context_coordinator.py` | L1 event stream |
+| Modify | `backend/components/prompt_engineer.py` | model-agnostic interface |
+| Modify | `backend/components/task_artifact.py` | A2A artifact + Part oneof |
+| Modify | `backend/components/ambiguity_handler.py` | 4 levels, 4 methods (on the World) |
+| Create | `backend/components/user_preferences.py` | L2 tier (`recall`) |
+| Create | `backend/components/business_context.py` | L3 tier (`retrieve`) |
+| Modify | `backend/modules/nlu.py` | understand loop |
+| Modify | `backend/modules/pex.py` | acting loop + sub-agents |
+| Modify | `backend/modules/mem.py` | recap/recall/retrieve |
+| Modify | `backend/agent.py` | deterministic main-Agent turn |
+
+(The Session Scratchpad lives on the World, beside the Ambiguity Handler — no separate module file. There is
+**no** `res.py` and **no** `memory_manager.py`.)
 
 ---
 
 ## Verification
 
-- [ ] Dialogue state serializes/deserializes correctly (round-trip test)
-- [ ] Flow stack push/pop/peek work correctly with `flow_classes` dict
-- [ ] Flow lifecycle transitions are valid (no invalid state transitions)
-- [ ] BaseFlow carries runtime state (flow_id, status, plan_id, turn_ids, result)
-- [ ] Context coordinator stores and retrieves turns
-- [ ] `compile_history()` returns formatted string of recent conversation
-- [ ] `recent_turns()` returns raw turn dicts
+- [ ] Dialogue state serializes/deserializes (round-trip); four blocks, no `flags` block
+- [ ] `understand` returns serialized state; `classify_intent`/`detect_flow`/`fill_slots` write belief
+- [ ] FlowStack push/pop/peek with `flow_classes`; depth cap 16; contiguous Active block enforced
+- [ ] `complete_flow` is grounding-gated; PEX (not NLU) stacks flows
+- [ ] Context coordinator stores/retrieves turns; `compile_history()` / `recent_turns()`
 - [ ] Prompt Engineer makes LLM calls and parses responses
-- [ ] Display frame holds data and maps to block types
-- [ ] Ambiguity handler declares and resolves at all 4 levels
-- [ ] Memory manager reads/writes scratchpad, preferences, business context
-- [ ] NLU `prepare()` rejects invalid input (empty, too long, repeat)
-- [ ] NLU `understand(user_text, context)` classifies intent and detects flow
-- [ ] NLU pushes flows via `_push_or_get` (PEX does not push)
-- [ ] PEX `execute(state, context)` runs a skill and creates a frame
-- [ ] PEX uses `_tools` dict with `(service, method_name)` tuples
-- [ ] PEX `get_tools_for_flow(flow)` takes flow instance
-- [ ] RES `generate()` fills a template and naturalizes it
-- [ ] RES `display()` maps frames to blocks
-- [ ] Agent uses `state.pred_intent` throughout pipeline
-- [ ] Agent passes context explicitly to NLU and PEX
-- [ ] Agent tracks turn types (utterance, meta, action)
+- [ ] TaskArtifact: Part oneof enforced; PEX curates N artifacts → 1 per turn
+- [ ] Ambiguity handler: 4 levels, `declare`/`present`/`ask`/`resolve`; on the World
+- [ ] Scratchpad: `append_to_scratchpad` stamps writer + triggers NLU; `update_scratchpad` NLU-only
+- [ ] MEM exposes `recap`/`recall`/`retrieve`; does not write the belief file
+- [ ] NLU `prepare()` rejects invalid input; `react()` fills required slots with no LLM call
+- [ ] NLU loop awaits on the gating path; async housekeeping settles at turn boundary
+- [ ] PEX loop dispatches sub-agents (no fourth level); aggregates artifacts
+- [ ] Main Agent: click-bypass vs. utterance loop; post-hook serialize + deliver to user + MEM
+- [ ] No `res.py`, no `memory_manager.py`, no Internal flows anywhere

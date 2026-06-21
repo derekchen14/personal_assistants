@@ -37,6 +37,10 @@ SKILL_TO_FLOW: dict[str, str] = {}
 # valid frontmatter but are exempt from flow.tools comparison.
 ORPHAN_SKILLS: set[str] = set()
 
+# Skills invoked directly by the PEX orchestrator, not owned by a flow/sub-agent. Validated
+# against the tool registry (their declared tools must be real) rather than a flow's tool list.
+PEX_AGENT_SKILLS: set[str] = {'promote'}
+
 # Component-level tools that skills may reference but that aren't in flow.tools
 # (they live in PEX._component_tool_definitions). Must stay in sync with pex.py.
 COMPONENT_TOOLS = {
@@ -83,14 +87,23 @@ def yaml_tools():
 # Every skill .md has YAML frontmatter; declared `tools:` must match flow.tools.
 
 @pytest.mark.parametrize('skill_name', _skill_files())
-def test_skill_tools_match_flow(skill_name):
+def test_skill_tools_match_flow(skill_name, yaml_tools):
     meta = PromptEngineer.load_skill_meta(skill_name)
+    declared = list(meta.get('tools') or [])
+    if skill_name in PEX_AGENT_SKILLS:
+        # PEX-orchestrator skill (no owning flow): its declared tools must be registered.
+        unknown = [tool for tool in declared
+                   if tool not in yaml_tools and tool not in COMPONENT_TOOLS]
+        assert not unknown, (
+            f'{skill_name} (PEX-agent skill) declares unregistered tools {unknown!r}; '
+            f'valid tools are defined in tools.yaml'
+        )
+        return
     if skill_name in ORPHAN_SKILLS:
         pytest.skip(f'{skill_name} has no owning flow')
     flow_name = SKILL_TO_FLOW.get(skill_name, skill_name)
     if flow_name not in flow_classes:
         pytest.skip(f'{flow_name} not in flow_classes')
-    declared = meta.get('tools') or []
     flow = flow_classes[flow_name]()
     assert list(declared) == list(flow.tools), (
         f'{skill_name}.md tools={declared!r} != {flow_name}.tools={flow.tools!r}'
@@ -112,9 +125,7 @@ def test_loader_strips_frontmatter():
 def test_few_shot_tools_are_allowlisted(skill_name, flow_name):
     body = PromptEngineer.load_skill_template(skill_name)
     assert body is not None
-    referenced = _few_shot_tool_calls(body)
-    if not referenced:
-        pytest.skip('no Few-shot tool calls referenced')
+    referenced = _few_shot_tool_calls(body)  # empty when the skill has no Few-shot block → passes
     flow_tools = set(flow_classes[flow_name]().tools)
     allowed = flow_tools | COMPONENT_TOOLS
     unknown = referenced - allowed
@@ -197,7 +208,7 @@ def test_flow_detection_schema_valid():
 # Representative flows spanning intent classes and slot-type combinations.
 # The schema generator branches on slot type, not on flow identity, so a handful
 # of flows exercising the diverse slot families is enough — running all 35 was overkill.
-_SCHEMA_REPRESENTATIVES = ['outline', 'audit', 'release', 'compare', 'blueprint']
+_SCHEMA_REPRESENTATIVES = ['outline', 'audit', 'release', 'compare', 'schedule']
 
 
 @pytest.mark.parametrize('flow_name', _SCHEMA_REPRESENTATIVES)
@@ -335,11 +346,8 @@ def test_few_shot_example_keys_match_flow_slots(flow_name):
     """Top-level `slots` keys in fenced ```json``` blocks inside `examples` must be
     declared in `flow.slots`. Catches CANCEL_PROMPT-style drift where prose examples
     name a stale slot key while the schema (auto-generated) emits the canonical one."""
-    if flow_name not in _SLOT_FILL_PROMPTS:
-        pytest.skip(f'{flow_name}: no NLU slot-fill prompt registered')
-    examples = _SLOT_FILL_PROMPTS[flow_name].get('examples', '') or ''
-    if not examples.strip():
-        pytest.skip(f'{flow_name}: no examples')
+    # No registered slot-fill prompt or no examples → no example JSON to mismatch (passes).
+    examples = (_SLOT_FILL_PROMPTS.get(flow_name) or {}).get('examples', '') or ''
     declared = set(flow_classes[flow_name]().slots.keys())
     bogus = set()
     for block in _FENCED_JSON.findall(examples):

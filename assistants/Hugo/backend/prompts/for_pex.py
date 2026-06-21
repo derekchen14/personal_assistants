@@ -107,11 +107,14 @@ def _default_starter(flow, resolved:dict) -> str:
         if not slot.check_if_filled():
             continue
         label = slot_name.replace('_', ' ').capitalize()
-        if slot_name == flow.entity_slot:
+        if slot_name == flow.entity_slot and slot.criteria == 'multiple':
             val = slot.values[0] if slot.values else ''
             details_lines.append(f'{label}: {_summarize_entity(val)}')
-        elif slot.values:
-            details_lines.append(f'{label}: ' + '; '.join(str(v) for v in slot.values))
+        elif slot.criteria == 'multiple':
+            if slot.values:
+                details_lines.append(f'{label}: ' + '; '.join(str(v) for v in slot.values))
+        else:  # single / numeric criteria — to_dict() yields the value / level
+            details_lines.append(f'{label}: {slot.to_dict()}')
     details = '\n'.join(details_lines) if details_lines else '(no parameters filled)'
     return (
         f'<task>\n{task}\n</task>\n\n'

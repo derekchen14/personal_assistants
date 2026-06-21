@@ -44,12 +44,14 @@ Create the full domain folder structure. Every file listed here must exist (may 
 │   │   ├── prompt_engineer.py
 │   │   ├── task_artifact.py
 │   │   ├── ambiguity_handler.py
-│   │   └── memory_manager.py
+│   │   ├── session_scratchpad.py
+│   │   ├── user_preferences.py
+│   │   └── business_context.py
 │   ├── modules/
 │   │   ├── __init__.py
 │   │   ├── nlu.py
 │   │   ├── pex.py
-│   │   ├── res.py
+│   │   ├── mem.py
 │   │   └── policies/
 │   │       └── __init__.py
 │   ├── routers/
@@ -60,7 +62,6 @@ Create the full domain folder structure. Every file listed here must exist (may 
 │   ├── prompts/
 │   │   ├── for_nlu.py
 │   │   ├── for_pex.py
-│   │   ├── for_res.py
 │   │   ├── system.py
 │   │   └── skills/
 │   └── utilities/
@@ -132,14 +133,16 @@ Implement `routers/chat_service.py`.
 - `currentMessage` → NLU `think()`
 - `lastAction` → NLU `react()`
 - `dialogueAct` → flow context hint (also `react()`)
+- Turn discriminator: a `dialogueAct` (the flow `dax`) present marks a click; its absence marks a typed
+  utterance. There is no separate `turn_type` field.
 
-**Server → Client messages** (typed envelope):
+**Server → Client messages** (typed payload):
 
-| Type | Source | Content |
+| Type | Produced by | Content |
 |---|---|---|
-| `text` | `generate()` | `{message, raw_utterance, code_snippet}` |
-| `options` | `generate()` or `clarify()` | `{actions, interaction}` |
-| `block` | `display()` | `{frame, properties}` |
+| `text` | PEX composes; main Agent emits | `{message, raw_utterance, code_snippet}` |
+| `options` | PEX composes (clarification via the Ambiguity Handler); main Agent emits | `{actions, interaction}` |
+| `block` | PEX selects the block; main Agent emits | `{artifact, properties}` |
 | `error` | Any | `{message, code}` |
 
 ### Step 4 — Config Loader
@@ -163,7 +166,7 @@ Implement `config.py` at the domain root.
 - §5 Memory: similarity_threshold 0.0–1.0; retrieval_top_k >= rerank_top_n
 - §6 Resilience: backoff strategy valid; max_attempts >= 1
 - §7 Context window: allocation fractions sum to 1.0
-- §8–§16: See [configuration.md § Schema Validation Checks](../utilities/configuration.md)
+- §8–§15: See [configuration.md § Schema Validation Checks](../utilities/configuration.md)
 
 **Cross-cutting checks**: environment is dev/prod; no conflicting dax codes; intent references valid; edge flow names match defined flows; policy paths importable.
 
@@ -188,8 +191,8 @@ Implement `backend/db.py` and `database/tables.py`.
 | `Utterance` | UUID | speaker (enum), utt_id, text, form (enum), operations, entity (JSON) |
 | `Intent` | Integer | level (String 8), intent_name (String 32) |
 | `DialogueAct` | Integer | dact (String 64), dax (String 4), description |
-| `DialogueState` | UUID | utterance_id (FK), intent, dax, flow_stack (JSON), source (enum) |
-| `Frame` | UUID | utterance_id (FK), display_type (enum), columns, status, source, code |
+| `DialogueState` | UUID | per-turn snapshot: full-JSON doc + promoted columns (utterance_id FK, intent, dax, source enum) |
+| `TaskArtifact` | UUID | utterance_id (FK), origin, parts (JSON), blocks (JSON) |
 | `UserDataSource` | UUID | user_id (String), source_type (enum), provider, name, content (JSON) |
 | `ConversationDataSource` | UUID | conversation_id (FK), data_source_id (FK) |
 
@@ -209,38 +212,31 @@ Create stub modules with all entry points. Each module method should log a messa
 - `validate()` — post-hook (5 checks)
 
 **PEX** (`modules/pex.py`):
-- `check()` — pre-hook (7 checks)
-- `execute()` — slot review, tool invocations, result processing, flow completion
-- `recover()` — retry, gather context, re-route, escalate
-- `verify()` — post-hook (5 checks)
+- `check()` — policy pre-hook
+- the acting loop (`_run_loop`) — tool-calling; consults NLU + MEM; ends on no-tool text
+- `activate_flow()` — run a flow's policy as a sub-agent; aggregate the active flows' artifacts
+- `verify()` — policy post-hook
 
-**RES** (`modules/res.py`):
-- `start()` — pre-hook (4 checks)
-- `respond()` — route to generate/clarify/display
-- `generate()` — template fill + naturalize
-- `clarify()` — generate clarification questions
-- `display()` — render display frames to blocks
-- `finish()` — post-hook (4 checks)
+**MEM** (`modules/mem.py`):
+- `recap()` — L1 Context Coordinator skill (session events)
+- `recall()` — L2 User Preferences skill (account defaults / playbooks)
+- `retrieve()` — L3 Business Context skill (KB + vector DB)
 
 ### Step 7 — Agent Class Shell
 
 Implement `backend/agent.py` with the turn pipeline stub.
 
 ```python
-class Agent:
-    def __init__(self, config, nlu, pex, res, ...):
+class Agent:                       # the deterministic main Agent (Level 0)
+    def __init__(self, config, nlu, pex, mem, world, ...):
         self.config = config
-        self.nlu = nlu
-        self.pex = pex
-        self.res = res
-        # World, components, etc.
+        self.nlu, self.pex, self.mem, self.world = nlu, pex, mem, world
 
-    async def process_turn(self, message, conversation_id):
-        """Turn pipeline: NLU → PEX → RES with keep_going loop."""
-        # Step 1: NLU think() or react()
-        # Step 2: PEX execute()
-        # Step 3: RES respond()
-        # Loop if keep_going
+    async def take_turn(self, message, conversation_id):
+        """Deterministic turn: pre-hook → PEX acting loop (consults NLU + MEM) → post-hook."""
+        # Pre-hook: append the user turn; a `dax` present → click → NLU.react() + dispatch; else utterance → PEX loop
+        # Loop:     PEX drives the tool-calling loop, awaiting NLU on the action-gating path
+        # Post-hook: serialize() state, compact, await async tasks, deliver the aggregated artifact
         pass
 ```
 
@@ -306,8 +302,8 @@ npm run dev -- --port "${FRONTEND_PORT:-5173}"
 | Create | `<domain>/backend/routers/conversation_service.py` | Conversation CRUD |
 | Create | `<domain>/backend/modules/nlu.py` | NLU shell |
 | Create | `<domain>/backend/modules/pex.py` | PEX shell |
-| Create | `<domain>/backend/modules/res.py` | RES shell |
-| Create | `<domain>/backend/components/*.py` | 7 component shells |
+| Create | `<domain>/backend/modules/mem.py` | MEM shell |
+| Create | `<domain>/backend/components/*.py` | 9 component shells |
 | Create | `<domain>/database/tables.py` | SQLAlchemy ORM models |
 | Create | `<domain>/tests/conftest.py` | pytest fixtures |
 | Create | `shared/arguments.py` | CLI arg definitions |
@@ -323,7 +319,7 @@ npm run dev -- --port "${FRONTEND_PORT:-5173}"
 - [ ] Database tables are created on startup (`create_all()`)
 - [ ] WebSocket connection succeeds without authentication
 - [ ] All module shells exist with stubbed methods
-- [ ] Agent class exists with `process_turn()` method
-- [ ] All 7 component shells exist as importable classes
+- [ ] Agent class exists with `take_turn()` method
+- [ ] All 9 component shells exist as importable classes
 - [ ] `.env.example` documents all required environment variables
 - [ ] `requirements.txt` lists all dependencies (no bcrypt or python-jose)

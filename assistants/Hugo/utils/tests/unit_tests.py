@@ -25,7 +25,11 @@ if str(_HUGO_ROOT) not in sys.path:
 
 from backend.modules.nlu import NLU, _ENSEMBLE_VOTERS
 from backend.components.prompt_engineer import PromptEngineer
-from backend.components.context_coordinator import Turn
+from backend.components.context_coordinator import ContextCoordinator, Turn
+from backend.components.memory_manager import MemoryManager
+from backend.components.session_scratchpad import SessionScratchpad
+from backend.components.user_preferences import UserPreferences
+from backend.components.business_context import BusinessContext
 from backend.components.flow_stack import flow_classes
 from backend.utilities.services import (
     ToolService, PostService, ContentService, AnalysisService, PlatformService,
@@ -184,32 +188,116 @@ class TestNLUSpecificRegressions:
 # Agent.take_turn — full keep_going loop integration
 # ═══════════════════════════════════════════════════════════════════
 
-class TestAgent:
-    """End-to-end coverage of the agent.take_turn round trip with mocked LLM calls and
-    stubbed PostService. Exercises the keep_going loop's interaction with res.start /
-    res.respond — the agent-level orchestration that lower-tier tests skip."""
+# TestAgent removed — its legacy take_turn keep_going loop (res.start / res.respond) was retired
+# by the orchestrator-only cutover, and the 'create' flow it drove became a tool. The orchestrator
+# loop is covered by TestOrchestratorLoop / TestOrchestratorClickBypass.
 
-    def test_create_action_completes_round_one_without_crash(self, mock_agent, monkeypatch):
-        """A flow that completes in round 1 with keep_going=False must leave its just-completed
-        flow on the stack so res.respond's `completed_flows[-1]` can render it. Regression for
-        the bug where agent.py popped flows mid-loop and crashed at `flow.intent` on None."""
-        from backend.utilities.services import PostService
-        monkeypatch.setattr(PostService, 'create_post',
-            lambda self, **kw: {'_success': True, 'post_id': 'cafef00d',
-                                'title': kw.get('title', ''), 'status': kw.get('type', 'draft')})
+# ═══════════════════════════════════════════════════════════════════
+# SessionScratchpad — file-backed scratchpad JSONL (changes.md §5.3)
+# ═══════════════════════════════════════════════════════════════════
 
-        # Stub fill_slots to populate CreateFlow's required slots without invoking the LLM.
-        from backend.modules.nlu import NLU
-        def stub_fill(self, flow, payload=None):
-            flow.fill_slot_values({'title': 'Cute Cheetahs', 'type': 'draft', 'topic': 'cheetahs'})
-        monkeypatch.setattr(NLU, '_fill_slots', stub_fill)
+class TestSessionScratchpad:
+    """The scratchpad in both modes: the in-memory dict (no path) and the append-only JSONL file
+    (path set — orchestrator substrate). Covers writer stamping, filtering, clear/truncate, and the
+    completion-record shape."""
 
-        result = mock_agent.take_turn(
-            'Make a post about cheetahs', dax='{05A}', payload={'post': '17be00f6'})
-        assert result['artifact'] is not None, 'agent.py must not return the fallback payload'
-        assert result['artifact']['origin'] == 'create'
-        block_types = [b['type'] for b in result['artifact']['blocks']]
-        assert block_types == ['card']
+    @pytest.fixture
+    def file_memory(self, minimal_config, tmp_path):
+        return SessionScratchpad(minimal_config, scratchpad_path=str(tmp_path / 'scratchpad.jsonl'))
+
+    # ── in-memory mode ───────────────────────────────────────────────
+
+    def test_inmemory_mode_unchanged(self, minimal_config):
+        memory = SessionScratchpad(minimal_config)
+        memory.write('repair', 'bad outline')
+        assert memory.read('repair') == 'bad outline'
+        assert memory.read() == {'repair': 'bad outline'}
+        assert memory.size == 1
+        memory.clear()
+        assert memory.size == 0
+        assert memory.read('repair') == ''
+
+    # ── file mode: append / read / clear ─────────────────────────────
+
+    def test_append_and_read_newest_last(self, file_memory):
+        file_memory.write({'finding': 'first'})
+        file_memory.write({'finding': 'second'})
+        entries = file_memory.read()
+        assert [entry['finding'] for entry in entries] == ['first', 'second']
+        assert file_memory.size == 2
+
+    def test_read_before_first_write_is_empty(self, file_memory):
+        assert file_memory.read() == []
+        assert file_memory.size == 0
+
+    def test_key_value_call_wraps_into_entry(self, file_memory):
+        file_memory.write('repair', 'bad outline')
+        entries = file_memory.read()
+        assert entries == [{'repair': 'bad outline', 'writer': 'orchestrator'}]
+
+    def test_clear_truncates_file(self, file_memory):
+        file_memory.write({'finding': 'gone soon'})
+        file_memory.clear()
+        assert file_memory.read() == []
+        assert file_memory.size == 0
+
+    def test_entries_persist_on_disk(self, minimal_config, tmp_path):
+        path = tmp_path / 'scratchpad.jsonl'
+        SessionScratchpad(minimal_config, scratchpad_path=str(path)).write({'note': 'kept'})
+        reopened = SessionScratchpad(minimal_config, scratchpad_path=str(path))
+        assert reopened.read() == [{'note': 'kept', 'writer': 'orchestrator'}]
+
+    # ── writer stamping (decision 17) ────────────────────────────────
+
+    def test_writer_defaults_to_orchestrator(self, file_memory):
+        file_memory.write({'finding': 'x'})
+        assert file_memory.read()[0]['writer'] == 'orchestrator'
+
+    def test_writer_takes_flow_name(self, file_memory):
+        file_memory.write({'finding': 'x'}, writer='compose')
+        assert file_memory.read()[0]['writer'] == 'compose'
+
+    def test_forged_writer_is_overwritten(self, file_memory):
+        file_memory.write({'finding': 'x', 'writer': 'forged'}, writer='audit')
+        assert file_memory.read()[0]['writer'] == 'audit'
+
+    # ── read filters ─────────────────────────────────────────────────
+
+    def test_filter_by_writer(self, file_memory):
+        file_memory.write({'finding': 'a'}, writer='compose')
+        file_memory.write({'finding': 'b'})
+        file_memory.write({'finding': 'c'}, writer='compose')
+        entries = file_memory.read(writer='compose')
+        assert [entry['finding'] for entry in entries] == ['a', 'c']
+
+    def test_filter_by_keys_present(self, file_memory):
+        file_memory.write({'flow': 'compose', 'summary': 's', 'metadata': {}})
+        file_memory.write({'finding': 'loose note'})
+        entries = file_memory.read(keys=['flow', 'summary'])
+        assert len(entries) == 1
+        assert entries[0]['flow'] == 'compose'
+
+    def test_filters_combine(self, file_memory):
+        file_memory.write({'flow': 'compose', 'summary': 's'}, writer='compose')
+        file_memory.write({'flow': 'audit', 'summary': 's'}, writer='audit')
+        file_memory.write({'finding': 'x'}, writer='compose')
+        entries = file_memory.read(writer='compose', keys=['flow'])
+        assert entries == [{'flow': 'compose', 'summary': 's', 'writer': 'compose'}]
+
+    # ── completion record (decision 7) ───────────────────────────────
+
+    def test_completion_record_shape(self, file_memory):
+        record = file_memory.write_completion('compose', 'Drafted the intro.', {'post': 'cafe01'})
+        expected = {'flow': 'compose', 'summary': 'Drafted the intro.',
+                    'metadata': {'post': 'cafe01'}, 'writer': 'compose'}
+        assert record == expected
+        assert file_memory.read() == [expected]
+
+    def test_completion_record_default_metadata(self, file_memory):
+        record = file_memory.write_completion('audit', 'No issues found.')
+        assert record['metadata'] == {}
+        assert file_memory.read(keys=['flow', 'summary', 'metadata']) == [record]
+
 
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):
@@ -385,62 +473,17 @@ class TestTemplateFill:
         assert payload['artifact']['blocks'][0]['panel'] == 'bottom'
         assert payload['artifact']['blocks'][0]['data']['content'] == 'Hello'
 
-    def test_audit_message_groups_findings_by_severity(self, minimal_config):
-        from backend.modules.templates.revise import _format_audit_message
-        from backend.components.task_artifact import TaskArtifact
-        findings = [
-            {'sec_id': None, 'issue': 'sentence structure', 'severity': 'high',
-             'note': 'Average sentence length 23.1 vs reference 13.5.'},
-            {'sec_id': 'mechanics', 'issue': 'composition', 'severity': 'medium',
-             'note': 'Negative parallelism overuse.'},
-            {'sec_id': 'kitty-hawk', 'issue': 'word choice', 'severity': 'low',
-             'note': 'False range construction.'},
-        ]
-        artifact = TaskArtifact(origin='audit',
-            parts={'findings': findings, 'summary': 'Three findings.'})
-        result = _format_audit_message(artifact)
-        assert 'Found 3 finding(s)' in result
-        assert '1 high, 1 medium, 1 low' in result
-        assert 'Three findings.' in result
-        assert '[high] sentence structure (whole post)' in result
-        # High-severity finding's note must be present (sorts first).
-        assert 'Average sentence length 23.1' in result
-        # `sec_id=None` renders as `whole post`, not literal None.
-        assert 'None' not in result.split('Three findings.')[1]
+    # The audit-message formatting tests were removed with RES — `_format_audit_message` lived in
+    # the deleted backend/modules/templates; PEX now narrates audit results directly.
 
-    def test_audit_message_empty_findings_uses_summary(self, minimal_config):
-        from backend.modules.templates.revise import _format_audit_message
-        from backend.components.task_artifact import TaskArtifact
-        artifact = TaskArtifact(origin='audit',
-            parts={'findings': [], 'summary': 'Reads on-voice.'})
-        assert _format_audit_message(artifact) == 'Reads on-voice.'
 
-    def test_audit_message_empty_no_summary_falls_back(self, minimal_config):
-        from backend.modules.templates.revise import _format_audit_message
-        from backend.components.task_artifact import TaskArtifact
-        artifact = TaskArtifact(origin='audit', parts={'findings': [], 'summary': ''})
-        assert 'No findings' in _format_audit_message(artifact)
+# ═══════════════════════════════════════════════════════════════════
+# RES.respond_tool — the orchestrator `respond` tool surface (changes.md §4.1)
+# ═══════════════════════════════════════════════════════════════════
 
-    def test_audit_message_dispatch_announces_groups(self, minimal_config):
-        from backend.modules.templates.revise import _format_audit_message
-        from backend.components.task_artifact import TaskArtifact
-        artifact = TaskArtifact(origin='audit',
-            parts={'group_count': 2, 'flow_names': ['rework', 'polish']})
-        result = _format_audit_message(artifact)
-        assert 'Working on it' in result
-        assert '2 fix' in result
-        assert 'rework' in result
-        assert 'polish' in result
-
-    def test_audit_message_completed_rolls_up_reports(self, minimal_config):
-        from backend.modules.templates.revise import _format_audit_message
-        from backend.components.task_artifact import TaskArtifact
-        artifact = TaskArtifact(origin='audit',
-            parts={'reports': {'rework': 'rewrote intro', 'polish': 'tightened phrasing'}})
-        result = _format_audit_message(artifact)
-        assert 'Audit complete' in result
-        assert 'rework: rewrote intro' in result
-        assert 'polish: tightened phrasing' in result
+# TestRespondTool removed — the RES `respond` tool surface was retired (PEX composes the reply
+# directly; the orchestrator's final no-tool text IS the reply). The class also exercised the
+# now-removed 'create' and 'inspect' flows.
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -987,7 +1030,7 @@ class TestPlatformService:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# FAQService
+# BusinessContext (FAQs)
 # ═══════════════════════════════════════════════════════════════════
 
 class _FakeEngineer:
@@ -1004,21 +1047,21 @@ class _FakeEngineer:
 @pytest.fixture
 def tmp_faq_db(tmp_db):
     """Extends tmp_db with a tmp faq_data dir. tmp_db already patches services._DB_DIR;
-    FAQService reads `services._DB_DIR / 'faq_data' / 'faqs.json'` at construction."""
+    BusinessContext reads `services._DB_DIR / 'faq_data' / 'faqs.json'` at construction."""
     faq_dir = tmp_db / 'faq_data'
     faq_dir.mkdir()
     return faq_dir
 
 
-class TestFAQService:
+class TestBusinessContext:
     def test_search_returns_top_matches(self, tmp_faq_db):
         (tmp_faq_db / 'faqs.json').write_text(json.dumps([
             {'question': 'What can Hugo do?', 'answer': 'Help write blog posts.', 'tags': ['cap']},
             {'question': 'Who built Hugo?', 'answer': 'Soleda.', 'tags': ['origin']},
         ]))
-        from backend.utilities.faq_service import FAQService
+        from backend.components.business_context import BusinessContext
         engineer = _FakeEngineer({'matches': [{'idx': 0, 'score': 0.92}]})
-        svc = FAQService(engineer)
+        svc = BusinessContext(engineer)
         result = svc.search_faqs(query='what can it do', top_k=3)
         assert result['_success'] is True
         assert len(result['matches']) == 1
@@ -1027,8 +1070,8 @@ class TestFAQService:
 
     def test_search_empty_corpus(self, tmp_faq_db):
         # No faqs.json written — corpus loads empty.
-        from backend.utilities.faq_service import FAQService
-        svc = FAQService(_FakeEngineer({'matches': []}))
+        from backend.components.business_context import BusinessContext
+        svc = BusinessContext(_FakeEngineer({'matches': []}))
         result = svc.search_faqs(query='anything')
         assert result['_success'] is False
         assert result['_error'] == 'empty_corpus'
@@ -1037,14 +1080,38 @@ class TestFAQService:
         (tmp_faq_db / 'faqs.json').write_text(json.dumps([
             {'question': 'Q1', 'answer': 'A1', 'tags': []},
         ]))
-        from backend.utilities.faq_service import FAQService
+        from backend.components.business_context import BusinessContext
         engineer = _FakeEngineer({'matches': [{'idx': 0, 'score': 0.8},
             {'idx': 99, 'score': 0.2}]})
-        svc = FAQService(engineer)
+        svc = BusinessContext(engineer)
         result = svc.search_faqs(query='q')
         # Out-of-range idx (99) silently dropped; valid one kept.
         assert len(result['matches']) == 1
         assert result['matches'][0]['question'] == 'Q1'
+
+
+class TestMemoryManagerFacade:
+    """The MEM facade delegates each read skill to its tier (recap→L1, recall→L2, retrieve→L3)."""
+
+    def test_recall_returns_stored_preferences(self, minimal_config):
+        prefs = UserPreferences(minimal_config)
+        prefs.store_preference('tone', 'casual')
+        memory = MemoryManager(None, prefs, None)
+        assert memory.recall('tone') == {'tone': 'casual'}
+
+    def test_retrieve_faq_shortcut(self, minimal_config):
+        business = BusinessContext(_FakeEngineer({'matches': [{'idx': 0, 'score': 0.9}]}))
+        business._corpus = [{'question': 'What is X?', 'answer': 'X is Y.'}]
+        memory = MemoryManager(None, None, business)
+        result = memory.retrieve('what is x', documents=['faq'])
+        assert result['_success'] is True
+        assert result['matches'][0]['question'] == 'What is X?'
+
+    def test_recap_returns_recent_history(self, minimal_config):
+        world = World(minimal_config)
+        world.context.add_turn('User', 'draft a post about otters', 'utterance')
+        memory = MemoryManager(world.context, None, None)
+        assert 'otters' in memory.recap()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1160,11 +1227,406 @@ class TestSnapshotHarness:
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Session substrate — file-backed DialogueState + World session dirs
+# ═══════════════════════════════════════════════════════════════════
+
+from backend.components.dialogue_state import DialogueState
+from backend.components.world import World
+
+
+@pytest.fixture
+def sessions_dir(tmp_path, monkeypatch):
+    """Redirect the module-level sessions root to a tmp dir (same pattern as tmp_db)."""
+    from backend.components import world as world_mod
+    path = tmp_path / 'sessions'
+    monkeypatch.setattr(world_mod, '_SESSIONS_DIR', path)
+    return path
+
+
+@pytest.fixture
+def session_config(minimal_config):
+    config = dict(minimal_config)
+    config['session'] = {'persistence': {'max_sessions': 2}}
+    return MappingProxyType(config)
+
+
+def _session_state() -> DialogueState:
+    state = DialogueState(intent='Draft', dax=None, turn_count=12)
+    state.conversation_id = 'convo-42'
+    state.username = 'derek'
+    state.goal = 'draft the agents post'
+    state.confirmed = ['title']
+    state.rejected = ['listicle format']
+    state.workflow_step = 4
+    state.grounding = {'post': 'p1', 'sec': 'intro', 'snip': '', 'chl': 'substack', 'ver': True}
+    state.flow_stack = [{'name': 'compose', 'status': 'Active', 'stage': 'writing',
+                         'plan_id': None, 'slots': {'source': {'post': 'p1'}}}]
+    state.has_plan = True
+    return state
+
+
+class TestSessionStateFile:
+    """File-backed DialogueState (changes.md §5.2): the five-block state.json document."""
+
+    def test_round_trip_identical_dict(self, tmp_path):
+        state = _session_state()
+        state_file = tmp_path / 'state.json'
+        state.save(state_file)
+        reloaded = DialogueState.load(state_file)
+        assert reloaded.serialize_session() == state.serialize_session()
+
+    def test_document_blocks_and_grounding_parts(self):
+        document = _session_state().serialize_session()
+        assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack', 'flags']
+        assert list(document['grounding']) == ['post', 'sec', 'snip', 'chl', 'ver']
+        assert document['session']['turn_count'] == 12
+        assert document['user_beliefs']['intent'] == 'Draft'
+        assert document['flags'] == {'has_issues': False, 'has_plan': True}
+
+    def test_load_rehydrates_fields(self, tmp_path):
+        state_file = tmp_path / 'state.json'
+        _session_state().save(state_file)
+        reloaded = DialogueState.load(state_file)
+        assert reloaded.conversation_id == 'convo-42'
+        assert reloaded.username == 'derek'
+        assert reloaded.workflow_step == 4
+        assert reloaded.grounding['ver'] is True
+        assert reloaded.flow_stack[0]['name'] == 'compose'
+        assert reloaded.has_plan is True
+
+    def test_old_per_turn_form_unchanged(self):
+        state = DialogueState(intent='Revise', dax='3AB', turn_count=2, confidence=0.9)
+        serialized = state.serialize()
+        assert serialized['pred_intent'] == 'Revise'
+        assert serialized['flow_name'] == '3AB'
+        assert DialogueState.from_dict(serialized).serialize() == serialized
+
+
+class TestWorldSessions:
+    """World as session container (changes.md §5.4, decisions 10, 11, 15)."""
+
+    def test_fresh_session_is_lazy(self, sessions_dir, minimal_config):
+        world = World(minimal_config)
+        assert world.open_session('fresh-id') is None
+        assert not (sessions_dir / 'fresh-id').exists()  # nothing on disk until first use
+        assert world.session_dir() == sessions_dir / 'fresh-id'
+        assert (sessions_dir / 'fresh-id').is_dir()
+
+    def test_open_session_rehydrates(self, sessions_dir, minimal_config):
+        (sessions_dir / 'convo-42').mkdir(parents=True)
+        _session_state().save(sessions_dir / 'convo-42' / 'state.json')
+        world = World(minimal_config)
+        state = world.open_session('convo-42')
+        assert world.current_state() is state
+        assert state.serialize_session() == _session_state().serialize_session()
+
+    def test_reset_deletes_and_recreates_session_dir(self, sessions_dir, minimal_config):
+        world = World(minimal_config)
+        world.open_session('convo-42')
+        world.current_state().save(world.state_file())
+        world.reset()
+        assert (sessions_dir / 'convo-42').is_dir()
+        assert list((sessions_dir / 'convo-42').iterdir()) == []
+        # In-memory reset still re-seeds the old pipeline's substrate.
+        assert world.current_state().turn_count == 0
+        assert world.latest_artifact() is not None
+
+    def test_reset_without_session_still_works(self, sessions_dir, minimal_config):
+        world = World(minimal_config)
+        world.reset()
+        assert not sessions_dir.exists()
+        assert world.current_state().turn_count == 0
+
+    def test_close_prunes_to_most_recent_n(self, sessions_dir, session_config):
+        import os
+        sessions_dir.mkdir(parents=True)
+        for idx, convo in enumerate(['oldest', 'middle', 'newest']):
+            (sessions_dir / convo).mkdir()
+            stamp = 1_700_000_000 + idx * 1000
+            os.utime(sessions_dir / convo, (stamp, stamp))
+        world = World(session_config)
+        world.close()
+        survivors = sorted(path.name for path in sessions_dir.iterdir())
+        assert survivors == ['middle', 'newest']
+
+    def test_close_with_no_sessions_dir(self, sessions_dir, session_config):
+        World(session_config).close()  # nothing on disk yet — must not crash
+        assert not sessions_dir.exists()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ContextCoordinator — persistent message list (changes.md §5.5)
+# ═══════════════════════════════════════════════════════════════════
+
+def _tool_call_messages() -> list[dict]:
+    """A user turn, an assistant tool call, and its paired tool result (API-shaped)."""
+    return [
+        {'role': 'user', 'content': 'Draft a post about cheetahs'},
+        {'role': 'assistant', 'content': [{'type': 'tool_use', 'id': 'toolu_01',
+                                           'name': 'read_state', 'input': {}}]},
+        {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'toolu_01',
+                                      'content': '{"flow_name": "compose"}'}]},
+        {'role': 'assistant', 'content': 'Started a draft about cheetahs.'},
+    ]
+
+
+class TestMessageList:
+    """The API-shaped orchestrator transcript (decisions 6, 12): appended as the loop runs,
+    mirrored to messages.jsonl, reloaded on session rehydrate. Turn records and
+    compile_history remain the human-readable view and are untouched by this list."""
+
+    @pytest.fixture
+    def coordinator(self, minimal_config, tmp_path):
+        coordinator = ContextCoordinator(minimal_config)
+        coordinator.attach_messages(tmp_path / 'messages.jsonl')
+        return coordinator
+
+    def test_append_reload_round_trip(self, coordinator, minimal_config, tmp_path):
+        for message in _tool_call_messages():
+            coordinator.append_message(message)
+        reopened = ContextCoordinator(minimal_config)
+        reopened.attach_messages(tmp_path / 'messages.jsonl')
+        assert reopened.messages == _tool_call_messages()
+
+    def test_ordering_survives_reload(self, coordinator, minimal_config, tmp_path):
+        for message in _tool_call_messages():
+            coordinator.append_message(message)
+        reopened = ContextCoordinator(minimal_config)
+        reopened.attach_messages(tmp_path / 'messages.jsonl')
+        assert [message['role'] for message in reopened.messages] == \
+            ['user', 'assistant', 'user', 'assistant']
+
+    def test_tool_result_pairing_preserved(self, coordinator, minimal_config, tmp_path):
+        for message in _tool_call_messages():
+            coordinator.append_message(message)
+        reopened = ContextCoordinator(minimal_config)
+        reopened.attach_messages(tmp_path / 'messages.jsonl')
+        call, result = reopened.messages[1], reopened.messages[2]
+        assert call['content'][0]['type'] == 'tool_use'
+        assert result['content'][0]['tool_use_id'] == call['content'][0]['id']
+
+    def test_attach_fresh_path_starts_empty(self, coordinator, tmp_path):
+        assert coordinator.messages == []
+        assert not (tmp_path / 'messages.jsonl').exists()  # reads never create the file
+
+    def test_append_without_path_is_memory_only(self, minimal_config):
+        coordinator = ContextCoordinator(minimal_config)
+        coordinator.append_message({'role': 'user', 'content': 'hello'})
+        assert coordinator.messages == [{'role': 'user', 'content': 'hello'}]
+
+    def test_append_creates_session_dir_lazily(self, minimal_config, tmp_path):
+        coordinator = ContextCoordinator(minimal_config)
+        coordinator.attach_messages(tmp_path / 'convo-9' / 'messages.jsonl')
+        coordinator.append_message({'role': 'user', 'content': 'hello'})
+        assert (tmp_path / 'convo-9' / 'messages.jsonl').exists()
+
+    def test_reset_clears_list_and_file(self, coordinator, tmp_path):
+        coordinator.append_message({'role': 'user', 'content': 'gone soon'})
+        coordinator.reset()
+        assert coordinator.messages == []
+        assert (tmp_path / 'messages.jsonl').read_text() == ''
+
+    def test_turn_records_stay_independent(self, coordinator):
+        coordinator.add_turn('User', 'Draft a post about cheetahs', 'utterance')
+        coordinator.append_message({'role': 'user', 'content': 'Draft a post about cheetahs'})
+        assert coordinator.turn_count == 1  # append_message never touches Turn records
+        assert 'cheetahs' in coordinator.compile_history()
+
+    def test_open_session_rehydrates_messages(self, sessions_dir, minimal_config):
+        (sessions_dir / 'convo-42').mkdir(parents=True)
+        lines = [json.dumps(message) for message in _tool_call_messages()]
+        (sessions_dir / 'convo-42' / 'messages.jsonl').write_text('\n'.join(lines) + '\n')
+        world = World(minimal_config)
+        world.open_session('convo-42')
+        assert world.context.messages == _tool_call_messages()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# write_state ops + flow rehydration (changes.md §4.1, §5.2, §6)
+# ═══════════════════════════════════════════════════════════════════
+
+from backend.components.dialogue_state import rehydrate_flow
+from backend.components.flow_stack import FlowStack
+
+
+def _without_ids(entries:list) -> list:
+    """Stack entries minus the random flow_id, for cross-implementation comparison."""
+    return [{key: val for key, val in entry.items() if key != 'flow_id'} for entry in entries]
+
+
+def _ops_state() -> DialogueState:
+    state = DialogueState(intent='Draft', dax=None, turn_count=1)
+    state.conversation_id = 'convo-ops'
+    return state
+
+
+class TestWriteStateOps:
+    """write_state is the only writer of state.json; flow-stack ops are write_state ops."""
+
+    def test_read_state_returns_document(self):
+        document = _ops_state().read_state()
+        assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack', 'flags']
+
+    def test_update_op_mutates_and_saves(self, tmp_path):
+        state = _ops_state()
+        path = tmp_path / 'state.json'
+        document = state.write_state(path, 'update', goal='ship the agents post',
+                                     workflow_step=3, grounding={'post': 'p1', 'ver': True})
+        assert document['user_beliefs']['goal'] == 'ship the agents post'
+        reloaded = DialogueState.load(path)
+        assert reloaded.workflow_step == 3
+        assert reloaded.grounding == {'post': 'p1', 'sec': '', 'snip': '', 'chl': '', 'ver': True}
+
+    def test_unknown_op_and_unknown_fields_raise(self, tmp_path):
+        state = _ops_state()
+        path = tmp_path / 'state.json'
+        with pytest.raises(ValueError, match='Unknown write_state op'):
+            state.write_state(path, 'merge')
+        with pytest.raises(KeyError):
+            state.write_state(path, 'update', vibe='good')
+        with pytest.raises(KeyError):
+            state.write_state(path, 'update', grounding={'version': 2})
+        assert not path.exists()  # rejected ops never reach save()
+
+    def test_op_sequence_matches_in_memory_flowstack(self, tmp_path):
+        """Equivalence: the same stackon/fill/fallback/complete/pop sequence on the
+        in-memory FlowStack and on the file-backed write_state yields the same stack."""
+        path = tmp_path / 'state.json'
+        state = _ops_state()
+        stack = FlowStack({}, flow_classes=flow_classes)
+
+        state.write_state(path, 'stackon', flow_name='outline')
+        stack.stackon('outline')
+        state.write_state(path, 'update_flow', slots={'source': [{'post': 'p1'}]},
+                          stage='discovery')
+        top = stack.get_flow()
+        top.fill_slot_values({'source': [{'post': 'p1'}]})
+        top.is_filled()
+        top.stage = 'discovery'
+        state.write_state(path, 'stackon', flow_name='brainstorm', plan_id='plan-7')
+        stack.stackon('brainstorm', plan_id='plan-7')
+        state.write_state(path, 'fallback', flow_name='refine')
+        stack.fallback('refine')
+        state.write_state(path, 'update', grounding={'post': 'p1'})
+        state.write_state(path, 'update_flow', status='Completed')
+        stack.get_flow().status = 'Completed'
+        state.write_state(path, 'pop_completed')
+        stack.pop_completed()
+
+        assert _without_ids(state.flow_stack) == _without_ids(stack.to_list())
+        assert _without_ids(DialogueState.load(path).flow_stack) == _without_ids(stack.to_list())
+
+    def test_grounding_validation_raises_on_ungrounded_completion(self, tmp_path):
+        path = tmp_path / 'state.json'
+        state = _ops_state()
+        state.write_state(path, 'stackon', flow_name='outline')
+        with pytest.raises(ValueError, match='grounding.post is empty'):
+            state.write_state(path, 'update_flow', status='Completed')
+        assert state.flow_stack[0]['status'] == 'Active'  # rejected write left no trace
+        assert DialogueState.load(path).flow_stack[0]['status'] == 'Active'
+
+    def test_grounding_validation_passes_once_post_is_set(self, tmp_path):
+        path = tmp_path / 'state.json'
+        state = _ops_state()
+        state.write_state(path, 'stackon', flow_name='outline')
+        state.write_state(path, 'update', grounding={'post': 'p1'})
+        state.write_state(path, 'update_flow', status='Completed')
+        assert state.flow_stack[0]['status'] == 'Completed'
+
+    def test_update_flow_normalizes_llm_shaped_slot_values(self, tmp_path):
+        """Orchestrator-authored slot values: bare strings for checklist items and source
+        entities, and a bare item in place of a list, all coerce instead of crashing."""
+        path = tmp_path / 'state.json'
+        state = _ops_state()
+        state.write_state(path, 'stackon', flow_name='outline')
+        state.write_state(path, 'update_flow',
+                          slots={'sections': ['Motivation', 'Process'], 'source': 'p1',
+                                 'topic': 'agents'})
+        slots = state.flow_stack[0]['slots']
+        assert [step['name'] for step in slots['sections']] == ['Motivation', 'Process']
+        assert slots['source'][0]['post'] == 'p1'
+        assert slots['topic'] == 'agents'
+
+    def test_grounding_validation_skips_topic_grounded_flows(self, tmp_path):
+        """Converse flows and exact-grounded flows (create's title) complete without a post,
+        mirroring the old PEX post-hook's slot-type filter."""
+        path = tmp_path / 'state.json'
+        state = _ops_state()
+        state.write_state(path, 'stackon', flow_name='chat')
+        state.write_state(path, 'update_flow', status='Completed')
+        state.write_state(path, 'pop_completed')
+        state.write_state(path, 'stackon', flow_name='find')
+        state.write_state(path, 'update_flow', status='Completed')
+        assert state.flow_stack[0]['status'] == 'Completed'
+
+
+class TestFlowRehydration:
+    """Flows rehydrate from flow_classes + saved slot values (to_dict / fill vocabulary)."""
+
+    def test_every_flow_round_trips_empty(self):
+        for name, cls in flow_classes.items():
+            flow = cls()
+            flow.flow_id = 'abc12345'
+            flow.status = 'Active'
+            clone = rehydrate_flow(flow.to_dict())
+            assert clone.to_dict() == flow.to_dict(), f'{name} did not round-trip'
+
+    def test_slot_fidelity_survives_round_trip(self):
+        flow = flow_classes['refine']()
+        flow.flow_id = 'abc12345'
+        flow.status = 'Active'
+        flow.stage = 'delegation'
+        flow.fill_slot_values({
+            'source': [{'post': 'p1', 'sec': 'intro', 'ver': True}],
+            'steps': [{'name': 'hook', 'description': 'opening line', 'checked': True}],
+            'feedback': ['keep it short'],
+        })
+        flow.is_filled()
+        clone = rehydrate_flow(flow.to_dict())
+        assert clone.to_dict() == flow.to_dict()
+        assert clone.stage == 'delegation'
+        assert clone.slots['source'].filled is True
+        assert clone.slots['source'].values == [
+            {'post': 'p1', 'sec': 'intro', 'snip': '', 'chl': '', 'ver': True}]
+        assert clone.slots['steps'].steps[0]['checked'] is True
+        assert clone.slots['feedback'].values == ['keep it short']
+
+    def test_range_slot_round_trips(self):
+        flow = flow_classes['schedule']()
+        flow.flow_id = 'abc12345'
+        flow.status = 'Active'
+        flow.fill_slot_values({'source': [{'post': 'p1'}], 'channel': ['substack'],
+                               'datetime': {'time_len': 2, 'unit': 'day'}})
+        flow.is_filled()
+        clone = rehydrate_flow(flow.to_dict())
+        assert clone.to_dict() == flow.to_dict()
+        assert clone.slots['datetime'].filled is True
+        assert clone.slots['datetime'].get_details() == flow.slots['datetime'].get_details()
+
+    def test_image_slot_round_trips(self):
+        flow = flow_classes['write']()
+        flow.flow_id = 'abc12345'
+        flow.status = 'Active'
+        flow.fill_slot_values({'source': [{'post': 'p1'}],
+                               'image': {'img_type': 'diagram', 'src': 'arch.png',
+                                         'alt': 'architecture', 'position': 2}})
+        flow.is_filled()
+        clone = rehydrate_flow(flow.to_dict())
+        assert clone.to_dict() == flow.to_dict()
+        assert clone.slots['image'].filled is True
+        assert clone.slots['image'].image_type == 'diagram'
+        assert clone.slots['image'].position == 2
+
+
+# ═══════════════════════════════════════════════════════════════════
 # Pillar 3 — Hypothesis stateful test for FlowStack
-# Drives FlowStack through random-but-valid sequences. Catches FSM-
-# discipline regressions: depth bounds, status-transition correctness,
-# pop_completed semantics, get_flow filtering. Recorded counter-examples
-# become permanent regression tests via @reproduce_failure.
+# Drives the in-memory FlowStack AND the file-backed write_state ops
+# through the same random-but-valid op sequence (changes.md Phase 1
+# gate). Catches FSM-discipline regressions (depth bounds, status
+# transitions, pop_completed semantics, get_flow filtering) and any
+# divergence between the two implementations, including serialization
+# round-trip loss. Recorded counter-examples become permanent
+# regression tests via @reproduce_failure.
 # ═══════════════════════════════════════════════════════════════════
 
 class TestFlowStackStateful:
@@ -1188,12 +1650,24 @@ def _build_flowstack_machine():
             super().__init__()
             config = MappingProxyType({'session': {'max_flow_depth': 8}})
             self.stack = FlowStack(config, flow_classes=_all_classes)
+            # File-backed twin: the same ops run as write_state ops on a
+            # DialogueState whose stack lives in the state file's flow_stack block.
+            self.state = DialogueState(intent='Draft', dax=None, turn_count=0)
+            self.state.conversation_id = 'machine'
+            self.state.grounding['post'] = 'p1'  # keep completions grounded; the §6
+            # raise has its own dedicated tests in TestWriteStateOps.
+            self.tmp_dir = Path(tempfile.mkdtemp())
+            self.state_file = self.tmp_dir / 'state.json'
+
+        def teardown(self):
+            shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
         @rule(name=st.sampled_from(_NAMES))
         def stackon(self, name):
             if len(self.stack._stack) < self.stack._max_depth:
                 top_before = self.stack._stack[-1] if self.stack._stack else None
                 new_flow = self.stack.stackon(name)
+                self.state.write_state(self.state_file, 'stackon', flow_name=name)
                 # Two valid outcomes: pushed a new Active flow, OR returned the
                 # existing in-flight top because no-consecutive-same-type kicked in.
                 assert new_flow.flow_id and len(new_flow.flow_id) >= 6
@@ -1213,14 +1687,27 @@ def _build_flowstack_machine():
                 return
             old_top = self.stack._stack[-1]
             self.stack.fallback(name)
+            self.state.write_state(self.state_file, 'fallback', flow_name=name)
             assert old_top.status == 'Invalid'
             assert self.stack._stack[-1].status == 'Active'
             assert self.stack._stack[-1].flow_type == name
+
+        @rule(post=st.sampled_from(['p1', 'p2']))
+        def fill_source(self, post):
+            # Exercises slot round-trip fidelity: flows without a 'source' slot
+            # ignore the fill on both implementations.
+            if self.stack._stack:
+                top = self.stack._stack[-1]
+                top.fill_slot_values({'source': [{'post': post}]})
+                top.is_filled()
+                self.state.write_state(self.state_file, 'update_flow',
+                                       slots={'source': [{'post': post}]})
 
         @rule()
         def complete_top(self):
             if self.stack._stack:
                 self.stack._stack[-1].status = 'Completed'
+                self.state.write_state(self.state_file, 'update_flow', status='Completed')
 
         @rule()
         def mark_pending(self):
@@ -1228,11 +1715,13 @@ def _build_flowstack_machine():
             # marking top Pending. Then pop_completed should activate it.
             if self.stack._stack:
                 self.stack._stack[-1].status = 'Pending'
+                self.state.write_state(self.state_file, 'update_flow', status='Pending')
 
         @rule()
         def pop_completed(self):
             before_completed = [e for e in self.stack._stack if e.status == 'Completed']
             self.stack.pop_completed()
+            self.state.write_state(self.state_file, 'pop_completed')
             for entry in self.stack._stack:
                 assert entry.status not in ('Completed', 'Invalid'), \
                     f'pop_completed left a {entry.status} flow on the stack'
@@ -1262,8 +1751,750 @@ def _build_flowstack_machine():
             for entry in self.stack._stack:
                 assert entry.status in valid, f'unknown status {entry.status!r}'
 
+        @invariant()
+        def file_backed_stack_matches_in_memory(self):
+            # The Phase-1 equivalence gate: same op sequence → same stack, both in
+            # the live state object and in the saved state.json.
+            in_memory = _without_ids(self.stack.to_list())
+            assert _without_ids(self.state.flow_stack) == in_memory
+            if self.state_file.exists():
+                saved = DialogueState.load(self.state_file).flow_stack
+                assert _without_ids(saved) == in_memory
+
     FlowStackMachine.TestCase.settings = settings(max_examples=50, deadline=2000)
     return FlowStackMachine
 
 
 TestFlowStackMachine = _build_flowstack_machine().TestCase
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Orchestrator tool catalog wiring (changes.md §4.1–4.3, decision 16)
+# ═══════════════════════════════════════════════════════════════════
+
+from backend.modules.pex import READ_ONLY_DOMAIN_TOOLS
+from backend.components.task_artifact import TaskArtifact
+
+_HOT_PATH_TOOLS = ('read_state', 'write_state', 'activate_flow',
+                   'append_to_scratchpad', 'store_preference', 'read_scratchpad')
+
+
+class TestOrchestratorToolDefs:
+    """Hot-path tool definitions and the orchestrator's tool list (decision 16 allowlist)."""
+
+    def test_defs_cover_dispatch_registry_exactly(self, mock_agent):
+        pex = mock_agent.pex
+        names = [tool['name'] for tool in pex._orchestrator_tool_definitions()]
+        assert names == list(_HOT_PATH_TOOLS)
+        assert set(pex._orchestrator_dispatch) == set(names)
+
+    def test_defs_are_valid_tool_shapes(self, mock_agent):
+        for tool in mock_agent.pex._orchestrator_tool_definitions():
+            assert tool['description'].strip(), f"{tool['name']} has no description"
+            schema = tool['input_schema']
+            assert schema['type'] == 'object'
+            assert set(schema['required']) <= set(schema['properties'])
+
+    def test_orchestrator_tool_list_composition(self, mock_agent):
+        names = [tool['name'] for tool in mock_agent.pex.get_tools_for_orchestrator()]
+        for name in _HOT_PATH_TOOLS:
+            assert name in names
+        for name in ('handle_ambiguity', 'coordinate_context', 'manage_memory'):
+            assert name in names
+        for name in READ_ONLY_DOMAIN_TOOLS:
+            assert name in names, f'allowlisted read-only tool {name} missing'
+        assert 'call_flow_stack' not in names  # retired on the orchestrator path
+        writes = {'create_post', 'update_post', 'delete_post', 'revise_content', 'release_post'}
+        assert not writes & set(names)  # domain writes only via activate_flow
+
+    def test_allowlist_is_decision_16(self):
+        assert READ_ONLY_DOMAIN_TOOLS == ('find_posts', 'read_metadata', 'read_section',
+                                          'search_notes', 'list_channels', 'channel_status')
+
+
+class TestOrchestratorDispatch:
+    """_dispatch_tool routes the hot-path names onto the Phase 1/2 surfaces."""
+
+    def test_read_state_returns_document(self, mock_agent):
+        result = mock_agent.pex._dispatch_tool('read_state', {})
+        assert result['_success'] is True
+        assert list(result['state']) == ['session', 'user_beliefs', 'grounding',
+                                         'flow_stack', 'flags']
+
+    def test_write_state_stacks_and_saves(self, sessions_dir, mock_agent):
+        mock_agent.world.open_session('wire-test')
+        result = mock_agent.pex._dispatch_tool('write_state',
+                                               {'op': 'stackon', 'flow_name': 'outline'})
+        assert result['_success'] is True
+        assert result['state']['flow_stack'][0]['flow_name'] == 'outline'
+        assert (sessions_dir / 'wire-test' / 'state.json').exists()
+
+    def test_write_state_pop_completed_mirrors_live_stack(self, sessions_dir, mock_agent):
+        """A write_state pop must also pop the live PEX stack — activate_flow's epilogue
+        re-syncs state.flow_stack from it, so a stale Completed live entry would resurrect
+        the popped flow on the next dispatch."""
+        mock_agent.world.open_session('wire-test')
+        pex = mock_agent.pex
+        flow = pex.flow_stack.stackon('chat')
+        flow.status = 'Completed'
+        state = mock_agent.world.current_state()
+        state.flow_stack = pex.flow_stack.to_list()
+        result = pex._dispatch_tool('write_state', {'op': 'pop_completed'})
+        assert result['_success'] is True
+        assert result['state']['flow_stack'] == []
+        assert pex.flow_stack.to_list() == []  # live stack mirrored — no resurrection
+
+    def test_write_state_bad_op_returns_corrective_error(self, sessions_dir, mock_agent):
+        mock_agent.world.open_session('wire-test')
+        result = mock_agent.pex._dispatch_tool('write_state', {'op': 'merge'})
+        assert result['_success'] is False
+        assert 'Unknown write_state op' in result['_message']
+
+    def test_write_state_unknown_slot_returns_corrective_error(self, sessions_dir, mock_agent):
+        """LLM-invented slot names (e.g. create's `type` reread as genre) get a corrective
+        error naming the valid slots, instead of fill_slot_values dropping them silently."""
+        mock_agent.world.open_session('wire-test')
+        mock_agent.pex._dispatch_tool('write_state', {'op': 'stackon', 'flow_name': 'outline'})
+        result = mock_agent.pex._dispatch_tool(
+            'write_state', {'op': 'update_flow', 'fields': {'slots': {'genre': 'tutorial'}}})
+        assert result['_success'] is False
+        assert result['_error'] == 'invalid_input'
+        assert "'source'" in result['_message']  # valid slots are listed for the retry
+
+    def test_scratchpad_tools_route_to_memory(self, mock_agent, tmp_path):
+        pex = mock_agent.pex
+        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+        appended = pex._dispatch_tool('append_to_scratchpad',
+                                      {'entry': {'finding': 'intro is weak'}})
+        assert appended == {'_success': True, 'size': 1}
+        result = pex._dispatch_tool('read_scratchpad', {'writer': 'orchestrator'})
+        assert result['entries'] == [{'finding': 'intro is weak', 'writer': 'orchestrator'}]
+
+
+class _StubPolicy:
+    """Happy-path policy stand-in: marks the staged flow and returns a minimal artifact."""
+
+    def __init__(self, flow_stack, status='Completed', thoughts='Drafted the intro.'):
+        self.flow_stack = flow_stack
+        self.status = status
+        self.thoughts = thoughts
+
+    def execute(self, state, context, tools):
+        flow = self.flow_stack.get_flow()
+        flow.status = self.status
+        return TaskArtifact(origin=flow.name(), thoughts=self.thoughts)
+
+    def pop_completion(self):
+        """Unmigrated-policy shape: no complete_flow call, activate_flow writes the record."""
+        return None
+
+
+class TestDispatchFlow:
+    """activate_flow runs the policy inline and returns the completion record (decision 7)."""
+
+    @pytest.fixture
+    def wired(self, sessions_dir, mock_agent, tmp_path):
+        pex = mock_agent.pex
+        mock_agent.world.open_session('wire-test')
+        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+        return mock_agent
+
+    def test_completion_record_is_the_tool_result(self, wired):
+        pex = wired.pex
+        state = wired.world.current_state()
+        state.grounding['post'] = 'cafe01'
+        pex._policies['Draft'] = _StubPolicy(pex.flow_stack)
+        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        assert result['_success'] is True
+        assert result['status'] == 'Completed'
+        assert result['completion'] == {'flow': 'outline', 'summary': 'Drafted the intro.',
+                                        'metadata': {}, 'writer': 'outline'}
+        assert pex.scratchpad.read(keys=['flow', 'summary']) == [result['completion']]
+        # The run is reflected back into the state's flow_stack block, grounding applied.
+        assert state.flow_stack[-1]['flow_name'] == 'outline'
+        assert state.flow_stack[-1]['status'] == 'Completed'
+        assert state.active_post == 'cafe01'
+
+    def test_rehydrates_flow_from_state_file_entry(self, wired):
+        pex = wired.pex
+        state = wired.world.current_state()
+        state.write_state(wired.world.state_file(), 'stackon', flow_name='outline')
+        state.write_state(wired.world.state_file(), 'update_flow',
+                          slots={'source': [{'post': 'cafe01'}]})
+        state.grounding['post'] = 'cafe01'
+        captured = {}
+
+        class _CapturingPolicy(_StubPolicy):
+            def execute(self, policy_state, context, tools):
+                captured['slots'] = self.flow_stack.get_flow().slot_values_dict()
+                return super().execute(policy_state, context, tools)
+
+        pex._policies['Draft'] = _CapturingPolicy(pex.flow_stack)
+        assert pex.flow_stack.find_by_name('outline') is None  # lives only in the state file
+        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        assert result['status'] == 'Completed'
+        assert captured['slots']['source'][0]['post'] == 'cafe01'
+
+    def test_non_completed_returns_status_and_question(self, wired):
+        pex = wired.pex
+        pex._policies['Draft'] = _StubPolicy(pex.flow_stack, status='Active',
+                                             thoughts='Need a post first.')
+        pex.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'},
+                              observation='Which post should I work on?')
+        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        assert result['_success'] is True
+        assert result['status'] == 'Active'
+        assert result['question'] == 'Which post should I work on?'
+        assert 'completion' not in result
+
+    def test_empty_artifact_fails_validation(self, wired):
+        pex = wired.pex
+        pex._policies['Draft'] = _StubPolicy(pex.flow_stack, status='Active', thoughts='')
+        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        assert result['_success'] is False
+        assert result['_error'] == 'validation'
+
+
+class TestPolicyCompletion:
+    """BasePolicy.complete_flow / pop_completion — the single completion call under the
+    orchestrator substrate (changes.md §8 policies row): status via write_state (so the §6
+    grounding validation fires) + the §5.3 completion record, deduped against
+    activate_flow's transitional fallback. Plus the grounding-block entity access (§6)."""
+
+    @pytest.fixture
+    def wired(self, sessions_dir, mock_agent, tmp_path):
+        pex = mock_agent.pex
+        mock_agent.world.open_session('completion-test')
+        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+        return mock_agent
+
+    def _migrated_policy(self, agent, summary, metadata=None):
+        """A policy already rewired to the complete_flow contract."""
+        from backend.modules.policies.base import BasePolicy
+        pex = agent.pex
+
+        class _MigratedPolicy(BasePolicy):
+            def execute(self, state, context, tools):
+                flow = self.flow_stack.get_flow()
+                self.complete_flow(flow, state, summary, metadata=metadata)
+                return TaskArtifact(origin=flow.name(), thoughts=summary)
+
+        components = {'engineer': pex.engineer, 'memory': pex.memory, 'config': pex.config,
+                      'ambiguity': pex.ambiguity, 'get_tools': pex.get_tools_for_flow,
+                      'flow_stack': pex.flow_stack, 'content_service': pex._content_service,
+                      'scratchpad': pex.scratchpad, 'state_file': agent.world.state_file}
+        return _MigratedPolicy(components)
+
+    def test_complete_flow_writes_record_once(self, wired):
+        pex = wired.pex
+        state = wired.world.current_state()
+        state.grounding['post'] = 'cafe01'
+        pex._policies['Draft'] = self._migrated_policy(wired, 'Wrote the intro.',
+                                                       metadata={'sec': 'intro'})
+        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        assert result['_success'] is True
+        assert result['completion'] == {'flow': 'outline', 'summary': 'Wrote the intro.',
+                                        'metadata': {'sec': 'intro'}, 'writer': 'outline'}
+        # The policy's record IS the tool result — no fallback duplicate from activate_flow.
+        assert pex.scratchpad.read(keys=['flow', 'summary']) == [result['completion']]
+        assert state.flow_stack[-1]['status'] == 'Completed'
+
+    def test_complete_flow_blocks_ungrounded_completion(self, wired):
+        pex = wired.pex
+        pex._policies['Draft'] = self._migrated_policy(wired, 'Done.')
+        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        assert result['_success'] is False
+        assert 'grounding.post is empty' in result['_message']
+        assert pex.scratchpad.read(keys=['flow', 'summary']) == []  # no record written
+
+    def test_grounded_source_ids_continuity(self, wired):
+        """Empty entity slot + filled grounding block: the active entity carries over."""
+        pex = wired.pex
+        state = wired.world.current_state()
+        state.grounding['post'] = 'cafe0001'
+        flow = pex.flow_stack.stackon('outline')
+        policy = pex._policies['Draft']
+
+        def tools(name, params):
+            assert name == 'read_metadata'
+            return {'_success': True, 'title': 'Cafe', 'status': 'draft', 'section_ids': []}
+
+        post_id, sec_id, error = policy.resolve_source_ids(flow, state, tools)
+        assert (post_id, sec_id, error) == ('cafe0001', None, None)
+        assert state.active_post == 'cafe0001'  # old-path mirror until cutover
+
+
+class TestProposeTwoPhase:
+    """propose's generate→pick split (mirrors audit). Phase 1 writes 2-3 candidates itself and
+    presents a selection WITHOUT completing; phase 2 (the click, with choices populated) fills the
+    placeholder gap via revise_content and completes the flow."""
+
+    @pytest.fixture
+    def ready(self, sessions_dir, mock_agent, tmp_path, monkeypatch):
+        pex = mock_agent.pex
+        mock_agent.world.open_session('propose-test')
+        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+        policy = pex._policies['Revise']
+        policy.scratchpad = pex.scratchpad
+        mock_agent.world.current_state().grounding['post'] = 'p1'   # grounding gate for complete_flow
+        flow = pex.flow_stack.stackon('propose')
+        flow.fill_slot_values({'source': [{'post': 'p1', 'sec': 'tradeoffs'}]})
+        # Stub the helpers that reach the LLM / content service; the new branching is what we test.
+        monkeypatch.setattr(policy, 'resolve_source_ids', lambda f, s, t: ('p1', 'tradeoffs', None))
+        monkeypatch.setattr(policy, 'record_snapshot', lambda *a, **k: 'snap1')
+        monkeypatch.setattr(policy, '_read_post_content', lambda pid, t: {'post_id': pid})
+        monkeypatch.setattr(policy, 'llm_execute',
+                            lambda *a, **k: ('1. Alpha option\n2. Beta option\n3. Gamma option', []))
+        return mock_agent, policy, flow
+
+    def test_generate_presents_selection_without_completing(self, ready):
+        agent, policy, flow = ready
+        state, context = agent.world.current_state(), agent.world.context
+        artifact = policy.propose_policy(flow, state, context,
+            lambda name, params: {'_success': True, 'content': 'Intro. <fill in here> Tail.'})
+
+        selection = [b for b in artifact.blocks if b.block_type == 'selection'][0]
+        assert [opt['body'] for opt in selection.data['options']] == \
+            ['Alpha option', 'Beta option', 'Gamma option']
+        assert selection.data['submit_dax'] == '{39B}'
+        assert flow.stage == 'discovery'
+        assert flow.status != 'Completed'                          # left active for the pick turn
+        assert policy._read_scratch_value('propose')['candidates'][1] == 'Beta option'
+
+    def test_pick_fills_placeholder_and_completes(self, ready):
+        agent, policy, flow = ready
+        state, context = agent.world.current_state(), agent.world.context
+        calls = []
+        def tools(name, params):
+            calls.append((name, params))
+            if name == 'read_section':
+                return {'_success': True, 'content': 'Intro. <fill in here> Tail.'}
+            return {'_success': True}
+
+        policy.propose_policy(flow, state, context, tools)         # phase 1 — fills the scratchpad
+        state.slices['choices'].append(1)                          # the click selects "Beta option"
+        policy.propose_policy(flow, state, context, tools)         # phase 2 — inserts the pick
+
+        revise = [params for name, params in calls if name == 'revise_content'][0]
+        assert revise['content'] == 'Intro. Beta option Tail.'
+        assert revise['sec_id'] == 'tradeoffs'
+        assert flow.status == 'Completed'
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Orchestrator system prompt — three tiers, frozen per session (changes.md §7)
+# ═══════════════════════════════════════════════════════════════════
+
+from backend.prompts.for_orchestrator import build_orchestrator_prompt
+
+
+class TestOrchestratorPrompt:
+    """Built once per session, byte-stable given the same inputs (Hermes prefix-caching
+    pattern); the L2 preferences snapshot and intent taxonomy are baked into the string."""
+
+    @pytest.fixture
+    def prompt_inputs(self, minimal_config):
+        engineer = PromptEngineer(minimal_config)
+        prefs = UserPreferences(minimal_config)
+        prefs.store_preference('paragraph_length', 'shorter paragraphs')
+        memory = MemoryManager(None, prefs, None)
+        return engineer, memory
+
+    def _build(self, prompt_inputs):
+        engineer, memory = prompt_inputs
+        return build_orchestrator_prompt(engineer, memory, 'conv-42', 'derek', '2026-06-11')
+
+    def test_byte_stable_across_builds(self, prompt_inputs):
+        assert self._build(prompt_inputs) == self._build(prompt_inputs)
+
+    def test_preferences_snapshot_appears(self, prompt_inputs):
+        prompt = self._build(prompt_inputs)
+        assert '- Remember, the user wants shorter paragraphs.' in prompt
+        # Snapshot semantics: a write AFTER the build only enters the next session's prompt.
+        prompt_inputs[1].preferences.store_preference('tone', 'casual')
+        assert 'casual' not in prompt
+
+    def test_taxonomy_names_all_seven_intents(self, prompt_inputs):
+        prompt = self._build(prompt_inputs)
+        for intent in ('Research', 'Draft', 'Revise', 'Publish', 'Converse', 'Plan', 'Clarify'):
+            assert f'- **{intent}' in prompt, f'intent {intent} missing from taxonomy'
+
+    def test_three_tier_sections_present(self, prompt_inputs):
+        prompt = self._build(prompt_inputs)
+        for tag in ('persona', 'intents', 'tool_policy', 'workflow', 'flow_catalog',
+                    'outline_levels', 'preferences', 'session'):
+            assert f'<{tag}>' in prompt and f'</{tag}>' in prompt
+        assert 'Session: conversation_id=conv-42 | user=derek | date=2026-06-11' in prompt
+        assert '10. **Release and syndicate**' in prompt  # README workflow ported
+        assert f'## Flow Catalog ({len(FLOW_CATALOG)} flows)' in prompt
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Orchestrator loop v1 (changes.md §3, decisions 3, 6, 13)
+# ═══════════════════════════════════════════════════════════════════
+
+from types import SimpleNamespace
+
+from schemas.config import load_config
+from backend.agent import Agent, _FALLBACK_MESSAGE, _NUDGE_MESSAGE, _WRAP_UP_MESSAGE
+
+
+def _text_block(text):
+    return SimpleNamespace(type='text', text=text)
+
+
+def _tool_block(name, tool_input, block_id='toolu_01'):
+    return SimpleNamespace(type='tool_use', name=name, input=tool_input, id=block_id)
+
+
+def _response(*blocks):
+    return SimpleNamespace(content=list(blocks), stop_reason='end_turn', usage=None)
+
+
+def _script(agent, responses):
+    """Replace the loop's LLM call with a scripted response queue."""
+    queue = list(responses)
+    agent.engineer._call_claude = (
+        lambda system, messages, model_id, *, tools=None, max_tokens=4096: queue.pop(0))
+    return queue
+
+
+@pytest.fixture
+def orch_agent(sessions_dir, monkeypatch):
+    """Agent with a tmp sessions root and scripted LLM calls. NLU.understand is stubbed to a
+    no-op so the Flow gate stays hermetic — these tests exercise PEX.execute (the acting loop),
+    not ensemble detection; the belief stays at its session defaults."""
+    monkeypatch.setattr('backend.agent.load_config', lambda: load_config(
+        overrides={'debug': True}))
+    agent = Agent(username='test_user')
+    agent.nlu.understand = lambda *args, **kwargs: None
+    yield agent
+    agent.close()
+
+
+class TestOrchestratorLoop:
+    """The bounded loop: termination signal, message-list bookkeeping, §3.3 guardrails."""
+
+    def test_plain_text_ends_turn_and_is_the_utterance(self, orch_agent):
+        _script(orch_agent, [_response(_text_block('You have three posts in progress.'))])
+        result = orch_agent.take_turn('what posts do I have?')
+        assert result['message'] == 'You have three posts in progress.'
+        assert sorted(result) == ['actions', 'artifact', 'message']
+        messages = orch_agent.world.context.messages
+        assert messages[0] == {'role': 'user', 'content': 'what posts do I have?'}
+        assert messages[1] == {'role': 'assistant',
+                               'content': 'You have three posts in progress.'}
+
+    def test_tool_round_dispatches_and_appends_results(self, orch_agent):
+        _script(orch_agent, [_response(_tool_block('read_state', {})),
+                             _response(_text_block('All caught up.'))])
+        result = orch_agent.take_turn('where were we?')
+        assert result['message'] == 'All caught up.'
+        messages = orch_agent.world.context.messages
+        assert [msg['role'] for msg in messages] == ['user', 'assistant', 'user', 'assistant']
+        tool_use = messages[1]['content'][0]
+        assert tool_use['type'] == 'tool_use' and tool_use['name'] == 'read_state'
+        tool_result = messages[2]['content'][0]
+        assert tool_result['tool_use_id'] == 'toolu_01'
+        assert json.loads(tool_result['content'])['_success'] is True
+
+    def test_unknown_tool_returns_corrective_error(self, orch_agent):
+        _script(orch_agent, [_response(_tool_block('make_coffee', {})),
+                             _response(_text_block('Sorry, no coffee.'))])
+        result = orch_agent.take_turn('brew something')
+        assert result['message'] == 'Sorry, no coffee.'
+        tool_result = json.loads(orch_agent.world.context.messages[2]['content'][0]['content'])
+        assert tool_result['_success'] is False
+        assert 'Unknown tool' in tool_result['_message']
+
+    def test_identical_consecutive_call_is_deduped(self, orch_agent):
+        _script(orch_agent, [_response(_tool_block('read_state', {}, block_id='t1')),
+                             _response(_tool_block('read_state', {}, block_id='t2')),
+                             _response(_text_block('done'))])
+        orch_agent.take_turn('check state twice')
+        second = json.loads(orch_agent.world.context.messages[4]['content'][0]['content'])
+        assert second['_error'] == 'duplicate_call'
+
+    def test_identical_retry_after_error_is_dispatched(self, orch_agent):
+        """Dedupe only fires after a SUCCESSFUL identical call — retrying the same call
+        after a transient tool error is legitimate recovery, not a loop."""
+        bad_call = _tool_block('write_state', {'op': 'bogus'}, block_id='t1')
+        _script(orch_agent, [_response(bad_call),
+                             _response(_tool_block('write_state', {'op': 'bogus'}, block_id='t2')),
+                             _response(_text_block('gave up'))])
+        orch_agent.take_turn('do the thing')
+        second = json.loads(orch_agent.world.context.messages[4]['content'][0]['content'])
+        assert second['_error'] != 'duplicate_call'  # re-dispatched, not skipped
+
+    def test_thinking_only_gets_one_nudge_then_text(self, orch_agent):
+        _script(orch_agent, [_response(), _response(_text_block('after the nudge'))])
+        result = orch_agent.take_turn('hello?')
+        assert result['message'] == 'after the nudge'
+        assert orch_agent.world.context.messages[1] == {'role': 'user',
+                                                        'content': _NUDGE_MESSAGE}
+
+    def test_thinking_only_twice_falls_back(self, orch_agent):
+        _script(orch_agent, [_response(), _response()])
+        result = orch_agent.take_turn('hello?')
+        assert result['message'] == _FALLBACK_MESSAGE
+        assert orch_agent.world.context.messages[-1]['content'] == _FALLBACK_MESSAGE
+
+    def test_consecutive_failures_cap_breaks_to_wrap_up(self, orch_agent):
+        queue = _script(orch_agent, [_response(_tool_block('bogus_one', {})),
+                                     _response(_tool_block('bogus_two', {})),
+                                     _response(_tool_block('bogus_three', {})),
+                                     _response(_text_block('I could not find that tool.'))])
+        result = orch_agent.take_turn('try something weird')
+        assert result['message'] == 'I could not find that tool.'
+        assert queue == []  # three rounds + the forced no-tools wrap-up, nothing more
+        assert orch_agent.world.context.messages[-2] == {'role': 'user',
+                                                         'content': _WRAP_UP_MESSAGE}
+
+    def test_wrap_up_with_no_text_falls_back(self, orch_agent):
+        responses = [_response(_tool_block(f'bogus_{idx}', {})) for idx in range(3)]
+        _script(orch_agent, responses + [_response()])
+        result = orch_agent.take_turn('try something weird')
+        assert result['message'] == _FALLBACK_MESSAGE
+
+    def test_agent_turn_recorded_in_context(self, orch_agent):
+        _script(orch_agent, [_response(_text_block('Recorded.'))])
+        orch_agent.take_turn('say something')
+        turns = orch_agent.world.context.full_conversation(keep_system=False)
+        assert turns[-1] == 'Agent: Recorded.'
+
+    def test_epilogue_persists_session_files(self, orch_agent, sessions_dir):
+        _script(orch_agent, [_response(_text_block('Saved.'))])
+        orch_agent.take_turn('persist please')
+        session = sessions_dir / orch_agent.world.conversation_id
+        assert json.loads((session / 'state.json').read_text())['session']['turn_count'] == 1
+        lines = (session / 'messages.jsonl').read_text().splitlines()
+        assert len(lines) == 2  # user message + assistant text, mirrored to disk
+
+
+class TestOrchestratorClickBypass:
+    """Decision 13: pure clicks never reach the loop; action+text injects the flow."""
+
+    def test_pure_click_skips_the_loop(self, orch_agent):
+        def _boom(*args, **kwargs):
+            raise AssertionError('pure click must not call the LLM loop')
+        orch_agent.engineer._call_claude = _boom
+        orch_agent.pex._policies['Converse'] = _StubPolicy(orch_agent.pex.flow_stack,
+                                                           thoughts='Hi! What shall we write?')
+        result = orch_agent.take_turn('', dax='{000}', payload={})
+        assert result['message'] == 'Hi! What shall we write?'
+        messages = orch_agent.world.context.messages
+        assert messages[0]['content'].startswith('[click] dax={000} flow=chat')
+        assert messages[1] == {'role': 'assistant', 'content': 'Hi! What shall we write?'}
+
+    def test_action_with_text_runs_loop_with_flow_injected(self, orch_agent):
+        _script(orch_agent, [_response(_text_block('Building on your pick.'))])
+        result = orch_agent.take_turn('make it punchier', dax='{000}', payload={})
+        assert result['message'] == 'Building on your pick.'
+        injected = orch_agent.world.context.messages[0]['content']
+        assert injected.startswith("[action] This turn arrived with a resolved flow: 'chat'")
+        assert injected.endswith('make it punchier')
+
+    # test_flag_off_routes_to_old_path removed — the legacy _take_turn path and the
+    # orchestrator feature flag are gone; take_turn always runs the orchestrator loop.
+
+
+class TestTurnCheckpoint:
+    """PEX records a backward-looking 'System' checkpoint turn at the end of every turn:
+    which flows completed, which flow is still active, and the grounded entity."""
+
+    @staticmethod
+    def _checkpoints(agent):
+        return [turn for turn in agent.world.context.full_conversation(keep_system=True)
+                if turn.startswith('System:') and '[checkpoint]' in turn]
+
+    def test_plain_turn_records_checkpoint(self, orch_agent):
+        _script(orch_agent, [_response(_text_block('All set.'))])
+        orch_agent.take_turn('anything new?')
+        checkpoints = self._checkpoints(orch_agent)
+        assert checkpoints, 'no System checkpoint turn was recorded'
+        assert 'completed: none' in checkpoints[-1] and 'active: none' in checkpoints[-1]
+
+    def test_checkpoint_notes_completed_flow(self, orch_agent):
+        orch_agent.pex._policies['Converse'] = _StubPolicy(orch_agent.pex.flow_stack,
+                                                           thoughts='Hi there.')
+        orch_agent.take_turn('', dax='{000}', payload={})  # click → completes the chat flow
+        assert 'completed: chat' in self._checkpoints(orch_agent)[-1]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Context compression — the Hermes compactor port (changes.md §5.6, decision 9)
+# ═══════════════════════════════════════════════════════════════════
+
+from backend.prompts.for_compressor import SUMMARY_PREFIX
+
+
+def _transcript(turns:int) -> list[dict]:
+    """`turns` orchestrator rounds, 4 messages each: user utterance, assistant tool_use,
+    paired tool results, assistant wrap-up text."""
+    messages = []
+    for idx in range(turns):
+        messages.append({'role': 'user', 'content': f'user turn {idx}: ' + 'x' * 80})
+        messages.append({'role': 'assistant', 'content': [
+            {'type': 'text', 'text': f'working on {idx}'},
+            {'type': 'tool_use', 'id': f'toolu_{idx}', 'name': 'read_state',
+             'input': {'turn': idx}}]})
+        messages.append({'role': 'user', 'content': [
+            {'type': 'tool_result', 'tool_use_id': f'toolu_{idx}',
+             'content': json.dumps({'_success': True, 'filler': 'y' * 300})}]})
+        messages.append({'role': 'assistant', 'content': f'done with turn {idx}'})
+    return messages
+
+
+def _stub_summarizer(record:list):
+    """Mock auxiliary summarizer: records its inputs, returns a numbered summary."""
+    def summarize(middle, previous_summary, budget):
+        record.append({'middle': list(middle), 'previous': previous_summary, 'budget': budget})
+        return f'summary #{len(record)}'
+    return summarize
+
+
+class TestCompression:
+    """Head/tail protection, tool-pair integrity, handoff shape, pruning placeholder, and
+    messages.jsonl consistency — all with a mocked summarizer (no LLM)."""
+
+    @pytest.fixture
+    def loaded(self, minimal_config, tmp_path):
+        coordinator = ContextCoordinator(minimal_config)
+        coordinator.attach_messages(tmp_path / 'messages.jsonl')
+        for message in _transcript(10):  # 40 messages
+            coordinator.append_message(message)
+        return coordinator
+
+    def test_too_short_list_is_not_compacted(self, minimal_config):
+        coordinator = ContextCoordinator(minimal_config)
+        for message in _transcript(2):  # 8 messages <= head(3) + tail(20) + 1
+            coordinator.append_message(message)
+        assert coordinator.compress_messages(_stub_summarizer([]), protect_tail=20) is False
+        assert coordinator.previous_summary is None
+
+    def test_head_and_tail_are_protected(self, loaded):
+        before = [json.dumps(message, default=str) for message in loaded.messages]
+        assert loaded.compress_messages(_stub_summarizer([]), protect_tail=20) is True
+        after = loaded.messages
+        assert len(after) == 3 + 1 + 20  # head + one handoff + tail
+        assert [json.dumps(msg, default=str) for msg in after[:2]] == before[:2]
+        assert [json.dumps(msg, default=str) for msg in after[-20:]] == before[20:]
+
+    def test_handoff_message_shape(self, loaded):
+        loaded.compress_messages(_stub_summarizer([]), protect_tail=20)
+        handoff = loaded.messages[3]
+        assert handoff['role'] == 'user'
+        assert handoff['content'].startswith(SUMMARY_PREFIX)
+        assert 'summary #1' in handoff['content']
+        assert handoff['content'].rstrip().endswith(
+            'respond to the message below, not the summary above ---')
+
+    def test_tail_cut_never_splits_a_tool_pair(self, loaded):
+        # protect_tail=18 puts the raw cut on turn 5's tool results; alignment pulls the cut
+        # back so the parent assistant tool_use travels into the tail with its results.
+        assert loaded.compress_messages(_stub_summarizer([]), protect_tail=18) is True
+        handoff_idx = next(idx for idx, msg in enumerate(loaded.messages)
+                           if isinstance(msg['content'], str)
+                           and msg['content'].startswith(SUMMARY_PREFIX))
+        first_tail = loaded.messages[handoff_idx + 1]
+        assert first_tail['role'] == 'assistant'
+        assert first_tail['content'][1]['type'] == 'tool_use'
+        result_block = loaded.messages[handoff_idx + 2]['content'][0]
+        assert result_block['tool_use_id'] == first_tail['content'][1]['id']
+
+    def test_summarizer_sees_only_the_middle(self, loaded):
+        record = []
+        loaded.compress_messages(_stub_summarizer(record), protect_tail=20)
+        middle = record[0]['middle']
+        assert len(middle) == 17  # messages 3..19 — nothing from the head or tail
+        assert middle[0]['content'] == 'done with turn 0'
+        assert middle[-1]['content'] == 'done with turn 4'
+        assert record[0]['budget'] == 2000  # small middle clamps to the Hermes floor
+
+    def test_old_tool_results_pruned_tail_results_kept(self, loaded):
+        loaded.compress_messages(_stub_summarizer([]), protect_tail=20)
+        head_result = loaded.messages[2]['content'][0]['content']
+        assert head_result == '[Old tool output cleared to save context space]'
+        tail_result = loaded.messages[-2]['content'][0]['content']
+        assert 'filler' in tail_result  # inside the protected tail — untouched
+
+    def test_messages_jsonl_matches_memory_after_compression(self, loaded, minimal_config,
+                                                             tmp_path):
+        loaded.compress_messages(_stub_summarizer([]), protect_tail=20)
+        reopened = ContextCoordinator(minimal_config)
+        reopened.attach_messages(tmp_path / 'messages.jsonl')
+        assert reopened.messages == loaded.messages
+
+    def test_checkpoint_records_the_compression_event(self, loaded):
+        loaded.compress_messages(_stub_summarizer([]), protect_tail=20, prompt_tokens=70000)
+        checkpoint = loaded.get_checkpoint('compression')
+        assert checkpoint['data'] == {'messages_before': 40, 'messages_after': 24,
+                                      'pruned_tool_results': 5, 'prompt_tokens': 70000}
+
+    def test_second_compaction_updates_the_previous_summary(self, loaded):
+        record = []
+        loaded.compress_messages(_stub_summarizer(record), protect_tail=20)
+        for message in _transcript(5):  # the conversation keeps going
+            loaded.append_message(message)
+        assert loaded.compress_messages(_stub_summarizer(record), protect_tail=20) is True
+        assert record[0]['previous'] is None
+        assert record[1]['previous'] == 'summary #1'
+        # the old handoff sits in the window and is never re-summarized as a turn
+        assert all(not (isinstance(msg['content'], str)
+                        and msg['content'].startswith(SUMMARY_PREFIX))
+                   for msg in record[1]['middle'])
+
+    def test_rehydrated_session_seeds_previous_summary_from_handoff(self, loaded,
+                                                                    minimal_config, tmp_path):
+        loaded.compress_messages(_stub_summarizer([]), protect_tail=20)
+        reopened = ContextCoordinator(minimal_config)  # fresh process — no in-memory summary
+        reopened.attach_messages(tmp_path / 'messages.jsonl')
+        for message in _transcript(5):
+            reopened.append_message(message)
+        record = []
+        assert reopened.compress_messages(_stub_summarizer(record), protect_tail=20) is True
+        assert record[0]['previous'] == 'summary #1'
+
+
+class TestCompressionTrigger:
+    """The post-hook trigger (changes.md §5.6): real usage off response.usage against the
+    configured threshold; the protected tail size rides in from config."""
+
+    @staticmethod
+    def _usage_response(text, prompt_tokens, cached=0):
+        response = _response(_text_block(text))
+        response.usage = SimpleNamespace(input_tokens=prompt_tokens,
+                                         cache_creation_input_tokens=0,
+                                         cache_read_input_tokens=cached)
+        return response
+
+    def test_usage_recorded_including_cache_tokens(self, orch_agent):
+        _script(orch_agent, [self._usage_response('hi', 1500, cached=4500)])
+        orch_agent.take_turn('hello')
+        assert orch_agent.pex.last_prompt_tokens == 6000
+
+    def test_below_threshold_never_compacts(self, orch_agent, monkeypatch):
+        calls = []
+        monkeypatch.setattr(orch_agent.world.context, 'compress_messages',
+                            lambda *args: calls.append(args) or True)
+        _script(orch_agent, [self._usage_response('small turn', 63999)])
+        orch_agent.take_turn('hello')
+        assert calls == []
+
+    def test_at_threshold_compacts_with_config_tail(self, orch_agent, monkeypatch):
+        calls = []
+        monkeypatch.setattr(orch_agent.world.context, 'compress_messages',
+                            lambda *args: calls.append(args) or True)
+        _script(orch_agent, [self._usage_response('big turn', 64000)])
+        orch_agent.take_turn('hello')
+        summarize, protect_tail, prompt_tokens = calls[0]
+        assert summarize == orch_agent._summarize_middle
+        assert protect_tail == 20  # schemas/tools.yaml compression.protect_tail
+        assert prompt_tokens == 64000
+
+    def test_summarizer_failure_does_not_eat_the_reply(self, orch_agent, monkeypatch):
+        def boom(*args):
+            raise RuntimeError('aux model down')
+        monkeypatch.setattr(orch_agent.world.context, 'compress_messages', boom)
+        _script(orch_agent, [self._usage_response('still replies', 200000)])
+        assert orch_agent.take_turn('hello')['message'] == 'still replies'

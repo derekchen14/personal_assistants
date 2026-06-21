@@ -5,6 +5,8 @@ dist/
 .svelte-kit/
 *.db
 
+database/sessions/
+
 posts.json
 
 .snapshots/

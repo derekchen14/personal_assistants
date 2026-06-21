@@ -14,10 +14,10 @@ Phased implementation plan for building a domain agent from scratch. Each phase 
 | 4a | [Basic Foundation](./phase_4a_basic_foundation.md) | Server, config, SQLite, module shells — no auth |
 | 4b | [Pro Foundation](./phase_4b_pro_foundation.md) | Postgres, JWT auth, auth routes, rate limiting |
 | 4c | [Advanced Foundation](./phase_4c_advanced_foundation.md) | OAuth 2.0, credential storage, token refresh |
-| 5 | [Core Agent](./phase_5_core_agent.md) | 7 components, NLU/PEX/RES modules, Agent orchestrator |
+| 5 | [Core Agent](./phase_5_core_agent.md) | 9 components, NLU/PEX/MEM module-loops, main Agent |
 | 6 | [Staging](./phase_6_staging.md) | Basic agent working end-to-end with hard-coded test flows |
 | 7 | [Policies](./phase_7_policies.md) | 32 working flows, 16 stubbed, skill templates, tests |
-| 8 | [Prompt Writing](./phase_8_prompt_writing.md) | Full prompt suite, template registry, prompt versioning |
+| 8 | [Prompt Writing](./phase_8_prompt_writing.md) | Full prompt suite, prompt versioning |
 | 9a | [Basic Deployment](./phase_9a_basic_deployment.md) | SvelteKit frontend, local dev, username prompt |
 | 9b | [Pro Deployment](./phase_9b_pro_deployment.md) | Login pages, Docker, production config |
 | 9c | [Advanced Deployment](./phase_9c_advanced_deployment.md) | OAuth login, payment, monitoring |
@@ -61,20 +61,22 @@ shared/
 │   │
 │   ├── components/
 │   │   ├── __init__.py
-│   │   ├── dialogue_state.py       # Predicted state, slots, flags, snapshots             [Phase 5]
-│   │   ├── flow_stack.py           # Stack data structure, lifecycle states                [Phase 5]
-│   │   ├── context_coordinator.py  # Turn storage, history retrieval, checkpoints         [Phase 5]
-│   │   ├── prompt_engineer.py      # Model-agnostic LLM interface, guardrails            [Phase 5]
-│   │   ├── task_artifact.py        # Data-display decoupling, core entities               [Phase 5]
-│   │   ├── ambiguity_handler.py    # 4-level uncertainty tracking + resolution            [Phase 5]
-│   │   └── memory_manager.py       # 3-tier cache (scratchpad, prefs, business)           [Phase 5]
+│   │   ├── dialogue_state.py       # Predicted state, slots, snapshots (NLU belief)        [Phase 5]
+│   │   ├── flow_stack.py           # FlowStack + Workflow Planning (PEX)                    [Phase 5]
+│   │   ├── context_coordinator.py  # L1 event stream, history, checkpoints (MEM)           [Phase 5]
+│   │   ├── prompt_engineer.py      # Model-agnostic LLM interface, guardrails (PEX)         [Phase 5]
+│   │   ├── task_artifact.py        # A2A artifact, parts/blocks (PEX)                       [Phase 5]
+│   │   ├── ambiguity_handler.py    # 4-level uncertainty (NLU; on the World)               [Phase 5]
+│   │   ├── session_scratchpad.py   # Append-only swarm ledger (NLU; on the World)          [Phase 5]
+│   │   ├── user_preferences.py     # L2 per-account defaults + playbooks (MEM)             [Phase 5]
+│   │   └── business_context.py     # L3 per-client RAG (MEM)                               [Phase 5]
 │   │
 │   ├── modules/
 │   │   ├── __init__.py
-│   │   ├── nlu.py                  # think(), contemplate(), react()                      [Phase 5]
-│   │   ├── pex.py                  # execute(), recover()                                 [Phase 5]
-│   │   ├── res.py                  # generate(), display()                                [Phase 5]
-│   │   └── policies/               # Per-intent policy methods                            [Phase 6]
+│   │   ├── nlu.py                  # understand loop: classify_intent/detect_flow/fill_slots [Phase 5]
+│   │   ├── pex.py                  # acting loop, activate_flow, sub-agents               [Phase 5]
+│   │   ├── mem.py                  # recap / recall / retrieve skills                     [Phase 5]
+│   │   └── policies/               # 5 policy files: converse + 4 domain (no plan/clarify) [Phase 6]
 │   │       └── __init__.py
 │   │
 │   ├── routers/
@@ -99,7 +101,6 @@ shared/
 │   │   ├── for_experts.py          # NLU intent/flow classification prompts               [Phase 7]
 │   │   ├── for_nlu.py              # NLU slot-filling prompts                             [Phase 7]
 │   │   ├── for_pex.py              # PEX skill execution prompts                          [Phase 7]
-│   │   ├── for_res.py              # RES naturalization prompts                           [Phase 7]
 │   │   ├── for_contemplate.py      # NLU re-routing prompts                               [Phase 7]
 │   │   ├── for_executors.py        # Domain-specific tool prompts                         [Phase 7]
 │   │   ├── for_metadata.py         # Domain-specific metadata prompts                     [Phase 7]
@@ -113,12 +114,10 @@ shared/
 ├── utils/
 │   └── helper.py                   # Domain helpers (dax2dact, flow2dax, etc.)            [Phase 2]
 │
-├── schemas/                        # Domain definitions, tool schemas, response templates
+├── schemas/                        # Domain definitions, tool schemas
 │   ├── ontology.py                 # Intent enum, flow catalog, dact codes, constants     [Phase 1–2]
 │   ├── <domain>.yaml               # Domain config (persona, guardrails, key_entities)    [Phase 1]
-│   ├── <tool_id>.json              # Tool JSON Schema files                               [Phase 3]
-│   └── templates/                  # RES response templates                               [Phase 7]
-│       └── <domain>/               # Domain-specific output templates
+│   └── <tool_id>.json              # Tool JSON Schema files                               [Phase 3]
 │
 ├── database/
 │   ├── tables.py                   # SQLAlchemy ORM models (Conversation, etc.)            [Phase 4a]
@@ -152,7 +151,7 @@ shared/
     ├── conftest.py                 # pytest fixtures
     ├── test_nlu.py                 # NLU classification tests
     ├── test_pex.py                 # Policy execution tests
-    ├── test_res.py                 # Response generation tests
+    ├── test_mem.py                 # Memory skill tests (recap/recall/retrieve)
     └── test_flows/                 # Per-flow integration tests
         └── {dax}_{flow}.py         # Ordered by dax code
 ```

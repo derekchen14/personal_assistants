@@ -4,13 +4,13 @@ Write per-flow policies and skill templates. Code flows in batches, test each ba
 
 ## Context
 
-Each flow has a policy (deterministic skeleton) and a skill template (LLM prompt). The hybrid model keeps the deterministic parts predictable and the creative parts flexible. Policies are organized by intent — 7 policy files per domain. Flows are brought up in batches: first 16, then 16 more, then stub the remaining 16.
+Each flow has a policy (deterministic skeleton) and a skill template (LLM prompt). The hybrid model keeps the deterministic parts predictable and the creative parts flexible. Policies net **5 files per domain**: a single `converse` policy (Converse is one sub-agent, not per-flow) plus the 4 domain intents (per-flow). Plan has no policy (the Workflow Planner decomposes it) and Clarify has no policy (it is an NLU-only label). Flows are brought up in batches: first 16, then 16 more, then stub the remaining 16.
 
 **Prerequisites**: Phase 6 complete — server boots, WebSocket smoke tests pass, canned responses work end-to-end.
 
 **Outputs**: 32 working flows with unit tests, 16 stubbed flows, complete skill templates.
 
-**Spec references**: [pex.md § Policies and Tools](../modules/pex.md), [flow_stack.md](../components/flow_stack.md), [tool_smith.md § Skill Templates](../utilities/tool_smith.md)
+**Spec references**: [pex.md § Policies and Tools](../modules/pex.md), [workflow_planner.md](../components/workflow_planner.md), [tool_smith.md § Skill Templates](../utilities/tool_smith.md)
 
 ---
 
@@ -18,21 +18,19 @@ Each flow has a policy (deterministic skeleton) and a skill template (LLM prompt
 
 ### Step 1 — Create Policy File Structure
 
-Create 7 policy files per domain, one per intent:
+Create 5 policy files per domain — a single `converse` policy plus the 4 domain intents. Plan and Clarify have no policy files (Workflow Planner decomposes Plan; Clarify is an NLU-only label):
 
 ```
 backend/modules/policies/
 ├── __init__.py
-├── plan_policies.py
 ├── converse_policies.py
-├── internal_policies.py
 ├── <read_intent>_policies.py      # e.g., source_policies.py, analyze_policies.py
 ├── <prepare_intent>_policies.py   # e.g., prep_policies.py, clean_policies.py
 ├── <transform_intent>_policies.py # e.g., cook_policies.py, transform_policies.py
 └── <schedule_intent>_policies.py  # e.g., plate_policies.py, report_policies.py
 ```
 
-Each file contains policy class methods for all flows in that intent.
+Converse is one sub-agent — its single policy handles all Converse flows. Each domain-intent file contains per-flow policy class methods for all flows in that intent.
 
 ### Step 2 — Understand the Hybrid Model
 
@@ -41,8 +39,8 @@ Each policy has two parts:
 **Deterministic skeleton** (class method):
 - Slot review: check required/elective/optional slots, fill from context/memory, declare ambiguity if missing
 - Skill invocation: call the skill with the right tools and context
-- Result processing: create Frame from skill output, route by intent
-- Flow completion: mark Completed, set flags, post-hook verification
+- Result processing: create TaskArtifact from skill output, route by intent
+- Flow completion: `complete_flow(flow, state, summary, metadata)`, post-hook verification
 - Recovery escalation: retry, gather context, re-route, escalate
 
 **LLM-driven skill**:
@@ -55,9 +53,9 @@ Each policy has two parts:
 
 | Outcome | Meaning | Policy action |
 |---|---|---|
-| `success` | Tools executed, results gathered | Create Frame, mark Completed |
-| `failure` | Tools returned errors, partial results may exist | Add warning to Frame, attempt degradation |
-| `uncertain` | Skill cannot proceed, needs clarification | Carry over previous Frame, enter recovery |
+| `success` | Tools executed, results gathered | Create TaskArtifact, mark Completed |
+| `failure` | Tools returned errors, partial results may exist | Add warning to TaskArtifact, attempt degradation |
+| `uncertain` | Skill cannot proceed, needs clarification | Carry over previous Artifact; declare ambiguity (`handle_ambiguity`) or emit a violation |
 
 ### Step 3 — Per-Flow Checklist
 
@@ -69,7 +67,7 @@ Each flow requires these 8 artifacts:
 4. **Concrete slots**: Types, validators, defaults — make the slot schema executable
 5. **Policy class method**: Deterministic skeleton in the intent's policy file — slot review, skill invocation, result processing, flow completion
 6. **Skill template**: Markdown file in `backend/prompts/skills/<dact>.md` — flow description, slot-to-parameter mapping, expected tool sequence, output format
-7. **Display Frame output**: Define the exact frame attributes and block type for this flow
+7. **Task Artifact output**: Define the exact artifact attributes (parts/blocks) and block type for this flow
 8. **Reflection loop decision**: Decide whether this flow benefits from a generate-evaluate-revise cycle. Enable for: creative generation (writing prose), complex code generation, multi-source synthesis. Most flows do NOT need it.
 
 ### Step 4 — Write Skill Templates
@@ -104,7 +102,7 @@ you may adjust parameters based on error context.
 
 ## Output Format
 
-<What shape the result should take for the Display Frame>
+<What shape the result should take for the Task Artifact>
 ```
 
 The Prompt Engineer injects slot 1 (grounding data) and slot 8 (final request) at assembly time. Slot 7 (closing reminder) is appended after exemplars.
@@ -116,7 +114,7 @@ The Prompt Engineer injects slot 1 (grounding data) and slot 8 (final request) a
 
 ### Step 5 — Code First 16 Flows (Batch 1)
 
-Select 16 flows covering at least 5 intents so large parts of the pipeline are exercised early. **Avoid Plan and Internal flows** for this batch — focus on domain-specific and Converse flows.
+Select 16 flows covering multiple intents so large parts of the pipeline are exercised early. Batches draw from the 4 domain intents plus Converse — Plan and Clarify have no flows (Workflow Planner decomposes Plan; Clarify is an NLU label).
 
 For each flow, complete the per-flow checklist (Step 3).
 
@@ -130,7 +128,7 @@ For each flow, complete the per-flow checklist (Step 3).
 
 ### Step 6 — Code Next 16 Flows (Batch 2, 32 Total)
 
-Code 16 more flows using the per-flow checklist. **Include Plan and Internal flows** this time to exercise the full assistant's capabilities.
+Code 16 more flows using the per-flow checklist, broadening coverage across the 4 domain intents and Converse to exercise the full assistant's capabilities.
 
 For each flow, complete the per-flow checklist (Step 3).
 
@@ -151,9 +149,8 @@ Set a default warning for the remaining 48 − 32 = 16 flows:
 async def stubbed_flow(self, state, ...):
     """Default handler for unimplemented flows."""
     return {
-        'outcome': 'failure',
-        'error_category': 'not_implemented',
-        'message': f'{state.active_flow.dact} flow is still in development',
+        '_success': False,
+        '_message': f'{state.active_flow.dact} flow is still in development',
     }
 ```
 
@@ -165,13 +162,15 @@ This ensures graceful handling when a user hits an unimplemented flow. The max l
 
 Ensure the component tools are properly exposed to skills during PEX execution:
 
-| Tool | Component | Operations |
+| Tool | Surface | Operations |
 |---|---|---|
-| context_coordinator | Context Coordinator | Read conversation history (default 3 turns, can request more) |
-| memory_manager | Memory Manager | Read/write scratchpad, read user preferences |
-| flow_stack | Flow Stack | Read slot values, read metadata from current/previous flows |
+| `append_to_scratchpad` / `read_from_scratchpad` | Session Scratchpad | append findings (triggers NLU) / read prior findings |
+| `understand` | Dialogue State (NLU) | read the serialized belief (flow, intent, slots, grounding) |
+| `handle_ambiguity` | Ambiguity Handler | declare / present / ask / resolve |
+| `recap` / `recall` / `retrieve` | MEM | L1 events / L2 preferences / L3 business context |
+| `flow_stack` | Workflow Planner | read slot values, prior flow results |
 
-These are NOT in the tool manifest — PEX provides them directly alongside flow-specific tools. Total tools per skill: 5–7.
+These are universal-scope entries in the one unified manifest (`scope: universal`, `dispatch: internal`) — provided to every skill alongside flow-specific tools. Total tools per skill: 5–7.
 
 ### Step 9 — Test Structure
 
@@ -180,7 +179,7 @@ tests/
 ├── conftest.py              # Module-scoped fixtures for DB, auth, test data
 ├── test_nlu.py              # NLU classification tests
 ├── test_pex.py              # Policy execution tests
-├── test_res.py              # Response generation tests
+├── test_mem.py              # Memory skill tests (recap/recall/retrieve)
 └── test_flows/
     ├── {001}_query.py       # Per-flow integration tests
     ├── {002}_measure.py     # Named by dax code + flow name
@@ -197,22 +196,20 @@ tests/
 
 | Action | File | Description |
 |---|---|---|
-| Create | `<domain>/backend/modules/policies/plan_policies.py` | Plan intent policies |
-| Create | `<domain>/backend/modules/policies/converse_policies.py` | Converse intent policies |
-| Create | `<domain>/backend/modules/policies/internal_policies.py` | Internal intent policies |
-| Create | `<domain>/backend/modules/policies/<intent>_policies.py` | 4 domain-specific intent policy files |
+| Create | `<domain>/backend/modules/policies/converse_policies.py` | Converse intent policy (one sub-agent) |
+| Create | `<domain>/backend/modules/policies/<intent>_policies.py` | 4 domain-specific intent policy files (per-flow) |
 | Create | `<domain>/backend/prompts/skills/<dact>.md` | Skill template per flow (48 files) |
 | Modify | `<domain>/backend/prompts/for_experts.py` | NLU intent/flow classification prompts with exemplars |
 | Create | `<domain>/tests/test_flows/{dax}_{flow}.py` | Per-flow integration tests |
 | Create | `<domain>/tests/test_nlu.py` | NLU classification tests |
 | Create | `<domain>/tests/test_pex.py` | Policy execution tests |
-| Create | `<domain>/tests/test_res.py` | Response generation tests |
+| Create | `<domain>/tests/test_mem.py` | Memory skill tests (recap/recall/retrieve) |
 
 ---
 
 ## Verification
 
-- [ ] 7 policy files created (one per intent)
+- [ ] 5 policy files created (one `converse` sub-agent + 4 per-flow domain intents; no Plan or Clarify files)
 - [ ] Each of the 32 working flows has all 8 per-flow checklist items complete
 - [ ] Each flow has 10 sample utterances
 - [ ] Each flow has a skill template in `skills/<dact>.md`
@@ -221,11 +218,11 @@ tests/
 - [ ] Batch 1 (16 flows): all 64 test utterances classify correctly
 - [ ] Batch 2 (32 flows): all 96 test utterances classify correctly
 - [ ] 16 stubbed flows return graceful "in development" messages
-- [ ] Plan flows correctly decompose into sub-flows and set `has_plan`/`keep_going`
-- [ ] Internal flows run as background tasks without user-facing output
+- [ ] Workflow Planner correctly decomposes Plan requests into sub-flows (no Plan policy)
+- [ ] Clarify (NLU-only label) routes ambiguity to the Ambiguity Handler (resolve internally or ask)
 - [ ] Reflection loop works for flows that enable it
 - [ ] No two flows frequently confused (merge if so)
 - [ ] All flows execute real policies — no canned shortcuts remain
 - [ ] Unsupported flows progressively replaced with real policy implementations
-- [ ] Component tools (CC, MM, flow_stack) accessible to skills
+- [ ] Sub-agent tools (scratchpad, understand, handle_ambiguity, recap/recall/retrieve, flow_stack) accessible to skills
 - [ ] End-to-end agent handles: simple query, multi-turn conversation, Plan decomposition

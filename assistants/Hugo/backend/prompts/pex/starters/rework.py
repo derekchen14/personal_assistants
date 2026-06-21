@@ -45,4 +45,10 @@ def _format_parameters(flow) -> str:
         lines.append(f'Suggestions: {render_checklist(suggestions)}')
     if remove and remove.check_if_filled():
         lines.append(f'Remove: {render_freetext(remove)}')
+    type_slot = flow.slots['type']
+    image = flow.slots['image']
+    if type_slot.check_if_filled():
+        lines.append(f'Type: {type_slot.value}')
+    if image.check_if_filled():
+        lines.append(f'Image: {image.to_dict()}')
     return '\n'.join(lines)

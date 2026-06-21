@@ -3,31 +3,16 @@ from backend.components.flow_stack.flows import *
 
 flow_classes: dict[str, type] = {
     # Research
-    'browse': BrowseFlow, 'summarize': SummarizeFlow, 'check': CheckFlow,
-    'inspect': InspectFlow, 'find': FindFlow, 'compare': CompareFlow,
-    'diff': DiffFlow,
+    'find': FindFlow, 'browse': BrowseFlow, 'summarize': SummarizeFlow,
+    'compare': CompareFlow,
     # Draft
-    'outline': OutlineFlow, 'refine': RefineFlow, 'cite': CiteFlow,
-    'compose': ComposeFlow, 'add': AddFlow, 'create': CreateFlow,
-    'brainstorm': BrainstormFlow,
+    'brainstorm': BrainstormFlow, 'outline': OutlineFlow, 'compose': ComposeFlow,
+    'refine': RefineFlow,
     # Revise
-    'rework': ReworkFlow, 'polish': PolishFlow, 'tone': ToneFlow,
-    'audit': AuditFlow, 'simplify': SimplifyFlow,
-    'remove': RemoveFlow, 'tidy': TidyFlow,
+    'rework': ReworkFlow, 'write': WriteFlow, 'audit': AuditFlow,
+    'propose': ProposeFlow,
     # Publish
-    'release': ReleaseFlow, 'syndicate': SyndicateFlow,
-    'schedule': ScheduleFlow, 'preview': PreviewFlow,
-    'promote': PromoteFlow, 'cancel': CancelFlow, 'survey': SurveyFlow,
+    'release': ReleaseFlow, 'schedule': ScheduleFlow, 'cite': CiteFlow,
     # Converse
-    'explain': ExplainFlow, 'chat': ChatFlow, 'preference': PreferenceFlow,
-    'suggest': SuggestFlow, 'undo': UndoFlow, 'endorse': EndorseFlow,
-    'dismiss': DismissFlow,
-    # Plan
-    'blueprint': BlueprintFlow, 'triage': TriageFlow,
-    'calendar': CalendarFlow, 'scope': ScopeFlow, 'digest': DigestFlow,
-    'remember': RememberFlow,
-    # Internal
-    'recap': RecapFlow, 'store': StoreFlow, 'recall': RecallFlow,
-    'retrieve': RetrieveFlow, 'search': SearchFlow,
-    'reference': ReferenceFlow, 'study': StudyFlow,
+    'chat': ChatFlow,
 }

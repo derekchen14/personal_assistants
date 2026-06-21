@@ -25,7 +25,10 @@ class FlowStack:
         if curr_flow and curr_flow.flow_type == flow_name and curr_flow.status not in _terminal:
             return curr_flow
         new_flow = self._push(flow_name, plan_id)
-        if curr_flow:
+        # Slot transfer only from a flow still in flight — a Completed/Invalid top is stale
+        # (see above), and seeding the new flow from it re-grounds fresh requests on old
+        # entities (e.g. inspect post A, then "now check post B" inheriting A).
+        if curr_flow and curr_flow.status not in _terminal:
             for slot_name, slot in curr_flow.slots.items():
                 if slot_name in new_flow.slots and slot.filled:
                     new_flow.fill_slot_values({slot_name: slot.to_dict()})

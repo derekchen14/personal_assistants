@@ -1,6 +1,13 @@
 # Task Artifact
 
-The `TaskArtifact` is the policy's output for one turn — the structured payload PEX hands to RES. The name and shape align with the [A2A protocol](https://a2a-protocol.org/latest/specification/)'s notion of an *Artifact*: an agent's output for a task, composed of one or more *Parts*.
+The `TaskArtifact` is a flow's output — the structured payload built by the activated
+[PEX](../modules/pex.md) sub-agent. Each active flow builds its own; when a turn ran concurrent sub-agents,
+**PEX curates them into one** (stack order, dedup identical blocks, drop a failed sibling — see
+[Artifact Lifecycle](#artifact-lifecycle)), so the main Agent always receives a **single** TaskArtifact per
+turn. The main Agent then sends a processed version to the user (through the
+webserver) and a copy to [MEM](../modules/mem.md) for long-term storage (through the World object). The name
+and shape align with the [A2A protocol](https://a2a-protocol.org/latest/specification/)'s notion of an
+*Artifact*: an agent's output for a task, composed of one or more *Parts*.
 
 In A2A terms: our `flow` is A2A's `task`; our `TaskArtifact` is A2A's `artifact`; our `parts: list[Part]` is A2A's `parts` array (each element obeys the A2A v1.0 Part oneof contract). The visual building blocks we attach (cards, lists, selections, confirmations) keep their established name `BuildingBlock` rather than A2A's *Part* — A2A's *Part* is a content container (text, raw, url, data), conceptually closer to our `parts` field than to our visual blocks.
 
@@ -10,7 +17,7 @@ Every `TaskArtifact` has **3 stored attributes** plus **3 helper properties** th
 
 | Attribute | Type | Stored / derived | Purpose |
 |---|---|---|---|
-| `origin` | `str` | stored | Flow name that produced the artifact (e.g. `compose`, `audit`, `release`). Empty for system-emitted artifacts. RES uses this to pick the response template. |
+| `origin` | `str` | stored | Flow name that produced the artifact (e.g. `compose`, `audit`, `release`). Identifies the producing flow; empty for system artifacts. PEX composes the reply directly — there is no response template. |
 | `parts` | `list[Part]` | stored | A2A v1.0 parts array. Each element is a `Part(text=…)` \| `Part(raw=…)` \| `Part(url=…)` \| `Part(data=…)` with optional `metadata` for tagging. The classification dict (violation / missing / entity / etc.) lives inside the first `data` Part. The agent's reasoning lives inside a `text` Part tagged `metadata={'kind':'thoughts'}`. Generated code lives inside a `text` Part tagged `metadata={'kind':'code'}`. |
 | `blocks` | `list[BuildingBlock]` | stored | Visual building blocks targeting display panels. Each block self-describes its `type`, `data`, `panel`, and optional `expand` flag. May be empty. Distinct from `parts`: blocks are *visual UI units*; parts are *content* (text / image / data / url). |
 | `data` | `dict` | property | First data Part's dict — the classification dict. Read as `artifact.data['violation']`. Empty dict when no data Part is present. |
@@ -35,10 +42,16 @@ Constructing a Part with zero or multiple oneof fields raises `ValueError` — t
 
 ## Artifact Lifecycle
 
-- **Created** by the policy during PEX execution. The policy decides which blocks to attach, what to put in the classification dict, and what reasoning to expose via `thoughts`.
-- **Scope**: One artifact per turn. Multi-turn flows produce a new artifact each turn; if a turn carries no new visual, the previous artifact stays on screen by default.
+- **Created** by the activated sub-agent (the policy) during PEX execution. The policy decides which blocks to attach, what to put in the classification dict, and what reasoning to expose via `thoughts`.
+- **Scope**: one artifact per *flow*, **curated** by PEX into one delivered artifact per *turn*. Multi-turn flows produce a new artifact each turn; if a turn carries no new visual, the previous artifact stays on screen by default.
+- **Curated** when a turn ran concurrent sub-agents: PEX reviews their TaskArtifacts and produces **one** artifact for the turn by these rules:
+  - **Order** blocks by stack order (top-of-stack flow first).
+  - **Dedup** identical blocks so a repeated visual appears once.
+  - **Origin is trivial** — only one flow *type* ever runs concurrent sub-agents in a turn, so the merged `origin` is that single type; there is no cross-type origin to reconcile.
+  - **Drop a failed sibling** — a sub-agent that failed is left out and a note is logged; the turn still delivers from the surviving siblings.
+  - Sub-agents **propose** the blocks; by default PEX passes them through (ordered, deduped) with minimal change. PEX may **additionally** author blocks from scratch over the siblings — but only as a summarization step to make the final response clearer and more concise, never as the default. It owns the curated artifact, not a mechanical union of every sibling's blocks.
 - **Discarded** when superseded by a newer artifact from the same flow, or when the flow completes.
-- **Consumed** by RES after PEX execution. RES reads the artifact, picks a template via `origin`, and routes blocks to panels. RES never modifies the artifact's structural attributes.
+- **Delivered** by the main Agent as it closes the turn: the curated `block` set ships **once, at turn end** (PEX owns ending the turn) — never streamed mid-turn, though a sub-agent returning may emit live `toast` / update messages along the way. It routes blocks to panels for the user and stores a copy in MEM. PEX has already composed the spoken reply directly (no template) — the artifact carries the blocks and reasoning, not the worded reply. The structural attributes are never modified after the sub-agent seals them.
 - The artifact is not part of the dialogue state. Dialogue state tracks beliefs and intent; the artifact tracks what to display.
 
 ## Blocks
@@ -107,7 +120,7 @@ snippet   = artifact.code                  # generated code, or None
 
 ## Rendering Pipeline
 
-- After PEX populates the artifact, RES picks an intent / domain template by `origin`, fills it with data from the completed flow + artifact, and routes each block to its declared panel.
-- Artifact declares *what* to show; RES and the frontend Blocks decide *how*.
+- After the sub-agent populates the artifact, the main Agent routes each block to its declared panel; PEX has already composed the spoken reply directly (no template fill).
+- Artifact declares *what* to show; the main Agent and the frontend Blocks decide *how*.
 - Each block routes to its declared panel (`top` or `bottom`); transient block types (currently `toast`) divert to a drawer overlay instead of a persistent panel slot.
 - Reference: [Building Blocks — Rendering Model](../utilities/blocks.md#rendering-model)

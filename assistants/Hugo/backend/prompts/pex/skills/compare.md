@@ -6,11 +6,14 @@ tools:
   - read_metadata
   - read_section
   - inspect_post
+  - diff_section
 ---
 
 This skill narrates a side-by-side comparison of two posts. The policy resolves both posts and supplies their IDs and the comparison `Category` in `<resolved_details>`. Branch your tool calls on `Category`, then describe the differences in 2–3 sentences.
 
 ## Process
+
+**Version-diff mode:** If `<resolved_details>` carries `Lookback` or `Mapping`, compare two *versions of one post* rather than two posts. Call `diff_section(post_id, sec_id, lookback=N)` (or with `mapping=...`), then narrate what changed — largest addition / deletion / rewrite first — in 2-3 sentences. Skip the Category branches below.
 
 1. Read both post IDs and `Category` from `<resolved_details>`. Then scan the latest user utterance for a **specifically named metric** ("word count", "section count", "headings", "paragraph length", "links", "images", etc.). If one is named, anchor your narration on that metric — do NOT drift to a general structural summary.
 2. Branch on `Category`:
@@ -39,6 +42,7 @@ If the section the user named doesn't exist on either post, call `handle_ambigui
 - `read_metadata(post_id)` — for the `check` branch and as a fallback when `<resolved_details>` is missing data.
 - `read_section(post_id, sec_id)` — for the `tone` branch and any section-deep comparison.
 - `inspect_post(post_id)` — for the `inspect` branch.
+- `diff_section(post_id, sec_id, lookback=...)` — version-diff worker (when `Lookback`/`Mapping` is set); pass `mapping=...` for a draft-vs-published style diff.
 
 ### General tools
 

@@ -1,10 +1,10 @@
 # Phase 6 — Staging
 
-Verify the agent works end-to-end with hard-coded test flows before investing in policies and prompts. This phase catches integration bugs early and proves the full pipeline (NLU → PEX → RES) is functional.
+Verify the agent works end-to-end with hard-coded test flows before investing in policies and prompts. This phase catches integration bugs early and proves the full turn (the main Agent driving PEX, which consults NLU and MEM) is functional.
 
 ## Context
 
-After Phase 5, the agent has all 7 components and 3 modules implemented, but nothing has been tested as a system. Staging exercises the full turn pipeline with canned responses, confirming that the server boots, WebSocket connects, and the agent responds to messages. This is the cheapest point to find and fix integration issues.
+After Phase 5, the agent has all 9 components and 3 module-loops implemented, but nothing has been tested as a system. Staging exercises the full turn with canned responses, confirming that the server boots, WebSocket connects, and the agent responds to messages. This is the cheapest point to find and fix integration issues.
 
 **Prerequisites**: Phase 5 complete — all components, modules, and Agent orchestrator are implemented.
 
@@ -46,9 +46,8 @@ The client is only instantiated when an LLM call is actually made.
 
 ### Step 3 — Unsupported Flow Handling
 
-Unsupported flows (those without real policy implementations yet) are handled by the PEX/RES split:
-- **PEX**: Detects unsupported flows from the `_UNSUPPORTED` set, marks the flow complete with `{'unsupported': True}`, and returns the previous frame (carryover).
-- **RES**: Detects the unsupported marker on the active flow result and generates the user-facing message ("That feature isn't supported yet...").
+Unsupported flows (those without real policy implementations yet) are handled inside PEX:
+- **PEX**: Detects unsupported flows from the `_UNSUPPORTED` set, completes the flow via `complete_flow` with `{'unsupported': True}`, and carries over the previous artifact. PEX composes the user-facing message ("That feature isn't supported yet…") directly over the TaskArtifact via its voice Skill, which the main Agent delivers.
 
 No `_CANNED` dict — all flows either execute real policies or go through the unsupported path.
 
@@ -110,19 +109,19 @@ flow_name {dax}  confidence=0.XX  slots={...}
 ### After Each PEX Round
 
 ```
-  pex round=N  keep_going=True/False
+  pex round=N
 ```
 
 Indented to nest under the NLU line. Logs after every round of the PEX loop.
 
-### After PEX Loop (Tools + Frame)
+### After PEX Loop (Tools + Artifact)
 
 ```
   tools=[tool1, tool2]
-  frame=card  source=sql
+  artifact=card  source=sql
 ```
 
-Only logged when present — no empty lines for turns without tools or frames.
+Only logged when present — no empty lines for turns without tools or artifacts.
 
 ### Level
 
@@ -138,9 +137,9 @@ All turn diagnostics use `INFO`. Reserve `WARNING` for recoverable issues (self-
 - [ ] Config loads and validates successfully
 - [ ] WebSocket connects without auth
 - [ ] Username greeting is received after sending username
-- [ ] Unsupported flows return "not supported yet" message via RES
-- [ ] Supported flows execute real policies and return DisplayFrames
+- [ ] Unsupported flows return "not supported yet" message (PEX artifact, delivered by the main Agent)
+- [ ] Supported flows execute real policies and return TaskArtifacts
 - [ ] `.keys` file is not tracked by git
-- [ ] Agent `process_turn()` runs NLU → PEX → RES end-to-end
-- [ ] `keep_going` loop processes multiple flows in one turn
+- [ ] Main Agent's turn runs PEX (consulting NLU + MEM) end-to-end
+- [ ] PEX chains multiple flows in one turn
 - [ ] Self-check gate catches intent drift and empty responses

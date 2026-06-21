@@ -1,8 +1,8 @@
 INSTRUCTIONS = (
     'Pick the flow within the Revise intent set (and its edge flows into adjacent intents) that '
     'most specifically matches the user\'s goal. Revise covers major rework of an existing draft, '
-    'polishing specific sections, adjusting tone or voice, auditing consistency, simplifying or '
-    'tidying structure, removing content, and accepting/rejecting proposed changes.'
+    'sentence-level editing of specific sections, auditing voice and consistency, and proposing '
+    'alternatives to fill placeholder gaps.'
 )
 
 RULES = ''
@@ -21,11 +21,11 @@ User: "revise the whole post — it needs work"
 <positive_example>
 ## Conversation History
 
-User: "polish the second paragraph"
+User: "edit the second paragraph — tighten the phrasing"
 ## Output
 
 ```json
-{"reasoning": "Polishing a specific section.", "flow_name": "polish", "confidence": 0.90}
+{"reasoning": "Sentence-level edit within one paragraph.", "flow_name": "write", "confidence": 0.90}
 ```
 </positive_example>
 
@@ -36,29 +36,18 @@ User: "make the tone more professional"
 ## Output
 
 ```json
-{"reasoning": "Adjusting post tone.", "flow_name": "tone", "confidence": 0.90}
+{"reasoning": "Voice and tone shift across the post.", "flow_name": "audit", "confidence": 0.85}
 ```
 </positive_example>
 
 <positive_example>
 ## Conversation History
 
-User: "looks good, accept the changes"
+User: "fill in the placeholder in the intro with a couple of options"
 ## Output
 
 ```json
-{"reasoning": "Accepting a revision.", "flow_name": "accept", "confidence": 0.90}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "format it for publication"
-## Output
-
-```json
-{"reasoning": "Formatting for publish.", "flow_name": "format", "confidence": 0.90}
+{"reasoning": "Generate alternatives for a placeholder gap.", "flow_name": "propose", "confidence": 0.88}
 ```
 </positive_example>'''
 

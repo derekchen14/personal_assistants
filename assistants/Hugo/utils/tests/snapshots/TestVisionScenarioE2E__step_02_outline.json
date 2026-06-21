@@ -24,7 +24,6 @@
   "flow_stack": [
     {
       "flow_type": "outline",
-      "interjected": false,
       "is_newborn": true,
       "is_uncertain": false,
       "parent_type": "Draft",

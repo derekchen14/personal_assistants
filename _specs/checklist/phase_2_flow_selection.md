@@ -109,9 +109,10 @@ The flow catalog is never right on the first pass. Below are patterns observed a
 
 Before designing domain-specific flows, copy in the mandatory universal flows. These are the same in every domain:
 
-- *Internal*: `recap` (L1 scratchpad read), `recall` (L2 user prefs), `retrieve` (L3 unvetted business context), `search` (vetted FAQs/curated content — strongly recommended), `calculate` or domain equivalent (quick internal computation)
+- *MEM skills* (not flows): `recap` (L1 session events), `recall` (L2 user prefs), `retrieve` (L3 unvetted business context). `search` (vetted FAQs / curated content — strongly recommended) is a Converse flow; `calculate` and similar deterministic ops are **tools**, not flows.
 - *Plan*: A mandatory orchestrator that sequences flows across all domain intents (named `outline` in Dana, `blueprint` in Hugo — pick the domain-appropriate term)
 - *Converse*: `chat`, `preference`, `explain` (process transparency), `undo`, approve/reject pair, and a proactive suggestion flow (`recommend`/`suggest`)
+- *Clarify*: the universal ambiguity intent — when the request is unclear/underspecified, route to the Ambiguity Handler to resolve internally or ask
 
 Lesson: Starting from universal patterns avoids rediscovering them through trial and error. Domain-specific intents are where the real design work happens.
 
@@ -138,7 +139,7 @@ Flows sometimes end up under the wrong intent because the *trigger phrase* sound
 | `explain` (process) | Research/Report | Converse | Output is agent transparency, not domain analysis |
 | `summarize` (artifact) | Converse | Report | Output is grounded to a specific chart/table |
 | `validate` | Plan | Clean | Output is corrected data, not a diagnostic plan |
-| `retrieve` | Converse | Internal | Output is agent-side context, never shown to user |
+| `retrieve` | Converse flow | MEM skill | Output is agent-side context pulled on demand — a memory skill, not a user-facing flow |
 | `survey` (platforms) | Research | Publish | Output is platform status, part of publishing workflow |
 
 Lesson: Ask "what does the user get back?" — the output determines the intent, not the phrasing of the request.
@@ -195,7 +196,7 @@ A SourceSlot entity is `{tab, col, row, ver, rel}` — a single entity already e
 - Multiple entities of the *same type* at the *same level* (e.g., JoinFlow's left table vs right table)
 - TargetSlot/RemovalSlot alongside SourceSlot (different slot types, different purposes)
 
-Lesson: If two SourceSlots describe different levels of the same entity hierarchy, merge them. If they describe genuinely different entities (two tables, two columns being compared), keep them separate — but consider using `SourceSlot(N)` with min_size > 1 instead of separate named slots.
+Lesson: If two SourceSlots describe different levels of the same entity hierarchy, merge them. If they describe different entities (two tables, two columns being compared), keep them separate — but consider using `SourceSlot(N)` with min_size > 1 instead of separate named slots.
 
 ### Step 3 — Assign Intents
 
@@ -209,7 +210,13 @@ Each flow belongs to exactly one intent. Assignment rules:
 | Creates time-based events or multi-session outputs | Domain schedule intent |
 | Open-ended conversation, Q&A | Converse |
 | Decomposes into sub-flows | Plan |
-| Gathers supporting info invisibly | Internal |
+| Gathers supporting info invisibly | MEM skill (recap / recall / retrieve) — not an intent |
+
+**Routing per universal intent**:
+- **Plan** is handled by the Workflow Planner, which decomposes the request into sub-flows — there is no Plan
+  policy file.
+- **Converse** is a single sub-agent: one converse policy serves the whole intent, not a policy per flow.
+- **Clarify** is an NLU-only label that routes to the Ambiguity Handler — there is no Clarify policy file.
 
 **Composite intent guidelines**:
 - One domain verb → that verb's intent applies
@@ -247,9 +254,9 @@ For each flow, specify:
 4. Use `(elective)` for enumerated values
 5. Unique signatures across the domain
 
-**Output block** (what goes to Display Frame):
-- Choose from domain block palette: `table`, `chart`, `card`, `list`, `timer`, `diff`, `terminal`, `form`, `toast`, `confirmation`, `(internal)`
-- Internal flows → `(internal)`; Plan flows → `list`; Delete flows → `confirmation`
+**Output block** (what goes to the Task Artifact):
+- Choose from domain block palette: `table`, `chart`, `card`, `list`, `timer`, `diff`, `terminal`, `form`, `toast`, `confirmation`
+- Plan flows → `list`; Delete flows → `confirmation`; Clarify flows surface a clarification (no block, or `confirmation`)
 
 **Slot type hierarchy** — each domain has exactly 16 slot types (12 universal + 4 domain-specific):
 
@@ -270,7 +277,7 @@ For each flow, specify:
 | `DictionarySlot` | Key-value pairs |
 | `RangeSlot` | Start/stop interval (often date range) |
 
-Plus 4 domain-specific types: 2 common options (ProbabilitySlot, ScoreSlot) + 2 domain-unique (e.g., ChartSlot + FunctionSlot for Dana, PlatformSlot + ImageSlot for Hugo). See [flow_stack.md § Slot Type Hierarchy](../components/flow_stack.md) for the full 12+4 architecture.
+Plus 4 domain-specific types: 2 common options (ProbabilitySlot, ScoreSlot) + 2 domain-unique (e.g., ChartSlot + FunctionSlot for Dana, PlatformSlot + ImageSlot for Hugo). See [workflow_planner.md § Slot Type Hierarchy](../components/workflow_planner.md) for the full 12+4 architecture.
 
 ### Step 6 — Populate Ontology and Seed Data
 
@@ -280,7 +287,7 @@ Update `ontology.py` with the full flow catalog:
 FLOW_CATALOG = {
     'browse': {
         'dax': '{02A}',
-        'intent': Intent.SOURCE,        # domain-specific intent name
+        'intent': Intent.READ,          # browse is a read-type flow; rename to the domain's read intent
         'description': 'Browse recipes by category, cuisine, or dietary label',
         'slots': {
             'category': {'type': 'CategorySlot', 'priority': 'optional'},
@@ -330,7 +337,7 @@ Create `utils/helper.py` with:
 - [ ] All flows have slot signatures defined (2–3 typical, never more than 5)
 - [ ] No two flows share the same slot signature
 - [ ] All flows have output blocks from the domain's palette
-- [ ] Internal flows use `(internal)` output
+- [ ] Clarify flows surface a clarification (no block, or `confirmation`)
 - [ ] Plan flows produce `list` output
 - [ ] Delete flows produce `confirmation` output
 - [ ] 1–3 edge flows selected per flow

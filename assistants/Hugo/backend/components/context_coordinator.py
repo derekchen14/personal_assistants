@@ -1,4 +1,34 @@
+import json
 from datetime import datetime
+from pathlib import Path
+
+from backend.prompts.for_compressor import END_OF_SUMMARY, SUMMARY_PREFIX
+
+# Compactor defaults. The trigger threshold and the protected-tail size are config values read
+# by the Agent post-hook; the rest are the compaction constants.
+_PROTECT_HEAD = 3                    # first messages kept verbatim
+_SUMMARY_RATIO = 0.20                # summary budget as a share of the compressed middle
+_MIN_SUMMARY_TOKENS = 2000           # summary floor
+_MAX_SUMMARY_TOKENS = 12000          # summary ceiling
+_CHARS_PER_TOKEN = 4                 # rough token estimate
+_PRUNE_MIN_CHARS = 200               # tool results at or below this size are kept as-is
+_PRUNED_TOOL_PLACEHOLDER = '[Old tool output cleared to save context space]'
+
+
+def _is_tool_results(message:dict) -> bool:
+    """True for the user-role message that carries a loop round's tool_result blocks."""
+    content = message['content']
+    return isinstance(content, list) and content[0]['type'] == 'tool_result'
+
+
+def _estimate_tokens(messages:list[dict]) -> int:
+    """Rough chars-per-token estimate over message contents."""
+    chars = 0
+    for message in messages:
+        content = message['content']
+        chars += len(content) if isinstance(content, str) else len(json.dumps(content, default=str))
+    return chars // _CHARS_PER_TOKEN
+
 
 class Turn:
 
@@ -42,6 +72,10 @@ class ContextCoordinator:
         self.bookmark:int|None = None
         self.completed_flows: list[str] = []
         self.last_actions: dict[str, list[str]] = {}
+        self.messages: list[dict] = []
+        self._messages_path: Path|None = None
+        # Last compaction summary, kept for iterative summary updates.
+        self.previous_summary: str|None = None
 
     def add_turn(self, speaker:str, text:str, turn_type:str):
         turn = Turn(speaker, text, turn_type, turn_id=self.num_utterances)
@@ -101,6 +135,129 @@ class ContextCoordinator:
         self.last_actions.clear()
         self.num_utterances = 0
         self.bookmark = None
+        self.messages.clear()
+        self.previous_summary = None
+        if self._messages_path is not None and self._messages_path.exists():
+            self._messages_path.write_text('', encoding='utf-8')
+
+    # ── Persistent message list ─────
+    # The API-shaped orchestrator transcript: user / assistant / tool-call / tool-result
+    # messages in order, resumed every loop round and every turn. Turn records above stay
+    # the human-readable view (compile_history is unchanged and feeds compression).
+
+    def attach_messages(self, path):
+        """Bind the message list to messages.jsonl in the session dir (path passed in from
+        World). An existing file rehydrates the list; a fresh session starts empty."""
+        self._messages_path = Path(path)
+        if self._messages_path.exists():
+            lines = self._messages_path.read_text(encoding='utf-8').splitlines()
+            self.messages = [json.loads(line) for line in lines]
+
+    def append_message(self, message:dict) -> dict:
+        """Append one API-shaped message, mirroring it to messages.jsonl when attached
+        (restart-safe resume; the raw transcript lands on disk). The session dir is
+        created lazily on the first write, matching World.session_dir()."""
+        self.messages.append(message)
+        if self._messages_path is not None:
+            self._messages_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._messages_path, 'a', encoding='utf-8') as file:
+                file.write(json.dumps(message) + '\n')
+        return message
+
+    # ── Context compression ──────
+    # Strategy: prune old tool outputs (cheap, no LLM), protect the head and the
+    # recent tail with tool pairs intact, summarize the middle on the cheap auxiliary model,
+    # splice in ONE reference-only handoff message. The trigger (real prompt-token usage vs
+    # the configured threshold) is checked by the Agent post-hook, never mid-loop.
+
+    def compress_messages(self, summarize, protect_tail:int, prompt_tokens:int=0) -> bool:
+        """Middle-out compaction of the persistent message list. `summarize(middle,
+        previous_summary, budget)` is the auxiliary summarizer (LOW tier through
+        PromptEngineer). A checkpoint records the compression event. Returns True when a
+        compaction happened."""
+        before = len(self.messages)
+        if before <= _PROTECT_HEAD + protect_tail + 1:
+            return False
+        start = self._align_forward(_PROTECT_HEAD)
+        cut = self._anchor_last_user(self._align_backward(before - protect_tail))
+        middle = self._middle_window(start, cut)
+        if not middle:
+            return False
+        pruned = self._prune_tool_results(before - protect_tail)
+        if pruned:
+            self._rewrite_messages_file()  # keep the mirror consistent even if summarize fails
+        budget = max(_MIN_SUMMARY_TOKENS,
+                     min(int(_estimate_tokens(middle) * _SUMMARY_RATIO), _MAX_SUMMARY_TOKENS))
+        summary = summarize(middle, self.previous_summary, budget)
+        self.previous_summary = summary
+        handoff = {'role': 'user', 'content': f'{SUMMARY_PREFIX}\n{summary}{END_OF_SUMMARY}'}
+        self.messages = self.messages[:start] + [handoff] + self.messages[cut:]
+        self._rewrite_messages_file()
+        self.save_checkpoint('compression', data={
+            'messages_before': before, 'messages_after': len(self.messages),
+            'pruned_tool_results': pruned, 'prompt_tokens': prompt_tokens})
+        return True
+
+    def _align_forward(self, idx:int) -> int:
+        """Slide the compress-start past tool results so the summarized region never begins
+        mid tool group — the head keeps the whole assistant + results pair."""
+        while idx < len(self.messages) and _is_tool_results(self.messages[idx]):
+            idx += 1
+        return idx
+
+    def _align_backward(self, idx:int) -> int:
+        """Pull the tail cut before a tool-result message so an assistant tool_use is never
+        separated from its results (pair-integrity boundary alignment)."""
+        if _is_tool_results(self.messages[idx]):
+            idx -= 1
+        return idx
+
+    def _anchor_last_user(self, cut:int) -> int:
+        """The most recent real user utterance must stay in the protected tail; if the cut
+        would summarize it away, the agent loses its active task."""
+        for idx in range(len(self.messages) - 1, _PROTECT_HEAD - 1, -1):
+            content = self.messages[idx]['content']
+            if self.messages[idx]['role'] == 'user' and isinstance(content, str) \
+                    and not content.startswith(SUMMARY_PREFIX):
+                return min(cut, idx)
+        return cut
+
+    def _middle_window(self, start:int, cut:int) -> list[dict]:
+        """Messages to summarize. A handoff from an earlier compaction inside the window
+        seeds the iterative update (rehydration) and is never re-summarized."""
+        if start >= cut:
+            return []
+        middle = self.messages[start:cut]
+        for idx in range(len(middle) - 1, -1, -1):
+            content = middle[idx]['content']
+            if isinstance(content, str) and content.startswith(SUMMARY_PREFIX):
+                if self.previous_summary is None:
+                    body = content[len(SUMMARY_PREFIX):].removesuffix(END_OF_SUMMARY)
+                    self.previous_summary = body.strip()
+                return middle[idx + 1:]
+        return middle
+
+    def _prune_tool_results(self, boundary:int) -> int:
+        """Cheap pre-pass (no LLM): tool results older than the protected tail are
+        replaced with the pruning placeholder; tool_use blocks and pairing stay intact."""
+        pruned = 0
+        for message in self.messages[:boundary]:
+            if not _is_tool_results(message):
+                continue
+            for block in message['content']:
+                if len(block['content']) > _PRUNE_MIN_CHARS:
+                    block['content'] = _PRUNED_TOOL_PLACEHOLDER
+                    pruned += 1
+        return pruned
+
+    def _rewrite_messages_file(self):
+        """Compression shrinks the list in place, so the append-only mirror is rewritten
+        wholesale to keep messages.jsonl identical to memory."""
+        if self._messages_path is None:
+            return
+        self._messages_path.parent.mkdir(parents=True, exist_ok=True)
+        lines = ''.join(json.dumps(message) + '\n' for message in self.messages)
+        self._messages_path.write_text(lines, encoding='utf-8')
 
     @property
     def turn_count(self) -> int:
