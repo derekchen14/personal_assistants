@@ -1,0 +1,94 @@
+{
+  "flow": "create",
+  "parent_intent": "Draft",
+  "round": 2,
+  "version": 1,
+  "notes": "Create is deterministic: skill deleted, policy calls `create_post` inline. Only the policy function and the flow class config are real artifacts; everything else is N/A.",
+  "sections": [
+    {
+      "id": "intent_prompt",
+      "label": "Intent prompt (Draft)",
+      "path": "backend/prompts/pex/sys_prompts.py::DRAFT",
+      "status": "n/a",
+      "content": "N/A. Create is deterministic and runs no LLM turn."
+    },
+    {
+      "id": "skill_intro",
+      "label": "Skill \u00b7 intro",
+      "path": "backend/prompts/pex/skills/create.md",
+      "status": "n/a",
+      "content": "N/A. Create has no skill file (deleted in Theme 1)."
+    },
+    {
+      "id": "skill_process",
+      "label": "Skill \u00b7 Process",
+      "path": "backend/prompts/pex/skills/create.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_handling_ambiguity_and_errors",
+      "label": "Skill \u00b7 Handling Ambiguity and Errors",
+      "path": "backend/prompts/pex/skills/create.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_tools",
+      "label": "Skill \u00b7 Tools",
+      "path": "backend/prompts/pex/skills/create.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_output",
+      "label": "Skill \u00b7 Output",
+      "path": "backend/prompts/pex/skills/create.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "skill_fewshot",
+      "label": "Skill \u00b7 Few-shot examples",
+      "path": "backend/prompts/pex/skills/create.md",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "starter_task",
+      "label": "Starter \u00b7 <task>",
+      "path": "backend/prompts/pex/starters/create.py",
+      "status": "n/a",
+      "content": "N/A. Deterministic flow."
+    },
+    {
+      "id": "starter_content",
+      "label": "Starter \u00b7 content block",
+      "path": "backend/prompts/pex/starters/create.py",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "starter_resolved",
+      "label": "Starter \u00b7 <resolved_details>",
+      "path": "backend/prompts/pex/starters/create.py",
+      "status": "n/a",
+      "content": "N/A."
+    },
+    {
+      "id": "policy",
+      "label": "Policy function",
+      "path": "backend/modules/policies/draft.py :: create_policy",
+      "status": "applicable",
+      "note": "Direct tool call with no LLM turn. Duplicate title surfaces as a confirmation ambiguity; plain failure becomes an error frame.",
+      "content": "def create_policy(self, flow, state, context):\n    tools = self.engineer.tools\n    frame = DisplayFrame(flow.name())\n\n    if not flow.is_filled():\n        if not flow.slots['title'].check_if_filled():\n            self.ambiguity.declare('specific',\n                metadata={'missing_slot': 'title'},\n                observation='Create needs a title for the new post.')\n        elif not flow.slots['type'].check_if_filled():\n            self.ambiguity.declare('specific',\n                metadata={'missing_slot': 'type'},\n                observation='Create needs to know whether this is a draft or a note.')\n        return frame\n\n    params = {\n        'title': flow.slots['title'].values[0],\n        'type': flow.slots['type'].values[0],\n    }\n    if flow.slots['topic'].check_if_filled():\n        params['topic'] = flow.slots['topic'].values[0]\n\n    result = tools('create_post', params)\n\n    if result.get('_success'):\n        new_id = result['post_id']\n        state.active_post = new_id\n        flow.status = 'Completed'\n        frame.metadata.update({\n            'post_id': new_id,\n            'title': params['title'],\n            'type': params['type'],\n        })\n        frame.blocks.append(Block(type='card', data={\n            'post_id': new_id,\n            'title': params['title'],\n            'status': params['type'],\n        }))\n        return frame\n\n    if result.get('_error') == 'duplicate':\n        self.ambiguity.declare('confirmation',\n            metadata={'duplicate_title': params['title']},\n            observation=f\"A post titled '{params['title']}' already exists. Create a new one anyway?\")\n        return frame\n\n    frame.metadata['violation'] = 'tool_error'\n    frame.metadata['failed_tool'] = 'create_post'\n    frame.code = result.get('_message', '')\n    return frame"
+    },
+    {
+      "id": "flow_config",
+      "label": "Flow class config",
+      "path": "backend/components/flow_stack/flows.py :: CreateFlow",
+      "status": "applicable",
+      "content": "class CreateFlow(BaseFlow):\n    parent = DraftParentFlow\n    dax = '05A'\n    entity_slot = 'title'\n    goal = (\n        \"start a new post from scratch; initializes a post record with title, \"\n        \"type, and empty sections\"\n    )\n    tools = ['create_post']\n\n    def __init__(self):\n        super().__init__()\n        self.slots = {\n            'title': ExactSlot(priority='required'),\n            'type': CategorySlot(options=['draft', 'note'], priority='required'),\n            'topic': ExactSlot(priority='optional'),\n        }"
+    }
+  ]
+}

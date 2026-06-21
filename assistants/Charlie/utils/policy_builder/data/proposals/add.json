@@ -1,0 +1,136 @@
+{
+  "flow": "add",
+  "parent_intent": "Draft",
+  "batch": 2,
+  "round": 1,
+  "version": 1,
+  "notes": "Add inserts detail (bullet notes, multi-section additions, or an image) into existing sections. Brand-new top-level sections belong to outline, not here. The current skill at `backend/prompts/pex/skills/add.md` is in the Process + Error + Tools + Few-shot shape already; DP-2 / DP-3 / DP-4 propose to keep its structure and revise in place where small improvements help. DP-11 is merged into DP-14 (flow transitions), matching the catalog consolidation.",
+  "decision_points": {
+    "DP-1": {
+      "section": "Prompt content",
+      "title": "Flow-specific must/never rules",
+      "question": "0\u20133 inviolable rules unique to this flow.",
+      "proposal": "1) Add only touches existing sections of the post. When the user's request is really for a brand-new top-level section, route the turn to outline through `flow_stack('fallback', 'outline')` rather than inserting a new section inline.\n\n2) Every insertion must target a section that exists in the post. Before any `insert_content` or `insert_media` call, read that section with `read_section` so you know what's already there and where your addition fits naturally.\n\n3) When the request spans multiple sections (the `additions` slot is filled), walk the sections in the order they appear in the post, not the order the user mentioned them. The post's section order is the source of truth for the final shape of the reading experience.",
+      "reasoning": "Three rules that encode the most common add-flow failures: scope creep into outline territory (rule 1), blind inserts (rule 2), and user-ordered writes that muddle the post structure (rule 3). Narrative sentences, no short-punchy headlines."
+    },
+    "DP-2": {
+      "section": "Prompt content",
+      "title": "Skill intro paragraph",
+      "question": "The one- or two-sentence framing that opens the skill file.",
+      "proposal": "This skill adds in-depth content to existing sections of a blog post. The content can be bullet notes layered under an existing section, content that spans multiple sections, or an image placed at a specific position within a section. Wholly new top-level sections are an outline concern, not an add concern, so route those out via the flow stack rather than creating them here.",
+      "reasoning": "Current intro mentions \"bullet notes, multi-section additions, or an image\" but conflates them. This expansion gives each addition shape a one-clause description and states the fallback explicitly (lesson 13 for intro: state intent, don't just list tools)."
+    },
+    "DP-3": {
+      "section": "Prompt content",
+      "title": "Process steps",
+      "question": "Numbered happy-path sequence for `## Process`.",
+      "proposal": "## Process\n\n1. Read the user's guidance from the `<resolved_details>` block. Use `<recent_conversation>` for context only. Act on the latest utterance; requests from prior turns have already been addressed.\n\n2. Decide the shape of the addition from the filled slots:\n   a. When `points` is filled, add a list of bullet notes to a single section. The target section is named in the user's utterance and resolved in `<resolved_details>`.\n   b. When `additions` is filled, spread content across multiple sections. The slot holds a dictionary mapping section names to content; each entry is one addition to one section.\n   c. When `image` is filled, insert an image into a section. The section comes from the image slot's `sec` part.\n\n3. For each target section in the addition set, call `read_section(post_id, sec_id)` before inserting. Never add to a section you have not read — you cannot place content sensibly without knowing what surrounds it.\n\n4. Carry out the insertions:\n   a. Use `insert_content(post_id, sec_id, position, content)` for bullet notes and prose additions.\n   b. Use `insert_media(post_id, sec_id, image_type, description, position)` for images.\n   c. When the `position` slot is unfilled, default to the end of the section. The user can always ask to reorder later.\n\n5. When `additions` spans multiple sections, process them in the order the sections appear in the post (from the `section_ids` list in `<resolved_details>`), not in the order the dictionary keys appear. The post's section order is the source of truth.\n\n6. Follow the Draft intent's depth scheme for bullet content. Top-level bullets use `- bullet` at Level 3. Sub-bullets use `  * sub-bullet` at Level 4. Do not invent other depth levels.",
+      "reasoning": "Keeps the shape of the current Process but rewrites in full-sentence narrative form per lesson 1, fills in one missing detail (section-order invariant in step 5), and names the depth convention without citing the planning document acronym."
+    },
+    "DP-4": {
+      "section": "Prompt content",
+      "title": "Tool usage hints",
+      "question": "Per task-specific tool, flow-specific usage hints.",
+      "proposal": "## Tools\n\n### Task-specific tools\n\n- `read_section(post_id, sec_id)` \u2014 required before every insertion. The skill should call this once per target section and use the returned content to decide placement of the new material. It is a fallback helper here, not a primary tool \u2014 the primary work is insertion.\n\n- `insert_content(post_id, sec_id, position, content)` \u2014 the default add tool for bullet notes and short prose. The tool inserts at the given position (or at the end when position is unfilled) without touching surrounding content. Pass the full content string, including any markdown bullets.\n\n- `insert_media(post_id, sec_id, image_type, description, position)` \u2014 the media equivalent for images. `image_type` is typically `hero` or `figure`. `description` is what the image shows; it also serves as alt text.\n\n- `insert_section(post_id, after_sec, ...)` \u2014 use ONLY when the user explicitly asked for a brand-new section AND the policy has routed it here (which is rare; the usual path is a fallback to outline). The `after_sec` parameter anchors the new section's position; pass the id of the section that should come before it.\n\n### General tools\n\n- `execution_error(violation, message)` \u2014 for hard failures after retries are exhausted or for malformed input.\n- `handle_ambiguity(level, metadata)` \u2014 for cases where the user's intent is unclear or a named slot value is vague.\n- `manage_memory(action, key, value)` \u2014 read or write session scratchpad and user preferences.\n- `read_flow_stack(action)` \u2014 rarely used in add.",
+      "reasoning": "Current Tools section is tight but loses the distinction between primary insertion tools and the read helper. This version labels `read_section` as fallback helper (lesson 18), gives each insertion tool an argument-by-argument walk-through, and notes the narrow case where insert_section applies inside add (rather than always routing to outline)."
+    },
+    "DP-5": {
+      "section": "Starter",
+      "title": "Task framing sentence",
+      "question": "The imperative sentence inside `<task>`.",
+      "proposal": "Add content to \"{post_title}\". Bullet notes, multi-section additions, or an image \u2014 the filled slots below describe exactly what and where. Insert the new material so it reads naturally within the existing section, and end the turn once every addition has been saved.",
+      "reasoning": "Intent-focused (lesson 13): describes what the turn is for (add content to an existing post) and defers the tool sequence to the skill. The \"so it reads naturally\" phrase encodes rule 2 of DP-1 without being punchy."
+    },
+    "DP-6": {
+      "section": "Starter",
+      "title": "Content tag choice",
+      "question": "Which of `<post_content>`, `<section_content>`, `<line_snippet>`, `<channel_content>` wraps the preloaded data.",
+      "proposal": "<post_content>",
+      "reasoning": "Add reasons about multiple sections (via the `additions` dict) so it needs post-level visibility, not a single section's prose. Per-section content is fetched on demand via `read_section`."
+    },
+    "DP-7": {
+      "section": "Starter",
+      "title": "Preload content",
+      "question": "What goes inside the content tag.",
+      "proposal": "Per-section previews as a list of `{sec_id, title, preview}` triples. The `preview` is the first one or two sentences (for prose sections) or the first few bullets (for outline sections). Full section content comes from `read_section` on demand. Also included in `<resolved_details>`: the ordered `section_ids` list (so the skill can honor the post's section order when walking multi-section additions) and the position slot if filled.",
+      "reasoning": "Small preload that gives the skill enough signal to plan scope without burning context on full section bodies. Section-id list is the hook for rule 3 of DP-1 (source-of-truth ordering)."
+    },
+    "DP-8": {
+      "section": "Few-shot",
+      "title": "Scenario coverage",
+      "question": "Which user-phrasing paths to exemplify.",
+      "proposal": "Three scenarios, each exercising a different slot-fill pattern:\n\n(a) `points` filled, `additions` empty, `image` empty \u2014 bullet notes into one section (\"add three more notes under the Architectures of the Past section\"). Shows the single-section read-then-insert_content path with a default end-of-section position.\n\n(b) `additions` filled with a dictionary spanning two sections, `points` empty \u2014 multi-section addition. Demonstrates the section-order invariant: dictionary order may differ from post order, and the skill follows post order.\n\n(c) `image` filled, `position` filled \u2014 inserting an image at a specific anchor. Shows `insert_media` with an explicit position value.",
+      "reasoning": "Each scenario turns on a different filled slot combination (lesson 14). Covers the three primary add shapes without duplicating the fallback-to-outline path (which is covered by DP-10 / DP-14)."
+    },
+    "DP-9": {
+      "section": "Few-shot",
+      "title": "Example content (topic + post state)",
+      "question": "Concrete post topic, section names, and content.",
+      "proposal": "Topic: \"User Simulators for training RL agents\" (post_id=abcd0123). Section names aligned with the rest of Batch 1 and Batch 2: \"The Need for Data\", \"Architectures of the Past\", \"Recent Innovations\", \"Generating Rewards\". Eval uses the same topic but different section names (Motivation / Process / Ideas / Takeaways), so keep the divergence. Example addition content: the Architectures of the Past section already has bullets for sequence-to-sequence and transformer eras; the add example inserts two new bullets covering RNN-based world models and memory-augmented networks.",
+      "reasoning": "Colorful realistic section names (lesson 9). The addition content is concrete enough to show the skill actually doing work, not just mechanical insertion."
+    },
+    "DP-10": {
+      "section": "Error handling",
+      "title": "Likely errors and ambiguities encountered",
+      "question": "Realistic error and ambiguity set.",
+      "proposal": "Errors (policy emits error frame after skill signals):\n- (a) `insert_content` or `insert_media` fails twice \u2014 `execution_error(violation='failed_to_save', failed_tool=<name>)`.\n- (b) The preload in `<resolved_details>` is malformed (e.g., no `section_ids` list at all) \u2014 `execution_error(violation='invalid_input')` without saving.\n\nAmbiguities (skill calls `handle_ambiguity`):\n- (c) A named section does not exist on the post \u2014 `specific`, `metadata={'missing_reference': <section_name>}`.\n- (d) Any filled slot value is vague enough that placing the addition would be a guess (e.g., `points` says \"add something about timing\" without specifying what) \u2014 `confirmation`, `metadata={'vague_slot': <slot_name>}`. Vagueness is a confirmation-level issue for any slot, not a slot-specific specific-level issue.\n\nFallbacks (skill calls `flow_stack('fallback', ...)`):\n- (e) The user clearly wants a brand-new top-level section \u2014 `flow_stack('fallback', 'outline')`. This is a routing decision, not an ambiguity.",
+      "reasoning": "Applies lesson 25 (vagueness is confirmation-level, not slot-specific). Applies lesson 16 (wrong-flow is a fallback, not ambiguity). Applies lesson 10 (policy guards source-missing; skill does not re-check)."
+    },
+    "DP-12": {
+      "section": "Error handling",
+      "title": "Retry strategy per tool",
+      "question": "Per tool, retry count on transient failure.",
+      "proposal": "`insert_content` and `insert_media` \u2014 retry once with identical params, then `execution_error(violation='failed_to_save', failed_tool=<name>)`. `insert_section` \u2014 retry once, then same error shape. `read_section` \u2014 no retry; surface `_success=False` immediately. `flow_stack` \u2014 no retry; routing failures are architectural, not transient.",
+      "reasoning": "Standard one-retry on persistence; no retry on reads or routing."
+    },
+    "DP-13": {
+      "section": "Policy logic",
+      "title": "Optional slot defaults",
+      "question": "For each optional slot, does it have a sensible default?",
+      "proposal": "`position` (PositionSlot, optional): default to end of section. The policy commits with the default and does not ask; users can always request reorder later. `points`, `additions`, `image`: elective (the flow requires at least one to be filled, and the combination decides the shape of the addition). No defaults apply to electives; they are definitional. `source`: elective by schema but effectively required \u2014 without a post reference, add cannot run; the policy guards this before the skill runs.",
+      "reasoning": "Default-with-commit for `position` matches the AD-8 pattern. Electives are not defaultable (definitional)."
+    },
+    "DP-14": {
+      "section": "Policy logic",
+      "title": "Flow transitions (stack-on and fallback)",
+      "question": "When does this flow hand off to another flow, and through which channel?",
+      "proposal": "One fallback, no stack-on:\n\n- `flow_stack('fallback', 'outline')` when the user's request is really for a brand-new top-level section rather than an in-section addition. This is a re-route (pop-and-push), not a prerequisite.\n\nNo structural fallbacks (nothing is a prerequisite for add). No self-stackon. The policy does not need to consult the scratchpad to make the fallback decision \u2014 the skill surfaces it from the request shape.",
+      "reasoning": "Add sits at the boundary between detail-adding and structure-changing; the outline fallback is the one clean transition. Encodes the merged DP-11/DP-14 shape using the flow_stack tool vocabulary."
+    },
+    "DP-15": {
+      "section": "Policy logic",
+      "title": "Scratchpad contract",
+      "question": "Does this flow write or read scratchpad?",
+      "proposal": "No scratchpad interaction. Add's output is content written into the post, not structured findings; nothing downstream consumes add's output as a scratchpad entry, and nothing upstream produces findings that should shape an add decision.",
+      "reasoning": "Keeps add self-contained. Scratchpad is the producer-consumer channel for research findings (inspect / find / audit \u2192 polish), not for edit flows."
+    },
+    "DP-16": {
+      "section": "Policy logic",
+      "title": "Frame output spec",
+      "question": "What metadata keys and block types?",
+      "proposal": "Success: `origin='add'`, `metadata={post_id, post_title, sections_touched, insertions_count}`, blocks = 1 `card` block showing the post with the new content in place (highlighted or marked as \"new\" by RES if possible). Error: `origin='add'`, `metadata={'violation': <code>, 'failed_tool': <name>}`, blocks empty, `code` carrying the raw tool response when useful. Fallback (skill emitted `flow_stack('fallback', ...)`): `origin='add'`, `metadata={'fallback': 'outline'}`, blocks empty, `thoughts` naming the re-route in one plain sentence.",
+      "reasoning": "Three distinct terminal states (success, error, fallback) each with its own metadata shape. `sections_touched` and `insertions_count` give RES the material for a \"added 3 bullets to Architectures of the Past\"-style summary."
+    },
+    "DP-17": {
+      "section": "Policy logic",
+      "title": "Final reply shape",
+      "question": "Plain prose, structured JSON, or card-only?",
+      "proposal": "Plain prose, one or two sentences naming which sections got new content and the shape of the addition (\"Added three bullets to Architectures of the Past and inserted a hero image at the top of Recent Innovations.\"). The card block carries the structured data; the text reply is a human summary.",
+      "reasoning": "Matches persona. Add is a content-producing flow whose output the user can see in the card, so the reply is a pointer, not a restatement."
+    },
+    "DP-18": {
+      "section": "Performance",
+      "title": "Model tier override",
+      "question": "Opus over Sonnet default?",
+      "proposal": "Opus.",
+      "reasoning": "Add writes new prose content (bullets, image descriptions) that lives in the final post. Per the refine DP-18 lesson on prose-quality flows, default to Opus to avoid generic or formulaic additions."
+    },
+    "DP-19": {
+      "section": "Performance",
+      "title": "max_response_tokens override",
+      "question": "Tighten below 4096 default?",
+      "proposal": "2048.",
+      "reasoning": "Add output is bounded by the size of the insertion itself plus the sections touched. Even multi-section `additions` with moderate bullet counts fit under 2048. Power of 2 preserved."
+    }
+  }
+}

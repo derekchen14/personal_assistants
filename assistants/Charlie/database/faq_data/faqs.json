@@ -1,0 +1,72 @@
+[
+  {
+    "question": "What is Hugo?",
+    "answer": "Hugo is your AI writing assistant for blog posts. Hugo helps you brainstorm topics, outline structure, draft prose, audit your voice, polish word choice, and publish across channels — all in plain conversation.",
+    "tags": ["overview", "capabilities"]
+  },
+  {
+    "question": "Who built Hugo?",
+    "answer": "Hugo is part of the Soleda assistant family. Soleda's mission is to make every kind of work simpler with the help of modern AI; Hugo is the bloggers' edition.",
+    "tags": ["origin", "team"]
+  },
+  {
+    "question": "What can Hugo do for me?",
+    "answer": "Hugo handles the full blogging lifecycle: research (browse, summarize, find), drafting (outline, compose, add, brainstorm), revising (rework, polish, tone, audit, simplify), and publishing (release, schedule, syndicate, promote). Just describe what you want and Hugo will pick the right action.",
+    "tags": ["capabilities", "scope"]
+  },
+  {
+    "question": "How do I talk to Hugo?",
+    "answer": "Just type in plain English — no slash commands, no special syntax. Say what you want like you'd ask a writing partner: 'help me start a post', 'this opening feels flat', 'undo that'. Hugo figures out which action you mean and asks if anything is unclear.",
+    "tags": ["onboarding", "interaction", "usage"]
+  },
+  {
+    "question": "What should I do first?",
+    "answer": "Try one of these to get going: (a) 'create a new post about X' to start a draft, (b) 'help me brainstorm topics' if you have no idea yet, or (c) 'browse my notes' to see anything already saved. If you're truly just exploring, ask Hugo 'what kinds of things can I do?' and Hugo will walk you through.",
+    "tags": ["onboarding", "getting_started"]
+  },
+  {
+    "question": "What kinds of requests can I make?",
+    "answer": "Anything you'd ask a writing partner: 'outline a post about morning routines', 'tighten my opening paragraph', 'audit this draft against my last three posts', 'schedule the new post for Tuesday', 'find the post where I covered authentication'. Hugo understands plain language — no special syntax required.",
+    "tags": ["capabilities", "usage"]
+  },
+  {
+    "question": "What if I don't know what to write about?",
+    "answer": "Ask Hugo to brainstorm. Say 'help me think of topic ideas' or 'what should I write about next?' — Hugo can pull from your existing notes, riff on a seed phrase, or suggest angles based on what you've published before. Once a topic clicks, Hugo can turn it straight into an outline.",
+    "tags": ["onboarding", "brainstorm"]
+  },
+  {
+    "question": "Can Hugo just write a post for me?",
+    "answer": "Hugo can draft an entire post end-to-end if you ask, but the output reads better when you collaborate: give Hugo a topic and angle, let it outline, then compose section by section. Full autopilot tends to produce generic AI prose; the audit and polish flows are designed to fix that, but starting with your voice gives the best result.",
+    "tags": ["onboarding", "expectations", "autonomy"]
+  },
+  {
+    "question": "How do I start a new post?",
+    "answer": "Tell Hugo what you want to write about: 'create a new post on prompt engineering' or 'start a draft about morning routines'. Hugo will create the post record, then you can ask for an outline, sections, or compose directly.",
+    "tags": ["create", "draft", "onboarding"]
+  },
+  {
+    "question": "What is the difference between a draft, a note, and a post?",
+    "answer": "A `note` is a short, raw idea or snippet — useful for jotting down topic ideas. A `draft` is a structured work-in-progress with sections and headings. A `post` is a draft that has been published. Hugo tracks status transitions automatically when you publish.",
+    "tags": ["content_types", "status"]
+  },
+  {
+    "question": "How does Hugo match my writing voice?",
+    "answer": "Hugo's `audit` flow compares a draft against a sample of your previous posts and flags places where the prose drifts toward generic AI-speak. You can then route findings to `polish` (word choice), `simplify` (sentence length), `tone` (register), or `rework` (structure) for targeted revision.",
+    "tags": ["voice", "audit", "style"]
+  },
+  {
+    "question": "Can I undo a change Hugo made?",
+    "answer": "Yes. Every mutation Hugo makes is snapshotted, and the `undo` flow rolls back to a prior state. Just say 'undo' to revert the most recent edit, or 'undo the last three edits' to step further back.",
+    "tags": ["undo", "history"]
+  },
+  {
+    "question": "Can Hugo publish to my blog automatically?",
+    "answer": "Yes. Hugo can release a finished draft to a channel (Substack, Medium, your own site), syndicate cross-posts, schedule a future publish, preview the rendered output, or promote on social. Tell Hugo 'release the morning-routines post on Substack' or 'schedule it for Tuesday at 9am'.",
+    "tags": ["publishing", "channels"]
+  },
+  {
+    "question": "How does Hugo handle my privacy?",
+    "answer": "Your draft content stays on your machine. Hugo runs locally and only sends short, scoped prompts to the language model — never your full corpus. Channel credentials live in your local config and are not round-tripped through external servers. Drafts, notes, and snapshots are all stored under the local `database/` directory; you own the files.",
+    "tags": ["privacy", "security", "storage"]
+  }
+]

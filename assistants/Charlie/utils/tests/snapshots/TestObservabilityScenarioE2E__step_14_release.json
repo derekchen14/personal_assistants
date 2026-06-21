@@ -1,0 +1,65 @@
+{
+  "artifact": {
+    "block_data_keys": [
+      [
+        "level",
+        "message"
+      ]
+    ],
+    "block_panels": [
+      "top"
+    ],
+    "block_types": [
+      "toast"
+    ],
+    "entity": null,
+    "has_code": false,
+    "has_thoughts": true,
+    "missing": null,
+    "origin": "release",
+    "parts_keys": [],
+    "reason": null,
+    "violation": null
+  },
+  "flow_stack": [],
+  "state": {
+    "active_post_set": true,
+    "flow_dax": "{04A}",
+    "has_issues": false,
+    "has_plan": false,
+    "keep_going": false,
+    "natural_birth": true,
+    "pred_intent": "Publish"
+  },
+  "tool_log": [
+    {
+      "success": true,
+      "tool": "read_metadata"
+    },
+    {
+      "success": true,
+      "tool": "read_metadata"
+    },
+    {
+      "success": true,
+      "tool": "read_metadata"
+    },
+    {
+      "success": true,
+      "tool": "channel_status"
+    },
+    {
+      "success": true,
+      "tool": "release_post"
+    },
+    {
+      "success": true,
+      "tool": "update_post"
+    },
+    {
+      "success": true,
+      "tool": "read_metadata"
+    }
+  ],
+  "top_flow": {}
+}

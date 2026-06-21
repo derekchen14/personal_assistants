@@ -1,0 +1,93 @@
+{
+  "flow": "polish",
+  "parent_intent": "Revise",
+  "round": 2,
+  "version": 1,
+  "notes": "Polish is the scratchpad-consumer flow. Reads from audit / inspect / find entries when present, and polishes cold when not. One rule in DP-1 (narrow scope). Uses `<line_snippet>` as the content tag because the target is typically a span within a section. Polish falls back to rework (substantive) or simplify (trimming) via the flow stack.",
+  "sections": [
+    {
+      "id": "intent_prompt",
+      "label": "Intent prompt (Revise)",
+      "path": "backend/prompts/pex/sys_prompts.py::REVISE",
+      "status": "applicable",
+      "content": "You are currently working on Revise tasks, which covers polishing existing content by crafting new sentences, reworking the structure, auditing for style, or simplifying wording in order to develop an improved *revision* of the blog post.\n\n## Background\n\nA post contains a title, a status (draft / note / published), and an ordered list of sections. Each section has a subtitle and content. Outlines follow a format with four levels:\n- Level 0: `# Post Title`\n- Level 1: `## Section Subtitle`\n- Level 2: `### Sub-section`\n- Level 3: `- bullet point`\n- Level 4: `  * sub-bullet`\n\nProse sections replace levels 2-4 with standard paragraphs separated by blank lines. Both are markdown. The only difference is bullet-structured content vs. paragraph-structured content. Never mix prose and bullets inside the same section unless the skill explicitly asks you to. Since you are dealing with revising posts, you will be dealing exclusively with prose rather than outlines.\n\nPost IDs take the form of 8-character lowercase hex strings. Section IDs take the form of slugs. Post names and section names are proper case natural language text.\n\n### Scope discipline\n\nIf the user names a paragraph, edit only that paragraph. Leave neighbouring paragraphs exactly as they were. If the user names a section without naming a paragraph, edit the whole section. If the user names neither, prefer the narrowest interpretation that makes the request work, or declare a confirmation-level ambiguity if you genuinely cannot tell."
+    },
+    {
+      "id": "skill_intro",
+      "label": "Skill \u00b7 intro",
+      "path": "backend/prompts/pex/skills/polish.md",
+      "status": "applicable",
+      "content": "This skill polishes a paragraph, sentence, or text snippet by rephrasing sentences, improving word choice, and fixing transitions. The main goal is to eliminate any signs of AI slop while preserving meaning and structure."
+    },
+    {
+      "id": "skill_process",
+      "label": "Skill \u00b7 Process",
+      "path": "backend/prompts/pex/skills/polish.md :: ## Process",
+      "status": "applicable",
+      "content": "## Process\n\n1. Find the target section and read it. Look at the user's utterance and the `<resolved_details>` block for a section name such as \"The Need for Data\". Match that name to the `section_ids` list. The matched identifier is your target; ignore every other section.\n   a. Read the target section with `read_section(post_id, sec_id=<matched>, include_sentence_ids=True)`. The returned content prepends each sentence with its 0-based index so you can name spans reliably. Do not read any other section; polish scope is intentionally narrow.\n   b. Identify the sentence or range of sentences the user named. When no span is named, polish the whole matched section.\n\n2. Check the scratchpad for prior findings.\n   a. When entries exist under the keys `audit`, `inspect`, or `find`, read them and filter to findings that reference the target section. When no entries exist, proceed cold.\n   b. List the keys you used in the output JSON's `used` array. When you consumed nothing, set `used` to an empty array. Never list a key you did not actually use.\n\n3. Polish the span: rephrase sentences, improve word choice, fix transitions, remove filler. Preserve meaning and paragraph structure.\n   a. Use `revise_content(post_id, sec_id, content, snip_id=<int|[start, end]>)` for targeted sentence edits. An integer `snip_id` inserts the new content at that sentence index; a range replaces that slice.\n   b. Use `write_text` when a sentence needs a full rewrite; feed the returned prose back through `revise_content`.\n   c. When a style hint is provided in the resolved details, treat it as the priority signal over style inferred from the current prose; the user is saying the current style is not what they want.\n\n4. Save with `revise_content`. For whole-section polish, call it without `snip_id`. For a specific span, pass `snip_id`."
+    },
+    {
+      "id": "skill_handling_ambiguity_and_errors",
+      "label": "Skill \u00b7 Handling Ambiguity and Errors",
+      "path": "backend/prompts/pex/skills/polish.md :: ## Handling Ambiguity and Errors",
+      "status": "applicable",
+      "content": "## Handling Ambiguity and Errors\n\nIf the named span cannot be located within the section (\"second paragraph\" in a one-paragraph section), call `handle_ambiguity(level='specific', metadata={'missing_reference': <span>})`.\n\nIf any resolved detail is vague enough that the polish direction would be a guess, call `handle_ambiguity(level='confirmation')`.\n\nIf the user's request implies substantive revision (expand, restructure, weave in suggestions) rather than word-level polish, emit a fallback to `rework`. If the request is about trimming or shortening, emit a fallback to `simplify`."
+    },
+    {
+      "id": "skill_tools",
+      "label": "Skill \u00b7 Tools",
+      "path": "backend/prompts/pex/skills/polish.md :: ## Tools",
+      "status": "applicable",
+      "content": "## Tools\n\n### Task-specific tools\n\n- `read_section(post_id, sec_id, snip_id=None, include_sentence_ids=False)` required once per turn on the matched section. Pass `include_sentence_ids=True` so the returned content carries sentence indices you can later hand back as `snip_id`.\n- `write_text(prompt)` for full sentence rewrites where the new version depends on reasoning about the surrounding prose. The tool returns prose; the skill still saves through `revise_content`.\n- `revise_content(post_id, sec_id, content, snip_id=None)` is the primary save. Omit `snip_id` to replace the whole section. Pass an integer `snip_id` to insert at a sentence index (`-1` appends). Pass `[start, end]` to replace that end-exclusive slice of sentences.\n\n### General tools\n\n- `execution_error(violation, message)` for hard failures after retries.\n- `handle_ambiguity(level, metadata)` for unclear or vague user intent.\n- `manage_memory(action, key, value)` to read the scratchpad for prior findings in step 2 of Process. Polish does not write scratchpad.\n- `read_flow_stack(action)` to see what flow, if any, follows polish. When rework is queued behind, keep the polished span clean enough for rework to treat it as settled."
+    },
+    {
+      "id": "skill_output",
+      "label": "Skill \u00b7 Output",
+      "path": "backend/prompts/pex/skills/polish.md :: ## Output",
+      "status": "applicable",
+      "content": "## Output\n\n```json\n{\n  \"target\": \"<section or span name>\",\n  \"before\": \"<the exact prior text of the polished span>\",\n  \"after\": \"<the polished text that was saved>\",\n  \"summary\": \"<one sentence describing what changed>\",\n  \"used\": [\"audit\", \"inspect\"]\n}\n```\n\nWhen the user's request points to another flow, emit instead:\n\n```json\n{\n  \"target\": \"<section or span name>\",\n  \"fallback\": \"rework\" | \"simplify\",\n  \"reason\": \"<one line>\"\n}\n```"
+    },
+    {
+      "id": "skill_fewshot",
+      "label": "Skill \u00b7 Few-shot examples",
+      "path": "backend/prompts/pex/skills/polish.md :: ## Few-shot examples",
+      "status": "applicable",
+      "content": "## Few-shot examples\n\n### Example 1: Basic polish on a named paragraph\n\nResolved Details:\n- Source: post=abcd0123, section=architectures-of-the-past\n- User asked: \"Clean up the opening paragraph of Architectures of the Past.\"\n\nTrajectory:\n1. `read_section(post_id=abcd0123, sec_id=architectures-of-the-past)` \u2192 current prose.\n2. `revise_content(post_id=abcd0123, sec_id=architectures-of-the-past, content=<whole section with only the opening paragraph polished>)`.\n\n### Example 2: Informed polish with an audit finding\n\nResolved Details:\n- Source: post=abcd0123, section=the-need-for-data\n- scratchpad['audit'] includes `{sec_id: the-need-for-data, severity: medium, note: 'passive voice departs from earlier published posts'}`.\n\nTrajectory:\n1. `read_section(post_id=abcd0123, sec_id=the-need-for-data)` \u2192 current prose.\n2. Polish to active voice per the audit note.\n3. `revise_content(post_id=abcd0123, sec_id=the-need-for-data, content=<polished prose>)`.\n\nFinal reply lists `used: ['audit']`.\n\n### Example 3: Fallback to rework\n\nResolved Details:\n- Source: post=abcd0123, section=recent-innovations\n- User asked: \"Rewrite the whole Recent Innovations section, it needs a completely different argument.\"\n\nTrajectory: no tool calls; skill emits a fallback JSON pointing at `rework`."
+    },
+    {
+      "id": "starter_task",
+      "label": "Starter \u00b7 <task>",
+      "path": "backend/prompts/pex/starters/polish.py (TEMPLATE)",
+      "status": "applicable",
+      "content": "Polish the snippet of text below. Focus on rephrasing sentences, improving word choice, or fixing transitions to eliminate AI slop without changing meaning or structure. When prior findings in the scratchpad name this section, use them as hints for where to focus. End the turn once the polished content has been saved."
+    },
+    {
+      "id": "starter_content",
+      "label": "Starter \u00b7 <line_snippet>",
+      "path": "backend/prompts/pex/starters/polish.py (content block)",
+      "status": "applicable",
+      "content": "<line_snippet>\n{paragraph_markdown}\n</line_snippet>\n\nShow only the paragraph surrounding the target span. The skill can call `read_section` to see more if needed."
+    },
+    {
+      "id": "starter_resolved",
+      "label": "Starter \u00b7 <resolved_details>",
+      "path": "backend/prompts/pex/starters/polish.py (resolved block)",
+      "status": "applicable",
+      "content": "<resolved_details>\nSource: post=abcd0123, section=architectures-of-the-past\nTarget: opening paragraph\nStyle hint: \"more active voice\"\nScratchpad: audit has findings for this section\n</resolved_details>"
+    },
+    {
+      "id": "policy",
+      "label": "Policy function",
+      "path": "backend/modules/policies/revise.py :: polish_policy",
+      "status": "applicable",
+      "content": "def polish_policy(self, flow, state, context, tools):\n    if not flow.slots['source'].check_if_filled():\n        self.ambiguity.declare('specific', metadata={'missing_slot': flow.entity_slot})\n        return DisplayFrame(flow.name())\n\n    post_id, sec_id = self._resolve_source_ids(flow, state, tools)\n\n    text, tool_log = self.llm_execute(flow, state, context, tools)\n    parsed = self.engineer.apply_guardrails(text) or {}\n\n    if parsed.get('fallback'):\n        next_flow = parsed['fallback']\n        self.flow_stack.fallback(next_flow)\n        state.keep_going = True\n        return DisplayFrame(flow.name(),\n            thoughts=parsed.get('reason', ''),\n            metadata={'fallback': next_flow})\n\n    saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')\n    if not saved:\n        return self.error_frame(flow, 'failed_to_save',\n            thoughts='revise_content did not land.',\n            code=text,\n            failed_tool='revise_content')\n\n    flow.status = 'Completed'\n    frame = DisplayFrame(flow.name(),\n        thoughts=parsed.get('summary', ''),\n        metadata={\n            'post_id': post_id,\n            'sec_id': sec_id,\n            'target_span': parsed.get('target'),\n            'used_findings': parsed.get('used', []),\n        })\n    frame.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})\n    return frame"
+    },
+    {
+      "id": "flow_config",
+      "label": "Flow class config",
+      "path": "backend/components/flow_stack/flows.py :: PolishFlow",
+      "status": "applicable",
+      "content": "class PolishFlow(ReviseParentFlow):\n  def __init__(self):\n    super().__init__()\n    self.flow_type = 'polish'\n    self.dax = '{3BD}'\n    self.goal = 'editing of a specific paragraph, sentence or phrase; improves word choice, tightens sentences, fixes transitions, and smooths flow without changing meaning or structure. The scope is within a single paragraph or image, not across the whole post'\n    self.slots = {\n      'source': SourceSlot(1, 'sec'),\n      'style_notes': FreeTextSlot(priority='optional'),\n      'image': ImageSlot(priority='optional'),\n    }\n    self.tools = ['read_metadata', 'read_section', 'write_text', 'revise_content']"
+    }
+  ]
+}

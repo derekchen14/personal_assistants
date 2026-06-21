@@ -1,0 +1,102 @@
+{
+  "flow": "rework",
+  "batch": 1,
+  "round": 1,
+  "decision_points": {
+    "DP-1": {
+      "accepted": false,
+      "override": "1) Rework changes substance, not formatting. Preserve paragraph breaks, heading structure, and the author's voice of whatever section you receive. Prose stays prose; don't drift into bullet lists or reformat to \"clean up\" markdown. Stay with the scope of the section you are given.\n2) When the user's request is better served by a sibling flow, route rather than execute. Small word-level or sentence-level edits belong to polish. Trimming, shortening, or removing content belongs to simplify. In either case, emit the fallback shape described in the Output section rather than attempting a partial rework.",
+      "rationale": "\"Narrow scope is authoritative.\" is a short-punchy sentence. Avoid these by explaining in a full sentence instead.\n\nIn either case, the scope part can be folded into point 1."
+    },
+    "DP-2": {
+      "accepted": false,
+      "override": "This skill describes how to rework the blog post. While typically scoped to a single section, Rework can also go across the whole post when changes are broad. Rework is substantive revision that restructures arguments, replaces weak content with stronger alternatives, or weaves in user suggestions. The target section's current prose is preloaded in the `<section_content>` block, so use it directly as your starting point.",
+      "rationale": ""
+    },
+    "DP-3": {
+      "accepted": false,
+      "override": "## Process\n\n1. Read the user's guidance from the `<resolved_details>` block. At least one of `changes`, `suggestions`, or `remove` will be filled, and possibly more than one.\n   a. Focus on the user's latest utterance in `<recent_conversation>`. Prior turns are context only.\n   b. Never act on requests from prior turns. Those have already been handled.\n\n2. Use the section prose from `<section_content>` as your starting point. The post and section identifiers are pre-resolved, so you do not need to call any metadata lookup.\n   a. When `rework_scope: whole_post` is signaled, the `<section_content>` block will be replaced with a `<post_content>` block.   \n   b. If the <post_content> is truncated, then call `read_section(post_id, sec_id)` once per section you wish to examine.\n   c. In both cases, changes must still be applied one section at a time.\n\n3. Apply the user's request in a deliberate order:\n   a. If `suggestions` is filled, address each item one at a time. Make the reasoning visible in the revised prose. A suggestion should change the section's argument or structure, not just swap a word.\n   b. If `changes` is filled, apply the broader critique on top of the suggestions. Shape the prose to honor the critique while preserving the author's voice and cadence.\n   c. If `remove` is filled, excise the named material. When `remove` is concrete (a named paragraph, a specific argument), cut it. When `remove` is vague (e.g. \"anything outdated\", \"whatever feels off\"), emit the needs-clarification output shape and do NOT save.\n\n4. Save the reworked section with `revise_content(post_id, sec_id, content=<reworked prose>)`. On a transient failure, retry exactly once. A second failure is a final error.\n\n5. If the user's request is clearly polish-level (word tightening, sentence cleanup) or simplify-level (trimming, shortening), emit the fallback-recommendation output shape and do NOT save. The policy re-routes via the contemplate tool.",
+      "rationale": ""
+    },
+    "DP-4": {
+      "accepted": false,
+      "override": "## Tools\n\n### Task-specific tools\n\n- `revise_content(post_id, sec_id, content)` \u2014 this is the primary save for rework. The tool replaces the section's content wholesale with the prose you pass in, so include the full reworked section (not just the changed paragraphs). Retry once on transient failure.\n\n- `remove_content(post_id, sec_id, target)` \u2014 only when the user explicitly asked to remove a concrete span and the rest of the section is staying put. When your rework is \"excise X and replace with Y\", prefer `revise_content` with the whole updated prose in one call; `remove_content` is for the narrower case where the section is mostly fine except for one identified piece.\n\n- `fallback(next_flow)` \u2014 when the user's request is better served by polish or simplify, call this tool instead of attempting a partial rework. The argument is the recommended flow name.\n\n### General tools\n\n- `execution_error(violation, message)` \u2014 for hard failures (retries exhausted, malformed input).\n- `handle_ambiguity(level, metadata)` \u2014 for cases where the user's intent is genuinely unclear (not a known-wrong-flow case, which is a fallback).\n- `manage_memory(action, key, value)` \u2014 read or write L1 scratchpad or L2 preferences.\n- `read_flow_stack(action)` \u2014 inspect other flows on the stack. Rare in rework.",
+      "rationale": "The tool is `fallback()` and it should already be accessible from flow_stack.  This will point the agent back to NLU, which can call `contemplate()`. The tool is not called `contemplate()`.\n\nWe can expand the flow_stack tool, one action is 'read', other actions include 'stackon' and 'fallback'.\n\nWe actually do need `insert_section()`. Otherwise, can you tell me another flow which can add new sections to prose?\n\n`revise_content()` should accept a target param, matching `remove_content()`. In fact, that extra param is what distinguishes it from `generate_section()`. Namely, the target is a dict which can be a snippet of text, or start and end span. "
+    },
+    "DP-5": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-6": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-7": {
+      "accepted": false,
+      "override": "When `source.sec` is filled, preload the target section's full current prose as markdown paragraphs separated by blank lines. When `rework_scope: whole_post` applies, display the first section within the <section_content>; the skill is expected to call `read_section` to view other sections as needed.",
+      "rationale": ""
+    },
+    "DP-8": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-9": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-10": {
+      "accepted": false,
+      "override": "Errors (policy emits error frame after skill signals):\n- (a) `revise_content` fails twice \u2014 `execution_error(violation='failed_to_save', failed_tool='revise_content')`.\n- (b) `<section_content>` malformed or truncated \u2014 `execution_error(violation='invalid_input')` without saving.\n\nAmbiguities (skill calls `handle_ambiguity`):\n- (c) requested slot is vague \u2014 the 'change' slot is most likely to exhibit this issue. skill emits needs-clarification output shape; policy surfaces as `confirmation`-level ambiguity.\n\nFallbacks (skill calls `contemplate`, policy re-routes):\n- (e) user wanted polish (word tightening, sentence cleanup) \u2014 `contemplate(next_flow='polish')`.\n- (f) user wanted simplify (trimming, shortening) \u2014 `contemplate(next_flow='simplify')`.\n- (g) user wanted to remove a concrete span outside rework's scope \u2014 `contemplate(next_flow='remove')`.\n\nCase (e) / (f) / (g) are NOT ambiguities: the user's intent is clear, it just belongs to a different flow. `contemplate` is the right channel.",
+      "rationale": "It is highly unlikely this late into the writing process that the section isn't available. The vagueness issue applies to all slots, not just 'remove'."
+    },
+    "DP-11": {
+      "accepted": true,
+      "override": null,
+      "rationale": "We should combine DP-11 and DP-14. Structural fallbacks are basically stack-ons."
+    },
+    "DP-12": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-13": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-14": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-15": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-16": {
+      "accepted": true,
+      "override": null,
+      "rationale": "Tool is the `flow_stack('fallback', 'new flow')`, not `contemplate()`"
+    },
+    "DP-17": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-18": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-19": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    }
+  }
+}

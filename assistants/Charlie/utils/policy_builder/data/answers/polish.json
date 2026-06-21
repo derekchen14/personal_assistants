@@ -1,0 +1,97 @@
+{
+  "flow": "polish",
+  "decision_points": {
+    "DP-1": {
+      "accepted": false,
+      "override": "Scope is narrow by default. When the user names a span (opening paragraph, specific sentence, a transition), polish only that span and leave every other paragraph of the section exactly as it was.",
+      "rationale": "Don't use the word 'tighten'\n\nRule 1 is really just explaining the flow's responsibilities. This is not an extra rule."
+    },
+    "DP-2": {
+      "accepted": false,
+      "override": "This skill polishes a paragraph, sentence, or text snippet by rephrasing sentences, improving word choice, and fixing transitions. The main goal is to eliminate any signs of AI slop while preserving meaning and structure.",
+      "rationale": ""
+    },
+    "DP-3": {
+      "accepted": false,
+      "override": "## Process\n\n1. Find the target section and read it. Look at the user's utterance and the `<resolved_details>` block for a section name such as \"Motivation\" or \"Process\". Match that name to the `section_ids` list. The matched identifier is your target; ignore every other section.\n  a. Read the target section with `read_section(post_id, sec_id=<matched>)`. Do not read any other section. Polish scope is intentionally narrow and does not require surrounding context.\n  b. Identify the exact span the user named (opening paragraph, specific sentence, a transition). When no span is named, polish the whole matched section.\n\n2. Check the scratchpad for prior findings\n  a. When entries exist under the keys `audit`, `inspect`, or `find`, read them and filter to findings that reference the target section. When no entries exist, proceed cold.\n  b. If you used the scratchpad, list the keys you used in the output JSON's `used` array. When you consumed nothing, set `used` to an empty array. Never list a key you did not actually use.\n\n3. Polish the span: rephrase sentences, improve word choice, fix transitions, remove filler, while preserving meaning and paragraph structure.\n   a. Use `find_and_replace` for targeted word or phrase swaps where the replacement is short and unambiguous.\n   b. Use `write_text` when a sentence needs a full rewrite and the new version depends on reasoning about the surrounding prose.\n   c. When the `style_notes` slot is filled, treat it as the priority signal over style inferred from the current prose \u2014 the user is saying the current style is not what they want.\n\n4. Save with `revise_content(post_id, sec_id=<matched>, content=<whole section with only your polished span changed>)`. The tool replaces section content wholesale, so include the full section body even when only one span changed.",
+      "rationale": ""
+    },
+    "DP-4": {
+      "accepted": false,
+      "override": "## Tools\n\n### Task-specific tools\n\n- `read_section(post_id, sec_id)` \u2014 required once per turn on the matched section. This is polish's only read; never read other sections as context, since polish scope is intentionally narrow.\n\n- `find_and_replace(post_id, sec_id, find, replace)` \u2014 for targeted word or phrase swaps where the change is short and unambiguous. Use when the polish is a substitution, not a rewrite.\n\n- `write_text(prompt)` \u2014 for sentence rewrites where the new version depends on reasoning. The tool returns prose; the skill still saves through `revise_content`.\n\n- `revise_content(post_id, sec_id, content)` \u2014 the primary save. Pass the whole section with only your polished span changed; the tool replaces content wholesale.\n\n### General tools\n\n- `execution_error(violation, message)` \u2014 for hard failures after retries.\n- `handle_ambiguity(level, metadata)` \u2014 for unclear or vague user intent.\n- `manage_memory(action, key, value)` \u2014 read the scratchpad for prior findings in step 2 of Process; rarely used for writes in polish.\n- `read_flow_stack(action)` \u2014 yes, polish might use this. Think about when.",
+      "rationale": ""
+    },
+    "DP-5": {
+      "accepted": false,
+      "override": "Polish the snippet of text below. Focus on rephrasing sentences, improving word choice, or fixing transitions to eliminate AI slop without changing meaning or structure. When prior findings in the scratchpad name this section, use them as hints for where to focus. End the turn once the polished content has been saved.",
+      "rationale": ""
+    },
+    "DP-6": {
+      "accepted": false,
+      "override": "<line_snippet>",
+      "rationale": ""
+    },
+    "DP-7": {
+      "accepted": false,
+      "override": "Just show the paragraph surrounding the target snippet. Render as a markdown paragraph. Let the skill call `read_section` during if the agent wants to see more.",
+      "rationale": "Source section has to be filled for the LLM execute to run. Stop guarding against cases where source.sec is empty."
+    },
+    "DP-8": {
+      "accepted": true,
+      "override": null,
+      "rationale": "Sounds ok, but for the next round, you should write out the actual scenario rather than describing it."
+    },
+    "DP-9": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-10": {
+      "accepted": false,
+      "override": "Errors (policy emits error frame after skill signals):\n- (a) `revise_content` fails twice \u2014 `execution_error(violation='failed_to_save', failed_tool='revise_content')`.\n- (b) The named section exists but the named span within it does not (\"second paragraph\" in a one-paragraph section) \u2014 `specific`, `metadata={'missing_reference': <span>}`. This is an 'invalid_input' violation\n\nAmbiguities (skill calls `handle_ambiguity`):\n- (d) Any filled slot value is vague enough that the polish direction would be a guess \u2014 `confirmation`, `metadata={'vague_slot': <slot_name>}`. Vagueness is a confirmation-level issue for any slot, handled uniformly.\n\nFallbacks (skill calls `flow_stack('fallback', ...)`):\n- (e) The user's request implies substantive revision (expanding, restructuring, weaving in suggestions) \u2014 `flow_stack('fallback', 'rework')`. This is the documented polish-to-rework escalation when structural changes are needed.\n- (f) The user's request is really about trimming or removing content \u2014 `flow_stack('fallback', 'simplify')`.",
+      "rationale": "By the time we are polishing, we are unlikely to have malformed section. A true 'decision point' for you to make on each flow is: Are we dealing with outline or prose at this point? This has *many* implications on how the prompt and policy are presented."
+    },
+    "DP-12": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-13": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-14": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-15": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-16": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-17": {
+      "accepted": false,
+      "override": "We don't need a diff card. We just need to highlight the span that changed within a regular card.",
+      "rationale": ""
+    },
+    "DP-18": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-19": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    }
+  },
+  "batch": 2,
+  "round": 1
+}

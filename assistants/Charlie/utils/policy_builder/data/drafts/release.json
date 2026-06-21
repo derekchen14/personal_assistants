@@ -1,0 +1,94 @@
+{
+  "flow": "release",
+  "parent_intent": "Publish",
+  "round": 2,
+  "version": 2,
+  "notes": "Release is the publish flow. Sections are in the order the LLM reads them at runtime: intent prompt, then skill body, then the starter message pieces, then the policy that runs around the LLM turn, then the flow-class config. Model tier and token budget live at the llm_execute call site inside the policy, not on the flow class.",
+  "sections": [
+    {
+      "id": "intent_prompt",
+      "label": "Intent prompt (Publish)",
+      "path": "backend/prompts/pex/sys_prompts.py::PUBLISH",
+      "status": "applicable",
+      "content": "You are currently working on Publish tasks, which covers releasing completed posts out to the general public, covering where to publish (channels), when to publish (schedule), and how to publish (settings).\n\n## Background\n\nA post may target one or more publishing channels (e.g., Substack, Medium, LinkedIn, Twitter). Each channel has its own adapter with its own failure modes, from authentication to rate limits, network errors, and draft-only mode. Treat channel status as authoritative: if `channel_status` reports a channel as unavailable, do NOT attempt to release to it.\n\nUse `list_channels` to enumerate configured channels and `channel_status(channel)` before each release to confirm the channel is available. The three primary actions are:\n  1. `release_post` (publish),\n  2. `promote_post` (amplify an already-released post), and\n  3. `cancel_release` (unwind a scheduled or mistaken release)\n\nEach returns `_success=False` when a channel rejects the call. Surface that as an error rather than retry in place.\n\nPublish flows return short status summaries, not prose bodies. Let the saved post and channel receipts speak through card blocks rendered by RES. In your final text reply, name exactly what changed (which post, which channel, which status) and nothing more.\n\nPost IDs take the form of 8-character lowercase hex strings, the first 8 characters of a UUID4. Section IDs take the form of slugs (lowercased, punctuation-stripped, spaces and underscores collapsed to dashes). Post names and section names are proper case natural language text."
+    },
+    {
+      "id": "skill_intro",
+      "label": "Skill \u00b7 intro",
+      "path": "backend/prompts/pex/skills/release.md (opening paragraph)",
+      "status": "applicable",
+      "content": "This skill publishes a post to one or more channels. For each channel, check availability first, then release. Results are collected in a structured JSON response that names the status and URL per channel. The policy flips the post status after the skill returns, so focus on channel orchestration and the output shape."
+    },
+    {
+      "id": "skill_process",
+      "label": "Skill \u00b7 Process",
+      "path": "backend/prompts/pex/skills/release.md :: ## Process",
+      "status": "applicable",
+      "content": "## Process\n\n1. Read the post identifier and channel list from `<resolved_details>`. The channel list is an array of channel names such as `['Substack']` or `['Substack', 'LinkedIn']`. Process each channel independently so that one channel's failure does not abort the rest.\n\n2. For each channel in the list, in order:\n   a. Call `channel_status(channel=<name>)` to verify the channel is authenticated and reachable. If the status call returns `_success=False`, record the channel as failed with the returned error note and move on to the next channel without calling `release_post`.\n   b. When the status call succeeds, call `release_post(post_id, channel=<name>)` to publish. Record the returned URL and status.\n\n3. After every channel has been attempted, emit the JSON output. When the list had exactly one channel, use the single-channel shape. When the list had more than one, use the `releases` array shape.\n   a. Do not retry `release_post` on failure unless the user explicitly asked for a retry. Surface the failure and let the user decide whether to re-run the release.\n   b. Never call `update_post` from the skill. The policy flips the post status to `published` after the skill returns; doing it here would create a double-write."
+    },
+    {
+      "id": "skill_handling_ambiguity_and_errors",
+      "label": "Skill \u00b7 Handling Ambiguity and Errors",
+      "path": "backend/prompts/pex/skills/release.md :: ## Handling Ambiguity and Errors",
+      "status": "applicable",
+      "content": "## Handling Ambiguity and Errors\n\nIf `channel_status` returns `_success=False`, do NOT call `release_post` for that channel. Surface the channel as failed in the output and continue with the remaining channels.\n\nIf `release_post` fails, surface the error in the output for that channel and continue with the remaining channels. Do not abort the whole flow.\n\nIf the channel list resolves to empty and no default channel is configured, call `handle_ambiguity(level='specific', metadata={'missing_slot': 'channel'})`."
+    },
+    {
+      "id": "skill_tools",
+      "label": "Skill \u00b7 Tools",
+      "path": "backend/prompts/pex/skills/release.md :: ## Tools",
+      "status": "applicable",
+      "content": "## Tools\n\n### Task-specific tools\n\n- `channel_status(channel)` is the gate before every `release_post` call. It verifies authentication and reachability, and a `_success=False` return means that channel is terminal for this turn. The policy retries the status check up to three times on network errors before giving up because channel APIs are external and prone to transient failures.\n- `release_post(post_id, channel)` performs the publish. Call once per channel after the status gate succeeds. Record the URL and status returned by the tool. A failure is not retried automatically, since publish is a side-effecting call where silent retry risks a double-post; record the failure in the output and let the user re-invoke if they want a retry.\n- `read_metadata(post_id)` is a fallback helper when `<resolved_details>` is missing post fields, which is rare. Skip it in the common case.\n\n### General tools\n\n- `execution_error(violation, message)` when a tool fails in a way that should surface as a policy-layer error frame rather than a per-channel failure row.\n- `handle_ambiguity(level, metadata)` when the channel list resolves to empty and no default channel is configured.\n- `manage_memory(action, key, value)` to read a per-channel token when the user has stored authentication preferences there.\n- `read_flow_stack(action)` to check whether a `syndicate` or `promote` flow is already queued behind this release. When one is, trim the release output to the primary channel so the downstream flow handles amplification."
+    },
+    {
+      "id": "skill_output",
+      "label": "Skill \u00b7 Output",
+      "path": "backend/prompts/pex/skills/release.md :: ## Output",
+      "status": "applicable",
+      "content": "## Output\n\nSingle-channel shape:\n\n```json\n{\n  \"post_id\": \"...\",\n  \"title\": \"...\",\n  \"channel\": \"...\",\n  \"status\": \"published\" | \"failed\",\n  \"url\": \"https://...\",\n  \"notes\": \"<one-sentence summary or error message>\"\n}\n```\n\nMulti-channel shape:\n\n```json\n{\n  \"post_id\": \"...\",\n  \"title\": \"...\",\n  \"releases\": [\n    {\"channel\": \"Substack\", \"status\": \"published\", \"url\": \"...\", \"notes\": \"...\"},\n    {\"channel\": \"LinkedIn\", \"status\": \"failed\", \"notes\": \"auth expired\"}\n  ]\n}\n```"
+    },
+    {
+      "id": "skill_fewshot",
+      "label": "Skill \u00b7 Few-shot examples",
+      "path": "backend/prompts/pex/skills/release.md :: ## Few-shot examples",
+      "status": "applicable",
+      "content": "## Few-shot examples\n\n### Example 1: Single-channel publish\n\nResolved Details:\n- post_id: abcd0123, title: \"User Simulators for Training RL Agents\"\n- channel: ['Substack']\n\nTrajectory:\n1. `channel_status(channel='Substack')` \u2192 `{_success: True, ok: True}`.\n2. `release_post(post_id=abcd0123, channel='Substack')` \u2192 `{_success: True, url: 'https://substack.com/p/user-simulators-for-training-rl-agents'}`.\n\nFinal reply:\n```json\n{\n  \"post_id\": \"abcd0123\",\n  \"title\": \"User Simulators for Training RL Agents\",\n  \"channel\": \"Substack\",\n  \"status\": \"published\",\n  \"url\": \"https://substack.com/p/user-simulators-for-training-rl-agents\",\n  \"notes\": \"Published successfully; ready to syndicate.\"\n}\n```\n\n### Example 2: Multi-channel, one fails\n\nResolved Details:\n- post_id: abcd0123, title: \"User Simulators for Training RL Agents\"\n- channel: ['Substack', 'LinkedIn']\n\nTrajectory:\n1. `channel_status(channel='Substack')` \u2192 ok.\n2. `release_post(post_id=abcd0123, channel='Substack')` \u2192 `{_success: True, url: 'https://substack.com/p/user-simulators'}`.\n3. `channel_status(channel='LinkedIn')` \u2192 `{_success: False, _error: 'auth_expired'}`.\n4. Skip `release_post` for LinkedIn.\n\nFinal reply:\n```json\n{\n  \"post_id\": \"abcd0123\",\n  \"title\": \"User Simulators for Training RL Agents\",\n  \"releases\": [\n    {\"channel\": \"Substack\", \"status\": \"published\", \"url\": \"https://substack.com/p/user-simulators\", \"notes\": \"Live.\"},\n    {\"channel\": \"LinkedIn\", \"status\": \"failed\", \"notes\": \"Auth expired, reconnect and retry.\"}\n  ]\n}\n```"
+    },
+    {
+      "id": "starter_task",
+      "label": "Starter \u00b7 <task>",
+      "path": "backend/prompts/pex/starters/release.py (TEMPLATE task line)",
+      "status": "applicable",
+      "content": "Release \"{post_title}\" to the target channels. Gate each channel with a status check before publishing, collect per-channel results, and return the structured JSON response. End the turn once every channel has been attempted."
+    },
+    {
+      "id": "starter_content",
+      "label": "Starter \u00b7 <channel_content>",
+      "path": "backend/prompts/pex/starters/release.py (content block)",
+      "status": "applicable",
+      "content": "<channel_content>\n{channel_entries}\n</channel_content>\n\nWhere `channel_entries` is one line per target channel:\n\n- Substack  | connected: true  | auth_status: ok       | default: false\n- LinkedIn  | connected: true  | auth_status: expired  | default: false\n- blog      | connected: true  | auth_status: ok       | default: true"
+    },
+    {
+      "id": "starter_resolved",
+      "label": "Starter \u00b7 <resolved_details>",
+      "path": "backend/prompts/pex/starters/release.py (resolved block)",
+      "status": "applicable",
+      "content": "<resolved_details>\nPost: abcd0123 \u2014 \"User Simulators for Training RL Agents\"\nChannels: ['Substack', 'LinkedIn']\n</resolved_details>"
+    },
+    {
+      "id": "policy",
+      "label": "Policy function",
+      "path": "backend/modules/policies/publish.py :: release_policy",
+      "status": "applicable",
+      "note": "Model tier, max tokens, and quality check are passed as call-site kwargs to llm_execute rather than set on the flow class. Scratchpad write added for successful releases. Duration captured for the reply template.",
+      "content": "def release_policy(self, flow, state, context):\n    tools = self.engineer.tools\n    frame = DisplayFrame(flow.name())\n\n    if not flow.slots['source'].check_if_filled():\n        self.ambiguity.declare('specific',\n            metadata={'missing_slot': flow.entity_slot},\n            observation='Release needs a post reference.')\n        return frame\n\n    if not flow.slots['channel'].check_if_filled():\n        flow.slots['channel'].add_one('mt1t')\n\n    post_id = self._resolve_source_ids(flow, state, tools)['post']\n    if not post_id:\n        self.ambiguity.declare('specific',\n            metadata={'missing_reference': 'post'},\n            observation='Could not resolve the referenced post.')\n        return frame\n\n    started = time.perf_counter()\n    text, tool_log = self.engineer.llm_execute(\n        flow, state, context, tools,\n        model='sonnet', max_tokens=1024, quality_check=False,\n    )\n    duration_ms = int((time.perf_counter() - started) * 1000)\n\n    released, failed = self._partition_channels(tool_log)\n\n    if not released:\n        frame.metadata['violation'] = 'tool_error'\n        frame.metadata['failed_tool'] = 'release_post'\n        frame.code = text\n        return frame\n\n    saved, _ = self.engineer.tool_succeeded(\n        self.retry_tool(tools, 'update_post',\n            {'post_id': post_id, 'updates': {'status': 'published'}}),\n        'update_post',\n    )\n    if not saved:\n        frame.metadata['violation'] = 'failed_to_save'\n        frame.metadata['failed_tool'] = 'update_post'\n        return frame\n\n    self.memory.write_scratchpad('release', {\n        'version': 1,\n        'turn_number': context.turn_id,\n        'used_count': 0,\n        'post_id': post_id,\n        'post_title': flow.resolved.get('post_title'),\n        'channels_released': released,\n        'channels_failed': failed,\n    })\n\n    flow.status = 'Completed'\n    frame.metadata.update({\n        'post_id': post_id,\n        'post_title': flow.resolved.get('post_title'),\n        'channels_released': [c['name'] for c in released],\n        'channels_failed': [c['name'] for c in failed],\n        'duration_ms': duration_ms,\n    })\n    frame.blocks.append(Block(type='toast', data={'text': text}))\n    frame.thoughts = text\n    return frame"
+    },
+    {
+      "id": "flow_config",
+      "label": "Flow class config",
+      "path": "backend/components/flow_stack/flows.py :: ReleaseFlow",
+      "status": "applicable",
+      "content": "class ReleaseFlow(PublishParentFlow):\n  def __init__(self):\n    super().__init__()\n    self.flow_type = 'release'\n    self.dax = '{04A}'\n    self.goal = 'publish the post to the primary blog; makes the post live immediately on the main channel. Use syndicate to cross-post, promote to amplify reach after publishing'\n    self.slots = {\n      'source': SourceSlot(1),\n      'channel': ChannelSlot(priority='required'),\n    }\n    self.tools = ['read_metadata', 'channel_status', 'release_post', 'update_post']"
+    }
+  ]
+}

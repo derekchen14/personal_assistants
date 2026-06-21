@@ -1,0 +1,97 @@
+{
+  "flow": "release",
+  "decision_points": {
+    "DP-18": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-19": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-1": {
+      "accepted": false,
+      "override": "",
+      "rationale": "Stop writing so many rules! Most flows have 0 or 1 rules.\n\nEverything you mentioned here is correct, but likely belongs in `## Process` instead of as a separate rule in itself."
+    },
+    "DP-2": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-3": {
+      "accepted": false,
+      "override": "## Process\n\n1. Read the post identifier and channel list from `<resolved_details>`. The channel list is an array of channel names such as `['Substack']` or `['Substack', 'LinkedIn']`.\n\n2. For each channel in the list, in order:\n   a. Call `channel_status(channel=<name>)` to verify the channel is authenticated and reachable. If the status call returns `_success=False`, record the channel as failed with the returned error note and move on to the next channel without calling `release_post`.\n   b. When the status call succeeds, call `release_post(post_id, channel=<name>)` to publish. Record the returned URL and status.\n\n3. After every channel has been attempted, emit the JSON output. When the list had exactly one channel, use the single-channel shape. When the list had more than one, use the `releases` array shape.\n  a. Do not retry `release_post` on failure unless the user explicitly asked for a retry. \n  b. Surface the failure and let the user decide whether to re-run the release.",
+      "rationale": "Add some of the points from \"rules\" above here."
+    },
+    "DP-4": {
+      "accepted": false,
+      "override": "## Tools\n\n### Task-specific tools\n\n- `channel_status(channel)` is the gate before every `release_post` call. It verifies authentication and reachability. Treat a `_success=False` return as a terminal state for that channel; do not retry.\n- `release_post(post_id, channel)` performs the publish. Call once per channel after the status gate succeeds. No automatic retry; user confirmation is required for retry.\n- `read_metadata(post_id)` is a fallback helper when `<resolved_details>` is missing post fields, which is rare. Skip it in the common case.\n\n### General tools\n\n- `execution_error(violation, message)` when a tool fails in a way that should surface as a policy-layer error frame rather than a per-channel failure row.\n- `handle_ambiguity(level, metadata)` when the channel list resolves to empty and no default channel is configured. The policy guards the source reference before the skill runs.\n- `manage_memory(action, key, value)` to read a per-channel token when the user has stored authentication preferences there.\n- `read_flow_stack(action)` to check whether a `syndicate` or `promote` flow is already queued behind this release. When one is, trim the release output to the primary channel so the downstream flow handles amplification.",
+      "rationale": "Drop the newlines. No short punchy sentences!"
+    },
+    "DP-5": {
+      "accepted": false,
+      "override": "Release \"{post_title}\" to the target channels. Gate each channel with a status check before publishing, collect per-channel results, and return the structured JSON response. End the turn once every channel has been attempted.",
+      "rationale": ""
+    },
+    "DP-6": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-7": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-8": {
+      "accepted": false,
+      "override": "Three scenarios, each exercising a different channel-list and failure pattern:\n\n(a) Single-channel publish. Channel list is `['Substack']`, status check succeeds, publish succeeds, single-channel JSON shape.\n\n(b) Multi-channel with one failure. Channel list is `['Substack', 'LinkedIn']`, Substack succeeds, LinkedIn status returns auth_expired, skill skips the LinkedIn publish and emits the `releases` array with both rows.\n\n(c) Single-channel with default. The channel list was empty in `<resolved_details>`; the policy already defaulted to the primary blog, and the skill sees `['blog']` without needing to ask.",
+      "rationale": ""
+    },
+    "DP-9": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-10": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-12": {
+      "accepted": false,
+      "override": "`channel_status`: retry three times. On a second failure, treat that channel as unavailable and skip it. `release_post`: no automatic retry. Surface failure in the per-channel output and let the user decide. `update_post` (called by policy, not skill): retry once via `BasePolicy.retry_tool`, then `execution_error(violation='failed_to_save', failed_tool='update_post')`.",
+      "rationale": "channel status is an external API which is more likely to fail, so we must try many times due to network error."
+    },
+    "DP-13": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-14": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-15": {
+      "accepted": false,
+      "override": "Yes, we should note in the scratchpad about successful releases. We might even need to write this into L3 memory.",
+      "rationale": ""
+    },
+    "DP-16": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-17": {
+      "accepted": false,
+      "override": "Structured JSON from the skill (single-channel or `releases` array shape). The policy consumes the JSON, sets `channels_released` and `channels_failed`, and RES renders a one-sentence toast (\"Published 'User Simulators for Training RL Agents' to Substack; LinkedIn failed, authentication expired.\"). The toast is the primary user-facing surface. We should also explain to the user in the chat about what we just accomplished and how long it took.",
+      "rationale": ""
+    }
+  },
+  "batch": 3,
+  "round": 1
+}

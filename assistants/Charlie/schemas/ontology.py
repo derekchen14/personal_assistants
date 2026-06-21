@@ -1,0 +1,195 @@
+from enum import Enum
+
+
+class Intent:
+    PLAN = 'Plan'
+    CONVERSE = 'Converse'
+    CLARIFY = 'Clarify'
+    RESEARCH = 'Research'     # find, browse, summarize, compare
+    DRAFT = 'Draft'           # brainstorm, outline, refine, cite
+    REVISE = 'Revise'         # rework, polish, audit, propose
+    PUBLISH = 'Publish'       # release, schedule, promote
+
+
+class FlowLifecycle(str, Enum):
+    PENDING = 'Pending'
+    ACTIVE = 'Active'
+    COMPLETED = 'Completed'
+    INVALID = 'Invalid'
+
+
+class AmbiguityLevel(str, Enum):
+    GENERAL = 'general'
+    PARTIAL = 'partial'
+    SPECIFIC = 'specific'
+    CONFIRMATION = 'confirmation'
+
+
+DACT_CATALOG = {
+    'chat':     {'hex': '0', 'pos': 'noun'},
+    'search':   {'hex': '1', 'pos': 'verb'},
+    'outline':  {'hex': '2', 'pos': 'verb'},
+    'compose':  {'hex': '3', 'pos': 'verb'},
+    'share':    {'hex': '4', 'pos': 'verb'},
+    'insert':   {'hex': '5', 'pos': 'verb'},
+    'update':   {'hex': '6', 'pos': 'verb'},
+    'delete':   {'hex': '7', 'pos': 'verb'},
+    'user':     {'hex': '8', 'pos': 'adj'},
+    'agent':    {'hex': '9', 'pos': 'adj'},
+    'post':     {'hex': 'A', 'pos': 'noun'},
+    'section':  {'hex': 'B', 'pos': 'noun'},
+    'channel':  {'hex': 'C', 'pos': 'noun'},
+    'rough':    {'hex': 'D', 'pos': 'adj'},
+    'approve':  {'hex': 'E', 'pos': 'adj'},
+    'reject':   {'hex': 'F', 'pos': 'adj'},
+}
+
+
+
+FLOW_CATALOG = {
+
+    # ── Research (4 flows) ─────────────────────────────────
+
+    'find': {
+        'dax': '{001}',
+        'intent': Intent.RESEARCH,
+        'description': 'Search previous posts by keyword or topic — returns matching titles, excerpts, and publication dates sorted by relevance',
+        'output': 'list',
+        'edge_flows': ['browse', 'audit', 'summarize'],
+        'policy_path': 'policies.research.find',
+    },
+    'browse': {
+        'dax': '{012}',
+        'intent': Intent.RESEARCH,
+        'description': 'Browse available topics, notes, trending subjects, saved ideas, and content gaps filtered by category. Excludes drafts and posts which use the "find" flow instead.',
+        'output': 'list',
+        'edge_flows': ['find', 'brainstorm', 'audit'],
+        'policy_path': 'policies.research.browse',
+    },
+    'summarize': {
+        'dax': '{19A}',
+        'intent': Intent.RESEARCH,
+        'description': 'Synthesize a post into a short paragraph capturing the core argument, target audience, and main takeaways — useful for excerpts, SEO descriptions, or pre-reads before writing a follow-up',
+        'output': 'card',
+        'edge_flows': ['find', 'compare'],
+        'policy_path': 'policies.research.summarize',
+    },
+    'compare': {
+        'dax': '{18A}',
+        'intent': Intent.RESEARCH,
+        'description': 'Compare style or structure across two or more posts — sentence length, paragraph density, heading patterns, vocabulary, tonal consistency — or diff two versions of a section side by side to see additions, deletions, and modifications',
+        'output': 'compare',
+        'edge_flows': ['find', 'audit'],
+        'policy_path': 'policies.research.compare',
+    },
+
+    # ── Draft (4 flows) ─────────────────────────────────────────────
+
+    'outline': {
+        'dax': '{002}',
+        'intent': Intent.DRAFT,
+        'description': 'Generate an outline (section headings, key bullet points, estimated word counts, reading order) or write a section from scratch based on that outline or instructions',
+        'output': 'list',
+        'edge_flows': ['refine', 'brainstorm'],
+        'policy_path': 'policies.draft.outline',
+    },
+    'refine': {
+        'dax': '{02B}',
+        'intent': Intent.DRAFT,
+        'description': 'Shape the outline into a clean, properly-formatted draft — adjust headings, reorder or add/remove bullet points and subsections, incorporate feedback, and normalize structural formatting',
+        'output': 'card',
+        'edge_flows': ['outline', 'polish'],
+        'policy_path': 'policies.draft.refine',
+    },
+    'cite': {
+        'dax': '{15B}',
+        'intent': Intent.DRAFT,
+        'description': 'Add a citation to a note — if a URL is provided, attach it directly; if only a note is provided, search the web for a supporting source and propose it for user confirmation',
+        'output': 'card',
+        'edge_flows': ['brainstorm', 'rework'],
+        'policy_path': 'policies.draft.cite',
+    },
+    'brainstorm': {
+        'dax': '{39D}',
+        'intent': Intent.DRAFT,
+        'description': 'Come up with new ideas or angles for a given topic, word, or phrase. This may include hooks, opening lines, synonyms, or new perspectives the user can choose from',
+        'output': 'list',
+        'edge_flows': ['browse', 'outline'],
+        'policy_path': 'policies.draft.brainstorm',
+    },
+
+    # ── Revise (4 flows) ─────────────────────────────
+
+    'rework': {
+        'dax': '{006}',
+        'intent': Intent.REVISE,
+        'description': 'Major revision of draft content — restructures arguments, replaces weak sections, addresses reviewer comments. Also the destructive form: removing a section, draft, or note, previewing the change for the user before committing. Scope spans a section up to the whole post. For smaller changes, use polish',
+        'output': 'card',
+        'edge_flows': ['polish', 'refine', 'propose'],
+        'policy_path': 'policies.revise.rework',
+    },
+    'polish': {
+        'dax': '{3BD}',
+        'intent': Intent.REVISE,
+        'description': 'Sentence-level editing of a paragraph, sentence, or phrase — improves word choice, tightens sentences, fixes transitions, smooths flow. Also simplifies — reducing complexity and redundancy, warning the user before cutting content. Scoped within a single paragraph or image, not the whole post',
+        'output': 'card',
+        'edge_flows': ['rework', 'refine'],
+        'policy_path': 'policies.revise.polish',
+    },
+    'audit': {
+        'dax': '{13A}',
+        'intent': Intent.REVISE,
+        'description': "Check that the post is written in the user's voice rather than sounding like AI — compares voice, terminology, formatting, and stylistic patterns against previous posts — and adjusts tone or register (formal, casual, technical, academic, witty, natural) across the post",
+        'output': 'card',
+        'edge_flows': ['compare', 'rework'],
+        'policy_path': 'policies.revise.audit',
+    },
+    'propose': {
+        'dax': '{39B}',
+        'intent': Intent.REVISE,
+        'description': 'Generate 2-3 targeted alternatives to fill a placeholder gap (`<fill in here>`, TODO, or blank slot) in existing content, presented inline for the user to pick — like brainstorm, but scoped to a specific slot in a draft',
+        'output': 'selection',
+        'edge_flows': ['refine', 'rework', 'brainstorm'],
+        'policy_path': 'policies.revise.propose',
+    },
+
+    # ── Publish (3 flows) ──────────────────────────────────────────
+
+    'release': {
+        'dax': '{04A}',
+        'intent': Intent.PUBLISH,
+        'description': 'Publish the post to the primary blog and optionally cross-post (syndicate) to secondary channels (Medium, Dev.to, LinkedIn, Substack), adapting formatting per target. Use promote to amplify reach after publishing',
+        'output': 'toast',
+        'edge_flows': ['promote', 'schedule'],
+        'policy_path': 'policies.publish.release',
+    },
+    'schedule': {
+        'dax': '{4AC}',
+        'intent': Intent.PUBLISH,
+        'description': 'Schedule a post for future publication — sets a specific date and time for automatic publishing on a given channel',
+        'output': 'toast',
+        'edge_flows': ['release', 'promote'],
+        'policy_path': 'policies.publish.schedule',
+    },
+    'promote': {
+        'dax': '{004}',
+        'intent': Intent.PUBLISH,
+        'description': 'Make a published post more prominent — pin to the top of the blog, mark as featured, announce to subscribers, or share to social channels and email lists. Amplifies reach after release',
+        'output': 'toast',
+        'edge_flows': ['release', 'schedule'],
+        'policy_path': 'policies.publish.promote',
+    },
+
+    # ── Converse (1 flow) ──────────────────────────────────────────
+
+    'chat': {
+        'dax': '{000}',
+        'intent': Intent.CONVERSE,
+        'description': 'Open-ended conversation — general Q&A about writing craft, blogging strategy, SEO, audience engagement; proactive suggestions for what to do next; and quick reference lookups (definitions, synonyms, antonyms). Anything not tied to a specific post action',
+        'output': 'card',
+        'edge_flows': ['brainstorm', 'find'],
+        'policy_path': 'policies.converse.chat',
+    },
+}
+
+KEY_ENTITIES = ['post', 'section', 'snippet', 'channel']

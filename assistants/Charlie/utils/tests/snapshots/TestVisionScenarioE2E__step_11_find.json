@@ -1,0 +1,53 @@
+{
+  "artifact": {
+    "block_data_keys": [
+      [
+        "items",
+        "page"
+      ]
+    ],
+    "block_panels": [
+      "bottom"
+    ],
+    "block_types": [
+      "list"
+    ],
+    "entity": null,
+    "has_code": false,
+    "has_thoughts": false,
+    "missing": null,
+    "origin": "find",
+    "parts_keys": [],
+    "reason": null,
+    "violation": null
+  },
+  "flow_stack": [],
+  "state": {
+    "active_post_set": true,
+    "flow_dax": "{001}",
+    "has_issues": false,
+    "has_plan": false,
+    "keep_going": false,
+    "natural_birth": true,
+    "pred_intent": "Research"
+  },
+  "tool_log": [
+    {
+      "success": true,
+      "tool": "find_posts"
+    },
+    {
+      "success": true,
+      "tool": "find_posts"
+    },
+    {
+      "success": true,
+      "tool": "find_posts"
+    },
+    {
+      "success": true,
+      "tool": "find_posts"
+    }
+  ],
+  "top_flow": {}
+}

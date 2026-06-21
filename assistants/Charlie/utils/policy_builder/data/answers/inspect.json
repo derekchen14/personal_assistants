@@ -1,0 +1,97 @@
+{
+  "flow": "inspect",
+  "decision_points": {
+    "DP-1": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-2": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-3": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-4": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-5": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-6": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-7": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-8": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-9": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-10": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-12": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-13": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-14": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-15": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-16": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-17": {
+      "accepted": false,
+      "override": "Plain prose, one sentence that names the top line metric or the aspect requested (\"The post runs 2,340 words across 5 sections, about 11 minutes to read.\"). The card carries the full metric table.",
+      "rationale": "There is no card."
+    },
+    "DP-18": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-19": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    }
+  },
+  "batch": 3,
+  "round": 1
+}

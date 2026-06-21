@@ -1,0 +1,26 @@
+---
+title: "Energy Needs of Datacenters"
+---
+
+## Hungry for Power
+Global data traffic has roughly doubled every few years, and the physical infrastructure behind it has had to keep pace. Unlike most industrial machines, datacenter servers don't really get a break. They run at or near full load around the clock, so their energy draw is constant rather than sporadic. AI and machine learning have pushed that even further: training and running models takes far more power per rack than ordinary web hosting, and facilities are routinely pulling more electricity per square foot than their original designs ever anticipated. More data density means more energy density, and that relationship builds on itself quickly. The biggest hyperscale operators now consume electricity at the scale of small cities, which means where a datacenter gets built and how it gets powered has a real impact on national grids, water supplies, and carbon targets. At that scale, this isn't just an operational detail for the companies involved; it's a genuine national infrastructure question.
+
+## How Energy Flows Through a Datacenter
+Power enters as high-voltage electricity, passing through substations and uninterruptible power supply (UPS) systems before reaching servers. Reliability adds significant overhead; datacenters run redundant A/B power feeds so a single failure cannot cause a shutdown, though keeping these backup paths live draws constant power. 
+
+UPS systems traditionally use lead-acid or lithium-ion batteries to bridge the ten-to-thirty-second gap between a grid outage and backup generator activation. Modern facilities are also experimenting with flywheel-based UPS units for near-instant discharge. While diesel or natural-gas generators remain the final backstop, newer builds are pairing them with hydrogen fuel cells to ensure reliable, zero-emission backup power.
+
+## The Biggest Hidden Cost
+Of all the energy a datacenter uses beyond its IT equipment, cooling takes the biggest share, typically somewhere between 30 and 40 percent of total consumption.
+
+### Air Cooling
+For a long time, the industry leaned on air: cold air pushed through raised floor plenums, hot/cold aisle layouts, and air conditioning units cycling warm exhaust back into the loop. It's a well-understood approach and relatively cheap to build, but it runs into real physical limits as rack densities go up. Air simply can't carry heat away fast enough to keep pace with modern AI hardware. Despite those limits, air cooling still dominates the installed base — industry surveys consistently put it at roughly 70–80% of operational datacenters worldwide, largely because the enormous legacy footprint is expensive to retrofit.
+
+### Liquid Cooling
+The heat that modern AI hardware throws off is more than air can handle, so liquid cooling has shifted from a niche experiment to the mainstream. Direct-to-chip systems run coolant right over the processors, while immersion cooling takes it further by submerging entire servers in dielectric fluid. Either way, the thermal efficiency is significantly better than anything air-based can achieve. Adoption is accelerating sharply: analyst estimates place liquid cooling at around 20–25% of new datacenter builds in 2024, a figure that is expected to exceed 50% by the end of the decade as AI workloads with rack densities above 30 kW become the norm rather than the exception.
+
+### Other Techniques
+Water Usage Effectiveness has joined PUE as a key metric to watch, tracking how much water evaporative cooling towers actually go through. A lot of operators are now picking datacenter locations with an eye on climate and water access, treating geography as part of the cooling strategy from the start. Where conditions allow, free-cooling approaches like drawing in cold outside air or using a nearby body of water as a heat sink can cut mechanical cooling loads considerably. Free-cooling and hybrid natural approaches remain relatively niche — currently deployed in perhaps 10–15% of facilities globally — but uptake is rising in Nordic countries and other cool-climate regions where the economics are most favorable.
+
+## The Road to Net-Zero Operations
+The sheer scale of datacenter energy use has caught the attention of policymakers and the public, and the industry's biggest players have responded with real commitments. Google, Microsoft, and Amazon have all set net-zero targets somewhere between 2030 and 2040, backed by on-site renewables and Power Purchase Agreements that bring new solar and wind capacity onto the grid. Those are meaningful pledges, though running on clean power continuously, rather than simply purchasing renewable certificates, remains a genuine challenge. Carbon-aware scheduling helps by routing flexible jobs to cleaner grid windows, and waste heat recovery turns server heat into something useful, piping it into district heating or nearby industrial processes. EU sustainable finance taxonomy rules are adding further momentum, pushing mandatory energy efficiency reporting into the mainstream and giving investors a much clearer picture of how responsibly these facilities are actually run.

@@ -1,0 +1,136 @@
+{
+  "flow": "find",
+  "parent_intent": "Research",
+  "batch": 3,
+  "round": 1,
+  "version": 1,
+  "notes": "Find is DETERMINISTIC per Theme 1 + Phase 2: the skill was deleted, and the policy calls `find_posts` inline with query expansion. Skill-authoring DPs surface as N/A. Find writes `scratchpad['find']` so downstream research flows (audit, polish-informed) can pick up related posts without re-running the search.",
+  "decision_points": {
+    "DP-1": {
+      "section": "Prompt content",
+      "title": "Flow-specific must/never rules",
+      "question": "0\u20133 inviolable rules unique to this flow.",
+      "proposal": "N/A. Find has no skill. The search contract is enforced in code: query expansion runs first, results are deduplicated by `post_id`, and the count limit is applied last.",
+      "reasoning": "Deterministic flow; the invariants live in the policy code."
+    },
+    "DP-2": {
+      "section": "Prompt content",
+      "title": "Skill intro paragraph",
+      "question": "The framing that opens the skill file.",
+      "proposal": "N/A. No skill file.",
+      "reasoning": "Skill deleted in Theme 1."
+    },
+    "DP-3": {
+      "section": "Prompt content",
+      "title": "Process steps",
+      "question": "Numbered happy-path sequence for `## Process`.",
+      "proposal": "N/A at the skill level. Policy sequence: (1) read `query` and `count`; (2) expand the query into a set of semantically similar terms; (3) call `find_posts` for each expanded term and deduplicate by `post_id`; (4) apply the count limit; (5) write `scratchpad['find']`; (6) build the frame (card if one result, list if multiple, no block if zero).",
+      "reasoning": "Deterministic. The expand-then-search pattern is the notable part and lives in `_expand_query`."
+    },
+    "DP-4": {
+      "section": "Prompt content",
+      "title": "Tool usage hints",
+      "question": "Per task-specific tool, flow-specific usage hints.",
+      "proposal": "N/A. Tools invoked by policy: `find_posts` once per expanded query term, `read_metadata` only in the single-result branch to fetch a full card.",
+      "reasoning": "No skill to guide; dispatch is deterministic."
+    },
+    "DP-5": {
+      "section": "Starter",
+      "title": "Task framing sentence",
+      "question": "The imperative sentence inside `<task>`.",
+      "proposal": "N/A.",
+      "reasoning": "No skill turn."
+    },
+    "DP-6": {
+      "section": "Starter",
+      "title": "Content tag choice",
+      "question": "Which content tag wraps the preloaded data.",
+      "proposal": "N/A.",
+      "reasoning": "No starter."
+    },
+    "DP-7": {
+      "section": "Starter",
+      "title": "Preload content",
+      "question": "What goes inside the content tag.",
+      "proposal": "N/A.",
+      "reasoning": "No starter."
+    },
+    "DP-8": {
+      "section": "Few-shot",
+      "title": "Scenario coverage",
+      "question": "Which user-phrasing paths to exemplify.",
+      "proposal": "N/A. NLU handles query extraction from utterances (\"posts about data augmentation\" \u2192 `query='data augmentation'`); those exemplars live in the NLU prompts.",
+      "reasoning": "Few-shot is a skill concern."
+    },
+    "DP-9": {
+      "section": "Few-shot",
+      "title": "Example content.",
+      "question": "Concrete post topic, section names, and content.",
+      "proposal": "N/A.",
+      "reasoning": "No skill examples."
+    },
+    "DP-10": {
+      "section": "Error handling",
+      "title": "Likely errors and ambiguities.",
+      "question": "Realistic error and ambiguity set for this flow.",
+      "proposal": "Errors: `find_posts` returns `_success=False` on every expanded query term, leaving zero results and no partial data; policy emits `execution_error(violation='tool_error', failed_tool='find_posts')`. Ambiguities: the current policy accepts an empty query and returns all posts; no ambiguity is declared on missing query.",
+      "reasoning": "Find is lenient by design. A real tool failure is the only case worth surfacing."
+    },
+    "DP-12": {
+      "section": "Error handling",
+      "title": "Retry strategy per tool.",
+      "question": "Per tool, retry count on transient failure.",
+      "proposal": "`find_posts` per query term: retry once, then drop that term from the result set and continue with the others. If every term fails after retries, emit `execution_error(violation='tool_error', failed_tool='find_posts')`. `read_metadata` in the single-result branch: no retry; if it fails, downgrade to the list-of-one shape and proceed.",
+      "reasoning": "Query expansion gives find natural redundancy; per-term retry keeps partial results usable."
+    },
+    "DP-13": {
+      "section": "Policy logic",
+      "title": "Optional slot defaults.",
+      "question": "For each optional slot, does it have a sensible default?",
+      "proposal": "`count` (LevelSlot, optional): default to 10. Enough to surface useful related posts without paging; the user can override for smaller or larger result sets. Policy commits with the default and does not ask.",
+      "reasoning": "Ten is the usual page size for semantic-search results and avoids a clarification turn."
+    },
+    "DP-14": {
+      "section": "Policy logic",
+      "title": "Flow transitions (stack-on and fallback).",
+      "question": "When does this flow hand off to another flow?",
+      "proposal": "None. Find produces results for later consumption and does not transition.",
+      "reasoning": "Find is a producer. Downstream audit and polish-informed read from `scratchpad['find']` on their own turns."
+    },
+    "DP-15": {
+      "section": "Policy logic",
+      "title": "Scratchpad contract.",
+      "question": "Does this flow write or read scratchpad?",
+      "proposal": "Write-only producer. Policy writes `scratchpad['find'] = {version: 1, turn_number: <turn>, used_count: 0, query: <original>, expanded_terms: [...], results: [{post_id, title, excerpt, publish_date, score}], count_limit}` after the search lands. Downstream consumer is audit (which uses the results as reference posts) and polish-informed (which pulls in tone examples). Each consumer increments `used_count`.",
+      "reasoning": "Find is the search-results producer. Keeping `expanded_terms` in the payload lets consumers understand the semantic reach of the search without re-running expansion."
+    },
+    "DP-16": {
+      "section": "Policy logic",
+      "title": "Frame output spec.",
+      "question": "Metadata keys and block types.",
+      "proposal": "Zero results: `origin='find'`, `metadata={query, hit_count: 0}`, blocks empty, thoughts = one-sentence no-hits message. One result: `origin='find'`, `metadata={post_id, query, hit_count: 1}`, blocks = 1 `card` block with full post content. Multiple results: `origin='find'`, `metadata={query, hit_count, expanded_ids: [...]}`, blocks = 1 `list` block with per-result summary rows. Error: `origin='find'`, `metadata={'violation': 'tool_error', 'failed_tool': 'find_posts'}`, blocks empty.",
+      "reasoning": "Preserves the three-shape behavior already in the policy. `expanded_ids` is included only when the result count is low enough for RES to render semantic-reach hints."
+    },
+    "DP-17": {
+      "section": "Policy logic",
+      "title": "Final reply shape.",
+      "question": "Plain prose, structured JSON, or card-only?",
+      "proposal": "Plain prose, one sentence naming the hit count and pointing at the card or list (\"Found 4 posts matching 'data augmentation'.\"). The block carries the detail.",
+      "reasoning": "Matches persona."
+    },
+    "DP-18": {
+      "section": "Performance",
+      "title": "Model tier override.",
+      "question": "Opus over Sonnet default?",
+      "proposal": "N/A for the main path; query expansion (inside `_expand_query`) is a one-shot LLM call that uses Haiku or Sonnet. Opus is overkill for term synonyms.",
+      "reasoning": "The main policy path is deterministic; the one LLM touch point is the query-expansion helper, and its output is a short term list."
+    },
+    "DP-19": {
+      "section": "Performance",
+      "title": "max_response_tokens override.",
+      "question": "Tighten below 4096 default?",
+      "proposal": "1024 for the query-expansion call. The policy itself does not generate prose.",
+      "reasoning": "Expanded-term lists are tens of tokens. Cap low to keep latency down."
+    }
+  }
+}

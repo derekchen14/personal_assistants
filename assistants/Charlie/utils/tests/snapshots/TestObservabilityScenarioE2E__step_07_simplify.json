@@ -1,0 +1,63 @@
+{
+  "artifact": {
+    "block_data_keys": [
+      [
+        "content",
+        "post_id",
+        "status",
+        "title"
+      ]
+    ],
+    "block_panels": [
+      "bottom"
+    ],
+    "block_types": [
+      "card"
+    ],
+    "entity": null,
+    "has_code": false,
+    "has_thoughts": true,
+    "missing": null,
+    "origin": "simplify",
+    "parts_keys": [],
+    "reason": null,
+    "violation": null
+  },
+  "flow_stack": [],
+  "state": {
+    "active_post_set": true,
+    "flow_dax": "{7BD}",
+    "has_issues": false,
+    "has_plan": false,
+    "keep_going": false,
+    "natural_birth": true,
+    "pred_intent": "Revise"
+  },
+  "tool_log": [
+    {
+      "success": true,
+      "tool": "read_metadata"
+    },
+    {
+      "success": true,
+      "tool": "read_metadata"
+    },
+    {
+      "success": true,
+      "tool": "read_metadata"
+    },
+    {
+      "success": true,
+      "tool": "read_section"
+    },
+    {
+      "success": true,
+      "tool": "revise_content"
+    },
+    {
+      "success": true,
+      "tool": "read_metadata"
+    }
+  ],
+  "top_flow": {}
+}

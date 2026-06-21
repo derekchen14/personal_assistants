@@ -1,0 +1,143 @@
+{
+  "flow": "create",
+  "parent_intent": "Draft",
+  "batch": 1,
+  "round": 1,
+  "version": 1,
+  "notes": "Create is DETERMINISTIC \u2014 per Part 2 Phase 2, its skill was deleted and the policy calls `create_post` directly (no llm_execute). Skill-authoring DPs (DP-2, DP-3, DP-4, DP-5, DP-6, DP-7, DP-8, DP-9) surface as N/A. The surviving decisions are guard conditions, duplicate-confirmation, slot defaults, retry, frame shape, and reply.",
+  "decision_points": {
+    "DP-1": {
+      "section": "Prompt content",
+      "title": "Flow-specific must/never rules",
+      "question": "0\u20133 inviolable rules unique to this flow, pinned in the skill template.",
+      "proposal": "N/A \u2014 deterministic flow, no skill. The only invariant is enforced in code: `type` slot value must be one of `['draft', 'note']` before `create_post` is called. This is already guaranteed by CategorySlot validation.",
+      "reasoning": "With no skill, there is no template to pin rules into. The must-rule exists as a slot-level constraint, not a prompt rule."
+    },
+    "DP-2": {
+      "section": "Prompt content",
+      "title": "Skill intro paragraph",
+      "question": "The one- or two-sentence framing that opens the skill file.",
+      "proposal": "N/A \u2014 no skill file.",
+      "reasoning": "Skill deleted in Theme 1."
+    },
+    "DP-3": {
+      "section": "Prompt content",
+      "title": "Process steps",
+      "question": "Numbered happy-path sequence for `## Process`.",
+      "proposal": "N/A at the skill level. Policy process is fixed: (1) guard slots filled, (2) call `create_post`, (3) branch on `_success` / `_error=='duplicate'` / other error.",
+      "reasoning": "Deterministic code flow; no LLM reasoning to scaffold."
+    },
+    "DP-4": {
+      "section": "Prompt content",
+      "title": "Tool usage hints",
+      "question": "Per task-specific tool, 1\u20132 flow-specific usage hints.",
+      "proposal": "N/A \u2014 no skill. Tool is invoked directly by policy with params `{title, type, topic?}`.",
+      "reasoning": "Deterministic call; no LLM picks the tool."
+    },
+    "DP-5": {
+      "section": "Starter",
+      "title": "Task framing sentence",
+      "question": "The imperative sentence inside `<task>`.",
+      "proposal": "N/A \u2014 no starter because no skill is invoked.",
+      "reasoning": "Deterministic flows skip the prompt layer entirely."
+    },
+    "DP-6": {
+      "section": "Starter",
+      "title": "Content tag choice",
+      "question": "Which of `<post_content>`, `<section_content>`, `<line_snippet>`, `<channel_content>`.",
+      "proposal": "N/A \u2014 no user message is constructed because there is no LLM turn.",
+      "reasoning": "Deterministic flows don't build starter messages."
+    },
+    "DP-7": {
+      "section": "Starter",
+      "title": "Preload content",
+      "question": "What goes inside the content tag.",
+      "proposal": "N/A.",
+      "reasoning": "No starter, no preload."
+    },
+    "DP-8": {
+      "section": "Few-shot",
+      "title": "Scenario coverage",
+      "question": "Which user-phrasing paths to exemplify.",
+      "proposal": "N/A \u2014 no skill, no few-shot examples. NLU is what needs exemplars (title + type extraction), and those live in `prompts/nlu/draft_slots.py`, not here.",
+      "reasoning": "Few-shot is a skill-authoring concern. The NLU side has its own exemplar budget."
+    },
+    "DP-9": {
+      "section": "Few-shot",
+      "title": "Example content (topic + post state)",
+      "question": "Concrete post topic, section names, and content used in few-shot examples.",
+      "proposal": "N/A \u2014 no skill examples.",
+      "reasoning": "No skill."
+    },
+    "DP-10": {
+      "section": "Error handling",
+      "title": "Likely errors and ambiguities encountered",
+      "question": "Realistic (violation \u00d7 recovery) and (ambiguity level \u00d7 trigger) set for this flow.",
+      "proposal": "Errors: (a) `create_post` returns `_success=False` with no duplicate flag \u2192 `execution_error('tool_error', failed_tool='create_post')`. Ambiguities: (b) `title` slot missing \u2192 `handle_ambiguity('specific', missing_slot='title')`; (c) `type` slot missing \u2192 `handle_ambiguity('specific', missing_slot='type')`; (d) both filled but `create_post` returns `_error='duplicate'` \u2192 `handle_ambiguity('confirmation', metadata={'duplicate_title': <title>})` with a confirm/cancel block.",
+      "reasoning": "Duplicate-title is the confirmation-level case (per recent AD-6 reclassification in Phase 1). Slot-missing is specific. Pure tool failure is an error frame."
+    },
+    "DP-11": {
+      "section": "Error handling",
+      "title": "Fallback flow",
+      "question": "Does another flow take over on unworkable state?",
+      "proposal": "No fallback. Create either succeeds, asks for confirmation on duplicate, or emits an error frame.",
+      "reasoning": "Nothing upstream of create makes sense \u2014 it IS the start of the draft lifecycle."
+    },
+    "DP-12": {
+      "section": "Error handling",
+      "title": "Retry strategy per tool",
+      "question": "Per tool, retry count on transient failure and what to do after max retries.",
+      "proposal": "`create_post` \u2192 no retry. Failure modes are duplicate (handled as confirmation ambiguity) or hard error (surface immediately as `tool_error`). Retrying a create would either double-create or re-hit the same duplicate check.",
+      "reasoning": "Retry is appropriate for transient LLM / network flakes; `create_post` is a deterministic DB insert that either takes or doesn't."
+    },
+    "DP-13": {
+      "section": "Policy logic",
+      "title": "Optional slot defaults (AD-8)",
+      "question": "For each optional slot, does it have a sensible default?",
+      "proposal": "`topic` (ExactSlot, optional): no default \u2014 pass to `create_post` only if filled; otherwise the post is created without a topic. Per AD-8, this is NOT an ambiguity trigger \u2014 the policy commits without asking. `type` and `title` are required; no defaults considered.",
+      "reasoning": "`topic` is genuinely nice-to-have metadata; asking the user for it would be friction. This is a clean AD-8 default-with-commit case."
+    },
+    "DP-14": {
+      "section": "Policy logic",
+      "title": "Stack-on triggers",
+      "question": "Under what condition does this flow push another flow onto the stack?",
+      "proposal": "None. Create is a leaf flow \u2014 it does not prerequisite another flow.",
+      "reasoning": "There is no flow that must run before create; create is itself the entry point."
+    },
+    "DP-15": {
+      "section": "Policy logic",
+      "title": "Scratchpad contract",
+      "question": "Does this flow write or read scratchpad?",
+      "proposal": "No scratchpad interaction. Create's output (the new `post_id`) is written to `state.active_post`, not the scratchpad.",
+      "reasoning": "The active-post sync is a one-turn handoff handled by DialogueState, not cross-turn findings channel."
+    },
+    "DP-16": {
+      "section": "Policy logic",
+      "title": "Frame output spec (metadata keys + block types)",
+      "question": "What metadata keys does the `DisplayFrame` carry, and what block types go in `frame.blocks`?",
+      "proposal": "Success: `origin='create'`; `metadata={post_id, title, type}`; blocks = 1 `card` block with `{post_id, title, status}`. Duplicate confirmation: `origin='create'`; `metadata={'duplicate_title': <title>}`; blocks = 1 `confirmation` block with `{prompt, confirm_label, cancel_label}`. Error: `origin='create'`; `metadata={'violation': 'tool_error', 'failed_tool': 'create_post'}`; blocks empty.",
+      "reasoning": "Preserves the current behavior in draft.py:203\u2013220 while aligning the error path to AD-6 metadata vocab (was `origin='error'` + `thoughts=msg`; now `origin='create'` + `metadata['violation']`)."
+    },
+    "DP-17": {
+      "section": "Policy logic",
+      "title": "Final reply shape",
+      "question": "Plain prose, structured JSON, or card-only?",
+      "proposal": "Plain prose, 1 sentence: \"Created a new draft titled '<title>' (post_id <id_prefix>).\" RES renders this via the draft-intent template; the card in blocks carries the structured data.",
+      "reasoning": "Matches the existing `modules/templates/draft.py` line-6 render. Keeps text reply persona-compliant at 1 sentence."
+    },
+    "DP-18": {
+      "section": "Performance",
+      "title": "Model tier override",
+      "question": "Does this flow benefit from Opus over Sonnet default?",
+      "proposal": "N/A \u2014 no LLM call. If the skill ever comes back (e.g., for title auto-formatting), Haiku would be appropriate (deterministic classification tier).",
+      "reasoning": "Deterministic flows skip model-tier selection entirely."
+    },
+    "DP-19": {
+      "section": "Performance",
+      "title": "max_response_tokens override",
+      "question": "Tighten below the 4096 default?",
+      "proposal": "N/A \u2014 no LLM call.",
+      "reasoning": "No generation turn."
+    }
+  }
+}

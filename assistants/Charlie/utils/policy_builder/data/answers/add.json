@@ -1,0 +1,97 @@
+{
+  "flow": "add",
+  "decision_points": {
+    "DP-1": {
+      "accepted": false,
+      "override": "No special rules needed.",
+      "rationale": "1) It's not possible to touch non-existing sections of the post?\n2) Section grounding is already handled by the policy\n3) That's not what 'additions' is for.  Additions is the list of changes to make."
+    },
+    "DP-2": {
+      "accepted": false,
+      "override": "This skill adds in-depth content to existing sections of a blog post. When the content is in outline form, the additional content is be sub-section, or sub-bullets that drill deeper into a section or bullet point. When the content is in prose, the additional content could be more in-depth analysis, additional examples to illustrate a point, or an image placed at a specific position within a section.",
+      "rationale": ""
+    },
+    "DP-3": {
+      "accepted": false,
+      "override": "The difference between points and additions is that 'additions' provides more targeted guidance, so prefer 'additions' over 'points'. The changes from 'additions' does not have to go across multiple sections. If all keys are in one section, they we only need to edit that one section.",
+      "rationale": ""
+    },
+    "DP-4": {
+      "accepted": false,
+      "override": "## Tools\n\n### Task-specific tools\n\n- `read_section(post_id, sec_id)` \u2014 required before every insertion. The skill should call this once per target section and use the returned content to decide placement of the new material. It is a fallback helper here, not a primary tool \u2014 the primary work is insertion.\n\n- `insert_media(post_id, sec_id, image_type, description, position)` \u2014 the media equivalent for images. `image_type` is typically `hero` or `figure`. `description` is what the image shows; it also serves as alt text.\n\n- `insert_section(post_id, after_sec, ...)` \u2014 use ONLY when the user explicitly asked for a brand-new section AND the policy has routed it here. The `after_sec` parameter anchors the new section's position; pass the id of the section that should come before it.\n\n### General tools\n\n- `execution_error(violation, message)` \u2014 for hard failures after retries are exhausted or for malformed input.\n- `handle_ambiguity(level, metadata)` \u2014 for cases where the user's intent is unclear or a named slot value is vague.\n- `manage_memory(action, key, value)` \u2014 read or write session scratchpad and user preferences.\n- `read_flow_stack(action)` \u2014 yes, this may be used to see what other edits have been made",
+      "rationale": "We should replace `insert_content()` with `revise_content()`. Part of our exercise is doing a hard look at all the tools. We seem to have overlapping tools are the moment. I have a feeling `insert_content()` is not needed at all."
+    },
+    "DP-5": {
+      "accepted": false,
+      "override": "",
+      "rationale": "Oh my god, did you directly violate UA-13 from `decision_points.md`?!!"
+    },
+    "DP-6": {
+      "accepted": true,
+      "override": null,
+      "rationale": "Your reasoning is wrong. The reason we are dealing with the whole post is because AddFlow typically operates on outlines."
+    },
+    "DP-7": {
+      "accepted": true,
+      "override": null,
+      "rationale": "This per-section preview is also useful as a fallback for 'Rework' when the scope is whole post. This allows us to expand beyond just a single section."
+    },
+    "DP-8": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-9": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-10": {
+      "accepted": false,
+      "override": "Errors (policy emits error frame after skill signals):\n- (a) `insert_content` or `insert_media` fails twice \u2014 `execution_error(violation='failed_to_save', failed_tool=<name>)`.\n- (b) The preload in `<resolved_details>` is malformed (e.g., no `section_ids` list at all) \u2014 `execution_error(violation='invalid_input')` without saving.\n\nAmbiguities (skill calls `handle_ambiguity`):\n- (c) A named section does not exist on the post \u2014 `specific`, `metadata={'missing_reference': <section_name>}`.\n- (d) Any filled slot value is vague enough that placing the addition would be a guess (e.g., `points` says \"add something about timing\" without specifying what) \u2014 `confirmation`, `metadata={'vague_slot': <slot_name>}`. Vagueness is a confirmation-level issue for any slot, not a slot-specific specific-level issue.\n\nThe most meaningful fallbacks I can see is Refine and Rework.",
+      "rationale": "You mentioned slots again! Very bad."
+    },
+    "DP-12": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-13": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-14": {
+      "accepted": false,
+      "override": "I don't think Add would get confused with Outline.",
+      "rationale": "Flow transitions should consider the edge flows described in the `ontology.py`. Even then, the edge flows are very liberal (meaning we add a flow even if they are only remotely connected). We want flow transitions mentioned in the policy and policy to be conservative (only add the flow where there is common confusion)\n\nWe assume that flow detection has done a decent job filtering away flows that are very different, so the policy in PEX doesn't need to worry about edge flows that are too far away."
+    },
+    "DP-15": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-16": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-17": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-18": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-19": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    }
+  },
+  "batch": 2,
+  "round": 1
+}

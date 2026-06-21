@@ -1,0 +1,108 @@
+{
+  "flow": "outline",
+  "decision_points": {
+    "DP-13": {
+      "accepted": false,
+      "override": "`depth` (LevelSlot, optional, threshold=1): default to 2 (subtitle with bullets). Per AD-8, commit with default and don't ask. `topic`, `sections`, `proposals`: elective (not optional) \u2014 the elective rule requires at least one and determines propose vs. direct mode, so no default applies.",
+      "rationale": ""
+    },
+    "DP-14": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-15": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-16": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-17": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-1": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-2": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-3": {
+      "accepted": false,
+      "override": {
+        "propose": "1. Read `stage='propose'` from `<resolved_details>`.\n   * use the <resolved_details> to see the post metadata\n   * do not call `read_metadata()` unless absolutely necessary\n2. If the topic is filled and the topic sounds generic, optionally call `find_posts(query=<topic>)` at most ONCE to scan for existing posts on the topic (vary angles against what's already been written). Calling this tool is highly unlikely. Do NOT use in most cases.\n3. Emit exactly 3 outline options as markdown. Use the strict format `### Option N` + `## <section title>` + 1\u20132 sentence description per section. 4\u20137 sections per option. No trailing commentary.\n4. DO NOT call `generate_outline`. End the turn with text.",
+        "direct": "1. Read `stage='direct'` from `<resolved_details>`.\n2. Read the section list from `<resolved_details>` (either user-named sections or the chosen option's sections).\n3. Draft bullets per section honoring the `depth` slot: depth=1 \u2192 flat bullets; depth=2 \u2192 `### Sub-section` + bullets; depth=3 \u2192 `### Sub-section` + `- bullet` + `  * sub-bullet`.\n4. Call `generate_outline(post_id, content=<markdown outline>)` to save. End the turn."
+      },
+      "rationale": "Do not mention D-01 or UA-4, or any other acronym in the code. These are concepts for planning, not for the code.\n\nWe should be sure that the post metadata is indeed provided in `<resolved_details>` so we aren't gaslighting the LLM"
+    },
+    "DP-4": {
+      "accepted": false,
+      "override": "- `generate_outline(post_id, content)` \u2014 direct mode only, exactly once at the end of the turn. Pass the full markdown outline; the tool replaces any existing outline.\n- `find_posts(query)` \u2014 optional in BOTH modes, but AT MOST ONCE. Use to vary angles (propose) or to ground against prior work (direct). If it returns nothing, proceed without it.",
+      "rationale": "If a tool should not be called, then we should just not include it in the tool usage hints."
+    },
+    "DP-5": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-6": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-7": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-8": {
+      "accepted": false,
+      "override": "(a) propose-mode on a fresh post with a topic and no existing outline \u2014 3 options with distinct angles; (b) direct-mode with user-named sections (Motivation / Architecture / Evaluation) and no depth provided (default to 2); (c) direct-mode via propose-then-pick: `proposals` slot filled with user's choice, depth=2 with sub-sections.",
+      "rationale": ""
+    },
+    "DP-9": {
+      "accepted": false,
+      "override": "Topic: \"User Simulators for training RL agents\" (post_id=abcd0123). Example sections: The Need for Data / Architectures of the Past / Recent Innovations / Generating Rewards. Eval uses the same topic but different sections (Motivation / Process / Ideas / Takeaways) \u2014 keep divergence to avoid contamination. Propose-mode example shows 3 distinct angle presentations: (1) academic survey, (2) engineering walkthrough, (3) practitioner checklist.",
+      "rationale": "We should make our few-shot examples much richer. I made the example sections more colorful so we are dealing with something that feels real."
+    },
+    "DP-10": {
+      "accepted": false,
+      "override": "Errors: (a) LLM called `generate_outline` in propose mode \u2192 policy catches (line 86) and reclassifies as direct success, no user-visible error. (b) LLM emitted fewer than 3 options or malformed markdown in propose \u2192 `parse_failure` error frame (candidate parsing fails in policy line 92). (c) `generate_outline` fails in direct mode after 1 retry \u2192 `tool_error` frame. Ambiguities: (e) `topic` not extractable from conversation AND no `sections` \u2192 `specific`, `missing_slot='topic'` (propose path only; direct needs sections already).",
+      "rationale": "I removed 'source' slot not filled. This is checked in the policy before we reach the skill. The skill does not need to handle that type of 'partial' ambiguity."
+    },
+    "DP-11": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-12": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-18": {
+      "accepted": true,
+      "override": null,
+      "rationale": ""
+    },
+    "DP-19": {
+      "accepted": false,
+      "override": {
+        "propose": "4096 \u2014 3 options \u00d7 ~7 sections \u00d7 2 sentences \u2248 2000 tokens of markdown; headroom for longer angle descriptions.",
+        "direct": "2048 \u2014 matches refine; outline size is bounded by ~20 sections."
+      },
+      "rationale": "We should keep all token limits to powers of 2"
+    }
+  },
+  "batch": 1,
+  "round": 1
+}

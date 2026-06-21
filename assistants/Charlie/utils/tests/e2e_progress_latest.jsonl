@@ -1,0 +1,2 @@
+{"ts": "2026-06-13T19:18:32", "scenario": "TestObservabilityScenarioE2E", "step": 1, "flow": "create", "duration_sec": 1.4847002080641687, "l1_pass": true, "l2_pass": true, "l3_pass": true}
+{"ts": "2026-06-13T19:18:37", "scenario": "TestObservabilityScenarioE2E", "step": 2, "flow": "outline", "duration_sec": 5.291804916923866, "l1_pass": true, "l2_pass": true, "l3_pass": true}
