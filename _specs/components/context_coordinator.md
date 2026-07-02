@@ -53,6 +53,23 @@ CC also tracks `completed_flows` — a list of flows that finished during the cu
 - **`compile_history(turns, keep_system)`**: Primary retrieval method. Returns the last N turns of conversation history. When `turns` is small (≤ 7), reads from the fast-access `recent` window. For larger lookbacks, falls back to scanning the full history. `keep_system` controls whether system turns are included (default: false for prompts, true for debugging).
 - **Checkpoints**: Save full session state for debugging, replay, and long-term resumption (see below)
 
+## Compaction
+
+When the message stream grows past the configured threshold, CC compacts the middle: prune old tool outputs,
+protect the head and the recent tail, and summarize the middle on a cheap auxiliary model. The outcome is
+recorded **two ways, treated differently**:
+
+- **Summary handoff — a `user` message.** The summary enters the running stream as a `user` message
+  (`SUMMARY_PREFIX … END_OF_SUMMARY`) that replaces the summarized middle. This is the **vehicle**: it feeds
+  the next prompt, and a later compaction folds it into the next summary (`previous_summary`).
+- **Diagnostic event — a `system` turn.** The compaction event (tokens compressed, tool results pruned) is a
+  **system turn** — a diagnostic, excluded from user-facing history (`compile_history` `keep_system=false`).
+  It is not the summary vehicle. (Hugo logs this via `save_checkpoint('compression')` today; align it to a
+  system turn.)
+
+The end-of-session **checkpoints** below are a separate, full-session developer snapshot — unrelated to
+per-compaction summary placement.
+
 ## Checkpoints
 
 A checkpoint is a developer-facing snapshot of a full conversation session. It bundles:

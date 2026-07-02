@@ -1,0 +1,168 @@
+{
+  "convo_id": "B03.C13",
+  "persona": "P: neutral + plain",
+  "use_case": "U: plan -> find -> summarize -> compare",
+  "topic": "T: LLM Evals (compare frameworks)",
+  "title": "Choosing an LLM Eval Framework",
+  "available_data": {
+    "posts": [
+      "Getting Started with LLM Evals"
+    ],
+    "notes": [
+      "DeepEval first impressions",
+      "Promptfoo setup notes"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "On eval frameworks: pull together what we have, walk me through one, then weigh the top contenders.",
+      "labels": {
+        "intent": "Plan",
+        "flow": "plan",
+        "dax": "{29D}"
+      },
+      "note": "Plan turn. The agent decomposes the broad research request into find (gather sources), summarize (get up to speed on one), then compare (weigh the contenders). No single flow/dax; intent is Plan and execution unfolds over the next user turns.",
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Sounds good. Plan: I'll find everything we have on eval frameworks, summarize one to get you grounded, then compare the top two. Starting with sources."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "What have I got on eval frameworks?",
+      "labels": {
+        "intent": "Research",
+        "flow": "find",
+        "dax": "{001}"
+      },
+      "slots": {
+        "query": "LLM eval frameworks"
+      },
+      "expected_tools": [
+        "find_posts"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Found 3: a post 'Getting Started with LLM Evals' plus two notes, 'DeepEval first impressions' and 'Promptfoo setup notes'."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Just the gist of the DeepEval note, and did that Promptfoo post ever ship?",
+      "labels": {
+        "intent": "Research",
+        "flow": "summarize",
+        "dax": "{19A}"
+      },
+      "slots": {
+        "source": {
+          "note": "DeepEval first impressions"
+        }
+      },
+      "expected_tools": [
+        "summarize_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "That Promptfoo one is still a draft. In short, DeepEval is a pytest-style harness. Metrics like faithfulness and relevancy run as assertions, CI hookup is easy, and it's lighter on dataset management."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "So where do DeepEval and Promptfoo differ?",
+      "labels": {
+        "intent": "Research",
+        "flow": "compare",
+        "dax": "{18A}"
+      },
+      "slots": {
+        "source": [
+          {
+            "note": "DeepEval first impressions"
+          },
+          {
+            "note": "Promptfoo setup notes"
+          }
+        ]
+      },
+      "expected_tools": [
+        "compare_style"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B03",
+  "flagged": false,
+  "generation": {
+    "batch": "B03",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=LLM Evals (compare frameworks) | 7 turns | neutral + plain | arc=planning | use_case=plan -> find -> summarize -> compare | converted from P1.U7.T1",
+    "draws": {
+      "topic": "LLM Evals (compare frameworks)",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "heterogeneous",
+        "handling": "straightforward"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "plan",
+          "find",
+          "summarize",
+          "compare"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": {
+          "turn": 5,
+          "trigger": "adjacent_worry"
+        },
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

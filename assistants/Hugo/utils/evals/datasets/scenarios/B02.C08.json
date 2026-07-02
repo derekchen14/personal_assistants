@@ -1,0 +1,188 @@
+{
+  "convo_id": "B02.C08",
+  "persona": "neutral/neutral/plain",
+  "use_case": "brainstorm\u2192outline\u2192compose\u2192write",
+  "topic": "Agent Evaluations",
+  "title": "You Don't Need an Eval Framework, Just 20 Examples",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "starting a piece on lightweight eval strategies. What angles would work?",
+      "labels": {
+        "intent": "Draft",
+        "flow": "brainstorm",
+        "dax": "{39D}"
+      },
+      "slots": {},
+      "expected_tools": [
+        "brainstorm_ideas"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Agent outputs 2-3 distinct angles (manual eval, sampling strategy, minimal tooling)",
+          "dimension": "useful"
+        },
+        {
+          "check": "Angles avoid naming real frameworks (Langfuse, Trulens, etc.)",
+          "dimension": "trustworthy"
+        }
+      ]
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "The burden of testing frameworks, why 20 hand-picked examples beat 1000 automated checks, and how to score them without tooling."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "structure this for me.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "topic": "minimal agent evaluation"
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Outline has 4+ sections (intro, the 20-example case, scoring without tooling, when to add tooling)",
+          "dimension": "useful"
+        },
+        {
+          "check": "Sections follow a narrative arc (problem, why examples work, how to execute, when to scale)",
+          "dimension": "trustworthy"
+        }
+      ]
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Outline ready. Intro sets the evaluation paradox, sections cover sampling philosophy, scoring criteria, and the crossover point where frameworks pay off."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "write it out.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "topic": "minimal agent evaluation"
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Draft reaches 800+ words across all sections",
+          "dimension": "persisted"
+        },
+        {
+          "check": "Prose includes at least one concrete example (e.g., 'a misclassified intent, a hallucinated fact')",
+          "dimension": "useful"
+        }
+      ]
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Complete draft. It walks through the cost-benefit logic, then contrasts manual scoring against framework overhead."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "the third section drags. polish it.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "topic": "minimal agent evaluation",
+        "section": "scoring criteria"
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Polish tightens sentence count in the section by 15-25% without cutting ideas",
+          "dimension": "persisted"
+        },
+        {
+          "check": "Flow improves between scoring steps (e.g., goes from 'step A, step B, step C' to 'first X, then Y builds on it, finally Z')",
+          "dimension": "trustworthy"
+        }
+      ]
+    }
+  ],
+  "batch": "B02",
+  "flagged": false,
+  "generation": {
+    "batch": "B02",
+    "seed": 20260701,
+    "writer_model": "claude-haiku-4-5",
+    "spec": "topic=Agent Evaluations \u00b7 7 turns \u00b7 P6 neutral/neutral/plain \u00b7 arc=straight_build \u00b7 use_case=brainstorm\u2192outline\u2192compose\u2192write \u00b7 noise=no \u00b7 verify=yes \u00b7 flagged=no",
+    "draws": {
+      "topic": "Agent Evaluations",
+      "title_source": "coined",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Draft",
+        "sequence": [
+          "brainstorm",
+          "outline",
+          "compose",
+          "write"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": true,
+      "flagged": false,
+      "writer_model": "claude-haiku-4-5",
+      "length": [
+        2,
+        1,
+        1,
+        2
+      ]
+    }
+  }
+}

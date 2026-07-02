@@ -1,0 +1,175 @@
+{
+  "convo_id": "B02.C01",
+  "persona": "P: neutral + neutral + hedged",
+  "use_case": "U: write -> audit -> cite -> release",
+  "topic": "T: Urban Vegetable Gardening",
+  "title": "Why Most Beginner Gardens Die in July",
+  "available_data": {
+    "posts": [
+      {
+        "id": "post_001",
+        "title": "Why Most Beginner Gardens Die in July",
+        "status": "draft",
+        "sections": [
+          "intro",
+          "the july slump",
+          "watering mistakes",
+          "heat stress signs",
+          "what to do instead"
+        ]
+      }
+    ]
+  },
+  "flagged": false,
+  "batch": "B02",
+  "generation": {
+    "batch": "B02",
+    "seed": 20260701,
+    "writer_model": "claude-sonnet-4-6",
+    "spec": "topic=Urban Vegetable Gardening \u00b7 7 turns \u00b7 neutral/neutral/hedged \u00b7 arc=straight_build \u00b7 use_case=write->audit->cite->release \u00b7 noise=none \u00b7 verify=no \u00b7 flagged=no",
+    "draws": {
+      "topic": "Urban Vegetable Gardening",
+      "title_source": "coined",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Publish",
+        "sequence": [
+          "write",
+          "audit",
+          "cite",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-sonnet-4-6",
+      "length": [
+        1,
+        2,
+        2,
+        2
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "The watering mistakes section could maybe use a cleaner opening, if you think the current one drags a bit?",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Why Most Beginner Gardens Die in July",
+          "sec": "watering mistakes"
+        }
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "The opening did run long before the first real point. Rewritten it to lead with the core problem: watering at noon when the soil can't hold it."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "That's better. Maybe a full pass to catch anything that reads like a bot wrote it?",
+      "labels": {
+        "intent": "Revise",
+        "flow": "audit",
+        "dax": "{13A}"
+      },
+      "slots": {
+        "source": {
+          "post": "Why Most Beginner Gardens Die in July"
+        }
+      },
+      "expected_tools": [
+        "editor_review"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Two spots flagged: the heat stress intro reads like a gardening FAQ, and the closing line is a bit advice-column. Rest sounds like you."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "We should probably back up the stat about July garden failures. Could you find something?",
+      "labels": {
+        "intent": "Publish",
+        "flow": "cite",
+        "dax": "{15B}"
+      },
+      "slots": {
+        "source": {
+          "post": "Why Most Beginner Gardens Die in July",
+          "snip": "July garden failure stat"
+        }
+      },
+      "expected_tools": [
+        "revise_content"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Found a 2022 National Gardening Association survey showing 34% of first-year garden plots are abandoned by August."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "That works. Publish it to the blog.",
+      "labels": {
+        "intent": "Publish",
+        "flow": "release",
+        "dax": "{004}"
+      },
+      "slots": {
+        "source": {
+          "post": "Why Most Beginner Gardens Die in July",
+          "chl": "blog"
+        }
+      },
+      "expected_tools": [
+        "release_post"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ]
+}

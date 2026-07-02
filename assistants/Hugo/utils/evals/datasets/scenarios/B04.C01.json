@@ -1,0 +1,164 @@
+{
+  "convo_id": "B04.C01",
+  "persona": "P: formal + blunt",
+  "use_case": "U: outline -> compose -> write -> audit",
+  "topic": "T: Observability",
+  "title": "Observability for LLM Apps",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "An observability-for-LLM-apps post I want reading like one piece, not loose sections bolted together.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Observability for LLM Apps"
+        },
+        "sections": [
+          "intro",
+          "traces vs logs",
+          "instrumenting",
+          "takeaways"
+        ]
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Here's the observability outline, four sections: 1) Why observability matters 2) Traces vs logs 3) Instrumenting with OpenTelemetry 4) Takeaways."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Is the observability post ready for full prose now?",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "Observability for LLM Apps"
+        }
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "I drafted all four sections. The instrumenting one came out thin."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "That instrumenting section, an OpenTelemetry example for it.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Observability for LLM Apps",
+          "sec": "Instrumenting with OpenTelemetry"
+        }
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "I expanded the instrumenting section with a span-instrumentation example."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "An editor sweep on observability, gaps flagged.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "audit",
+        "dax": "{13A}"
+      },
+      "slots": {
+        "source": {
+          "post": "Observability for LLM Apps"
+        }
+      },
+      "expected_tools": [
+        "editor_review"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B04",
+  "flagged": false,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Observability | 7 turns | formal + blunt | arc=straight_build | use_case=outline -> compose -> write -> audit | converted from P2.U1.T1",
+    "draws": {
+      "topic": "Observability",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "outline",
+          "compose",
+          "write",
+          "audit"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

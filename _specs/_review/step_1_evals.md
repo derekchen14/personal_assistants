@@ -15,7 +15,7 @@ This is a **living document**: the roadmap section carries status checkboxes tha
 Spec: `_specs/utilities/evaluation.md` (the eval ladder + regression-gate table — note the spec still uses the
 old letter codes; updating it to these names is a follow-up).
 Operational guide (currently **stale** — documents the dead NLU→PEX→RES pipeline):
-`assistants/Hugo/utils/tests/evaluation_guidelines.md` — rewrite is part of the Tests phase.
+`assistants/Hugo/utils/evals/evaluation_guidelines.md` — rewrite is part of the Tests phase.
 
 ---
 
@@ -38,16 +38,18 @@ Evaluations).
 
 ---
 
-## Decision log (locked with Derek, 2026-06-21)
+## Decision log
+
+All decisions, open or closed, live here (items 1–8 locked 2026-06-21; 9–13 added 2026-06-22).
 
 1. **Harness = pytest + custom CLI + Langfuse (Langfuse deferred).** Pytest owns the deterministic contracts +
    lints. A purpose-built CLI harness owns the accuracy tests, the traces, and the agent evals (scoring,
    baseline-diff gates, reports). **Langfuse** is the future observability/dashboard/run-history layer — a
-   **seam is designed now, integration is deferred**; we do simpler internal verification first.
+   **seam is designed now, integration is deferred** (hosted-vs-self-hosted + data-egress reviewed before
+   turn-on); we do simpler internal verification first.
 2. **Data = LLM-synthesized seed now; recorded traces as ground truth later.** The current
    traces/snapshots/oracle are **outdated** (dead 48-flow taxonomy + retired `detect_and_fill`) and are
-   **discarded**, not migrated. Bootstrap on LLM-synthesized seed data (hand-curated **anchor** set + synthesized
-   **bulk**). Once the agent behaves correctly, **re-record gold traces from the working agent** and use them as
+   **discarded**, not migrated. Bootstrap on a hand-generated **64-conversation seed** + **192 synthesized** (augmentation + denoising). Once the agent behaves correctly, **re-record gold traces from the working agent** and use them as
    the regression net (the Traces phase).
 3. **Success = hybrid metric.** Completion = ran to a final answer without crash / give-up / fallback. Success =
    deterministic end-state facts match the oracle (**HARD gate**) **and** an LLM-judge rubric passes (**soft**).
@@ -57,11 +59,32 @@ Evaluations).
    votes back so flow detection is deterministic and the gate never re-rolls the model.
 6. **Adversarial robustness = part of Observability Traces, designed now** (built in the final phase), not
    deferred to a separate plan.
-7. **Synthesis trust = anchor manual, bulk synthesized.** Hand-curate a small held-out anchor/test set (no
-   exemplar leakage); LLM-synthesize the larger dev set with human approval on labels + recorded gold.
+7. **Synthesis trust = manual seed, synthesized bulk.** Hand-generate the **64-conversation seed** together (no
+   exemplar leakage); synthesize the other **192** via augmentation + denoising with human approval on labels +
+   recorded gold. **Dev** is a random 25% slice of the combined Train; the held-out **Test** set is real usage
+   (empty for now). See the Train/Dev/Test split below.
 8. **Phasing** (the order we build): **P1** task *completion* (coarse Eval, on seed data) → **P2** Model Unit
    Tests → **P3** Observability Traces (regression net) → **P4** task *success* (rigorous Eval) + adversarial
    robustness.
+
+9. **Dataset volume — the coverage funnel — DECIDED.** **256 conversations** = **64 manual seed + 192
+   synthesized** (augmentation + denoising; generator = Opus); 7 turns each (4 user + 3 agent) → **1024**
+   flow-detection + **512** slot-filling examples (~64/flow over 16 flows); **256** trajectory traces from **64**
+   conversations; **32** E2E conversations (8 scenarios × 4 topics), of which **16** are the ambiguity-recovery
+   core. See the Dataset coverage funnel.
+10. **Tolerance rules — DECIDED.** Two `tolerance_rules.md` rules, executed at Phase 3 re-recording: **(06)** a
+    clarification must go through `handle_ambiguity(declare)` — bare-text asks fail the gate (lands with Step 3);
+    **(07)** a multi-step request must stack sub-flows in dependency order — match on ordering, not a shared id
+    (`plan_id` removed; lands with Step 5).
+11. **E8 — parity oracle re-baseline — DECIDED (Phase 4).** Re-capture the parity oracle from an approved
+    orchestrator run, converged with the recorded-trace model (folded here from Step 6).
+12. **CI provider — OPEN.** No CI today; the runner is CI-agnostic and the skeleton lands in Phase 1. *(The one
+    still-open item.)*
+
+13. **Dev = 25% sample; the feature-build loop — DECIDED.** Dev is a random 25% slice of Train (≈64), handed to
+    the SWEs to start; the full **256 (4× Dev)**, expanded with QA + PM, is the **correctness threshold** and the
+    regression set; each checkpoint runs a **random 25% sample** of the suite to bound cost. See the
+    Feature-build loop.
 
 ### The three automation approaches considered
 
@@ -83,7 +106,7 @@ added later for observability only — a seam now, no runtime dependency yet.
 
 | Asset | Level | Status | Action |
 |---|---|---|---|
-| `unit_tests.py` (~380 service/contract tests) | Tests | ✅ solid, mostly architecture-agnostic | Keep; add slot/entity assertions |
+| `unit_tests.py` (206 service/contract tests) | Tests | ✅ solid, mostly architecture-agnostic | Keep; add slot/entity assertions |
 | `test_artifacts.py` (skill/tool/schema lints) | Tests | ✅ solid | Keep |
 | `test_nlu_module.py` (belief contracts) | Tests | ✅ current | Keep |
 | `model_tests.py` (NLU accuracy) | Tests | ⚠️ runs, but on dead labels | Re-target to new `model_cases.json` |
@@ -101,30 +124,119 @@ Converse `chat` (+ NLU-only `Clarify`, no flows).
 
 ---
 
+## Inventory & targets (proposal)
+
+Counts as of the `utils/{tests,traces,evals}` restructure. **Have** is what exists today; most of the
+LLM-bearing assets are on the **dead taxonomy** (48-flow labels / retired `detect_and_fill` / 14-step
+lifecycle) and are rebuilt against the 16-flow catalog, not migrated.
+
+| Tier | Have today | Dead taxonomy? | Target |
+|---|---|---|---|
+| **Tests — contract** (no LLM) | **337** — `unit_tests` 206, `test_artifacts` 123, `test_nlu_module` 8 | architecture-agnostic — keep | ~337 + slot/entity assertions |
+| **Tests — accuracy** (1 LLM call) | `model_tests` 13 + `test_cases.json` (100 cases / 205 turns) | ❌ dead flows (suggest/check/survey/calendar) | **1024** flow-detection + **512** slot-fill examples (256 convos × 4 turns, ~64/flow) |
+| **Traces** (Observability) | 10 recorded trajectories + parity 3-axis harness | ❌ retired `detect_and_fill` | **256** traces from **64** conversations |
+| **Evals** (E2E) | 3 lifecycle scenarios (Vision/Obs/Voice ×14) + 3 ambiguity + 1 completion anchor; 28 snapshots | ❌ 14-step dead taxonomy | **32** conversations (8 scenarios × 4 topics; 16 happy + 16 ambiguity) |
+
+The contract tests are the only assets that survive as-is; everything LLM-bearing is re-synthesized.
+
+## Train / Dev / Test split (by data source)
+
+The split is by **where the data comes from**, not which tier consumes it:
+
+| Split | Source | Owner | Role |
+|---|---|---|---|
+| **Train** | **64 manual seed + 192 synthetic** (augment + denoise) | seed: you + me · bulk: Opus | the full **256-conversation** working set (the funnel below) |
+| **Dev** | **random 25% slice of Train** | sampled (≈64) | handed to the **SWEs** to start a feature |
+| **Test** | **real Hugo usage** (logged failures, user-reported misses) | captured from production | the true held-out generalization measure — **empty for now**, grows from real feedback |
+
+**Train is built, not collected:** **64 conversations we hand-generate together** (the seed — including the
+hand-brainstormed E2E ambiguity scenarios) **+ 192 synthesized** via data-augmentation and -denoising cycles
+= **256**. **Dev is a random 25% slice** of that 256 (≈64) — representative, not a separate source. The
+held-out **Test** set is real usage (empty for now). Leakage rule still holds — synthesized Train must not
+reuse a prompt exemplar's topic (e.g. Kitty Hawk).
+
+### Feature-build loop (how the data drives the team)
+
+1. **Hand the Dev slice (25% ≈ 64) to the SWEs** to start building the feature.
+2. **You + QA + PM 4× it to the full 256** — that full set is the feature's **correctness threshold**.
+3. Once it lands, the **same 256** guards against **regressions**.
+4. **Each checkpoint runs a random 25% sample of the suite** (≈Dev-sized) to keep cost down; the full set runs
+   only at the correctness gate and pre-release.
+
+(The SWE / QA / PM roles are the engineering team in `_specs/agents/`.)
+
+## Dataset coverage funnel
+
+One nested set of **256 synthesized conversations** — 7 dialogue turns each (**4 user turns** to predict + 3
+agent responses) — feeds every tier. Each tier adds richer labels to a **halving subset** of the one above, so
+one conversation can serve several tiers at once:
+
+| Tier (label depth) | Unit | Target | Derivation |
+|---|---|---|---|
+| Flow detection — Model Unit Tests | user-turn | **1024** | 256 conversations × 4 user turns → **~64 / flow** |
+| Slot-filling — Model Unit Tests | user-turn | **512** | half of 1024 (128 conversations) |
+| Tool-call trajectories — Observability Traces | trace / user-turn | **256** | half of 512 → **64 conversations** |
+| Task completion — E2E Agent Evals | conversation | **32** | half of 64 → **8 scenarios × 4 topics** (extended) |
+| └ ambiguity-recovery core | conversation | **16** | **4 ambiguity scenarios × 4 topics** |
+
+**Source.** The **64-conversation seed** is hand-generated together — including the hand-brainstormed E2E
+ambiguity scenarios, where most of the design effort goes; the other **192** are **synthesized** (augmentation
++ denoising) then human-approved. Trajectory gold (256 traces) is **recorded** from live runs and approved.
+**Dev** is a random 25% slice of the 256; **Test** is real usage (empty for now).
+
+### E2E scenario design (the 32)
+
+The E2E tier is judged **only by task completion** — not by turn count or tool calls (the Traces tier owns
+those). These are **extended** conversations: **8 use cases × 4 blog-post topics = 32**.
+
+- **4 happy-path scenarios** — the user collaborates smoothly, but each walks **different flows** so coverage
+  spans the catalog rather than one lifecycle.
+- **4 ambiguity / recovery scenarios** — the agent must **recognize and recover** from ambiguity (or other
+  issues) inside a complex task.
+
+The **4 ambiguity × 4 topics = 16 conversations** are the heart of the effort: most of the work is
+**brainstorming exactly how each plays out — what the agent should do at every turn** — so these double as the
+hand-designed Dev set. (The 4 happy-path × 4 topics are the other 16.) Adversarial/robustness probes stay
+separate, in the Observability Traces tier (P4).
+
+## Layout rationale
+
+The directory split mirrors the eval ladder **1:1**, so a file's location states which tier it belongs to and
+how it runs:
+
+- **`utils/tests/`** — Model Unit Tests: pytest, deterministic, gates every commit (`unit_tests`,
+  `test_artifacts`, `test_nlu_module`; accuracy via `model_tests`).
+- **`utils/traces/`** — Observability Traces: the parity recorder/comparator plus recorded gold trajectories;
+  cached-vote replay, nightly cadence.
+- **`utils/evals/`** — E2E Agent Evaluations: the scoring CLI harness (`run_evals`, `gates`, `scorers`,
+  `datasets`, `baselines`) plus the full-loop scenarios; nightly + pre-release.
+- **`utils/`** (shared) — `harness.py` (build the orchestrator Agent, seed/clean posts), `conftest.py`,
+  `_snapshot.py`, `helper.py`. Each tier has a different cadence, data source, and determinism strategy;
+  separating the dirs keeps the ladder legible and lets each tier evolve without entangling the others, while
+  the shared agent harness lives in exactly one place.
+
+---
+
 ## Target architecture
 
 ### Harness layout
 
 ```
-assistants/Hugo/utils/tests/        # pytest home — deterministic contracts + lints (unchanged location)
-  unit_tests.py                      # service/contract                    (keep)
-  test_artifacts.py                  # static lints                        (keep)
-  test_nlu_module.py                 # NLU belief contracts                (keep)
-  conftest.py                        # markers + fixtures                  (extend)
-  eval/                              # NEW — the custom CLI harness (accuracy / traces / agent evals)
-    run_evals.py                     #   single entrypoint: --level {tests,traces,evals,adversarial} --tier ...
-    synthesize.py                    #   LLM dataset generator (seed scenarios + labels)
-    datasets/
-      model_cases.json               #   classification gold (anchor + synthesized)
-      scenarios/                     #   multi-turn agent scenarios (anchor + synthesized)
-      traces/                        #   recorded gold trajectories + cached votes (P3)
-      oracles/                       #   end-state oracles (recorded, P4)
-    scorers/                         #   exact / tolerance / endstate / judge
-    report/                          #   per-run artifacts (json + md) + run history
-    baselines/                       #   committed baseline metrics for regression-diff
-    gates.py                         #   thresholds → process exit code
-    langfuse_sink.py                 #   # designed-not-built — Langfuse trace/score export seam
-  parity/                            # reuse the existing recorder + 3-axis comparator
+assistants/Hugo/utils/                 # three tiers map 1:1 to the eval ladder + shared infra
+  harness.py                           # shared: build orchestrator Agent, seed/clean posts
+  conftest.py  _snapshot.py            # shared: pytest fixtures/markers, snapshot helper
+  helper.py                            # shared: DAX / flow lookups
+  tests/                               # Model Unit Tests — pytest, deterministic, gate every commit
+    unit_tests.py  test_artifacts.py  test_nlu_module.py   # contract + lints (no LLM)
+    model_tests.py  test_cases.json                        # accuracy (1 LLM call) → retarget to model_cases.json
+  traces/                              # Observability Traces — parity harness + recorded gold
+    parity/                            #   recorder + 3-axis comparator + fixtures (reuse)
+    <NN>_<name>.json/.md               #   recorded gold trajectories  ·  tolerance_rules.md
+  evals/                               # E2E Agent Evaluations — scoring CLI harness + scenarios
+    run_evals.py  gates.py  scorers/   #   entrypoint, folded-baseline gate, scorers
+    datasets/ (scenarios/  model_cases.json  oracles/)   baselines/   report/
+    e2e_agent_evals.py  e2e_multiturn_evals.py  snapshots/
+    synthesize.py  langfuse_sink.py    #   planned: dataset generator; Langfuse export seam
 ```
 
 - **Split rationale:** deterministic, millisecond checks stay in pytest (fast, gate every commit). Everything
@@ -143,7 +255,7 @@ assistants/Hugo/utils/tests/        # pytest home — deterministic contracts + 
 ```
 1. synthesize.py            LLM generates scenarios + intent/flow/slot/entity labels (per the
                             confidence-experiment guidelines: short, implicit, context-dependent utterances)
-2. human approve labels     anchor set hand-written; bulk synthesized labels reviewed before use
+2. human approve labels     64-conv seed hand-written; 192 synthesized labels reviewed before use
 3. run through live Hugo     execute the approved scenario end-to-end on current code
 4. human approve gold        approve the recorded tool-trajectory (Traces) and end-state oracle (Evals)
 5. freeze                    recorded gold becomes the regression ground truth (cached votes for traces)
@@ -152,9 +264,41 @@ assistants/Hugo/utils/tests/        # pytest home — deterministic contracts + 
 - **Why record gold instead of synthesizing it:** a synthesized *label* is fine, but a synthesized *trajectory*
   or *end-state* won't reliably match live tool APIs. Gold trajectories/oracles must be **recorded from real
   behavior and approved** — this is exactly Derek's "use the traces as ground truth once things work."
-- **Leakage guard:** prompt exemplars are the *training* set. The **anchor/test** set is held out and must not
-  reuse exemplar topics (e.g. the Kitty Hawk anchor must never appear in a prompt exemplar). Synthesized *dev*
-  cases may rotate freely.
+- **Leakage guard:** synthesized **Train** cases must not reuse a prompt exemplar's topic (e.g. the Kitty Hawk
+  anchor must never appear in a prompt exemplar) — see the Train/Dev/Test split above. **Dev** is a random 25% slice the SWEs iterate on; the held-out **Test**
+  set comes from real usage.
+
+### Case schema (what `synthesize.py` emits)
+
+One shape for all phases — the existing `test_cases.json` / `evaluation.md` format emitted verbatim
+(`model_cases.json` for accuracy, `scenarios/*.json` for multi-turn). Each phase reads a documented subset:
+
+```jsonc
+{
+  "convo_id": 17, "domain": "hugo",
+  "available_data": { "posts": [{ "post_id": "Seed01", "title": "Prompt Caching for LLM Apps" }] },
+  "turns": [
+    { "turn_count": 1, "role": "user",
+      "utterance": "Trim the Approach section of the prompt caching post.",
+      "labels": { "intent": "Revise", "flow": "rework", "dax": "{5A1}" },
+      "slots": { "source": { "post": "Prompt Caching for LLM Apps", "sec": "Approach" } },
+      "expected_tools": ["read_content", "revise_content"],
+      "rubric": { "did_action": "...", "did_follow_instructions": "..." } }
+  ]
+}
+```
+
+| Field | P1 completion | P2 accuracy | P3 traces |
+|---|---|---|---|
+| `utterance` (user) | drives the turn | drives the turn | drives the turn |
+| `labels.{intent,flow,dax}` | `flow` only (expected-flow check) | **all** (accuracy scoring) | — |
+| `slots` | — | slot-fill / entity F1 | — |
+| `expected_tools` | — | — | seed for the recorded gold trajectory |
+| `rubric` | — | — | — (P4 judge) |
+| `available_data` | seeds posts | seeds posts | seeds posts |
+
+`expected_tools` is advisory — the real gold trajectory is **recorded** from a live run and approved (P3),
+not synthesized. Fields unused until P3/P4 are the frozen targets the later red→green loops aim at.
 
 ### Determinism
 
@@ -182,10 +326,9 @@ Mostly already green; add the missing slot-fill and entity-extraction assertions
 | Confidence calibration | floor respected + endorsed/guessed separation | baseline-diff |
 | Ensemble agreement (med-tier) | voter consensus rate; flags cross-intent splits | report-only |
 
-Use train/dev/test splits scoped to the component (exemplars = train, synthesized scenarios = dev, anchor =
-held-out test). **Volumes (locked):** 16 dev cases/flow (256 total, Opus-synthesized) + 4 anchor cases/flow
-(64 total, hand-written, no exemplar leakage). Reported as percentages with a baseline; **not** binary pytest
-asserts.
+See the **Dataset coverage funnel** above. **Volumes:** **1024** flow-detection examples (256 conversations ×
+4 user turns, ~64/flow); **512** of those also carry slot-fill labels. Train = 64 manual seed + 192 synthesized; Dev = a random 25%
+slice; Test = real usage, empty for now. Reported as percentages with a baseline; **not** binary pytest asserts.
 
 ---
 
@@ -193,7 +336,8 @@ asserts.
 
 ### Trace replay (deterministic + tolerance)
 
-Replay human-approved tool-call trajectories. The recorder parses a session into per-turn `(tool, key_args,
+Replay human-approved tool-call trajectories — **target 256 traces from 64 conversations** (the funnel). The
+recorder parses a session into per-turn `(tool, key_args,
 ok)` sequences, activated flows, and completion records; replay compares against the approved gold, allowing
 only the documented tolerances, feeding cached votes so detection is deterministic.
 
@@ -232,9 +376,22 @@ Full orchestrator loop, real LLM + real tools, multi-turn scenarios. The two hea
 
 - **Task completion rate** (coarse, first phase): fraction of tasks that run end-to-end to a final answer with
   **no crash, no give-up, no fallback message**, and the expected flow activated. Deliberately ignores
-  correctness — it surfaces gross breakage cheaply on seed data.
+  correctness — it surfaces gross breakage cheaply on seed data. Scored by
+  `utils/evals/scorers/completion.py` — primary-flow only; the full trajectory is the Traces tier's job:
 - **Task success rate** (rigorous, final phase): of completed tasks, the fraction that achieved the goal — the
   **hybrid** judgement below.
+
+```python
+# utils/evals/scorers/completion.py — _FALLBACK_MESSAGE imported from backend.modules.pex (canonical)
+FALLBACKS = (_CRASH_FALLBACK, _FALLBACK_MESSAGE, '(turn timed out)')
+
+def is_completed(result:dict, expected_flow:str) -> tuple[bool, str]:
+    msg = result['message']
+    if msg in FALLBACKS:                              return False, f'fallback: {msg[:40]!r}'
+    if not msg.strip():                               return False, 'empty reply'
+    if result['artifact']['origin'] != expected_flow: return False, 'wrong flow'   # origin = flow.name()
+    return True, 'ok'
+```
 
 **Parity (3-axis):**
 1. **End-state DB** — structural facts exact (title, status progression, section order, outline shape, section
@@ -261,12 +418,31 @@ Gates: end-state / grounding parity — **any break (hard)**; rubric mean — **
 | Intent / slot / entity accuracy | Tests | baseline-diff | nightly |
 | Trajectory (full workflow) | Traces | > 3% drop | nightly + on policy change |
 | Robustness pass rate | Traces | any drop | nightly |
-| Task completion rate | Evals | baseline-diff | nightly |
+| Task completion rate | Evals | absolute target 0.90, then diff | nightly |
 | End-state / grounding parity | Evals | any break (hard) | pre-release |
 | Task success rate / rubric mean | Evals | > 0.5 level drop | pre-release |
 | Mean latency | Evals | > 20% increase | pre-release |
 
 Triggers (per spec): prompt-template change, ontology/config change, policy code change, or manual run.
+
+**Gate model (folded baseline, red-green).** Each metric is one self-describing record in a single
+`baselines/<level>.json` per level — no separate `metrics.json`. A record folds the hand-set intent
+(`target`, `direction`, `max_drop`, `expected_fail`) with the machine-written measurement (`value`,
+`commit`, `date`):
+
+```jsonc
+// utils/evals/baselines/evals.json
+{ "completion_rate": {
+    "target": 0.90, "direction": "higher", "expected_fail": true,   // hand-set intent
+    "value": null,  "commit": null,        "date": null } }          // written only by `run_evals --record`
+```
+
+`gates.py` grades each metric in order **expected_fail → absolute target → regression diff**: `expected_fail:
+true` is xfail (known-red, never breaks the gate); else a set-but-unmet `target` → red; else `value` null but
+a target exists → green (the first red→green); else diff `value` by `max_drop`. `run_evals.py --record` is the
+only writer of `value/commit/date` and never touches the intent keys (the care-point of the folded model — a
+read-modify-write). *(Alternatives rejected: a separate hand-edited `metrics.json` intent file — needs a
+cross-file key-sync lint; a bare `xfail.txt` — no absolute target, so the first red→green can't be expressed.)*
 
 ---
 
@@ -274,17 +450,23 @@ Triggers (per spec): prompt-template change, ontology/config change, policy code
 
 Status legend: `[ ]` todo · `[~]` in progress · `[x]` done. (We are at the **plan** stage — nothing built yet.)
 
-### Phase 1 — task **completion** (coarse Eval on seed data)  · `[ ]`
+### Phase 1 — task **completion** (coarse Eval on seed data)  · `[~]`
 - **Goal:** a fast, cheap "does the whole agent run end-to-end and do something" signal on the new 16-flow
   architecture — before investing in granular accuracy or traces.
-- **Deliverable:** `synthesize.py` (seed scenarios + labels across 7 intents / 16 flows; anchor + bulk);
-  `run_evals.py --level evals --metric completion`; a completion-rate report + baseline. No oracle/judge yet.
+- **Spine — BUILT (red→green proven on 1 anchor case):** `utils/evals/scorers/completion.py` (`is_completed`),
+  `utils/evals/gates.py` (folded-baseline gate + `grade`), `utils/evals/baselines/evals.json`
+  (`completion_rate`, `expected_fail: true`), `utils/evals/datasets/scenarios/draft_create.json`,
+  `run_evals.py --level evals --metric completion`, and `test_completion_gate_xfail` in `unit_tests.py`.
+  Was red (import error) → green; xfail keeps the commit gate green until the feature clears `target`.
+- **Remaining:** `synthesize.py` (seed scenarios + labels across 7 intents / 16 flows; Train bulk + Dev anchor);
+  expand from 1 anchor to per-flow coverage; record the completion baseline and flip `expected_fail` off once
+  the rate clears `target`. No oracle/judge yet.
 - **Depends on:** nothing structural (live agent + seed data).
 - **Verify:** completion-rate baseline recorded; gross breakages (dead flows, crashes, fallbacks) surfaced.
 
 ### Phase 2 — Model Unit Tests (classification accuracy)  · `[ ]`
 - **Goal:** restore meaningful per-decision accuracy on the 16-flow catalog (today's number is meaningless).
-- **Deliverable:** `model_cases.json` (synthesized + anchor, leakage-guarded); `run_evals.py --level tests`
+- **Deliverable:** `model_cases.json` (**1024** flow + **512** slot examples; synthesized Train + Dev anchor, leakage-guarded); `run_evals.py --level tests`
   with intent/flow/slot/entity accuracy + confidence calibration + ensemble agreement; thresholds wired. Add
   the missing contract-test slot/entity assertions. Rewrite `evaluation_guidelines.md` to the NLU→PEX (no RES)
   pipeline.
@@ -294,7 +476,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done. (We are at the **p
 ### Phase 3 — Observability Traces (the regression net)  · `[ ]`
 - **Goal:** lock correct behavior into a deterministic regression net — "use the traces as ground truth once
   things work."
-- **Deliverable:** re-record gold trajectories from the now-working agent (synthesized scenario → live run →
+- **Deliverable:** re-record **256 gold trajectories from 64 conversations** (synthesized scenario → live run →
   approve); cached-vote record/replay; the tolerance engine reading `tolerance_rules.md`; `run_evals.py
   --level traces` with the 4 scoring modes; resolve the two approval TODOs (below). Discards the outdated traces.
 - **Depends on:** Phases 1–2 (agent behaving correctly); the cached-vote mechanism.
@@ -315,28 +497,11 @@ step once the internal harness is trusted).
 
 ---
 
-## Open decisions / needs-Derek
-
-- **Synthesis model + volume — DECIDED.** Generator model = **Opus**. Per the powers-of-2 heuristic
-  (`style_guide.md § Choosing Quantities`): **16 dev cases/flow (256 total)** synthesized + **4 anchor
-  cases/flow (64 total)** hand-written and held out (no exemplar leakage). 16 flows.
-- **Two `tolerance_rules.md` rules — DECIDED** (both encode the normative design; the rule activates when its
-  step lands, executed at Phase 3 re-recording):
-  - **06 ambiguity ask:** a clarification **must** go through `handle_ambiguity(declare)` — bare-text asks fail
-    the gate. (Lands with Step 3's ambiguity work.)
-  - **07 plan chain:** chained sub-flows **must** be stacked with a shared `plan_id` linkage. (Lands with Step
-    5's `plan_id` work.)
-- **E8 — parity oracle re-baseline** (folded here from Step 6): re-capture the parity oracle from an approved
-  orchestrator run, converged with the recorded-trace model. *Execute in Phase 4.*
-- **Langfuse — DECIDED (defer).** Build the no-op `langfuse_sink.py` seam now; do internal verification with
-  pytest + the CLI harness first. Integrate Langfuse later (hosted vs self-hosted + data-egress review) once the
-  internal harness is trusted. Easy to walk back, so not gating anything.
-- **CI provider** for the tiered cadence (no CI today). *Skeleton in Phase 1; the runner is CI-agnostic.*
-
 ## New surface / approvals
 
-- All eval tooling lives under `assistants/Hugo/utils/tests/` (new `eval/` package; reuse `parity/`). This is
-  **spec-defined eval tooling** (`evaluation.md`), **not a new agent concept** — no new-concept approval needed.
+- All eval tooling lives under `assistants/Hugo/utils/{tests,traces,evals}/` (restructured; see the Harness
+  layout + Layout rationale above). This is **spec-defined eval tooling** (`evaluation.md`), **not a new agent
+  concept** — no new-concept approval needed.
 - The synthesizer and the judge are LLM-callers; they **reuse the existing `PromptEngineer` + model-resolution**
   — no new agent component, no new dialogue/belief concept.
 - **Charlie/Hugo cwd gotcha:** run pytest and the CLI harness with cwd + `sys.path[0]` set to the Hugo dir, or

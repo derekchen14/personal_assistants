@@ -1,0 +1,212 @@
+{
+  "convo_id": "B01.C08",
+  "persona": "P: neutral + skeptical + hedged",
+  "use_case": "U: plan -> [step_0 check] -> audit -> release -> release",
+  "topic": "T: Personal Finance",
+  "title": "Index Funds for People Who Hate Spreadsheets",
+  "available_data": {
+    "posts": [
+      "Index Funds for People Who Hate Spreadsheets"
+    ]
+  },
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-sonnet-4-6",
+    "spec": "topic=Personal Finance \u00b7 7 turns \u00b7 P2 neutral/skeptical/hedged \u00b7 arc=planning \u00b7 use_case=plan->[step_0]->audit->release->release \u00b7 noise=punctuation(t1,t5) \u00b7 verify=yes \u00b7 flagged=no",
+    "draws": {
+      "topic": "Personal Finance",
+      "title_source": "coined",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "skeptical",
+        "directness": "hedged"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "fan_out",
+        "handling": "step_0"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Publish",
+        "sequence": [
+          "plan",
+          "audit",
+          "release",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": {
+          "turns": [
+            1,
+            5
+          ],
+          "type": "punctuation"
+        },
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": true,
+      "flagged": false,
+      "writer_model": "claude-sonnet-4-6",
+      "length": [
+        2,
+        2,
+        1,
+        2
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "The index funds post is done, I think. Get it out there, maybe a couple of channels if its ready.",
+      "labels": {
+        "intent": "Plan",
+        "flow": "plan",
+        "dax": "{29D}"
+      },
+      "note": "Plan turn. The agent needs to confirm which channels before decomposing (step_0). Plan decomposes into: audit (voice check before publishing), then release to two channels (fan_out).",
+      "slots": {
+        "source": {
+          "post": "Index Funds for People Who Hate Spreadsheets"
+        }
+      },
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Does the agent pause to ask which channels before committing to publish?",
+          "dimension": "trustworthy"
+        },
+        {
+          "check": "Does the agent propose a voice-check step before releasing?",
+          "dimension": "useful"
+        }
+      ]
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Before I kick this off: which two channels did you have in mind? And do you want a voice pass first, or go straight to publish?"
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "The main blog and Substack. And yeah, a quick check first sounds reasonable.",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {
+        "channel": [
+          "blog",
+          "Substack"
+        ]
+      },
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Does the agent record both channels (blog and Substack) before proceeding?",
+          "dimension": "persisted"
+        },
+        {
+          "check": "Does the agent confirm the plan (voice check then two-channel release) before starting?",
+          "dimension": "useful"
+        }
+      ]
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Got it. Plan: audit the index-funds post for voice, then release to the main blog, then Substack. Running the audit now."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Is the tone actually consistent or does it drift halfway through I wasnt sure about that part",
+      "labels": {
+        "intent": "Revise",
+        "flow": "audit",
+        "dax": "{13A}"
+      },
+      "slots": {
+        "source": {
+          "post": "Index Funds for People Who Hate Spreadsheets"
+        }
+      },
+      "expected_tools": [
+        "editor_review"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Does the agent flag a specific section where tone drifts rather than giving a vague pass?",
+          "dimension": "trustworthy"
+        },
+        {
+          "check": "Does the agent give a clear verdict on whether the post is ready to publish?",
+          "dimension": "useful"
+        }
+      ]
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Tone holds through the first two thirds. The closing section shifts toward formal. Fixed it to match the opening voice. Ready to release."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Fine. Main blog first, Substack after.",
+      "labels": {
+        "intent": "Publish",
+        "flow": "release",
+        "dax": "{004}"
+      },
+      "slots": {
+        "source": {
+          "post": "Index Funds for People Who Hate Spreadsheets"
+        },
+        "channel": [
+          "blog",
+          "Substack"
+        ]
+      },
+      "expected_tools": [
+        "release_post"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Does the agent release to the main blog first, then Substack as a separate step?",
+          "dimension": "persisted"
+        },
+        {
+          "check": "Does the agent confirm completion for each channel separately?",
+          "dimension": "useful"
+        }
+      ]
+    }
+  ]
+}

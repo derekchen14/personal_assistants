@@ -18,8 +18,9 @@ storage out of `MemoryManager`, don't copy it. After this step: `ContextCoordina
 
 ---
 
-## Decisions locked (2026-06-21)
+## Decisions
 
+**Locked (decided 2026-06-21):**
 - **`MemoryManager` *is* the MEM module.** No separate `mem.py` / `MEM` class — the existing `MemoryManager`
   becomes the facade `__init__(context_coordinator, user_preferences, business_context)` holding
   `.context` / `.preferences` / `.business`, with `recap` / `recall` / `retrieve` as its public surface.
@@ -32,6 +33,10 @@ storage out of `MemoryManager`, don't copy it. After this step: `ContextCoordina
 - **No separate FAQService.** `BusinessContext` is the single interface for all business-knowledge retrieval,
   including FAQs; it absorbs `utilities/faq_service.py`.
 - **No trajectory playbooks** and **no MEM-outranks-NLU precedence rule** — both dropped from the design.
+
+**Resolved here — confirm or override:**
+- **E1 · memory tools.** rec: add `recap` / `recall` / `retrieve` as the public surface over the existing
+  `compile_history` / `manage_memory` / `search_faqs` implementations; don't rename them. (§2.1, §2.5)
 
 ---
 
@@ -124,7 +129,7 @@ class SessionScratchpad:
 ## 2.4 — Extract `session_scratchpad.py` (owned by the World)
 - Move the scratchpad code out of `MemoryManager` into a `SessionScratchpad` component
   (`write`/`read`/`write_completion`/`clear`/`size`), preserving the current dual-mode (in-memory dict vs
-  append-only JSONL) and the code-stamped `writer`.
+  append-only JSONL) and the `writer` recorded in code.
 - Own one instance on the World (`world.scratchpad`); expose that same instance as `nlu.scratchpad` and hand
   it to PEX + the policies. Bind the session-file path where the session dir is set, replacing `agent.py:94`'s
   `memory._scratchpad_path` poke.

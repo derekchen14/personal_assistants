@@ -1,0 +1,170 @@
+{
+  "convo_id": "B01.C10",
+  "persona": "P: formal + blunt",
+  "use_case": "U: clarify -> outline -> compose -> write",
+  "topic": "T: Strength Training",
+  "title": "Machines Aren't Cheating: Against Barbell Purism",
+  "available_data": {
+    "notes": [
+      "leg press vs squat loading",
+      "why purists dismiss machines"
+    ]
+  },
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-opus-4-8",
+    "spec": "topic=Strength Training | 7 turns | P formal/positive/blunt | arc=ambiguity(general@t1) | use_case=clarify->outline->compose->write | verify=no | flagged=no",
+    "draws": {
+      "topic": "Strength Training",
+      "title_source": "banked",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "positive",
+        "directness": "blunt"
+      },
+      "arc": "ambiguity",
+      "planning": null,
+      "ambiguity": {
+        "level": "general",
+        "tag": "none",
+        "turn": 1
+      },
+      "use_case": {
+        "phase_lead": "Draft",
+        "sequence": [
+          "clarify",
+          "outline",
+          "compose",
+          "write"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-opus-4-8",
+      "length": [
+        1,
+        2,
+        2,
+        2
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "I have those machine-training notes sitting here and I would like to do something with them.",
+      "labels": {
+        "intent": "Clarify",
+        "flow": "clarify",
+        "dax": "{09F}"
+      },
+      "note": "general ambiguity: the goal itself is undecidable. Removed clear context: that the notes are meant to be shaped into a section structure. Without it, the agent cannot tell whether the user wants to browse, summarize, or outline the notes, so it asks what the task is.",
+      "slots": {},
+      "expected_tools": [
+        "handle_ambiguity"
+      ],
+      "ambiguity": {
+        "is_ambiguous": true,
+        "level": "general"
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Happy to. Are we condensing the notes for reference, or shaping them into a structure for a new post?"
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "A structure for the post. Give me sections that argue machines belong beside the barbell.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Machines Aren't Cheating: Against Barbell Purism"
+        },
+        "sections": [
+          "the purist objection",
+          "what a machine isolates",
+          "where the barbell still wins",
+          "how to run both"
+        ]
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Structured it in four: the purist objection, what a machine isolates, where the barbell still wins, then how to run both."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Excellent. Turn the whole structure into prose.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "Machines Aren't Cheating: Against Barbell Purism"
+        }
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Full draft is down across all four sections. The 'run both' section leans hard on hypotheticals rather than a concrete weekly split."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Good catch. Rewrite that closing section around a real four-day split.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Machines Aren't Cheating: Against Barbell Purism",
+          "sec": "how to run both"
+        }
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ]
+}

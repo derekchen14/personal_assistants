@@ -1,0 +1,5 @@
+{
+  "id": "B06.C09",
+  "verdict": "needs",
+  "comment": "The redirect can occur across turns, not just a single turn."
+}

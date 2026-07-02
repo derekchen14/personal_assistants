@@ -1,0 +1,165 @@
+{
+  "convo_id": "B05.C14",
+  "persona": "P: neutral + hedged",
+  "use_case": "U: plan -> find -> summarize -> compare",
+  "topic": "T: The Lightbulb (rival inventors)",
+  "title": "Who Really Invented the Lightbulb?",
+  "available_data": {
+    "posts": [
+      "A Short History of the Lightbulb"
+    ],
+    "notes": [
+      "Edison's Menlo Park breakthrough",
+      "Joseph Swan's carbon filament"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "The inventor rivalry as a piece, though I'm nervous I'll get the history wrong.",
+      "labels": {
+        "intent": "Plan",
+        "flow": "plan",
+        "dax": "{29D}"
+      },
+      "note": "Plan turn. Despite the hesitant voice, it's a clear multi-step research ask; the agent decomposes it into find, summarize, then compare and drives the sequence. No single flow/dax; intent is Plan.",
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "I'll lead. First I'll find what we have on the lightbulb inventors, then summarize one to get you oriented, then compare Edison and Swan. Pulling sources now."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Lightbulb inventors, but only what's in my own files, nothing off the web.",
+      "labels": {
+        "intent": "Research",
+        "flow": "find",
+        "dax": "{001}"
+      },
+      "slots": {
+        "query": "lightbulb inventors"
+      },
+      "expected_tools": [
+        "find_posts"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Found 3: a post 'A Short History of the Lightbulb' and two notes, 'Edison's Menlo Park breakthrough' and 'Joseph Swan's carbon filament'."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "The clearest starting point would probably do the job.",
+      "labels": {
+        "intent": "Research",
+        "flow": "summarize",
+        "dax": "{19A}"
+      },
+      "slots": {
+        "source": {
+          "note": "Edison's Menlo Park breakthrough"
+        }
+      },
+      "expected_tools": [
+        "summarize_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "I'll start with the Edison note. Gist: in 1879 his Menlo Park team got a carbon filament to burn for hours and built the power system around it. His real edge was commercialization."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Right, got it. Not sure which of the two actually wins.",
+      "labels": {
+        "intent": "Research",
+        "flow": "compare",
+        "dax": "{18A}"
+      },
+      "slots": {
+        "source": [
+          {
+            "note": "Edison's Menlo Park breakthrough"
+          },
+          {
+            "note": "Joseph Swan's carbon filament"
+          }
+        ]
+      },
+      "expected_tools": [
+        "compare_style"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B05",
+  "flagged": false,
+  "generation": {
+    "batch": "B05",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=The Lightbulb (rival inventors) | 7 turns | neutral + hedged | arc=planning | use_case=plan -> find -> summarize -> compare | converted from P3.U7.T2",
+    "draws": {
+      "topic": "The Lightbulb (rival inventors)",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "heterogeneous",
+        "handling": "straightforward"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "plan",
+          "find",
+          "summarize",
+          "compare"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

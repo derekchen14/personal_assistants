@@ -1188,7 +1188,7 @@ class TestSnapshotHarness:
     """Smoke tests for utils/tests/_snapshot.py — ensure the harness itself works."""
 
     def test_volatile_keys_masked(self):
-        from utils.tests._snapshot import _mask_volatile
+        from utils._snapshot import _mask_volatile
         result = _mask_volatile({
             'flow_id': 'abc-123', 'post_id': 'xyz', 'value_count': 3,
             'nested': {'turn_id': 't1', 'real_data': 'kept'},
@@ -1200,7 +1200,7 @@ class TestSnapshotHarness:
         assert result['nested']['real_data'] == 'kept'
 
     def test_record_then_match(self, tmp_path, monkeypatch):
-        from utils.tests import _snapshot
+        from utils import _snapshot
         monkeypatch.setattr(_snapshot, 'SNAPSHOT_DIR', tmp_path)
         # Record
         monkeypatch.setenv('UPDATE_SNAPSHOTS', '1')
@@ -1211,7 +1211,7 @@ class TestSnapshotHarness:
         _snapshot.assert_snapshot({'a': 1, 'b': [2, 3]}, 'sample')
 
     def test_mismatch_raises(self, tmp_path, monkeypatch):
-        from utils.tests import _snapshot
+        from utils import _snapshot
         monkeypatch.setattr(_snapshot, 'SNAPSHOT_DIR', tmp_path)
         monkeypatch.setenv('UPDATE_SNAPSHOTS', '1')
         _snapshot.assert_snapshot({'a': 1}, 'sample')
@@ -1220,7 +1220,7 @@ class TestSnapshotHarness:
             _snapshot.assert_snapshot({'a': 2}, 'sample')
 
     def test_missing_snapshot_raises(self, tmp_path, monkeypatch):
-        from utils.tests import _snapshot
+        from utils import _snapshot
         monkeypatch.setattr(_snapshot, 'SNAPSHOT_DIR', tmp_path)
         with pytest.raises(AssertionError, match='No snapshot at'):
             _snapshot.assert_snapshot({'a': 1}, 'never_recorded')
@@ -2454,6 +2454,69 @@ class TestCompression:
         record = []
         assert reopened.compress_messages(_stub_summarizer(record), protect_tail=20) is True
         assert record[0]['previous'] == 'summary #1'
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Eval system — P1 completion gate + scorer (step_1_evals.md)
+# Red-green spine: the folded-baseline gate logic and the completion detector, both pure (no LLM).
+# ═══════════════════════════════════════════════════════════════════
+
+from utils.evals.gates import gate, grade
+from utils.evals.scorers.completion import is_completed, FALLBACKS
+
+
+def _metric(expected_fail, value=None, target=0.90):
+    """A folded baseline record (the P0-1 decision): intent + measurement in one dict."""
+    return {'target': target, 'direction': 'higher', 'expected_fail': expected_fail, 'value': value}
+
+
+class TestCompletionGate:
+    """The folded-baseline red-green gate (eval/gates.py): xfail keeps CI green while a feature is
+    unbuilt; once flipped on, an under-target value is red and a met-target value is green."""
+
+    def test_xfail_keeps_gate_green(self):
+        assert gate({'completion_rate': 0.0}, {'completion_rate': _metric(True)}) == 0
+
+    def test_flip_on_under_target_is_red(self):
+        assert gate({'completion_rate': 0.40}, {'completion_rate': _metric(False)}) == 1
+
+    def test_flip_on_meets_target_is_green(self):
+        assert gate({'completion_rate': 0.95}, {'completion_rate': _metric(False)}) == 0
+
+    def test_no_target_no_baseline_is_red(self):
+        record = {'direction': 'higher', 'expected_fail': False, 'value': None}
+        assert grade('completion_rate', 0.95, record).failed is True  # nothing to assert against
+
+    def test_regression_below_baseline_is_red(self):
+        record = {'direction': 'higher', 'expected_fail': False, 'value': 0.90, 'max_drop': 0.02}
+        assert grade('completion_rate', 0.80, record).failed is True   # dropped past the tolerance
+
+    def test_within_tolerance_of_baseline_is_green(self):
+        record = {'direction': 'higher', 'expected_fail': False, 'value': 0.90, 'max_drop': 0.02}
+        assert grade('completion_rate', 0.89, record).failed is False
+
+
+class TestCompletionScorer:
+    """is_completed (eval/scorers/completion.py): a turn completes iff a real reply came back AND
+    the primary flow (artifact.origin) matched — trajectory is the Traces tier's job, not this."""
+
+    @staticmethod
+    def _result(message, origin='outline'):
+        return {'message': message, 'artifact': {'origin': origin}}
+
+    def test_real_reply_on_expected_flow_is_complete(self):
+        assert is_completed(self._result('Here is your outline.'), 'outline') == (True, 'ok')
+
+    def test_fallback_message_is_incomplete(self):
+        ok, reason = is_completed(self._result(FALLBACKS[0]), 'outline')
+        assert ok is False and 'fallback' in reason
+
+    def test_empty_reply_is_incomplete(self):
+        assert is_completed(self._result('   '), 'outline')[0] is False
+
+    def test_wrong_primary_flow_is_incomplete(self):
+        ok, reason = is_completed(self._result('Done.', origin='rework'), 'outline')
+        assert ok is False and 'expected' in reason
 
 
 class TestCompressionTrigger:

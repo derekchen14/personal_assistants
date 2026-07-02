@@ -2,7 +2,7 @@
 
 ## Voice & Tone
 - Write in active voice. Passive voice weakens clarity.
-- Prefer short sentences. Break long ones into two.
+- Prefer complete sentences that explain a thought fully.
 - Match the tone to the audience: casual for social, precise for technical.
 - Avoid hedge words: "just", "really", "very", "quite", "somewhat".
 

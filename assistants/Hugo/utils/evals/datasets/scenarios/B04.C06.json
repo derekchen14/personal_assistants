@@ -1,0 +1,162 @@
+{
+  "convo_id": "B04.C06",
+  "persona": "P: formal + blunt",
+  "use_case": "U: find -> outline -> write -> release",
+  "topic": "T: Bringing Electricity to Homes",
+  "title": "Wiring the Home: 1880 to 1930",
+  "available_data": {
+    "notes": [
+      "The first central power stations",
+      "Wiring the early household"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "My home-electrification notes as a base, whatever's on file.",
+      "labels": {
+        "intent": "Research",
+        "flow": "find",
+        "dax": "{001}"
+      },
+      "slots": {
+        "query": "home electrification"
+      },
+      "expected_tools": [
+        "find_posts"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Two notes: 'The first central power stations' and 'Wiring the early household'."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "'Wiring the Home: 1880 to 1930', sections sketched: gaslight, first grids, house wiring, the payoff.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Wiring the Home: 1880 to 1930"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Outline: 1) Before the grid 2) The first power stations 3) Knob-and-tube wiring 4) Appliances arrive."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Knob-and-tube wiring for the next section.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Wiring the Home: 1880 to 1930",
+          "sec": "Knob-and-tube wiring"
+        }
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Done. Explained the ceramic knobs, tube insulators, and why it gave way to modern cable."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The history blog or wherever you'd put it, your call.",
+      "labels": {
+        "intent": "Publish",
+        "flow": "release",
+        "dax": "{004}"
+      },
+      "slots": {
+        "source": {
+          "post": "Wiring the Home: 1880 to 1930"
+        },
+        "channel": "history blog"
+      },
+      "expected_tools": [
+        "release_post"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B04",
+  "flagged": false,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Bringing Electricity to Homes | 7 turns | formal + blunt | arc=straight_build | use_case=find -> outline -> write -> release | converted from P2.U3.T2",
+    "draws": {
+      "topic": "Bringing Electricity to Homes",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "find",
+          "outline",
+          "write",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        2,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

@@ -1,0 +1,205 @@
+{
+  "convo_id": "B01.C09",
+  "persona": "P: neutral + hedged",
+  "use_case": "U: compose -> write -> write -> audit",
+  "topic": "T: Agent Security",
+  "title": "Your Prompt Filter Is a Speed Bump",
+  "available_data": {},
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-opus-4-8",
+    "spec": "topic=Agent Security | 7 turns | P neutral/neutral/hedged | arc=iteration_loop | use_case=compose->write->write->audit | distractor=t5(adjacent_worry) | drift=t7(frustrated) | verify=yes | flagged=yes",
+    "draws": {
+      "topic": "Agent Security",
+      "title_source": "coined",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "iteration_loop",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "compose",
+          "write",
+          "write",
+          "audit"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": {
+          "turn": 5,
+          "trigger": "adjacent_worry"
+        },
+        "persona_drift": {
+          "turn": 7,
+          "to": "frustrated"
+        }
+      },
+      "verify": true,
+      "flagged": false,
+      "writer_model": "claude-opus-4-8",
+      "length": [
+        1,
+        2,
+        2,
+        2
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "The outline for this filter piece is set, so maybe we turn it into real paragraphs now?",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "Your Prompt Filter Is a Speed Bump"
+        }
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Was the outline of 'Your Prompt Filter Is a Speed Bump' turned into full prose paragraphs?",
+          "dimension": "useful"
+        },
+        {
+          "check": "Does the draft cover every section that was in the outline?",
+          "dimension": "persisted"
+        }
+      ]
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Drafted all four sections into prose. The opener leans on a canned attack example, so it reads a bit flat."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "The opener does fall flat. Could it maybe lead with a real injection instead?",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Your Prompt Filter Is a Speed Bump",
+          "sec": "opener"
+        }
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Was only the opener paragraph rewritten, leaving the other sections untouched?",
+          "dimension": "persisted"
+        },
+        {
+          "check": "Does the new opener lead with a concrete injection example instead of a canned one?",
+          "dimension": "useful"
+        }
+      ]
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Rewrote the opener around a real payload that slipped a filter. Better hook, but the second line still restates the first."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "That's closer, but would you agree the repeat in the second line could go? My worry is that leading with a live payload hands readers a working exploit.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Your Prompt Filter Is a Speed Bump",
+          "sec": "opener"
+        }
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Was the redundant second line of the opener cut?",
+          "dimension": "useful"
+        },
+        {
+          "check": "Did the agent address the exploit-safety aside without treating it as a new writing task?",
+          "dimension": "trustworthy"
+        }
+      ]
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Cut the repeat, the opener's leaner now. On the worry: the payload is defanged, it names the shape without a copy-paste exploit. It still sounds slightly like a threat report though."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "No, this keeps circling. Just make the whole thing read like me and not a scanner log.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "audit",
+        "dax": "{13A}"
+      },
+      "slots": {
+        "source": {
+          "post": "Your Prompt Filter Is a Speed Bump"
+        }
+      },
+      "expected_tools": [
+        "editor_review"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Did the agent run a voice pass across the whole post rather than another line edit on the opener?",
+          "dimension": "useful"
+        },
+        {
+          "check": "Does the revised voice read like the author rather than a security scanner report?",
+          "dimension": "trustworthy"
+        }
+      ]
+    }
+  ]
+}

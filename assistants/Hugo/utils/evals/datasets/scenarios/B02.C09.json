@@ -1,0 +1,162 @@
+{
+  "convo_id": "B02.C09",
+  "persona": "P: casual + positive + plain",
+  "use_case": "U: find -> summarize -> outline -> compose",
+  "topic": "T: Agent Evaluations",
+  "title": "You Don't Need an Eval Framework, Just 20 Examples",
+  "available_data": {
+    "posts": [
+      "LLM-as-Judge Grades on a Curve"
+    ]
+  },
+  "flagged": false,
+  "batch": "B02",
+  "generation": {
+    "batch": "B02",
+    "seed": 20260701,
+    "writer_model": "claude-opus-4-8",
+    "spec": "topic=Agent Evaluations \u00b7 7 turns \u00b7 P casual/positive/plain \u00b7 arc=straight_build \u00b7 use_case=find->summarize->outline->compose \u00b7 phase_lead=Research \u00b7 drift=t3(frustrated) \u00b7 verify=no \u00b7 flagged=no",
+    "draws": {
+      "topic": "Agent Evaluations",
+      "title_source": "banked",
+      "turn_count": 7,
+      "persona": {
+        "formality": "casual",
+        "emotion": "positive",
+        "directness": "plain"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Research",
+        "sequence": [
+          "find",
+          "summarize",
+          "outline",
+          "compose"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": {
+          "turn": 3,
+          "to": "frustrated"
+        }
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-opus-4-8",
+      "length": [
+        2,
+        2,
+        2,
+        2
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "planning a piece on skipping the eval harness. anything of mine already circling that?",
+      "labels": {
+        "intent": "Research",
+        "flow": "find",
+        "dax": "{001}"
+      },
+      "slots": {
+        "query": "eval framework"
+      },
+      "expected_tools": [
+        "find_posts"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "One close hit: 'LLM-as-Judge Grades on a Curve'. Same neighborhood, different angle."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "ugh, i keep forgetting what that one even argued. give me the short of it before i build on it.",
+      "labels": {
+        "intent": "Research",
+        "flow": "summarize",
+        "dax": "{19A}"
+      },
+      "slots": {
+        "source": {
+          "post": "LLM-as-Judge Grades on a Curve"
+        }
+      },
+      "expected_tools": [
+        "summarize_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "The gist: judges drift toward the middle and reward safe answers, so raw judge scores flatter a mediocre agent. It never touches the small-set idea, so you've got clear room."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "oh nice, no overlap then. lay out the bones for the new one.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "You Don't Need an Eval Framework, Just 20 Examples"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Bones: 1) The framework tax 2) What 20 real examples buy you 3) Writing checks by hand 4) When to graduate to tooling."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "that order works great. run those into full prose.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "You Don't Need an Eval Framework, Just 20 Examples"
+        }
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ]
+}

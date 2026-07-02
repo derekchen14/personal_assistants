@@ -1,0 +1,204 @@
+{
+  "convo_id": "B01.C12",
+  "persona": "P: casual + blunt",
+  "use_case": "U: write -> audit -> cite -> release",
+  "topic": "T: Agent Security",
+  "title": "Prompt Injection Has No Fix, Only Blast Radius",
+  "available_data": {
+    "posts": [
+      "Prompt Injection Has No Fix, Only Blast Radius"
+    ]
+  },
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-opus-4-8",
+    "spec": "topic=Agent Security | 7 turns | P casual/pressured/blunt | arc=straight_build | use_case=write->audit->cite->release | verify=yes | flagged=yes",
+    "draws": {
+      "topic": "Agent Security",
+      "title_source": "banked",
+      "turn_count": 7,
+      "persona": {
+        "formality": "casual",
+        "emotion": "pressured",
+        "directness": "blunt"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Publish",
+        "sequence": [
+          "write",
+          "audit",
+          "cite",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": true,
+      "flagged": false,
+      "writer_model": "claude-opus-4-8",
+      "length": [
+        1,
+        2,
+        1,
+        1
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "the blast-radius intro is doing too much, cut it to two sentences",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Prompt Injection Has No Fix, Only Blast Radius",
+          "sec": "intro"
+        }
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Was the intro cut down to two sentences?",
+          "dimension": "useful"
+        },
+        {
+          "check": "Was only the intro edited, leaving the rest of the post intact?",
+          "dimension": "persisted"
+        }
+      ]
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Trimmed the intro to two sentences. It states the claim, then the stakes. Rest untouched."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "good. now does the whole thing sound like me or a vendor whitepaper",
+      "labels": {
+        "intent": "Revise",
+        "flow": "audit",
+        "dax": "{13A}"
+      },
+      "slots": {
+        "source": {
+          "post": "Prompt Injection Has No Fix, Only Blast Radius"
+        }
+      },
+      "expected_tools": [
+        "editor_review"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Did the agent run a voice check across the whole post rather than another intro edit?",
+          "dimension": "useful"
+        },
+        {
+          "check": "Does the flagged phrasing point to vendor-whitepaper tells rather than the author's voice?",
+          "dimension": "trustworthy"
+        }
+      ]
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Mostly you. Two spots read like a whitepaper: 'robust mitigation posture' and 'defense-in-depth'. Swapped them for plainer lines. One claim has no source though, the injection success rate."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "yeah back that number up, find a real source for it",
+      "labels": {
+        "intent": "Publish",
+        "flow": "cite",
+        "dax": "{15B}"
+      },
+      "slots": {
+        "source": {
+          "post": "Prompt Injection Has No Fix, Only Blast Radius",
+          "sec": "the success-rate claim"
+        }
+      },
+      "expected_tools": [
+        "revise_content"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Was a citation attached to the injection success-rate claim?",
+          "dimension": "trustworthy"
+        },
+        {
+          "check": "Does the proposed source actually support the specific success-rate figure?",
+          "dimension": "trustworthy"
+        }
+      ]
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Found a 2025 OWASP LLM Top 10 entry with a matching figure and linked it to the claim. Ready to confirm."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "confirm it and push it to the blog, needs to be up before my talk",
+      "labels": {
+        "intent": "Publish",
+        "flow": "release",
+        "dax": "{004}"
+      },
+      "slots": {
+        "source": {
+          "post": "Prompt Injection Has No Fix, Only Blast Radius"
+        },
+        "channel": "blog"
+      },
+      "expected_tools": [
+        "release_post"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      },
+      "verify": [
+        {
+          "check": "Was the post published to the primary blog?",
+          "dimension": "persisted"
+        },
+        {
+          "check": "Did the release go out with the confirmed citation attached?",
+          "dimension": "trustworthy"
+        }
+      ]
+    }
+  ]
+}

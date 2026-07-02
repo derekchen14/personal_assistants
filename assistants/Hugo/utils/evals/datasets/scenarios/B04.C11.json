@@ -1,0 +1,159 @@
+{
+  "convo_id": "B04.C11",
+  "persona": "P: formal + blunt",
+  "use_case": "U: plan -> outline -> compose -> refine",
+  "topic": "T: Security",
+  "title": "Securing AI Apps: A Practical Guide",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "An AI-app security post I want finished end to end, nothing half-done.",
+      "labels": {
+        "intent": "Plan",
+        "flow": "plan",
+        "dax": "{29D}"
+      },
+      "note": "Plan turn. The agent decomposes the end-to-end request into the U6 Draft sub-flows: outline, compose, refine.",
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Security plan: outline, then full draft, then refine. Starting the outline."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Security post, the sections first and quickly.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Outline ready. 1) The AI threat surface 2) Securing prompts and inputs 3) Guarding tools and data access 4) Monitoring and incident response."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Does the security draft hold up for a non-specialist once it's prose?",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Drafted all four security sections. Transitions between them are rough."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The security draft reads rough, so the structure and transitions need work.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "refine",
+        "dax": "{02B}"
+      },
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B04",
+  "flagged": false,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Security | 7 turns | formal + blunt | arc=planning | use_case=plan -> outline -> compose -> refine | converted from P2.U6.T1",
+    "draws": {
+      "topic": "Security",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "heterogeneous",
+        "handling": "straightforward"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "plan",
+          "outline",
+          "compose",
+          "refine"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

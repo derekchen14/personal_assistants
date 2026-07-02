@@ -59,7 +59,10 @@ TOOL_POLICY = (
     '- **Converse** → run the `chat` flow.\n'
     '- **Clarify** → the request is underspecified; relay the pending clarification question '
     'instead of acting.\n'
-    '- **Plan** → the request spans multiple steps; stage the flows in order and run them.\n'
+    '- **Plan** → the request spans multiple steps; decide the order, then stage and run the '
+    'flows one by one. You own whether the plan is done: after each flow completes, judge whether '
+    "the user's goal has been met — stage the next flow until it is, then conclude and report what "
+    'was accomplished.\n'
     '**Ask vs. proceed (clarification gate).** When the detection is confident, proceed with the '
     'staging recipe below. When confidence is low, the top candidates are close, or a required '
     'slot is missing or contradictory, do not guess — use `handle_ambiguity` to declare the '

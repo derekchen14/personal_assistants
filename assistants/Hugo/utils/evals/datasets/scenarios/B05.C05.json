@@ -1,0 +1,162 @@
+{
+  "convo_id": "B05.C05",
+  "persona": "P: neutral + hedged",
+  "use_case": "U: find -> outline -> write -> release",
+  "topic": "T: LLM Evals",
+  "title": "Getting Started with LLM Evals",
+  "available_data": {
+    "posts": [
+      "Why Benchmarks Lie",
+      "Notes on Eval Harnesses"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "A post on testing AI models, though I'm not sure where I'd even begin, any thoughts?",
+      "labels": {
+        "intent": "Research",
+        "flow": "find",
+        "dax": "{001}"
+      },
+      "slots": {
+        "query": "testing AI models"
+      },
+      "expected_tools": [
+        "find_posts"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "I found 2 posts that touch on it: 'Why Benchmarks Lie' and 'Notes on Eval Harnesses'. A beginner-friendly guide to LLM evals could tie those together."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Sure, that's fine. The sections grouped however you'd group them.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Getting Started with LLM Evals"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Here's a starter outline for 'Getting Started with LLM Evals': 1) What an eval is 2) Picking what to measure 3) Building your first test set 4) Acting on the scores."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Could the first section take some filling-in now, do you think?",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Getting Started with LLM Evals",
+          "sec": "What an eval is"
+        }
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "I wrote the 'What an eval is' section: a plain-language intro with a small worked example. Take a look."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "It reads well to me. Is the engineering blog where these usually land?",
+      "labels": {
+        "intent": "Publish",
+        "flow": "release",
+        "dax": "{004}"
+      },
+      "slots": {
+        "source": {
+          "post": "Getting Started with LLM Evals"
+        },
+        "channel": "engineering blog"
+      },
+      "expected_tools": [
+        "release_post"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B05",
+  "flagged": false,
+  "generation": {
+    "batch": "B05",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=LLM Evals | 7 turns | neutral + hedged | arc=straight_build | use_case=find -> outline -> write -> release | converted from P3.U3.T1",
+    "draws": {
+      "topic": "LLM Evals",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "find",
+          "outline",
+          "write",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        2,
+        1,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

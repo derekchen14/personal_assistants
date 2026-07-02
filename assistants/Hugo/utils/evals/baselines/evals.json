@@ -1,0 +1,10 @@
+{
+  "completion_rate": {
+    "target": 0.9,
+    "direction": "higher",
+    "expected_fail": true,
+    "value": null,
+    "commit": null,
+    "date": null
+  }
+}

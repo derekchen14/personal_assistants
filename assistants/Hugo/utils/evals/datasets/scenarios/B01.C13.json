@@ -1,0 +1,172 @@
+{
+  "convo_id": "B01.C13",
+  "persona": "P: neutral + neutral + hedged",
+  "use_case": "U: rework -> write -> audit -> write",
+  "topic": "T: Urban Vegetable Gardening",
+  "title": "Why Most Beginner Gardens Die in July",
+  "available_data": {
+    "posts": [
+      "Why Most Beginner Gardens Die in July"
+    ]
+  },
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-sonnet-4-6",
+    "spec": "topic=Urban Vegetable Gardening \u00b7 7 turns \u00b7 P2 neutral/neutral/hedged \u00b7 arc=straight_build \u00b7 use_case=rework->write->audit->write \u00b7 noise=typo(t1) \u00b7 persona_drift=positive(t5) \u00b7 verify=no \u00b7 flagged=no",
+    "draws": {
+      "topic": "Urban Vegetable Gardening",
+      "title_source": "banked",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Revise",
+        "sequence": [
+          "rework",
+          "write",
+          "audit",
+          "write"
+        ]
+      },
+      "sprinkles": {
+        "noise": {
+          "turns": [
+            1
+          ],
+          "type": "typo"
+        },
+        "distractor": null,
+        "persona_drift": {
+          "turn": 5,
+          "to": "positive"
+        }
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-sonnet-4-6",
+      "length": [
+        2,
+        1,
+        2,
+        1
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "The strucutre of the July gardens post feels off. Middle section drags and the close comes too fast.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "rework",
+        "dax": "{006}"
+      },
+      "slots": {
+        "source": {
+          "post": "Why Most Beginner Gardens Die in July"
+        }
+      },
+      "expected_tools": [
+        "revise_content"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Restructured. Moved the watering-frequency section up and split the close into two beats so the advice doesn't hit all at once. Middle reads lighter now."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "The heat-stress paragraph is still a bit flat, maybe something sharper for the opening sentence?",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Why Most Beginner Gardens Die in July",
+          "sec": "heat stress"
+        }
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Replaced the opener with: 'July doesn't kill plants gradually, it kills them on the three days you forget to water.' Rest of the paragraph stays."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Oh that's much better, love the new line. Does the whole thing hold together voice-wise now?",
+      "labels": {
+        "intent": "Revise",
+        "flow": "audit",
+        "dax": "{13A}"
+      },
+      "slots": {
+        "source": {
+          "post": "Why Most Beginner Gardens Die in July"
+        }
+      },
+      "expected_tools": [
+        "editor_review"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Voice is consistent except in the new closing section. It's more instructional than the rest of the post, a bit manual-like. Worth a quick pass there."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Yeah, the closing could probably read more like I'm talking to a friend, not handing someone a checklist.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Why Most Beginner Gardens Die in July",
+          "sec": "closing"
+        },
+        "tone": "conversational"
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ]
+}

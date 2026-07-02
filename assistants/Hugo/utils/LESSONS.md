@@ -772,15 +772,15 @@ Three tiers with increasing fidelity and decreasing speed. Same rubric keys, ass
 | Tier | Location | Speed | Fidelity | What it catches |
 |---|---|---|---|---|
 | **Tier 1 — static lints + units** | `utils/tests/unit_tests.py`, `utils/tests/test_artifacts.py` | <1s total | No LLM, no tools | Service round-trips, slot/prompt drift, schema-rule violations, flow-declaration invariants |
-| **Tier 2 — E2E multi-turn** | `utils/tests/e2e_multiturn_evals.py` | ~2 min | Real LLM | Ambiguity declare→ask→resolve loop |
-| **Tier 3 — E2E full pipeline** | `utils/tests/e2e_agent_evals.py` | ~20 min per scenario | Real LLM, persistent disk | Step-by-step lifecycle, inter-flow state propagation, artifact→block serialization |
-| **Tier 4 — Playwright UI** | `utils/tests/playwright_evals/` (planned) | ~10 min | Real browser | UI rendering, click-to-emit payloads, error-artifact display |
+| **Tier 2 — E2E multi-turn** | `utils/evals/e2e_multiturn_evals.py` | ~2 min | Real LLM | Ambiguity declare→ask→resolve loop |
+| **Tier 3 — E2E full pipeline** | `utils/evals/e2e_agent_evals.py` | ~20 min per scenario | Real LLM, persistent disk | Step-by-step lifecycle, inter-flow state propagation, artifact→block serialization |
+| **Tier 4 — Playwright UI** | `utils/evals/playwright_evals/` (planned) | ~10 min | Real browser | UI rendering, click-to-emit payloads, error-artifact display |
 
 **Failure dumps.** On any failure, write `utils/policy_builder/failures/<run_id>/step_<N>.md` with: utterance, expected/actual tools and frames, scratchpad state, tool call trajectory. The dump must be sufficient for a fresh Claude instance to debug from cold — no conversation context required.
 
 **Eval-failure-as-success principle.** During harness construction, success means **seeing the tests fail** — that's the signal evals catch what the app breaks on. Mock over early failures so downstream steps run and surface their own failures. Once the harness produces a realistic failure profile, design policies to get everything green.
 
-**Snapshot updates require PR-body justification.** Pillar 1's structural snapshots (`utils/tests/snapshots/*.json`) capture flow_stack composition, slot shape, artifact structure, and tool sequence after every e2e turn. A failure means the projection diverged from the recorded shape. Re-running with `UPDATE_SNAPSHOTS=1` is not a fix — it overwrites the recorded behavior. Always read the diff first: if the change is intentional, update and explain *what changed and why* in the PR body; if it's a regression, fix the code.
+**Snapshot updates require PR-body justification.** Pillar 1's structural snapshots (`utils/evals/snapshots/*.json`) capture flow_stack composition, slot shape, artifact structure, and tool sequence after every e2e turn. A failure means the projection diverged from the recorded shape. Re-running with `UPDATE_SNAPSHOTS=1` is not a fix — it overwrites the recorded behavior. Always read the diff first: if the change is intentional, update and explain *what changed and why* in the PR body; if it's a regression, fix the code.
 
 ### 2. Frame Validation
 

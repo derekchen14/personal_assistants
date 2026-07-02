@@ -1,0 +1,143 @@
+{
+  "convo_id": "B03.C07",
+  "persona": "P: neutral + plain",
+  "use_case": "U: chat -> brainstorm -> outline -> chat",
+  "topic": "T: Traces",
+  "title": "What Distributed Tracing Actually Buys You",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Distributed tracing as a post. Or has that one been done to death?",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {},
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Still worth it. Most pieces explain spans and exporters, but few argue WHY tracing is worth the effort. A practitioner angle would stand out."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Keep the angles sharper than your usual intro, and more opinionated.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "brainstorm",
+        "dax": "{39D}"
+      },
+      "slots": {
+        "query": "distributed tracing, opinionated practitioner angle"
+      },
+      "expected_tools": [
+        "brainstorm_ideas"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "A few angles: 1) 'What tracing buys you that logs never will' 2) The hidden cost of un-instrumented services 3) Tracing as a debugging-time multiplier 4) Sampling: the tradeoff nobody talks about."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "The first one, please. Lay its sections out.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "What Distributed Tracing Actually Buys You"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Outline: 1) The pain logs leave behind 2) What a trace actually shows you 3) Tracing as a debugging multiplier 4) When it's not worth it."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "That's great. I'll take it from here. Any parting tips?",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {},
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B03",
+  "flagged": false,
+  "generation": {
+    "batch": "B03",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Traces | 7 turns | neutral + plain | arc=straight_build | use_case=chat -> brainstorm -> outline -> chat | converted from P1.U4.T1",
+    "draws": {
+      "topic": "Traces",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "chat",
+          "brainstorm",
+          "outline",
+          "chat"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        2,
+        1,
+        2,
+        3
+      ],
+      "flagged": false
+    }
+  }
+}

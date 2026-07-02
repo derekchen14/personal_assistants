@@ -1,6 +1,6 @@
 # AGENTS.md — Hugo (Blog-Writing Assistant)
 
-Hugo lives in the `personal_assistants` monorepo. It helps a user write, revise, and publish blog posts across channels (Substack, LinkedIn, Twitter, etc.). Turn pipeline: `Agent → NLU → PEX → RES`.
+Hugo lives in the `personal_assistants` monorepo. It helps a user write, revise, and publish blog posts across channels (Substack, LinkedIn, Twitter, etc.). Turn pipeline: `Agent → NLU → PEX` — PEX composes the reply directly (RES was removed).
 
 This file is an index for coding agents starting a fresh session. Read it once, then use it to decide **where** to read deeper. Further reference lives in `utils/helper_ref.md` (component inventory) and `utils/flow_recipe.md` (how to author a flow).
 
@@ -14,9 +14,9 @@ The 7 core components cover ~80% of every assistant's capability. Flow policies 
 - `./init_frontend.sh` — frontend on port 5174
 - `uv pip install -r requirements.txt` — never `pip install`
 - `pytest utils/tests/unit_tests.py utils/tests/test_artifacts.py` — free-tier tests (no LLM, <1s for ~380 tests, includes the Hypothesis FlowStack state machine). **Run after every major change.**
-- `pytest utils/tests/e2e_agent_evals.py -v -s --tb=short` — full pipeline scenarios (~5–8 min, LLM-heavy, includes structural snapshot checks). Run at end of feature work.
-- `UPDATE_SNAPSHOTS=1 pytest utils/tests/e2e_agent_evals.py` — re-record snapshot sidecars after a *deliberate* behavior change. The `.json` diff in the resulting PR must be reviewed and justified in the PR body.
-- Test catalog and how-to-read-failures: `utils/tests/evaluation_guidelines.md` (canonical reference).
+- `pytest utils/evals/e2e_agent_evals.py -v -s --tb=short` — full pipeline scenarios (~5–8 min, LLM-heavy, includes structural snapshot checks). Run at end of feature work.
+- `UPDATE_SNAPSHOTS=1 pytest utils/evals/e2e_agent_evals.py` — re-record snapshot sidecars after a *deliberate* behavior change. The `.json` diff in the resulting PR must be reviewed and justified in the PR body.
+- Test catalog and how-to-read-failures: `utils/evals/evaluation_guidelines.md` (canonical reference).
 - **Snapshot-sidecar rule:** snapshot-sidecar diffs require PR-body justification.
 - Bash permission rules: no `&&`, `&`, `$()`, `2>&1` — run independent commands as parallel Bash calls.
 
@@ -26,7 +26,7 @@ The 7 core components cover ~80% of every assistant's capability. Flow policies 
 - **FlowStack** (`backend/components/flow_stack/stack.py`) — top-of-stack is authoritative past NLU. `flow_stack.get_flow()` returns top by default; pass `status='Active'` only when distinguishing lifecycle.
 - **DialogueState** (`backend/components/dialogue_state.py`) — beliefs + control flags: `pred_intent`, `flow_name`, `active_post`, `keep_going`, `has_issues`, `has_plan`.
 - **TaskArtifact** (`backend/components/task_artifact.py`) — turn output. A2A-aligned: an artifact is the agent's output for one task (= one flow turn). **3 stored attributes** (`origin`, `parts`, `blocks`) + **3 helper properties** (`data`, `thoughts`, `code`) that unpack the parts list. `parts: list[Part]` follows A2A v1.0's Part oneof (`text` / `raw` / `url` / `data` + optional `metadata`). The classification dict (`violation`, `missing`, `entity`, …) lives inside the first `data` Part; agent reasoning lives in a `text` Part tagged `metadata.kind='thoughts'`; generated code lives in a `text` Part tagged `metadata.kind='code'`. Readers use `artifact.data['violation']` / `artifact.thoughts` / `artifact.code`. `blocks` are visual UI building blocks (cards/lists/selections/etc.). **Never add TaskArtifact attributes without asking.**
-- Module contracts are guaranteed (drop defensive `if x is None` checks for these): `NLU.understand` always returns `DialogueState`; every turn has a flow; `PEX.execute` always returns `(TaskArtifact, keep_going)`; `RES.respond` always returns `(str, TaskArtifact)`.
+- Module contracts are guaranteed (drop defensive `if x is None` checks for these): `NLU.understand` always returns `DialogueState`; every turn has a flow; `PEX.execute` always returns `(TaskArtifact, keep_going)` and composes the reply directly (there is no RES module).
 
 ## The 7 components — what they own
 
@@ -141,13 +141,14 @@ assistants/Hugo/
 │   │                               flow_stack/, ambiguity_handler, memory_manager,
 │   │                               context_coordinator, prompt_engineer
 │   ├── modules/                    nlu.py, pex.py, res.py, policies/, templates/
-│   ├── prompts/                    skills/, nlu/, for_{nlu,pex,res,experts,contemplate}.py
+│   ├── prompts/                    pex/ (skills/), nlu/, experts/, for_{nlu,pex,orchestrator,compressor,contemplate,experts}.py
 │   ├── utilities/services.py       PostService, ContentService, AnalysisService, PlatformService
 │   └── routers/                    chat_service.py, health_service.py
 ├── database/                       hugo.db, content/, tables.py, seed_data.json
 ├── schemas/                        ontology.py, config.py, tools.yaml
-├── utils/                          helper.py, helper_ref.md, flow_recipe.md, prod_replica.py,
-│                                   rebuild_metadata.py, tests/
+├── utils/                          helper.py, harness.py, conftest.py, helper_ref.md, flow_recipe.md,
+│                                   prod_replica.py, rebuild_metadata.py,
+│                                   tests/ (unit), traces/ (parity+gold), evals/ (e2e+harness)
 └── README.md                       10-step workflow + CRUD matrix
 ```
 

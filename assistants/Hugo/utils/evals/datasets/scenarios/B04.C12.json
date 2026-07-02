@@ -1,0 +1,159 @@
+{
+  "convo_id": "B04.C12",
+  "persona": "P: formal + blunt",
+  "use_case": "U: plan -> outline -> compose -> refine",
+  "topic": "T: Edison's workshop",
+  "title": "Inside Menlo Park: How Edison Ran His Invention Factory",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "The whole post, blank page to finished draft.",
+      "labels": {
+        "intent": "Plan",
+        "flow": "plan",
+        "dax": "{29D}"
+      },
+      "note": "Plan turn. The agent decomposes the end-to-end request into the U6 Draft sub-flows: outline, compose, refine.",
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Plan: outline, then a full draft, then refine. Starting the outline."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Three or four sections to start.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Outline ready. 1) Building the invention factory 2) The team of muckers 3) A system for inventing 4) The legacy of Menlo Park."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "The sections want to read as one continuous draft.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Drafted all four sections. Transitions between them are rough."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The draft is choppy in the same spots, structure and transitions both.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "refine",
+        "dax": "{02B}"
+      },
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B04",
+  "flagged": false,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Edison's workshop | 7 turns | formal + blunt | arc=planning | use_case=plan -> outline -> compose -> refine | converted from P2.U6.T2",
+    "draws": {
+      "topic": "Edison's workshop",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "heterogeneous",
+        "handling": "straightforward"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "plan",
+          "outline",
+          "compose",
+          "refine"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

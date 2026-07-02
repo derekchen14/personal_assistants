@@ -190,6 +190,28 @@ FLOW_CATALOG = {
         'edge_flows': ['brainstorm', 'find'],
         'policy_path': 'policies.converse.chat',
     },
+
+    # ── Clarify (1 flow, no policy — run by the Ambiguity Handler) ──
+
+    'clarify': {
+        'dax': '{09F}',
+        'intent': Intent.CLARIFY,
+        'description': 'Ask one targeted question to resolve an ambiguous turn (a missing task, entity, or value) — no policy; the Ambiguity Handler runs this flow instead of a policy',
+        'output': 'card',
+        'edge_flows': [],
+        'policy_path': None,
+    },
+
+    # ── Plan (1 flow, no policy — run by the Workflow Planner) ──
+
+    'plan': {
+        'dax': '{29D}',
+        'intent': Intent.PLAN,
+        'description': 'Decompose a multi-step request into an ordered sequence of domain flows — no policy; the Workflow Planner runs this flow instead of a policy',
+        'output': 'list',
+        'edge_flows': [],
+        'policy_path': None,
+    },
 }
 
 KEY_ENTITIES = ['post', 'section', 'snippet', 'channel']

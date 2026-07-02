@@ -1,0 +1,143 @@
+{
+  "convo_id": "B04.C07",
+  "persona": "P: formal + blunt",
+  "use_case": "U: chat -> brainstorm -> outline -> chat",
+  "topic": "T: Traces",
+  "title": "Distributed Tracing for Microservices",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Distributed tracing for microservices, worth a post?",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {},
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Yes. Strong demand, especially a hands-on take for teams already on microservices."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Practical angles for the brainstorm, nothing fluffy.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "brainstorm",
+        "dax": "{39D}"
+      },
+      "slots": {
+        "query": "distributed tracing for microservices, practical"
+      },
+      "expected_tools": [
+        "brainstorm_ideas"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Angles: 1) Instrumenting your first service end-to-end 2) Propagating context across service boundaries 3) Reading a trace to find the slow hop 4) Cutting trace volume with smart sampling."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Number three of the bunch.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Distributed Tracing for Microservices"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Outline: 1) The slow-request problem 2) Anatomy of a trace 3) Spotting the slow hop 4) Fixing and confirming."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "That'll do. One last pointer before I go?",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {},
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B04",
+  "flagged": false,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Traces | 7 turns | formal + blunt | arc=straight_build | use_case=chat -> brainstorm -> outline -> chat | converted from P2.U4.T1",
+    "draws": {
+      "topic": "Traces",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "chat",
+          "brainstorm",
+          "outline",
+          "chat"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

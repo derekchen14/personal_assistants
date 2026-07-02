@@ -240,6 +240,8 @@ Each flow has a corresponding skill template — a Markdown file that gets assem
 
 When assembled into the final prompt, skill templates follow the [standard 8-slot prompt format](../style_guide.md#standard-prompt-format) from the Style Guide. The skill template provides slots 2-6 (persona/task, detailed instructions, keywords/options, output shape, exemplars). The Prompt Engineer injects slot 1 (grounding data) and slot 8 (final request) at assembly time, and appends slot 7 (closing reminder) after the template's exemplars.
 
+**Note — these are sub-agent prompts, not module skills.** A per-flow "skill template" here is a **sub-agent prompt** (it drives a flow that returns a JSON result), so it follows the 8-slot format. It is distinct from a **module skill** — the orchestrator how-to guides (the Workflow Planner, `explain`, `recap`/`recall`/`retrieve`) that **return nothing**. Only sub-agent/tool prompts use this format.
+
 ### Template Contents
 
 1. **Flow description** — What this flow accomplishes, one paragraph
@@ -505,12 +507,11 @@ Each tool in the manifest declares these properties. PEX loads the manifest at s
 | `tool_id` | string | Unique identifier, `verb_entity` pattern |
 | `name` | string | Human-readable display name |
 | `description` | string | What the tool does — for logging/debugging and skill prompt context |
-| `scope` | enum | `universal` (given to every skill) or `flow` (only flows that declare it) — drives provisioning in `get_tools_for_flow` |
-| `dispatch` | enum | `service` (external, routed through the `_tools` dict) or `internal` (a component method, routed through `_dispatch_*`) — drives `_dispatch_tool` |
 | `input_schema` | string | Path to input JSON Schema file |
-| `output_schema` | string | Path to output JSON Schema file |
 | `idempotent` | bool | Safe to auto-retry without side effects (drives PEX retry policy) |
 | `timeout_ms` | int | Max execution time in milliseconds |
+
+> **Hugo divergence (decided 2026-06-21):** `scope`, `dispatch`, and `output_schema` are **not** in Hugo's manifest — they live in code (provisioning via each flow's `self.tools`; routing via the code-side dispatch table). One source is enough; the manifest doesn't duplicate them.
 
 ### Capability Tags
 
@@ -542,10 +543,7 @@ recipe_search:
   tool_id: recipe_search
   name: "Search recipes"
   description: "Search recipe database by ingredients, cuisine, or dietary restriction"
-  scope: flow                    # only flows that declare it
-  dispatch: service              # external service, routed via _tools
   input_schema: schemas/recipe_search_input.json
-  output_schema: schemas/recipe_search_output.json
   idempotent: true
   timeout_ms: 10000
   accesses_private_data: false

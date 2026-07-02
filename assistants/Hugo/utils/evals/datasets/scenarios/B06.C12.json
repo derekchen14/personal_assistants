@@ -1,0 +1,160 @@
+{
+  "convo_id": "B06.C12",
+  "persona": "P: neutral + plain",
+  "use_case": "U: plan -> outline -> compose -> refine",
+  "topic": "T: Edison's workshop",
+  "title": "Inside Menlo Park: How Edison Ran His Invention Factory",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Need this one the whole way to a finished draft, ideally today.",
+      "labels": {
+        "intent": "Plan",
+        "flow": "plan",
+        "dax": "{29D}"
+      },
+      "note": "Plan turn. The agent decomposes the end-to-end request into the U6 Draft sub-flows: outline, compose, refine.",
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Got it. I'll outline the structure, compose a full draft, then refine it. Starting the outline."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Map the sections out, and let's not dawdle.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Okay, outline's done: 1) Building the invention factory 2) The team of muckers 3) A system for inventing 4) The legacy of Menlo Park."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Good call on the rest. The whole thing as a full draft now, muckers section aside.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "note": "absent-minded direction change mid-turn: user starts toward expanding a single section, then redirects to composing the whole draft; the compose flow still completes.",
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Drafted all four sections. The handoffs between them are a little choppy."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Clean up the rough seams in the draft.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "refine",
+        "dax": "{02B}"
+      },
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B06",
+  "flagged": false,
+  "generation": {
+    "batch": "B06",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Edison's workshop | 7 turns | neutral + plain | arc=planning | use_case=plan -> outline -> compose -> refine | converted from P4.U6.T2",
+    "draws": {
+      "topic": "Edison's workshop",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "heterogeneous",
+        "handling": "straightforward"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "plan",
+          "outline",
+          "compose",
+          "refine"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        2,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

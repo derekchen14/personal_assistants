@@ -1,0 +1,162 @@
+{
+  "convo_id": "B04.C05",
+  "persona": "P: formal + blunt",
+  "use_case": "U: find -> outline -> write -> release",
+  "topic": "T: LLM Evals",
+  "title": "Shipping LLM Evals That Catch Regressions",
+  "available_data": {
+    "posts": [
+      "Why Benchmarks Lie",
+      "Notes on Eval Harnesses"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "An LLM evals post leaning on what I have. Anything saved I can find?",
+      "labels": {
+        "intent": "Research",
+        "flow": "find",
+        "dax": "{001}"
+      },
+      "slots": {
+        "query": "LLM evals"
+      },
+      "expected_tools": [
+        "find_posts"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Two hits: 'Why Benchmarks Lie' and 'Notes on Eval Harnesses'."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "'Shipping LLM Evals That Catch Regressions', the section list roughed out: regressions, golden sets, graders, sign-off.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Shipping LLM Evals That Catch Regressions"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Outline: 1) The regression problem 2) Eval suite design 3) Wiring it into CI 4) Reading the results."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Can a reader actually run the CI section as it's written, without the wiring config?",
+      "labels": {
+        "intent": "Revise",
+        "flow": "write",
+        "dax": "{003}"
+      },
+      "slots": {
+        "source": {
+          "post": "Shipping LLM Evals That Catch Regressions",
+          "sec": "Wiring it into CI"
+        }
+      },
+      "expected_tools": [
+        "write_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Done. Added a YAML pipeline config that runs the eval suite on every PR."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The engineering blog today, if it can go live.",
+      "labels": {
+        "intent": "Publish",
+        "flow": "release",
+        "dax": "{004}"
+      },
+      "slots": {
+        "source": {
+          "post": "Shipping LLM Evals That Catch Regressions"
+        },
+        "channel": "engineering blog"
+      },
+      "expected_tools": [
+        "release_post"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B04",
+  "flagged": false,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=LLM Evals | 7 turns | formal + blunt | arc=straight_build | use_case=find -> outline -> write -> release | converted from P2.U3.T1",
+    "draws": {
+      "topic": "LLM Evals",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "find",
+          "outline",
+          "write",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        2,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

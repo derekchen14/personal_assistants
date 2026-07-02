@@ -52,12 +52,11 @@ BaseFlow
 
 ### BaseFlow as the Stack Entry
 
-There is no separate `FlowEntry` wrapper. **BaseFlow IS the entry** — each flow instance carries both its domain definition (slots, tools, intent) and its runtime state (flow_id, status, plan_id, turn_ids, result). When a flow is pushed onto the stack, the FlowStack instantiates the flow class directly and sets the runtime fields.
+There is no separate `FlowEntry` wrapper. **BaseFlow IS the entry** — each flow instance carries both its domain definition (slots, tools, intent) and its runtime state (flow_id, status, turn_ids, result). When a flow is pushed onto the stack, the FlowStack instantiates the flow class directly and sets the runtime fields.
 
 Runtime state fields on every BaseFlow instance:
 - `flow_id` — unique 8-char identifier, set by FlowStack on push
 - `status` — lifecycle state (active, pending, completed, invalid)
-- `plan_id` — which plan this flow belongs to (if any)
 - `turn_ids` — conversation turns associated with this flow
 - `result` — execution result dict, set on completion
 
@@ -72,7 +71,7 @@ Every flow inherits these methods from `BaseFlow`:
 | `slot_values_dict()` | Read all filled slot values as a flat `{name: value}` dict |
 | `is_filled()` | Check if all required slots and at least one elective (if any) are filled |
 | `needs_to_think()` | Determine if further contemplation is needed before execution |
-| `to_dict()` | Full flow serialization including runtime state (flow_id, status, slots, plan_id, turn_ids, result) |
+| `to_dict()` | Full flow serialization including runtime state (flow_id, status, slots, turn_ids, result) |
 | `get(key, default)` | Attribute access helper — reads from flow attributes with a default fallback |
 | `name(full=False)` | Flow name helper — returns `flow_type` by default, or fully qualified name with intent prefix when `full=True` |
 | `serialize()` | Serialize the flow for persistence |
@@ -316,73 +315,36 @@ merge collisions. The surface that has to worry about **race conditions** is the
 is resolved by [NLU](../modules/nlu.md): NLU is triggered to review the scratchpad whenever it is updated, and
 keeps it smooth and uncorrupted.
 
-## Plan Flow Lifecycle
+## Plan Lifecycle
 
-A Plan is decomposed and sequenced by the Workflow Planner **itself** — there is **no separate Plan policy**
-sub-agent. The decisions below (decomposition, the replanning check, completion assessment) are prompted steps
-the Workflow Planner runs inside PEX's loop, not an activated flow.
+A Plan is decomposed and sequenced by the Workflow Planner **itself** — there is **no separate Plan policy
+sub-agent, and no Plan flow object on the stack**. Decomposition is a single prompted step (the `plan` skill);
+execution is the ordinary flow stack; **the PEX orchestrator judges when the plan has met the user's goal**.
 
-### The `plan` skill
-The Planner runs a single **`plan` skill** (`backend/prompts/pex/skills/plan.md`) for the decomposition — it is
-Planner-invoked, not a flow policy. Sketch:
-- **Input** — *primarily* NLU's classified **intent** and detected **flow(s)** (from `classify_intent` /
-  `detect_flow`): the planner routes from NLU's belief, not the raw text. Plus the flow catalog (flows by
-  intent), current grounding, and recent context.
-- **Output** — (1) an ordered list of **existing** sub-flows to stack, each tagged with its dependency (what
-  must finish first); (2) a short freeform plan to show the user for approval.
-- **Rules** — map each sub-task to an existing flow (never invent flows); order by dependency; keep it minimal.
-- **Feedback** — share the plan; on approval the Planner stacks the sub-flows under one `plan_id`.
-- **Replan / complete** — the per-sub-flow replanning check and the final completion assessment (below) are
-  the same skill re-run over the scratchpad.
+### The Workflow Planner skill
+The **Plan** intent is served by the **Workflow Planner skill** (`backend/prompts/pex/skills/plan.md`). Like
+every module skill it **returns nothing** — it is how-to guidance injected into the orchestrator's context, not
+a flow policy and not a returning call. Following it, PEX issues the stack ops itself. Sketch:
+- **Input** — NLU's detected intent/flow(s) (the orchestrator routes from belief, not raw text), the flow
+  catalog (flows by intent), current grounding, and recent context.
+- **What it tells PEX to do** — map each sub-task to an **existing** flow (never invent one), order by
+  dependency, keep it minimal, then `stackon` the sub-flows in that order and share a one-line plan.
+- **Result** — PEX emits the `stackon` calls in its loop plus a short plan for the user; the decomposition is
+  PEX's reasoning + tool calls, not a value the skill returns.
 
-When a Plan intent decomposes a task, the Plan flow itself sits at the bottom of the sub-flow stack. If Plan X adds sub-flows A, B, C:
+### Execution
+On approval the Planner stacks the sub-flows in order with `stackon` and runs them through the ordinary flow
+lifecycle (Active → Completed → `pop_completed`). Each completed flow appends its completion record
+`{flow, summary, metadata}` to the [Session Scratchpad](./session_scratchpad.md), so a later sub-flow can read
+what an earlier one produced. Mid-plan, PEX keeps going across the sub-flows on the same turn — a Plan is the
+sanctioned chaining path; a lone flow stacked outside a plan exits for user review instead.
 
-```
-Stack (top → bottom): [A (Active), B (Pending), C (Pending), X (Pending)]
-```
-
-After A completes and is popped by PEX, the stack becomes `[B, C, X]`. PEX then performs a **replanning check**
-before activating B:
-
-1. **Continue** — if scratchpad findings align with the original plan, activate B normally
-2. **Reorder** — if A's results suggest C should run before B, swap their positions
-3. **Expand** — if A revealed a new requirement, push a new sub-flow D onto the stack
-4. **Prune** — if A's results make B unnecessary, mark B as Invalid and skip to C
-
-The replanning check reads the scratchpad (where A's findings were written) and the remaining plan state. It is a lightweight prompted decision, not a full re-invocation of the decomposition step.
-
-### Plan Completion
-
-The Plan flow (X) is the last flow on the stack. When all sub-flows complete and X becomes Active, PEX runs the Workflow Planner's completion assessment one final time. This final step is a **prompted decision**: the Workflow Planner reviews the scratchpad (which now contains findings from all sub-flows) and decides whether the overall task is complete or requires further work. If further work is needed, it stacks new sub-flows and PEX continues the loop. If complete, it marks X Completed and PEX compiles a final response from all accumulated findings.
-
-This means Plan flow completion is never automatic — it always requires an explicit assessment that the user's objective has been satisfied.
-
-### Idea (not adopted) — self-evaluation "good-enough" loop
-
-> **Status: idea only, not on the roadmap.** The legacy system ran an extra self-evaluation *after* the steps:
-> a prompt asked *"is this interesting / good enough?"* and either presented the result or looped to add more
-> steps (bounded to ~7 iterations), accumulating summaries in the scratchpad. We are **not adopting** this. The
-> completion assessment above already decides done-vs-more-work once; layering a separate "good-enough?"
-> re-evaluation on top adds friction to *finishing* — it biases the agent toward second-guessing a satisfactory
-> result and burning extra turns. Recorded here only as a known option for a future **open-ended discovery**
-> domain (where "keep digging until something is interesting" is the actual goal); for task-completion domains
-> it is a net negative.
-
-### Plan-Aware Stack Tracking
-
-The flow stack tracks which flows belong to which plan via a `plan_id` field on each sub-flow. This enables:
-
-- **Replanning scope**: PEX knows which Pending flows belong to the current plan vs. independently stacked flows
-- **Plan progress**: PEX can determine how far through a plan it is (e.g., 2 of 4 sub-flows completed)
-- **Plan abandonment**: If the Plan flow itself is marked Invalid, all sub-flows with matching `plan_id` are also marked Invalid and popped
-
-### LATS for Plan Decomposition
-
-For complex decomposition decisions, the Workflow Planner can use Language Agent Tree Search (LATS) to explore multiple decomposition strategies before committing. It generates 2-3 candidate decompositions (different orderings, different sub-flow selections), evaluates each against the user's stated objective, and selects the highest-scoring plan. This is optional — simple plans (2-3 obvious sub-flows) do not need tree search. LATS is warranted when:
-
-- The decomposition has 4+ sub-flows with non-obvious ordering
-- Multiple valid decomposition strategies exist with different trade-offs
-- The task is ambiguous enough that the "right" decomposition is unclear
+### Goal completion — owned by PEX
+There is **no completion-assessment flow** and **no automatic "all sub-flows popped ⇒ done" rule**: the PEX
+orchestrator decides whether the user's goal has been met. After each sub-flow completes, PEX judges whether
+the goal is satisfied — if not, it stages and runs the next flow (or stacks a new one the work revealed); if
+so, it concludes and reports what was accomplished. This is the same judgment PEX makes on any multi-step
+turn, stated here for plans; it is a prompted decision, never automatic.
 
 ---
 
@@ -481,7 +443,7 @@ PEX curates the **3 same-type artifacts into one** (origin trivially `draft`). T
 activation rule exists for.
 
 **4 — A Plan of DIFFERENT-type flows (sequential, top-only).** *"Research the topic, draft a post, then publish
-it."* → Plan, 3 different-type sub-flows under one `plan_id`.
+it."* → Plan, 3 different-type sub-flows run in order.
 
 | Op | Stack after |
 |---|---|

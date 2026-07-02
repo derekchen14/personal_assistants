@@ -1,12 +1,12 @@
 # flow_recipe.md — Authoring (or Modifying) a Hugo Flow
 
-Every flow touches five files. This recipe walks through each using `OutlineFlow` as a running concrete example — it is already wired end-to-end and passes at all three eval levels. Copy the shape, change the details.
+Every flow touches four files. This recipe walks through each using `OutlineFlow` as a running concrete example — it is already wired end-to-end and passes at all three eval levels. Copy the shape, change the details.
 
 ## Before you edit
 
 Read `AGENTS.md` → mental model + boundaries + invariants.
 Read `helper_ref.md` → know which helpers exist so you don't reinvent any.
-Touch one flow end-to-end; skip steps at your peril — a flow with only 4 of 5 pieces will fail at runtime (NLU can't fill slots, or RES can't phrase a response, or the policy crashes on a missing skill).
+Touch one flow end-to-end; skip steps at your peril — a flow with only 3 of 4 pieces will fail at runtime (NLU can't fill slots, or the policy crashes on a missing skill).
 
 ## 1. Declare the flow — `backend/components/flow_stack/flows.py`
 
@@ -123,13 +123,13 @@ Anti-patterns to avoid:
 - Adding defensive `if state is None` / `if flow is None` — the module contracts guarantee these are non-None.
 - Writing output parsers inline — use `self.engineer.apply_guardrails(text, format='json')` or `apply_guardrails(text, format='markdown', shape='candidates'|'outline')`.
 - Calling `revise_content` directly — use `self._persist_section(...)`.
-- Writing spoken response text into `artifact.thoughts`. Only do that when the LLM text IS the response (brainstorm, outline-thoughts). Normal flows pass data to RES via blocks/metadata; RES uses a template to phrase it.
+- Writing spoken response text into `artifact.thoughts`. Only do that when the LLM text IS the response (brainstorm, outline-thoughts). Normal flows pass data to PEX via blocks/metadata; PEX composes the reply directly.
 
-## 4. Skill prompt — `backend/prompts/skills/<flow>.md`
+## 4. Skill prompt — `backend/prompts/pex/skills/<flow>.md`
 
 Loaded by `PromptEngineer.load_skill_template(flow.name())` inside `BasePolicy.llm_execute`. Skip this file entirely if the flow uses a deterministic tool path (CreateFlow itself does NOT have a skill prompt — it only calls `create_post`).
 
-Shape (existing files — e.g., `skills/create.md`):
+Shape (existing files — e.g., `pex/skills/create.md`):
 - `# Skill: <flow_name>` + one-sentence description.
 - `## Behavior` — bullets describing what the LLM should do, including any tool-call expectations.
 - `## Slots` — list of the same slots declared in step 1, with required/optional annotations.
@@ -138,35 +138,9 @@ Shape (existing files — e.g., `skills/create.md`):
 
 The LLM sees this skill prompt merged with the user's conversation via `BasePolicy._build_skill_prompt`.
 
-## 5. Response template — `backend/modules/templates/<intent>.py`
-
-Two edits:
-1. Add an entry in the `TEMPLATES` dict: `'flow_name': {'template': '…', 'skip_naturalize': <bool>, 'block_hint': '<hint>'}`.
-2. Add a branch in `fill_<intent>_template(template, flow, frame)` that formats the template string using `flow` + `frame` data.
-
-Example (`templates/draft.py:6-27`):
-
-```python
-TEMPLATES = {
-    'create': {'template': "I've created a new draft called '{title}'", 'block_hint': 'form'},
-    'outline': {'template': "{message}", 'skip_naturalize': True, 'block_hint': 'card'},
-    ...
-}
-
-def fill_draft_template(template, flow, frame):
-    flow_name = flow.name()
-    if flow_name == 'create':
-        return TEMPLATES['create']['template'].format(title=flow.slots['title'].value)
-    if flow_name == 'outline':
-        ...
-    return TEMPLATES[flow_name]['template'].format(message=artifact.thoughts)
-```
-
-`skip_naturalize: True` when the text is already human-phrased (brainstorm output, outline proposals). Leave it False when the template is a template literal — RES will rewrite through `engineer.call` with the naturalize prompt.
-
 ## Coding conventions
 
-These rules apply to every flow touchpoint — NLU slot defs, policy methods, skill files, RES templates. They were distilled while writing the six exemplar policies; the full policy-layer list is in `utils/policy_builder/policy_spec.md § Policy-writing conventions`. The subset below is universal enough to bake in before you write any new flow code.
+These rules apply to every flow touchpoint — NLU slot defs, policy methods, skill files. They were distilled while writing the six exemplar policies; the full policy-layer list is in `utils/policy_builder/policy_spec.md § Policy-writing conventions`. The subset below is universal enough to bake in before you write any new flow code.
 
 1. **Don't defend deterministic code.** Internal tools have known contracts. Access keys directly (`flow_metadata['outline']`, `slots['source'].values[0]`); let missing keys or `_success=False` crash so tests catch the bug. See `CLAUDE.md § "Don't defensively access known-present values"` for the canonical list of where this applies.
 2. **No defaults that hide errors.** `text or ''`, `parsed or {}`, `isinstance(parsed, dict)` mask upstream bugs. If a call can legitimately return empty, branch on the value — don't coerce.
@@ -188,7 +162,7 @@ When the flow is wired up:
 - [ ] L1 pass: policy runs, frame has data (card/form/confirmation/toast/selection/list block or non-empty thoughts/metadata).
 - [ ] L2 pass: domain-tool trajectory matches what you expect given the skill prompt.
 - [ ] L3 pass: the LLM-as-judge's rubric is satisfied — `did_action` + `did_follow_instructions`.
-- [ ] `state.active_post` is set for any grounded flow (source/target/removal/channel). If not, PEX post-hook flips `has_issues` and RES escalates ambiguity.
-- [ ] Spoken text comes from the template, not `artifact.thoughts` (unless the flow is brainstorm-like).
+- [ ] `state.active_post` is set for any grounded flow (source/target/removal/channel). If not, PEX post-hook flips `has_issues` and escalates ambiguity.
+- [ ] Spoken text is composed by PEX from blocks/metadata, not `artifact.thoughts` (unless the flow is brainstorm-like).
 
-When in doubt, trace `CreateFlow` from `flows.py:113` → `policies/draft.py:199` → `prompts/skills/create.md` → `templates/draft.py:TEMPLATES['create']` → `prompts/nlu/draft_slots.py:'create'`. Every working flow has the same five part trace.
+When in doubt, trace `CreateFlow` from `flows.py:113` → `policies/draft.py:199` → `prompts/pex/skills/create.md` → `prompts/nlu/draft_slots.py:'create'`. Every working flow has the same four part trace.

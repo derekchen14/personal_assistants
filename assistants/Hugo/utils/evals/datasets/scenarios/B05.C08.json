@@ -1,0 +1,147 @@
+{
+  "convo_id": "B05.C08",
+  "persona": "P: neutral + hedged",
+  "use_case": "U: chat -> brainstorm -> outline -> chat",
+  "topic": "T: Street Lamps",
+  "title": "A Brief History of the Street Lamp",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Old street lamps and their history, I keep going back and forth on it, what would you do?",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {},
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "It really is. A cozy, surprising bit of history that readers love."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "A handful my way and I'll carry it from there, though any tip on choosing would help.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "brainstorm",
+        "dax": "{39D}"
+      },
+      "slots": {
+        "query": "history of street lamps, accessible angle"
+      },
+      "expected_tools": [
+        "brainstorm_ideas"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Four ideas: 1) The arc from oil to gas to electric 2) The lamplighter's daily round 3) The first night a city glowed 4) How lamps made cities safer after dark."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "They're all lovely and I can't choose, so your strongest one sketched out? Is the newsletter still going out Friday?",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "note": "P3 defers the choice to the agent; agent selects an idea and proceeds to outline.",
+      "slots": {
+        "source": {
+          "post": "A Brief History of the Street Lamp"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "The Friday newsletter is still scheduled. I went with the oil-to-electric arc. Outline: 1) Lighting the night with oil 2) The gas-lamp era 3) The electric revolution 4) The world the lamps left us."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Brilliant, thank you. I can take it from here.",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {},
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B05",
+  "flagged": false,
+  "generation": {
+    "batch": "B05",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Street Lamps | 7 turns | neutral + hedged | arc=straight_build | use_case=chat -> brainstorm -> outline -> chat | converted from P3.U4.T2",
+    "draws": {
+      "topic": "Street Lamps",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "chat",
+          "brainstorm",
+          "outline",
+          "chat"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": {
+          "turn": 5,
+          "trigger": "adjacent_worry"
+        },
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        2,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

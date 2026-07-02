@@ -1,0 +1,159 @@
+{
+  "convo_id": "B03.C11",
+  "persona": "P: neutral + plain",
+  "use_case": "U: plan -> outline -> compose -> refine",
+  "topic": "T: Security",
+  "title": "Securing AI Apps: A Practical Guide",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Take the whole securing-AI-apps post from blank page to draft.",
+      "labels": {
+        "intent": "Plan",
+        "flow": "plan",
+        "dax": "{29D}"
+      },
+      "note": "Plan turn. The agent decomposes the end-to-end request into the U6 Draft sub-flows: outline, compose, refine.",
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Got it. Three steps for the security post: outline the structure, compose a full draft, then refine. Starting the outline."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Good plan. Reshape the security sections and even out the flow.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Here's the outline I came up with: 1) The AI threat surface 2) Securing prompts and inputs 3) Guarding tools and data access 4) Monitoring and incident response."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Good stuff. Ready to turn the security sections to prose?",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Drafted all four security sections. They're a bit choppy where they hand off to each other."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The security draft drags in spots. Smooth the structure and transitions.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "refine",
+        "dax": "{02B}"
+      },
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B03",
+  "flagged": false,
+  "generation": {
+    "batch": "B03",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Security | 7 turns | neutral + plain | arc=planning | use_case=plan -> outline -> compose -> refine | converted from P1.U6.T1",
+    "draws": {
+      "topic": "Security",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "heterogeneous",
+        "handling": "straightforward"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "plan",
+          "outline",
+          "compose",
+          "refine"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        2,
+        2,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

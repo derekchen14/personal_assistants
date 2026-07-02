@@ -1,0 +1,162 @@
+{
+  "convo_id": "B05.C09",
+  "persona": "P: neutral + hedged",
+  "use_case": "U: find -> clarify -> outline -> compose",
+  "topic": "T: Red-teaming",
+  "title": "A Red-Team Playbook for LLM Apps",
+  "available_data": {
+    "notes": [
+      "Prompt injection basics",
+      "Red-team playbook"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Pull up my posts on red-teaming.",
+      "labels": {
+        "intent": "Research",
+        "flow": "find",
+        "dax": "{001}"
+      },
+      "slots": {
+        "query": "red-teaming"
+      },
+      "expected_tools": [
+        "find_posts"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Two posts: 'Prompt Injection Basics' and 'Red-Team Playbook.' Red-teaming specifically, or AI security more broadly?"
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Maybe we just make a start?",
+      "labels": {
+        "intent": "Clarify",
+        "flow": "clarify",
+        "dax": "{09F}"
+      },
+      "note": "ambiguous: underlying intent is Draft, but topic/post are undefined, so the agent must declare ambiguity (handle_ambiguity), not guess.",
+      "expected_tools": [
+        "handle_ambiguity"
+      ],
+      "ambiguity": {
+        "is_ambiguous": true,
+        "level": "general"
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Should the post focus on red-teaming, titled 'A Red-Team Playbook for LLM Apps'?"
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "That title's good. The parts roughed out from here?",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "note": "resolves the turn-3 ambiguity.",
+      "slots": {
+        "source": {
+          "post": "A Red-Team Playbook for LLM Apps"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Okay, here's a gentle red-teaming outline to start from: 1) Threat model 2) Attack catalog 3) Running a red-team 4) Fixing what you find."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The Threat model section, could it read better as real prose now?",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "A Red-Team Playbook for LLM Apps",
+          "sec": "Threat model"
+        }
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B05",
+  "flagged": false,
+  "generation": {
+    "batch": "B05",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Red-teaming | 7 turns | neutral + hedged | arc=ambiguity | use_case=find->clarify->outline->compose ",
+    "draws": {
+      "topic": "Red-teaming",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "ambiguity",
+      "planning": null,
+      "ambiguity": {
+        "level": "general",
+        "tag": "none",
+        "turn": 3
+      },
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "find",
+          "clarify",
+          "outline",
+          "compose"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        2,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "convo_id": "B03.C08",
+  "persona": "P: neutral + plain",
+  "use_case": "U: chat -> brainstorm -> outline -> chat",
+  "topic": "T: Street Lamps",
+  "title": "From Gas to Glow: The Story of the Street Lamp",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "A history-of-street-lamps post. Real audience for that, or too niche?",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {},
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Yes. Street lamps quietly reshaped city life, and there's a fun arc from oil to gas to electric."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Five or so angles, and one with a real story to it.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "brainstorm",
+        "dax": "{39D}"
+      },
+      "slots": {
+        "query": "history of street lamps, narrative angle"
+      },
+      "expected_tools": [
+        "brainstorm_ideas"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "A few angles: 1) The night the streets first lit up 2) From whale oil to gas to electric 3) The lamplighter's vanishing trade 4) How lamps changed who owned the night."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Of those, the gas-to-electric angle is the one I want.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "From Gas to Glow: The Story of the Street Lamp"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Outline: 1) Lighting the night before electricity 2) The gas-lamp boom 3) The electric switch-over 4) What we lost and gained."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Spot on.",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {},
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B03",
+  "flagged": false,
+  "generation": {
+    "batch": "B03",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Street Lamps | 7 turns | neutral + plain | arc=straight_build | use_case=chat -> brainstorm -> outline -> chat | converted from P1.U4.T2",
+    "draws": {
+      "topic": "Street Lamps",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "chat",
+          "brainstorm",
+          "outline",
+          "chat"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        2,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

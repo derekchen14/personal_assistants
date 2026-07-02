@@ -1,0 +1,165 @@
+{
+  "convo_id": "B04.C13",
+  "persona": "P: formal + blunt",
+  "use_case": "U: plan -> find -> summarize -> compare",
+  "topic": "T: LLM Evals (compare frameworks)",
+  "title": "Choosing an LLM Eval Framework",
+  "available_data": {
+    "posts": [
+      "Getting Started with LLM Evals"
+    ],
+    "notes": [
+      "DeepEval first impressions",
+      "Promptfoo setup notes"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Eval frameworks in three moves: the sources pulled, one summarized, the top two compared.",
+      "labels": {
+        "intent": "Plan",
+        "flow": "plan",
+        "dax": "{29D}"
+      },
+      "note": "Plan turn. The agent decomposes the request into find (pull sources), summarize (one), then compare (top two). No single flow/dax; intent is Plan, executed over the following turns.",
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Plan: 1) find eval-framework sources 2) summarize one 3) compare two. Starting with find."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Anything in my eval-framework sources?",
+      "labels": {
+        "intent": "Research",
+        "flow": "find",
+        "dax": "{001}"
+      },
+      "slots": {
+        "query": "eval frameworks"
+      },
+      "expected_tools": [
+        "find_posts"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "3 hits: post 'Getting Started with LLM Evals', notes 'DeepEval first impressions' and 'Promptfoo setup notes'."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "First impressions of DeepEval, anything worth my time?",
+      "labels": {
+        "intent": "Research",
+        "flow": "summarize",
+        "dax": "{19A}"
+      },
+      "slots": {
+        "source": {
+          "note": "DeepEval first impressions"
+        }
+      },
+      "expected_tools": [
+        "summarize_text"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "DeepEval: pytest-style metrics as assertions, easy CI, light dataset tooling."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "DeepEval against Promptfoo, where do they part?",
+      "labels": {
+        "intent": "Research",
+        "flow": "compare",
+        "dax": "{18A}"
+      },
+      "slots": {
+        "source": [
+          {
+            "note": "DeepEval first impressions"
+          },
+          {
+            "note": "Promptfoo setup notes"
+          }
+        ]
+      },
+      "expected_tools": [
+        "compare_style"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B04",
+  "flagged": false,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=LLM Evals (compare frameworks) | 7 turns | formal + blunt | arc=planning | use_case=plan -> find -> summarize -> compare | converted from P2.U7.T1",
+    "draws": {
+      "topic": "LLM Evals (compare frameworks)",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "heterogeneous",
+        "handling": "straightforward"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "plan",
+          "find",
+          "summarize",
+          "compare"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

@@ -4,7 +4,7 @@ Assemble the full prompt suite: system prompts, NLU classification prompts, and 
 
 ## Context
 
-Prompts are the agent's instructions. Every LLM call follows the standard 8-slot format, every output is JSON, and every classification prompt includes chain-of-thought reasoning. This phase ensures all prompts are written, versioned, and organized.
+Prompts are the agent's instructions. **Sub-agent and tool prompts** follow the standard 8-slot format and return JSON (classification prompts add chain-of-thought); **module skills** (orchestrator how-to guides like the Workflow Planner, `explain`, `recap`/`recall`/`retrieve`) return nothing — they are injected guidance, not assembled into this format. This phase ensures all prompts are written, versioned, and organized.
 
 **Prerequisites**: Phase 7 complete — 32 working flows with policies and skill templates.
 
@@ -18,7 +18,7 @@ Prompts are the agent's instructions. Every LLM call follows the standard 8-slot
 
 ### Step 1 — Understand the 8-Slot Format
 
-Every assembled prompt follows this structure, in order:
+Every assembled **sub-agent/tool** prompt follows this structure, in order (module skills are injected guidance and return nothing):
 
 | Slot | Name | Content |
 |---|---|---|
@@ -162,8 +162,8 @@ There is no naturalization prompt, template registry, or `respond` tool. PEX com
 
 - [ ] All 7 prompt files exist in `backend/prompts/`
 - [ ] System prompt composes persona correctly from domain config
-- [ ] Every prompt follows the 8-slot format
-- [ ] All prompts return parseable JSON
+- [ ] Every sub-agent/tool prompt follows the 8-slot format (module skills are guidance, exempt)
+- [ ] All sub-agent/tool prompts return parseable JSON (skills return nothing)
 - [ ] Classification prompts include `"thought"` key for chain-of-thought
 - [ ] NLU intent prediction has ~32 diverse exemplars
 - [ ] NLU flow detection has ~32 exemplars covering edge cases

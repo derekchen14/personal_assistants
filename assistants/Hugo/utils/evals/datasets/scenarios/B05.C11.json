@@ -1,0 +1,159 @@
+{
+  "convo_id": "B05.C11",
+  "persona": "P: neutral + hedged",
+  "use_case": "U: plan -> outline -> compose -> refine",
+  "topic": "T: Security",
+  "title": "Securing AI Apps: A Practical Guide",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "A securing-AI-apps post, though splitting it is beyond me, so could you carry it to a draft?",
+      "labels": {
+        "intent": "Plan",
+        "flow": "plan",
+        "dax": "{29D}"
+      },
+      "note": "Plan turn. The agent decomposes the vague end-to-end request into the U6 Draft sub-flows: outline, compose, refine.",
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "No problem, I'll handle the steps for the security post. First I'll outline it, then write a full draft, then tidy it up. Starting the outline."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "That's a solid plan. Security sections it is.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Here's what I'd suggest: 1) The AI threat surface 2) Securing prompts and inputs 3) Guarding tools and data access 4) Monitoring and incident response."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Yes please, the security sections into a real draft now.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Done, all four security sections are drafted. It's a little choppy where they meet."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The security draft is bumpy in places. The rough patches especially.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "refine",
+        "dax": "{02B}"
+      },
+      "slots": {
+        "source": {
+          "post": "Securing AI Apps: A Practical Guide"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B05",
+  "flagged": false,
+  "generation": {
+    "batch": "B05",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Security | 7 turns | neutral + hedged | arc=planning | use_case=plan -> outline -> compose -> refine | converted from P3.U6.T1",
+    "draws": {
+      "topic": "Security",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "heterogeneous",
+        "handling": "straightforward"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "plan",
+          "outline",
+          "compose",
+          "refine"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        2,
+        1,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

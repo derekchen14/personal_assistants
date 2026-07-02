@@ -1,0 +1,169 @@
+{
+  "convo_id": "B06.C04",
+  "persona": "P: neutral + plain",
+  "use_case": "U: compose -> rework -> audit -> propose",
+  "topic": "T: The Lightbulb",
+  "title": "Who Really Invented the Lightbulb?",
+  "available_data": {
+    "posts": [
+      {
+        "post_id": "SeedBulb04",
+        "title": "Who Really Invented the Lightbulb?",
+        "status": "draft"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Looks right. Lock the lightbulb-history structure, then pull it into real prose.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "compose",
+        "dax": "{3AD}"
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?"
+        }
+      },
+      "expected_tools": [
+        "convert_to_prose"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Drafted all four sections. The 'Edison vs Swan' section reads muddled."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Rebuild the Edison vs Swan section. Actually, lead with Swan's work first, then how Edison built on it.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "rework",
+        "dax": "{006}"
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?",
+          "sec": "Edison vs Swan"
+        }
+      },
+      "expected_tools": [
+        "revise_content"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Restructured it. Swan's vacuum bulbs first, then Edison's longer-lasting filament."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Go through it with an editor's eye and flag what's still rough.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "audit",
+        "dax": "{13A}"
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?"
+        }
+      },
+      "expected_tools": [
+        "editor_review"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Reviewed it. The 'Filament breakthrough' section repeats the bamboo detail, and the conclusion lands flat."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "A few takes on the filament breakthrough. Actually no, the ending is the problem, so two or three conclusions to pick from.",
+      "note": "direction change mid-turn: user pivots from 'Filament breakthrough' to 'Conclusion'; the propose flow still completes on the final target.",
+      "labels": {
+        "intent": "Revise",
+        "flow": "propose",
+        "dax": "{39B}"
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?",
+          "sec": "Conclusion"
+        }
+      },
+      "expected_tools": [
+        "read_section",
+        "revise_content"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B06",
+  "flagged": false,
+  "generation": {
+    "batch": "B06",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=The Lightbulb | 7 turns | neutral + plain | arc=redirect | use_case=compose -> rework -> audit -> propose | converted from P4.U2.T2",
+    "draws": {
+      "topic": "The Lightbulb",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "redirect",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "compose",
+          "rework",
+          "audit",
+          "propose"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        2,
+        2,
+        1,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

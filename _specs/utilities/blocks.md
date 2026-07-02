@@ -15,7 +15,7 @@ Standardized UI components that any domain agent can use to render its Task Arti
 - **Navigation**: Tabs, breadcrumbs, pagination
 - **Feedback**: Toasts, progress indicators, loading states
 
-Each block type has a baked-in **`inline` attribute** — a property of the type itself, not set per-turn by PEX. Inline blocks render within the conversation stream; all other blocks render on the right panel (see [Rendering Model](#rendering-model) below). PEX knows where each block renders based on which block type it selects.
+Each block carries a **`panel` attribute** — `top`, `bottom`, or `left` — set per block by PEX. `left` is the dialogue/chat container (the conversation stream); `top` and `bottom` are the two zones of the display panel (see [Rendering Model](#rendering-model) below).
 
 Display types map directly to atomic blocks. There is no intermediate composite layer — everything is flat. Domain-specific display types (defined in [Configuration](configuration.md)) resolve to the same atomic block set.
 
@@ -23,35 +23,15 @@ Display types map directly to atomic blocks. There is no intermediate composite 
 
 ## Rendering Model
 
-Blocks render in one of two locations:
+Every block sets a **`panel`** attribute — one of three placements:
 
-| Location | Behavior |
-|---|---|
-| **Right panel** | Default. Rendered in a persistent panel alongside the conversation (analogous to Claude's artifacts pane). |
-| **Inline** | Rendered within the conversation stream, interspersed with text (the dialogue panel). |
+| `panel` | Location | Typical blocks |
+|---|---|---|
+| `left` | The dialogue/chat container (conversation stream) | Ephemeral in-stream signals — toasts, progress, short confirmations |
+| `top` | Display panel, top zone (feedback / interaction) | Forms, confirmations, status summaries |
+| `bottom` | Display panel, bottom zone (grounding entity / artifact) — **default** | Cards, lists, tables, draft previews |
 
-Placement is determined by the block type's `inline` attribute — a fixed property of the type, not a per-turn decision. PEX selects a block type onto the Task Artifact, and the frontend places it accordingly. The agent never controls placement directly.
-
-### Layout Modes
-
-The right panel can collapse/expand to create three layout modes:
-
-| Mode | Description |
-|---|---|
-| `split` | Both panels visible — dialogue panel on the left, right panel on the right (default) |
-| `top` | Dialogue panel only — right panel collapsed |
-| `bottom` | Right panel only — dialogue panel minimized |
-
-Layout mode is controlled by the user, not the agent.
-
-### Inline Blocks
-
-Block types that carry `inline: true`:
-
-- **Feedback**: Toasts, progress indicators, loading states — ephemeral signals that belong in the conversation flow
-- **Confirmation dialogs**: Short yes/no prompts that need immediate inline response
-
-All other block types (tables, charts, cards, forms, navigation) render on the right panel by default.
+PEX sets `panel` when it composes the block onto the Task Artifact; the frontend places it accordingly. There is **no separate `inline` attribute** — an in-stream block is simply `panel: 'left'`. The display panel's visible zones (`top`/`bottom`/`split`) are derived from which zones are populated (see [Panel Zones](#panel-zones)).
 
 ### One Block Per Flow
 
@@ -95,7 +75,7 @@ Controlled by a `displayLayout` store with three modes:
 | `top` | top_container only | Form or confirmation without artifact |
 | `split` | Both | Form + artifact simultaneously |
 
-Each block's `panel` property (`'top'` or `'bottom'`, default `'bottom'`) determines which zone receives it. `displayLayout` is derived from which panels are populated: if both exist → `split`, top only → `top`, bottom only or neither → `bottom`.
+Each block's `panel` property (`'top'`, `'bottom'`, or `'left'`, default `'bottom'`) determines placement: `top`/`bottom` pick a display_panel zone, `left` renders in the dialogue panel. `displayLayout` (display-panel zones) is derived from which display zones are populated: both → `split`, top only → `top`, bottom only or neither → `bottom`.
 
 ## Light Theme
 

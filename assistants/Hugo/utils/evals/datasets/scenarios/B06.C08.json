@@ -1,0 +1,144 @@
+{
+  "convo_id": "B06.C08",
+  "persona": "P: neutral + plain",
+  "use_case": "U: chat -> brainstorm -> outline -> chat",
+  "topic": "T: Street Lamps",
+  "title": "The Lamplighter's Vanishing Trade",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "A street-lamps history piece, would anyone actually read it?",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {},
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "utterance": "Niche in the best way. A charming slice of history with a clear arc."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Out of a few angles, the boldest is the one I'll take.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "brainstorm",
+        "dax": "{39D}"
+      },
+      "slots": {
+        "query": "history of street lamps, angles"
+      },
+      "expected_tools": [
+        "brainstorm_ideas"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "utterance": "Four angles: 1) From oil to gas to electric 2) The lamplighter's vanishing trade 3) The night the city first glowed 4) Lamps and the rise of nightlife."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Forget the oil-to-electric arc, the lamplighter's trade is the better story, so map that one out.",
+      "labels": {
+        "intent": "Draft",
+        "flow": "outline",
+        "dax": "{002}"
+      },
+      "note": "P4 changes direction mid-turn (oil-to-electric arc -> lamplighter's trade); the outline flow still completes on the final choice.",
+      "slots": {
+        "source": {
+          "post": "The Lamplighter's Vanishing Trade"
+        }
+      },
+      "expected_tools": [
+        "generate_outline"
+      ],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "utterance": "Outline for the lamplighter post: 1) A day in the lamplighter's life 2) The tools of the trade 3) Electricity arrives 4) The last lamplighters."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Yeah, that's it. Anything I should watch for?",
+      "labels": {
+        "intent": "Converse",
+        "flow": "chat",
+        "dax": "{000}"
+      },
+      "slots": {},
+      "expected_tools": [],
+      "ambiguity": {
+        "is_ambiguous": false,
+        "level": null
+      }
+    }
+  ],
+  "batch": "B06",
+  "flagged": false,
+  "generation": {
+    "batch": "B06",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Street Lamps | 7 turns | neutral + plain | arc=redirect | use_case=chat -> brainstorm -> outline -> chat | converted from P4.U4.T2",
+    "draws": {
+      "topic": "Street Lamps",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "redirect",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "chat",
+          "brainstorm",
+          "outline",
+          "chat"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}
