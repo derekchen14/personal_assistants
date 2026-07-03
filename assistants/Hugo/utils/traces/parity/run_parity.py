@@ -33,7 +33,9 @@ if str(_HUGO_ROOT) not in sys.path:
 from dotenv import load_dotenv
 
 load_dotenv(_HUGO_ROOT / '.env')
-os.environ['HUGO_EVAL_MODE'] = '1'
+
+import schemas.config
+schemas.config.EVAL_HARNESS = True
 
 import utils.traces.parity.capture_oracle as oracle_mod
 from utils.traces.parity.capture_oracle import (SCENARIOS, _clean_leftovers, _run_step,

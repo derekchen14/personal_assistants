@@ -102,7 +102,7 @@ def record(level:str):
 
 def main():
     parser = argparse.ArgumentParser(description='Eval gate: grade a run blob -> exit code.')
-    parser.add_argument('--level', default='evals')
+    parser.add_argument('--level', default='traces')
     parser.add_argument('--record', action='store_true', help='stamp the run into the baseline')
     args = parser.parse_args()
     if args.record:

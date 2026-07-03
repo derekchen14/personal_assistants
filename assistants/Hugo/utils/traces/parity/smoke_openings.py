@@ -135,7 +135,9 @@ def main():
 
     from dotenv import load_dotenv
     load_dotenv(_HUGO_ROOT / '.env')
-    os.environ['HUGO_EVAL_MODE'] = '1'
+
+    import schemas.config
+    schemas.config.EVAL_HARNESS = True
 
     results = []
     for scenario in (args.scenario,) if args.scenario else ('vision', 'observability', 'voice'):

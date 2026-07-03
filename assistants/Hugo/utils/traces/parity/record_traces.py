@@ -34,7 +34,9 @@ if str(_HUGO_ROOT) not in sys.path:
 from dotenv import load_dotenv
 
 load_dotenv(_HUGO_ROOT / '.env')
-os.environ['HUGO_EVAL_MODE'] = '1'
+
+import schemas.config
+schemas.config.EVAL_HARNESS = True
 
 from utils.harness import (_build_agent, _seed_post, _clean_leftovers,
                            _CRASH_FALLBACK, _LOOP_FALLBACK, _TURN_TIMEOUT_SEC)

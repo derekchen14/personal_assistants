@@ -7,6 +7,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import schemas.config
 from backend.utilities.services import ToolService
 
 
@@ -483,7 +484,7 @@ class MT1TPublisher(PlatformPublisher):
     def _build_filename(self, post:dict) -> str:
         date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         slug = self._slugify(post.get('title', 'untitled'))
-        prefix = '_eval_' if os.getenv('HUGO_EVAL_MODE') else ''
+        prefix = '_eval_' if schemas.config.EVAL_HARNESS else ''
         return f'{prefix}{date}-{slug}.md'
 
     def _build_frontmatter(self, post:dict) -> str:

@@ -296,7 +296,7 @@ STEPS_VISION = [
     },
     {
         # Release publishes to MT1T (local filesystem) by default when no
-        # channel is named. The `_eval_` filename prefix (set via HUGO_EVAL_MODE)
+        # channel is named. The `_eval_` filename prefix (via schemas.config.EVAL_HARNESS)
         # keeps these fake posts separable from real ones for later cleanup.
         'step': 14,
         'flow': 'release',

@@ -31,7 +31,9 @@ if str(_HUGO_ROOT) not in sys.path:
 from dotenv import load_dotenv
 
 load_dotenv(_HUGO_ROOT / '.env')
-os.environ['HUGO_EVAL_MODE'] = '1'
+
+import schemas.config
+schemas.config.EVAL_HARNESS = True
 
 from utils.evals.e2e_agent_evals import (
     STEPS_VISION, STEPS_OBSERVABILITY, STEPS_VOICE, _BaseScenarioE2E,

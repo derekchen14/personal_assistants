@@ -12,10 +12,11 @@ from schemas.ontology import FLOW_CATALOG, Intent
 from utils.helper import _DAX_LOOKUP, edge_flows_for, dax2flow, flow2dax
 
 
+# D6 trim (round E1): the high voter (Gemini Pro, auto thinking budget) was the ensemble's
+# latency floor and truncated its JSON at max_tokens often enough to crash turns in debug mode.
 _ENSEMBLE_VOTERS = [
-    {'model': 'low',  'label': 'low',  'weight': 0.20},
-    {'model': 'med',  'label': 'med',  'weight': 0.45},
-    {'model': 'high', 'label': 'high', 'weight': 0.35},
+    {'model': 'low',  'label': 'low',  'weight': 0.30},
+    {'model': 'med',  'label': 'med',  'weight': 0.70},
 ]
 
 def _get_edge_flows_for_intent(intent:str) -> set[str]:

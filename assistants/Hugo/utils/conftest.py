@@ -15,7 +15,8 @@ load_dotenv(_HUGO_ROOT / '.env')
 
 # Marker for downstream services (e.g. MT1TPublisher) to tag artifacts
 # produced during evals so they are trivially cleanable with `rm _eval_*`.
-os.environ['HUGO_EVAL_MODE'] = '1'
+import schemas.config
+schemas.config.EVAL_HARNESS = True
 
 
 def pytest_configure(config):

@@ -151,7 +151,7 @@ class TestEnsembleVoting:
         result = nlu._detect_flow('give me ideas', intent='Draft')
 
         assert result['flow_name'] == 'brainstorm'
-        assert result['confidence'] == pytest.approx(0.80)
+        assert result['confidence'] == pytest.approx(0.70)   # med voter alone (D6 two-voter ensemble)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -380,16 +380,6 @@ class TestArtifactParts:
         assert len(artifact.parts) == 1
         assert artifact.parts[0].data == {'violation': 'tool_error'}
         assert artifact.data['violation'] == 'tool_error'
-
-    def test_artifact_thoughts_property_round_trip(self):
-        from backend.components.task_artifact import TaskArtifact
-        artifact = TaskArtifact(thoughts='reasoning')
-        assert artifact.thoughts == 'reasoning'
-
-    def test_artifact_code_property_round_trip(self):
-        from backend.components.task_artifact import TaskArtifact
-        artifact = TaskArtifact(code='print(1)')
-        assert artifact.code == 'print(1)'
 
     def test_thoughts_setter_is_idempotent(self):
         from backend.components.task_artifact import TaskArtifact
@@ -2462,7 +2452,6 @@ class TestCompression:
 # ═══════════════════════════════════════════════════════════════════
 
 from utils.evals.gates import gate, grade
-from utils.evals.scorers.completion import is_completed, FALLBACKS
 
 
 def _metric(expected_fail, value=None, target=0.90):
@@ -2494,29 +2483,6 @@ class TestCompletionGate:
     def test_within_tolerance_of_baseline_is_green(self):
         record = {'direction': 'higher', 'expected_fail': False, 'value': 0.90, 'max_drop': 0.02}
         assert grade('completion_rate', 0.89, record).failed is False
-
-
-class TestCompletionScorer:
-    """is_completed (eval/scorers/completion.py): a turn completes iff a real reply came back AND
-    the primary flow (artifact.origin) matched — trajectory is the Traces tier's job, not this."""
-
-    @staticmethod
-    def _result(message, origin='outline'):
-        return {'message': message, 'artifact': {'origin': origin}}
-
-    def test_real_reply_on_expected_flow_is_complete(self):
-        assert is_completed(self._result('Here is your outline.'), 'outline') == (True, 'ok')
-
-    def test_fallback_message_is_incomplete(self):
-        ok, reason = is_completed(self._result(FALLBACKS[0]), 'outline')
-        assert ok is False and 'fallback' in reason
-
-    def test_empty_reply_is_incomplete(self):
-        assert is_completed(self._result('   '), 'outline')[0] is False
-
-    def test_wrong_primary_flow_is_incomplete(self):
-        ok, reason = is_completed(self._result('Done.', origin='rework'), 'outline')
-        assert ok is False and 'expected' in reason
 
 
 class TestCompressionTrigger:

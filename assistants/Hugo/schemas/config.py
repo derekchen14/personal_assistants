@@ -11,6 +11,11 @@ _ROOT = Path(__file__).resolve().parents[1]
 _SHARED = _ROOT.parent.parent / 'shared' / 'shared_defaults.yaml'
 _DOMAIN = Path(__file__).resolve().parent / 'tools.yaml'
 
+# True only inside the eval/test harness (set by utils/harness.py, utils/conftest.py, and the
+# parity runners — never by app code). Gates eval-only behavior such as the `_eval_` artifact
+# filename prefix.
+EVAL_HARNESS = False
+
 _REQUIRED_SECTIONS = frozenset({
     'environment', 'models', 'persona', 'guardrails', 'session',
     'memory', 'resilience', 'context_window', 'logging', 'display',
