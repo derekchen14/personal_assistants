@@ -20,22 +20,17 @@ import yaml
 
 from backend.components.flow_stack import flow_classes
 from backend.components.flow_stack.slots import ExactSlot
-from backend.components.prompt_engineer import PromptEngineer
+from backend.components.prompt_engineer import PromptEngineer, _TASK_SUFFIXES
 from backend.modules.nlu import (
     _intent_schema, _flow_detection_schema, _fill_slots_schema,
 )
+from backend.prompts import general
+from backend.prompts.for_pex import build_skill_system
 from backend.prompts.nlu import PROMPTS as _SLOT_FILL_PROMPTS
 
 
 SKILL_DIR = Path(__file__).resolve().parents[2] / 'backend' / 'prompts' / 'pex' / 'skills'
 TOOLS_YAML = Path(__file__).resolve().parents[2] / 'schemas' / 'tools.yaml'
-
-# Skills whose `name` intentionally differs from the owning flow_name.
-SKILL_TO_FLOW: dict[str, str] = {}
-
-# Skills with no owning flow (dormant utility / shared narration). Still need
-# valid frontmatter but are exempt from flow.tools comparison.
-ORPHAN_SKILLS: set[str] = set()
 
 # Skills invoked directly by the PEX orchestrator, not owned by a flow/sub-agent. Validated
 # against the tool registry (their declared tools must be real) rather than a flow's tool list.
@@ -56,16 +51,8 @@ def _skill_files():
 
 
 def _skill_flow_pairs():
-    pairs = []
-    for path in sorted(SKILL_DIR.glob('*.md')):
-        skill = path.stem
-        if skill in ORPHAN_SKILLS:
-            continue
-        flow_name = SKILL_TO_FLOW.get(skill, skill)
-        if flow_name not in flow_classes:
-            continue
-        pairs.append((skill, flow_name))
-    return pairs
+    """Skill/flow pairs for few-shot linting; PEX-agent skills have no owning flow."""
+    return [(skill, skill) for skill in _skill_files() if skill in flow_classes]
 
 
 def _few_shot_tool_calls(body:str) -> set[str]:
@@ -99,14 +86,13 @@ def test_skill_tools_match_flow(skill_name, yaml_tools):
             f'valid tools are defined in tools.yaml'
         )
         return
-    if skill_name in ORPHAN_SKILLS:
-        pytest.skip(f'{skill_name} has no owning flow')
-    flow_name = SKILL_TO_FLOW.get(skill_name, skill_name)
-    if flow_name not in flow_classes:
-        pytest.skip(f'{flow_name} not in flow_classes')
-    flow = flow_classes[flow_name]()
+    assert skill_name in flow_classes, (
+        f'{skill_name}.md has no owning flow in flow_classes — delete the orphan skill '
+        f'or add it to PEX_AGENT_SKILLS'
+    )
+    flow = flow_classes[skill_name]()
     assert list(declared) == list(flow.tools), (
-        f'{skill_name}.md tools={declared!r} != {flow_name}.tools={flow.tools!r}'
+        f'{skill_name}.md tools={declared!r} != {skill_name}.tools={flow.tools!r}'
     )
 
 
@@ -362,3 +348,23 @@ def test_few_shot_example_keys_match_flow_slots(flow_name):
         f'{flow_name} examples reference top-level slot keys {sorted(bogus)!r} that are not in '
         f'flow.slots ({sorted(declared)!r}). Update the example JSON to match the canonical keys.'
     )
+
+
+# ── 5. Closing reminder (slot 7) ─────────────────────────────────────────
+# The agentic reminder must end every assembled sub-agent system prompt, while
+# the single-shot NLU prompts keep their JSON demands via _TASK_SUFFIXES.
+
+@pytest.mark.parametrize('skill_prompt', ['skill body', None])
+def test_skill_system_ends_with_reminder(skill_prompt):
+    flow = flow_classes['outline']()
+    system = build_skill_system('base', flow, skill_prompt)
+    assert system.endswith(general.SLOT_7_REMINDER)
+
+
+def test_json_reminder_deleted():
+    assert not hasattr(general, 'JSON_REMINDER')
+
+
+def test_reminder_is_agentic():
+    assert 'valid JSON' not in general.SLOT_7_REMINDER
+    assert 'valid JSON' in _TASK_SUFFIXES['classify_intent']

@@ -69,7 +69,7 @@ it does **not** hold for skills, which return nothing. The per-flow prompt bodie
 JSON applies to sub-agent/tool prompts. (`tool_smith.md` also dropped `scope`/`dispatch`/`output_schema` per
 E7 / Step 6.10.)
 
-## 4.2 — Inject the closing reminder
+## 4.2 — Inject the closing reminder — DONE 2026-07-02
 The closing reminder is defined but never used. `build_skill_system` ends with the prompt body; nothing
 re-states the output contract at the end (the highest-recency position).
 
@@ -93,6 +93,9 @@ return ''.join(parts)
 
 Single-shot NLU prompts keep their JSON demand through `_TASK_SUFFIXES` (`prompt_engineer.py:20-37`) — the
 carve-out from 4.1.
+
+Shipped on the offline verdict; the E2E-eval leg is deferred to the fast-eval round (E1), which re-gates the
+8 selected scenarios under replay mode.
 
 ## 4.3 — Raise exemplar counts toward 7–10  · 8b
 Style guide targets 7–10 exemplars per PEX skill (`style_guide.md:124`). **Current counts** (from the `.md`

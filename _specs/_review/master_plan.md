@@ -100,7 +100,7 @@ embedded decision (below). File numbers are historical; the order below is the b
 - **Demo unlocked:** talk to Hugo and get a well-formed reply + a rendered artifact for a single flow — the
   voice matches the style guide and the flow behaves.
 - **Goal:** close the style-guide and prompt-assembly gaps so the turn loop's output is demo-quality.
-- **Deliverable:** inject the defined-but-dead closing reminder (slot 7, `general.py:12`); resolve the
+- **Deliverable:** inject the defined-but-dead closing reminder (slot 7 — DONE 2026-07-02); resolve the
   agentic-skill style-guide exemption (E9); raise exemplar counts toward 7–10 (worst: `propose`=1);
   config-promote the loop bounds + per-flow call-caps (E10). Multi-artifact curation stays deferred (needs
   concurrency).
