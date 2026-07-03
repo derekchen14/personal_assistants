@@ -71,20 +71,29 @@
       "utterance": "can you figure out why my observability posts keep flopping",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          },
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          },
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
-      "note": "Plan opener, step_0 handling. Decomposes into find -> summarize -> compare (pull the past posts, condense one, set them side by side to see what shifted). The request is terse so the agent opens with a Step 0 checkpoint before running the sequence.",
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (find -> summarize -> compare); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [],
       "utterance": "I can pull them, condense the strongest one, then compare styles to spot the drift. Do you want me to look at all your observability posts, or just the two most recent?"
     },
     {
@@ -93,8 +102,12 @@
       "utterance": "the two recent ones. and no, not the drafts, the ones that actually went live",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "note": "specific ambiguity (reject). Removed clear context: which corpus the search targets. The agent first guesses recent drafts; the user rejects that candidate and names the published set. persona drift to skeptical this turn.",
       "slots": {
@@ -103,17 +116,12 @@
           "ver": true
         }
       },
-      "expected_tools": [
-        "handle_ambiguity"
-      ],
-      "ambiguity": {
-        "is_ambiguous": true,
-        "level": "specific"
-      }
+      "ambiguity": "specific"
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [],
       "utterance": "Published only, got it. Pulled 'Your Agent's Token Count Is a Vanity Metric' and 'Don't Trace Prompts, Trace the Tool Calls'."
     },
     {
@@ -122,25 +130,26 @@
       "utterance": "boil the token-count one down so i remember what it even argued",
       "labels": {
         "intent": "Research",
-        "flow": "summarize",
-        "dax": "{19A}"
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Your Agent's Token Count Is a Vanity Metric"
         }
       },
-      "expected_tools": [
-        "summarize_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
       "utterance": "It argues token count tracks spend, not agent quality, and readers should watch tool-call success instead. Aimed at eng leads."
     },
     {
@@ -149,8 +158,12 @@
       "utterance": "now put the two side by side, i wanna see where the writing actually differs",
       "labels": {
         "intent": "Research",
-        "flow": "compare",
-        "dax": "{18A}"
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -160,13 +173,14 @@
           ]
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "compare_style"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

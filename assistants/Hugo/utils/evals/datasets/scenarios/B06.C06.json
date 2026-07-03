@@ -17,23 +17,24 @@
       "utterance": "Anything in my early home-electricity notes worth starting from?",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "early home electricity"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found 'The first central power stations' and 'Wiring the early household'."
     },
     {
@@ -42,8 +43,12 @@
       "utterance": "Map out 'How Edison Built His First Power Station'. Actually, too narrow. Go broader with 'From Power Plant to Living Room': generation, the grid, wiring the house, the first appliances.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "note": "direction change. User starts on a narrow Edison/power-station title, then redirects mid-utterance to the broader end-to-end story; the outline flow still completes on the final title.",
       "slots": {
@@ -57,17 +62,14 @@
           "the first appliances"
         ]
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline for 'From Power Plant to Living Room': 1) Generating the power 2) Carrying it on the grid 3) Wiring the house 4) The first home appliances."
     },
     {
@@ -76,8 +78,12 @@
       "utterance": "Two things for the grid section: the substations and the lines that carried power across town.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -85,17 +91,14 @@
           "sec": "Carrying it on the grid"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Wrote it. Walked through transmission lines, substations, and stepping voltage down for neighborhoods."
     },
     {
@@ -104,8 +107,12 @@
       "utterance": "Good to go. Onto the history blog now.",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -113,13 +120,14 @@
         },
         "channel": "history blog"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B06",

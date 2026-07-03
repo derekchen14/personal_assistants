@@ -65,8 +65,12 @@
       "utterance": "Soreness-is-progress thing is a myth, and I think there's a post in there. Maybe five sections to give it some room?",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -80,44 +84,42 @@
           "takeaways"
         ]
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Here's a five-section outline: (1) The soreness-as-signal myth, (2) What DOMS actually is, (3) Real markers of training progress, (4) How to train without chasing soreness, (5) Practical takeaways."
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "yeah that looks good um can you write it up, I think sections two and three are the ones that'll carry most of the argument",
+      "utterance": "yeah that looks good, um, can you put it into prose, I think sections two and three carry most of the argument",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Soreness Is Not Progress"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Draft is done. Sections two and three came out strong. The DOMS explanation is tight and the 'real markers' section has enough specifics to back it up. The intro and takeaways are a little thin though."
     },
     {
@@ -126,25 +128,26 @@
       "utterance": "hold on, phone's ringing, one sec. [pause] um does this sound like me, or too textbook-y?",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Soreness Is Not Progress"
         }
       },
-      "expected_tools": [
-        "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
       "utterance": "Mostly you, but the second half of section three slips into textbook. Phrases like 'progressive overload is the primary stimulus for hypertrophy' read like a textbook excerpt. The intro and sections one and four feel like your voice."
     },
     {
@@ -153,8 +156,12 @@
       "utterance": "That textbook bit in section three, could we swap in something that sounds a bit more conversational maybe?",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -163,13 +170,14 @@
         },
         "tone": "conversational"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

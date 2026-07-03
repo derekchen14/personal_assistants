@@ -12,101 +12,117 @@
       "utterance": "An AI-app security post I want finished end to end, nothing half-done.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          },
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          },
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
-      "note": "Plan turn. The agent decomposes the end-to-end request into the U6 Draft sub-flows: outline, compose, refine.",
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (outline -> compose -> refine); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
       "slots": {
         "source": {
           "post": "Securing AI Apps: A Practical Guide"
         }
       },
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Security plan: outline, then full draft, then refine. Starting the outline."
+      "actions": [],
+      "utterance": "Security plan: outline, then a full draft, then refine. Good to go?"
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "Security post, the sections first and quickly.",
+      "utterance": "Yes. The sections first, and quickly.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Securing AI Apps: A Practical Guide"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline ready. 1) The AI threat surface 2) Securing prompts and inputs 3) Guarding tools and data access 4) Monitoring and incident response."
     },
     {
       "turn_count": 5,
       "role": "user",
-      "utterance": "Does the security draft hold up for a non-specialist once it's prose?",
+      "utterance": "Does it hold up for a non-specialist once it's prose?",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Securing AI Apps: A Practical Guide"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Drafted all four security sections. Transitions between them are rough."
     },
     {
       "turn_count": 7,
       "role": "user",
-      "utterance": "The security draft reads rough, so the structure and transitions need work.",
+      "utterance": "It reads rough, so the structure and transitions need work.",
       "labels": {
         "intent": "Draft",
-        "flow": "refine",
-        "dax": "{02B}"
+        "stack": [
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Securing AI Apps: A Practical Guide"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B04",

@@ -64,8 +64,12 @@
       "utterance": "Structure the demand-flexibility post: the problem, why new generation isn't the answer, what flexibility actually is, and why utilities resist it.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -78,44 +82,42 @@
           "utility resistance"
         ]
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline done: 1) The supply-first assumption 2) Why building more generation kicks the can 3) Demand flexibility explained 4) Why utilities have no incentive to change. Four sections, tight."
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "Write it up.",
+      "utterance": "Good, draft it now.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "The Case for Demand Flexibility Before New Generation"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Full draft ready. Section three runs thin and section four ends on a question when it should land a point."
     },
     {
@@ -124,8 +126,12 @@
       "utterance": "Section four needs to land harder. Rebuild the argument there.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -133,17 +139,14 @@
           "sec": "Why utilities have no incentive to change"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Section four rebuilt. Closes on the rate-structure argument instead of a rhetorical question. Section three still reads short compared to the rest."
     },
     {
@@ -152,8 +155,12 @@
       "utterance": "The demand-flexibility explanation in section three, it's too abstract. Add a concrete example.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -161,17 +168,14 @@
           "sec": "Demand flexibility explained"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 8,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Added a smart-thermostat grid-response example to section three. The section now matches the weight of the others."
     },
     {
@@ -180,8 +184,12 @@
       "utterance": "Run a voice pass on it, same register as my other energy pieces.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -189,18 +197,13 @@
         },
         "tone": null
       },
-      "expected_tools": [
-        "handle_ambiguity"
-      ],
-      "ambiguity": {
-        "is_ambiguous": true,
-        "level": "confirmation"
-      },
+      "ambiguity": "confirmation",
       "note": "confirmation ambiguity: user says 'same register as my other energy pieces' but no explicit tone named. Agent infers from prior posts. Removed context: user previously said 'keep it direct, no academic hedging' in an earlier session. Agent confirms the inferred register before running the pass."
     },
     {
       "turn_count": 10,
       "role": "agent",
+      "actions": [],
       "utterance": "Confirming: direct and plain, no academic hedging, like the heat-pumps post?"
     },
     {
@@ -209,8 +212,12 @@
       "utterance": "Yeah, that's it. Then publish it.",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -218,13 +225,14 @@
           "chl": "blog"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 12,
+      "role": "agent",
+      "actions": [
         "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

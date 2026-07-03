@@ -74,19 +74,17 @@
       "utterance": "I left a Roman-engineering draft half-finished a while back. Can you dig it out?",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "Roman engineering"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Returns the half-finished Roman-engineering draft rather than the live 'Roman Concrete Heals Itself' post",
@@ -101,6 +99,9 @@
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found it: 'Why the Pantheon's Dome Never Cracked'. Still rough past the intro. Pulling it up."
     },
     {
@@ -109,8 +110,12 @@
       "utterance": "The concrete section buries the point. Move the self-healing bit up front and let the chemistry follow.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -118,13 +123,7 @@
           "sec": "concrete"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "The self-healing claim now opens the concrete section, with the chemistry explanation after it",
@@ -139,6 +138,9 @@
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Reordered. The self-healing lime clasts lead now, the chemistry sits under them as support. Reads with more punch."
     },
     {
@@ -147,8 +149,12 @@
       "utterance": "Good. Now bring the voice in line with the rest of the Roman set.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "note": "confirmation, tag=reject. Removed clear context: the user never says which register. History (the earlier Roman posts run witty) gives the agent one candidate, so it verifies its guess instead of acting. Correct behavior is to ASK, not apply a tone.",
       "slots": {
@@ -156,13 +162,7 @@
           "post": "Why the Pantheon's Dome Never Cracked"
         }
       },
-      "expected_tools": [
-        "handle_ambiguity"
-      ],
-      "ambiguity": {
-        "is_ambiguous": true,
-        "level": "confirmation"
-      },
+      "ambiguity": "confirmation",
       "verify": [
         {
           "check": "The agent asks whether to match the witty register of the earlier Roman posts instead of silently applying a tone",
@@ -177,7 +177,8 @@
     {
       "turn_count": 6,
       "role": "agent",
-      "utterance": "The other Roman posts run witty."
+      "actions": [],
+      "utterance": "The other Roman posts run witty. Match that voice here?"
     },
     {
       "turn_count": 7,
@@ -185,8 +186,12 @@
       "utterance": "No, keep this one dry. The dome deserves a straighter voice.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "note": "resolves the turn-5 confirmation: user rejects the witty candidate and supplies the real value (dry).",
       "slots": {
@@ -195,13 +200,7 @@
         },
         "tone": "dry"
       },
-      "expected_tools": [
-        "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "The voice pass applies a dry register, not the witty one the agent had proposed",
@@ -216,6 +215,9 @@
     {
       "turn_count": 8,
       "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
       "utterance": "Dry it is. Stripped the asides, kept the sentences plain. Sounds measured now, still yours."
     },
     {
@@ -224,8 +226,12 @@
       "utterance": "The closing line lands flat after that. Sharpen it.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -233,13 +239,7 @@
           "sec": "closing"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Only the closing line is rewritten, not the whole conclusion section",
@@ -254,6 +254,9 @@
     {
       "turn_count": 10,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Reworked the last line so it closes on the two-thousand-year figure instead of trailing off. It hits now."
     },
     {
@@ -262,8 +265,12 @@
       "utterance": "Love it. Thats ready, send it to Substack",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -271,13 +278,7 @@
         },
         "channel": "Substack"
       },
-      "expected_tools": [
-        "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "The full post is published to Substack, a valid long-form channel",
@@ -287,6 +288,13 @@
           "check": "The published version carries the dry-tone and sharpened-close edits",
           "dimension": "persisted"
         }
+      ]
+    },
+    {
+      "turn_count": 12,
+      "role": "agent",
+      "actions": [
+        "release_post"
       ]
     }
   ]

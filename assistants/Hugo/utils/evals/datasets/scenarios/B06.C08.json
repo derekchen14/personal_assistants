@@ -12,19 +12,20 @@
       "utterance": "A street-lamps history piece, would anyone actually read it?",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [],
       "utterance": "Niche in the best way. A charming slice of history with a clear arc."
     },
     {
@@ -33,23 +34,24 @@
       "utterance": "Out of a few angles, the boldest is the one I'll take.",
       "labels": {
         "intent": "Draft",
-        "flow": "brainstorm",
-        "dax": "{39D}"
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
       },
       "slots": {
         "query": "history of street lamps, angles"
       },
-      "expected_tools": [
-        "brainstorm_ideas"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
       "utterance": "Four angles: 1) From oil to gas to electric 2) The lamplighter's vanishing trade 3) The night the city first glowed 4) Lamps and the rise of nightlife."
     },
     {
@@ -58,8 +60,12 @@
       "utterance": "Forget the oil-to-electric arc, the lamplighter's trade is the better story, so map that one out.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "note": "P4 changes direction mid-turn (oil-to-electric arc -> lamplighter's trade); the outline flow still completes on the final choice.",
       "slots": {
@@ -67,17 +73,14 @@
           "post": "The Lamplighter's Vanishing Trade"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline for the lamplighter post: 1) A day in the lamplighter's life 2) The tools of the trade 3) Electricity arrives 4) The last lamplighters."
     },
     {
@@ -86,15 +89,20 @@
       "utterance": "Yeah, that's it. Anything I should watch for?",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": []
     }
   ],
   "batch": "B06",

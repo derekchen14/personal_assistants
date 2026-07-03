@@ -17,23 +17,24 @@
       "utterance": "First things first, pull my saved LLM evaluation notes.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "LLM evaluation"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found 'Why Benchmarks Lie' and 'Notes on Eval Harnesses'."
     },
     {
@@ -42,8 +43,12 @@
       "utterance": "Block out 'Picking the Right Eval Framework'. Actually no, too survey-ish. Make it 'How to Build an LLM Eval Set': golden sets, graders, scoring, iteration.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "note": "direction change. User abandons the 'framework comparison' title mid-utterance and redirects to building an eval set; the outline flow still completes on the final title.",
       "slots": {
@@ -57,17 +62,14 @@
           "iteration"
         ]
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline for 'How to Build an LLM Eval Set': 1) Assembling a golden set 2) Choosing graders 3) Scoring runs 4) Iterating on failures."
     },
     {
@@ -76,8 +78,12 @@
       "utterance": "Fill in the graders section, exact-match versus judge, and did that benchmarks post ever get its update?",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -85,17 +91,14 @@
           "sec": "Choosing graders"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "The benchmarks post is still pending its update. Wrote it. Contrasted exact-match grading with LLM-as-judge and noted when each fits."
     },
     {
@@ -104,8 +107,12 @@
       "utterance": "Ship it. Actually no, one more read first.",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -113,13 +120,14 @@
         },
         "channel": "engineering blog"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B06",

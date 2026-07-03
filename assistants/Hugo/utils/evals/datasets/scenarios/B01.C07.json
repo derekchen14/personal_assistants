@@ -56,19 +56,17 @@
       "utterance": "search for any earlier posts on Roman engineering I've written",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "Roman engineering concrete aqueducts"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the search include both published posts and drafts",
@@ -83,29 +81,30 @@
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found two published pieces on aqueducts and the grid system, plus a rough draft on Roman concrete durability."
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "compare the style of those two published posts, what's the tone difference",
+      "utterance": "how do those two published posts differ in tone",
       "labels": {
         "intent": "Research",
-        "flow": "compare",
-        "dax": "{18A}"
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Roman aqueducts and grid system posts"
         }
       },
-      "expected_tools": [
-        "compare_style"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does comparison flag specific vocabulary or sentence-structure differences",
@@ -120,29 +119,30 @@
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "compare_style"
+      ],
       "utterance": "The aqueduct piece is more expository, the grid one is sassier, questions conventional wisdom more. Second one's got more voice."
     },
     {
       "turn_count": 5,
       "role": "user",
-      "utterance": "outline the concrete post using that sassier tone, hit the science but stay skeptical",
+      "utterance": "sketch the concrete post using that sassier tone, hit the science but stay skeptical",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Roman concrete durability"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the outline reflect the skeptical tone from the reference post",
@@ -153,6 +153,9 @@
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outlined five sections: why we ignore it, the chemistry that works, their durability versus ours, what we got wrong, and the payoff."
     },
     {
@@ -161,21 +164,26 @@
       "utterance": "now draft this one into full prose",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Roman concrete durability"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

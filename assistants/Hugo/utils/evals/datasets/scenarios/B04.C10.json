@@ -1,7 +1,7 @@
 {
   "convo_id": "B04.C10",
   "persona": "P: formal + blunt",
-  "use_case": "U: find -> clarify -> outline -> compose",
+  "use_case": "U: find -> outline -> outline -> compose",
   "topic": "T: Electric vs Diesel Cars",
   "title": "Electric vs Diesel: The Real Cost Comparison",
   "available_data": {
@@ -17,46 +17,46 @@
       "utterance": "Pull up my electric-versus-diesel posts.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "electric vs diesel"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Two posts: 'Diesel Fuel Costs Per Mile' and 'EV Charging and Battery Costs.'"
+      "actions": [
+        "find_posts"
+      ],
+      "utterance": "Found two: 'Diesel Fuel Costs Per Mile' and 'EV Charging and Battery Costs.'"
     },
     {
       "turn_count": 3,
       "role": "user",
       "utterance": "Maybe a post out of those, then?",
       "labels": {
-        "intent": "Clarify",
-        "flow": "clarify",
-        "dax": "{09F}"
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
-      "note": "ambiguous: underlying intent is Draft, but the post and its angle are undefined, so the agent must declare ambiguity (handle_ambiguity), not guess.",
-      "expected_tools": [
-        "handle_ambiguity"
-      ],
-      "ambiguity": {
-        "is_ambiguous": true,
-        "level": "general"
-      }
+      "note": "Underlying flow is outline {002}; the agent infers the specific post and asks the user to confirm rather than guess. Ambiguity is a tag on the real flow, resolved at the next turn \u2014 clarify is not a separate flow.",
+      "ambiguity": "confirmation"
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [],
       "utterance": "What angle? Cost comparison, titled 'Electric vs Diesel: The Real Cost Comparison'?"
     },
     {
@@ -65,8 +65,12 @@
       "utterance": "The sections for that one, roughed in soon?",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "note": "resolves the turn-3 ambiguity.",
       "slots": {
@@ -74,17 +78,14 @@
           "post": "Electric vs Diesel: The Real Cost Comparison"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Cost outline. 1) Upfront price 2) Fuel and charging costs 3) Maintenance over time 4) Total cost of ownership."
     },
     {
@@ -93,30 +94,35 @@
       "utterance": "Full prose now, the whole post.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Electric vs Diesel: The Real Cost Comparison"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B04",
-  "flagged": true,
+  "flagged": false,
   "generation": {
     "batch": "B04",
     "seed": null,
     "writer_model": "seed-grid",
-    "spec": "topic=Electric vs Diesel Cars | 7 turns | formal + blunt | arc=ambiguity | use_case=find->clarify->outline->compose ",
+    "spec": "topic=Electric vs Diesel Cars | 7 turns | formal + blunt | arc=ambiguity | use_case=find -> outline -> outline -> compose ",
     "draws": {
       "topic": "Electric vs Diesel Cars",
       "title_source": "grid",
@@ -129,7 +135,7 @@
       "arc": "ambiguity",
       "planning": null,
       "ambiguity": {
-        "level": "general",
+        "level": "confirmation",
         "tag": "none",
         "turn": 3
       },
@@ -137,7 +143,7 @@
         "phase_lead": "mixed",
         "sequence": [
           "find",
-          "clarify",
+          "outline",
           "outline",
           "compose"
         ]
@@ -155,7 +161,7 @@
         1,
         1
       ],
-      "flagged": true
+      "flagged": false
     }
   }
 }

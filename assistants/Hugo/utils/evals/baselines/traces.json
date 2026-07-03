@@ -14,5 +14,13 @@
     "value": null,
     "commit": null,
     "date": null
+  },
+  "mean_turn_seconds": {
+    "direction": "lower",
+    "max_drop_pct": 0.2,
+    "expected_fail": true,
+    "value": null,
+    "commit": null,
+    "date": null
   }
 }

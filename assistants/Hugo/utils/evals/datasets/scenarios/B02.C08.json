@@ -12,17 +12,15 @@
       "utterance": "starting a piece on lightweight eval strategies. What angles would work?",
       "labels": {
         "intent": "Draft",
-        "flow": "brainstorm",
-        "dax": "{39D}"
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [
-        "brainstorm_ideas"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Agent outputs 2-3 distinct angles (manual eval, sampling strategy, minimal tooling)",
@@ -37,6 +35,9 @@
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
       "utterance": "The burden of testing frameworks, why 20 hand-picked examples beat 1000 automated checks, and how to score them without tooling."
     },
     {
@@ -45,19 +46,17 @@
       "utterance": "structure this for me.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "topic": "minimal agent evaluation"
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Outline has 4+ sections (intro, the 20-example case, scoring without tooling, when to add tooling)",
@@ -72,27 +71,28 @@
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline ready. Intro sets the evaluation paradox, sections cover sampling philosophy, scoring criteria, and the crossover point where frameworks pay off."
     },
     {
       "turn_count": 5,
       "role": "user",
-      "utterance": "write it out.",
+      "utterance": "put it into prose.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "topic": "minimal agent evaluation"
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Draft reaches 800+ words across all sections",
@@ -107,6 +107,9 @@
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Complete draft. It walks through the cost-benefit logic, then contrasts manual scoring against framework overhead."
     },
     {
@@ -115,20 +118,18 @@
       "utterance": "the third section drags. polish it.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "topic": "minimal agent evaluation",
         "section": "scoring criteria"
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Polish tightens sentence count in the section by 15-25% without cutting ideas",
@@ -138,6 +139,13 @@
           "check": "Flow improves between scoring steps (e.g., goes from 'step A, step B, step C' to 'first X, then Y builds on it, finally Z')",
           "dimension": "trustworthy"
         }
+      ]
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "write_text"
       ]
     }
   ],

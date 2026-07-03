@@ -72,21 +72,30 @@
       "utterance": "Has my IRA take drifted since the older finance post? Figure it out.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          },
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          },
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
-      "note": "Plan opener. Agent decomposes into find -> summarize -> compare: pull the older finance post, condense it, set it against the newer IRA piece. Later user turns run those flows.",
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (find -> summarize -> compare); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Here's the plan: pull your earlier finance post, boil it down, then set it next to the IRA one to spot the drift. Starting with the pull."
+      "actions": [],
+      "utterance": "Here's the plan: pull your earlier finance post, boil it down, then set it next to the IRA one to spot the drift. Want me to run with that?"
     },
     {
       "turn_count": 3,
@@ -94,23 +103,24 @@
       "utterance": "yeah go but are you sure the index-funds one is even the right comparison",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "index funds"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "It's the closest match by topic and it's the only other finance post live. 'Index Funds for People Who Hate Spreadsheets'. If you'd rather weigh it against something else, name it."
     },
     {
@@ -119,25 +129,26 @@
       "utterance": "no that's the one. condense it for me.",
       "labels": {
         "intent": "Research",
-        "flow": "summarize",
-        "dax": "{19A}"
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Index Funds for People Who Hate Spreadsheets"
         }
       },
-      "expected_tools": [
-        "summarize_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
       "utterance": "Short version: buy-and-hold beats stock-picking for anyone who won't babysit a portfolio, and fees quietly eat returns. Confident, low-hedging tone throughout."
     },
     {
@@ -146,21 +157,26 @@
       "utterance": "perfect. now put it next to the IRA one and tell me what shifted.",
       "labels": {
         "intent": "Research",
-        "flow": "compare",
-        "dax": "{18A}"
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "How a Traditional IRA Quietly Loses You Money"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "compare_style"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

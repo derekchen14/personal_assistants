@@ -17,23 +17,24 @@
       "utterance": "I've got an LLM evals post in mind. Did I jot down anything on it?",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "LLM evals"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found 2 related posts: 'Why Benchmarks Lie' and 'Notes on Eval Harnesses'."
     },
     {
@@ -42,8 +43,12 @@
       "utterance": "New post, 'A Practical Guide to LLM Evals', with these parts: why benchmarks fall short, building a golden set, automated graders, human review.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -56,17 +61,14 @@
           "human review"
         ]
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline ready: 1) Why benchmarks fall short 2) Building a golden set 3) Automated graders 4) Human review in the loop."
     },
     {
@@ -75,8 +77,12 @@
       "utterance": "One concrete curation example in the building a golden set section.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -84,17 +90,14 @@
           "sec": "Building a golden set"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Wrote it. Walked through curating a 50-case golden set with labeled expected outputs."
     },
     {
@@ -103,8 +106,12 @@
       "utterance": "That's the one. Let's get it live on the engineering blog today.",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -112,13 +119,14 @@
         },
         "channel": "engineering blog"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B03",

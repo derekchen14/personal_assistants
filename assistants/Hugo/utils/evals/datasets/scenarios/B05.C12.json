@@ -12,25 +12,34 @@
       "utterance": "A post on Edison's workshop, however you'd structure it, your call all the way to a draft.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          },
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          },
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
-      "note": "Plan turn. The agent decomposes the vague end-to-end request into the U6 Draft sub-flows: outline, compose, refine.",
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (outline -> compose -> refine); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "No problem, I'll handle the steps. First I'll outline it, then write a full draft, then tidy it up. Starting the outline."
+      "actions": [],
+      "utterance": "No problem, I'll handle the steps. First I'll outline it, then write a full draft, then tidy it up. Does that work for you?"
     },
     {
       "turn_count": 3,
@@ -38,25 +47,26 @@
       "utterance": "That works for me. The sections, in the right order?",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Here's what I'd suggest: 1) Building the invention factory 2) The team of muckers 3) A system for inventing 4) The legacy of Menlo Park."
     },
     {
@@ -65,25 +75,26 @@
       "utterance": "Mhm. The sections into a draft now, shall we?",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Done, all four sections are drafted. It's a little choppy where they meet."
     },
     {
@@ -92,21 +103,26 @@
       "utterance": "The draft needs evening out, however you'd smooth it.",
       "labels": {
         "intent": "Draft",
-        "flow": "refine",
-        "dax": "{02B}"
+        "stack": [
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B05",

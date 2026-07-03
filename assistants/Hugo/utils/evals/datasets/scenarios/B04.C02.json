@@ -12,8 +12,12 @@
       "utterance": "An Edison piece. Open with an intro of course, then his early years, the big inventions, and close on his legacy.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -26,44 +30,42 @@
           "legacy"
         ]
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Here's the Edison outline, four sections: 1) The man who lit up the world 2) From newsboy to inventor 3) The big inventions 4) Edison's lasting legacy."
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "Full Edison prose, and soon, please.",
+      "utterance": "Full prose, and soon, please.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Thomas Edison: The Wizard of Menlo Park"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "I drafted all four sections. The inventions one is a bit list-heavy."
     },
     {
@@ -72,8 +74,12 @@
       "utterance": "The lightbulb story, worked into the big inventions section.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -81,40 +87,42 @@
           "sec": "The big inventions"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "I expanded it with the lightbulb story and the filament experiments."
     },
     {
       "turn_count": 7,
       "role": "user",
-      "utterance": "The Edison post needs an audit, today if there's time.",
+      "utterance": "It needs a once-over, today if there is time.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Thomas Edison: The Wizard of Menlo Park"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B04",

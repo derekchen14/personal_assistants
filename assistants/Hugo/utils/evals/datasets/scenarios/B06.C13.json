@@ -20,44 +20,54 @@
       "utterance": "Want to get smart on eval frameworks first: round up the sources, catch me up on one, then show me the leading two side by side.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          },
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          },
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
-      "note": "Plan turn. The agent decomposes the request into find, summarize, then compare. No single flow/dax; intent is Plan, executed over the next user turns.",
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (find -> summarize -> compare); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "On it. Plan: find the eval-framework sources, summarize one for context, then compare the top two. Pulling sources now."
+      "actions": [],
+      "utterance": "On it. Plan: find the eval-framework sources, summarize one for context, then compare the top two. Want me to run it?"
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "Surface what I've got on eval frameworks.",
+      "utterance": "Yes, run it. Surface what I've got on file.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "LLM eval frameworks"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found 3: post 'Getting Started with LLM Evals' and notes 'DeepEval first impressions' and 'Promptfoo setup notes'."
     },
     {
@@ -66,8 +76,12 @@
       "utterance": "Before I lose the thread, the Getting Started with LLM Evals post boiled down, not the Promptfoo note.",
       "labels": {
         "intent": "Research",
-        "flow": "summarize",
-        "dax": "{19A}"
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
       },
       "note": "direction change: user switches the summarize target mid-utterance from the Promptfoo note to the post; the summarize flow still completes on the post.",
       "slots": {
@@ -75,17 +89,14 @@
           "post": "Getting Started with LLM Evals"
         }
       },
-      "expected_tools": [
-        "summarize_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
       "utterance": "Summary of 'Getting Started with LLM Evals': covers why offline evals matter, dataset curation, metric types, and a quick tour of the framework landscape including DeepEval and Promptfoo."
     },
     {
@@ -94,8 +105,12 @@
       "utterance": "Helpful. Which of the two wins on the practical stuff?",
       "labels": {
         "intent": "Research",
-        "flow": "compare",
-        "dax": "{18A}"
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
       "slots": {
         "source": [
@@ -107,13 +122,14 @@
           }
         ]
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "compare_style"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B06",

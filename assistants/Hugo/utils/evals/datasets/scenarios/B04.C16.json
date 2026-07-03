@@ -1,7 +1,7 @@
 {
   "convo_id": "B04.C16",
   "persona": "P: formal + blunt",
-  "use_case": "U: compose -> clarify -> rework -> audit",
+  "use_case": "U: compose -> general -> rework -> audit",
   "topic": "T: Electric vs Diesel Cars",
   "title": "Electric vs Diesel: Which Car Wins?",
   "available_data": {
@@ -17,28 +17,29 @@
     {
       "turn_count": 1,
       "role": "user",
-      "utterance": "The electric-versus-diesel outline is thin in spots, fill the gaps and get it into prose.",
+      "utterance": "The electric-versus-diesel structure is thin in spots, fill the gaps and get it into prose",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Electric vs Diesel: Which Car Wins?"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Drafted every section of the electric-vs-diesel post from the outline. Ready to review."
     },
     {
@@ -46,22 +47,16 @@
       "role": "user",
       "utterance": "This isn't landing for me, and I doubt a first-time reader would follow it either.",
       "labels": {
-        "intent": "Clarify",
-        "flow": "clarify",
-        "dax": "{09F}"
+        "intent": null,
+        "stack": []
       },
-      "note": "ambiguous revise: 'fix it' names no section and no aspect. Underlying intent is Revise but the target and change are undefined, so the agent must ask which section / what aspect (handle_ambiguity).",
-      "expected_tools": [
-        "handle_ambiguity"
-      ],
-      "ambiguity": {
-        "is_ambiguous": true,
-        "level": "general"
-      }
+      "note": "General ambiguity: the task itself is open, so neither flow nor intent is committed (empty stack); the agent asks what the task is. The next user turn names the real flow.",
+      "ambiguity": "general"
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [],
       "utterance": "Which section of the car comparison, and what's wrong: clarity, tone, or depth?"
     },
     {
@@ -70,8 +65,12 @@
       "utterance": "Cost of ownership is the soft spot, no real numbers on fuel, maintenance, or resale.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "note": "resolves the Clarify: names the section and the concrete change.",
       "slots": {
@@ -80,40 +79,42 @@
           "sec": "Cost of ownership"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Reworked 'Cost of ownership' around fuel, maintenance, and resale value with concrete figures."
     },
     {
       "turn_count": 7,
       "role": "user",
-      "utterance": "A final audit on the car post, nothing past the weak spots.",
+      "utterance": "A final once-over on the car post, nothing past the weak spots.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Electric vs Diesel: Which Car Wins?"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B04",
@@ -122,7 +123,7 @@
     "batch": "B04",
     "seed": null,
     "writer_model": "seed-grid",
-    "spec": "topic=Electric vs Diesel Cars | 7 turns | formal + blunt | arc=ambiguity | use_case=compose -> clarify -> rework -> audit | converted from P2.U8.T2",
+    "spec": "topic=Electric vs Diesel Cars | 7 turns | formal + blunt | arc=ambiguity | use_case=compose -> general -> rework -> audit | converted from P2.U8.T2",
     "draws": {
       "topic": "Electric vs Diesel Cars",
       "title_source": "grid",
@@ -143,7 +144,7 @@
         "phase_lead": "mixed",
         "sequence": [
           "compose",
-          "clarify",
+          "general",
           "rework",
           "audit"
         ]

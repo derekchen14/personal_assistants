@@ -5,7 +5,7 @@
   "topic": "T: Clean Energy",
   "title": "Rooftop Solar Is the Wrong First Move",
   "available_data": {},
-  "flagged": true,
+  "flagged": false,
   "batch": "B02",
   "generation": {
     "batch": "B02",
@@ -45,7 +45,7 @@
         "persona_drift": null
       },
       "verify": false,
-      "flagged": true,
+      "flagged": false,
       "writer_model": "claude-sonnet-4-6",
       "length": [
         2,
@@ -62,23 +62,24 @@
       "utterance": "Thinking about a rooftop solar post. Give me a few angles worth taking.",
       "labels": {
         "intent": "Draft",
-        "flow": "brainstorm",
-        "dax": "{39D}"
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
       },
       "slots": {
         "query": "rooftop solar"
       },
-      "expected_tools": [
-        "brainstorm_ideas"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
       "utterance": "Three angles: 1) The payback math most people get wrong 2) Why rooftop solar is the wrong first efficiency move 3) When battery add-ons actually pay off."
     },
     {
@@ -87,23 +88,24 @@
       "utterance": "Before I pick, what did I already jot down on solar payback?",
       "labels": {
         "intent": "Research",
-        "flow": "browse",
-        "dax": "{012}"
+        "stack": [
+          {
+            "flow": "browse",
+            "dax": "{012}"
+          }
+        ]
       },
       "slots": {
         "query": "solar payback"
       },
-      "expected_tools": [
-        "search_notes"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "search_notes"
+      ],
       "utterance": "Two notes: residential solar payback periods and heat-pump-vs-solar priorities. The payback one backs up your second angle."
     },
     {
@@ -112,48 +114,54 @@
       "utterance": "Good, the wrong-first-move angle. Sketch its sections.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Rooftop Solar Is the Wrong First Move"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline: 1) The appeal of rooftop solar 2) What the payback math leaves out 3) Cheaper efficiency wins first 4) When solar does make sense."
     },
     {
       "turn_count": 7,
       "role": "user",
-      "utterance": "That works, write the whole thing up.",
+      "utterance": "That works, draft the whole thing.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Rooftop Solar Is the Wrong First Move"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

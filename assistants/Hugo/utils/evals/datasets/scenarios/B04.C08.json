@@ -12,19 +12,20 @@
       "utterance": "A street-lamp history piece, enough there to hold a reader?",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [],
       "utterance": "Yes. Strong story, underused topic, lots of narrative angles."
     },
     {
@@ -33,23 +34,24 @@
       "utterance": "Of the tight angles, the strongest is the one I want to run with.",
       "labels": {
         "intent": "Draft",
-        "flow": "brainstorm",
-        "dax": "{39D}"
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
       },
       "slots": {
         "query": "history of street lamps"
       },
-      "expected_tools": [
-        "brainstorm_ideas"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
       "utterance": "Angles: 1) Gas lamps and the birth of nightlife 2) Whale oil to electric, the full arc 3) The lamplighter's lost job 4) Who controlled the lit city."
     },
     {
@@ -58,25 +60,26 @@
       "utterance": "The first one, three or four sections, though did that whale-oil post ever get its images sorted?",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "How the Gas Lamp Lit the Modern City"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "The whale-oil post still needs images. Outline: 1) The dark city before gas 2) The first gas-lit streets 3) Nightlife takes off 4) The legacy."
     },
     {
@@ -85,15 +88,20 @@
       "utterance": "Good, that's plenty. Off I go, thanks.",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": []
     }
   ],
   "batch": "B04",

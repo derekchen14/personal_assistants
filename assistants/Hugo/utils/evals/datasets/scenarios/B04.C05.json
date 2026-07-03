@@ -14,26 +14,27 @@
     {
       "turn_count": 1,
       "role": "user",
-      "utterance": "An LLM evals post leaning on what I have. Anything saved I can find?",
+      "utterance": "An LLM evals post leaning on what I have. Anything saved I can pull up?",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "LLM evals"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Two hits: 'Why Benchmarks Lie' and 'Notes on Eval Harnesses'."
     },
     {
@@ -42,25 +43,26 @@
       "utterance": "'Shipping LLM Evals That Catch Regressions', the section list roughed out: regressions, golden sets, graders, sign-off.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Shipping LLM Evals That Catch Regressions"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline: 1) The regression problem 2) Eval suite design 3) Wiring it into CI 4) Reading the results."
     },
     {
@@ -69,8 +71,12 @@
       "utterance": "Can a reader actually run the CI section as it's written, without the wiring config?",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -78,18 +84,15 @@
           "sec": "Wiring it into CI"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
-      "utterance": "Done. Added a YAML pipeline config that runs the eval suite on every PR."
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "I added a YAML pipeline config that runs the eval suite on every PR."
     },
     {
       "turn_count": 7,
@@ -97,8 +100,12 @@
       "utterance": "The engineering blog today, if it can go live.",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -106,13 +113,14 @@
         },
         "channel": "engineering blog"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B04",

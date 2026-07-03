@@ -12,21 +12,22 @@
       "utterance": "I've got notes on database choices scattered around. What do we actually have?",
       "labels": {
         "intent": "Research",
-        "flow": "browse",
-        "dax": "{012}"
+        "stack": [
+          {
+            "flow": "browse",
+            "dax": "{012}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [
-        "search_notes"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "search_notes"
+      ],
       "utterance": "Found three tagged topics: embedding strategies, RAG performance benchmarks, and alternatives to vector stores."
     },
     {
@@ -35,23 +36,24 @@
       "utterance": "Pull up what I wrote on postgres for RAG before.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "postgres RAG"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found 'Why Postgres Beats Vector Stores for Most Teams' from last month. Here's the excerpt."
     },
     {
@@ -60,25 +62,26 @@
       "utterance": "give me the gist of that one, what's the core take.",
       "labels": {
         "intent": "Research",
-        "flow": "summarize",
-        "dax": "{19A}"
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Why Postgres Beats Vector Stores for Most Teams"
         }
       },
-      "expected_tools": [
-        "summarize_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
       "utterance": "The piece argues that standard SQL queries on embedded vectors outperform dedicated vector DBs for most company wikis. No specialized infrastructure needed."
     },
     {
@@ -87,21 +90,26 @@
       "utterance": "how's that compare to what I said about chunking strategies back then.",
       "labels": {
         "intent": "Research",
-        "flow": "compare",
-        "dax": "{18A}"
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Why Postgres Beats Vector Stores for Most Teams"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "compare_style"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B02",

@@ -58,8 +58,12 @@
       "utterance": "What do I have saved on Roman concrete? Want to see what's already there before starting.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -67,13 +71,7 @@
         },
         "query": "Roman concrete"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Agent returns matching post titles or notes referencing Roman concrete",
@@ -88,6 +86,9 @@
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found two notes: one on volcanic ash chemistry and one comparing ancient mortar to Portland cement. No full drafts on this topic yet."
     },
     {
@@ -96,8 +97,12 @@
       "utterance": "Good base. Sketch the structure for the concrete post using those.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -110,13 +115,7 @@
           "implications"
         ]
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Outline references content from the two found notes",
@@ -131,6 +130,9 @@
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline ready: 1) What makes Roman concrete different 2) The volcanic ash reaction 3) Why Portland cement deteriorates faster 4) What engineers are learning from it. Four tight sections."
     },
     {
@@ -139,21 +141,19 @@
       "utterance": "Turn it into a full draft.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Roman Concrete Heals Itself; Ours Just Crumbles"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Agent produces prose covering all four outlined sections",
@@ -168,6 +168,9 @@
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Full draft is there. The Portland cement section runs long and the concluding paragraph reads like a press release."
     },
     {
@@ -176,8 +179,12 @@
       "utterance": "The whole back half feels off. Trim the cement section and redo the ending.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -185,13 +192,7 @@
           "sec": "Why Portland cement deteriorates faster"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Revised cement section is shorter than the original",
@@ -206,6 +207,9 @@
     {
       "turn_count": 8,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Tightened the cement section by a third and rewrote the ending to close on the engineering lesson rather than a call to action. Still a bit stiff in the transition between sections two and three."
     },
     {
@@ -214,8 +218,12 @@
       "utterance": "That transition is the problem, yeah. Smooth it out and recheck the intro too.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -223,13 +231,7 @@
           "sec": "The volcanic ash reaction"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Transition between sections two and three is rewritten",
@@ -239,6 +241,13 @@
           "check": "Intro is reviewed and any stiff phrasing is addressed",
           "dimension": "useful"
         }
+      ]
+    },
+    {
+      "turn_count": 10,
+      "role": "agent",
+      "actions": [
+        "revise_content"
       ]
     }
   ]

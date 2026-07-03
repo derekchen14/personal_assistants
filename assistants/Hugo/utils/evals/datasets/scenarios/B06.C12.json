@@ -12,51 +12,61 @@
       "utterance": "Need this one the whole way to a finished draft, ideally today.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          },
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          },
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
-      "note": "Plan turn. The agent decomposes the end-to-end request into the U6 Draft sub-flows: outline, compose, refine.",
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (outline -> compose -> refine); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Got it. I'll outline the structure, compose a full draft, then refine it. Starting the outline."
+      "actions": [],
+      "utterance": "Got it. I'll outline the structure, compose a full draft, then refine it. Shall I start?"
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "Map the sections out, and let's not dawdle.",
+      "utterance": "Go ahead. Map the sections out, and let's not dawdle.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Okay, outline's done: 1) Building the invention factory 2) The team of muckers 3) A system for inventing 4) The legacy of Menlo Park."
     },
     {
@@ -65,8 +75,12 @@
       "utterance": "Good call on the rest. The whole thing as a full draft now, muckers section aside.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -74,17 +88,14 @@
         }
       },
       "note": "absent-minded direction change mid-turn: user starts toward expanding a single section, then redirects to composing the whole draft; the compose flow still completes.",
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Drafted all four sections. The handoffs between them are a little choppy."
     },
     {
@@ -93,21 +104,26 @@
       "utterance": "Clean up the rough seams in the draft.",
       "labels": {
         "intent": "Draft",
-        "flow": "refine",
-        "dax": "{02B}"
+        "stack": [
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B06",

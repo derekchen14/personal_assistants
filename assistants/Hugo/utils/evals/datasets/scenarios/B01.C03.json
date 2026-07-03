@@ -58,23 +58,24 @@
       "utterance": "I want to write something about how keeping everything in a savings account is actually a losing move long-term. Maybe a structure first?",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "query": "savings account opportunity cost"
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Here's a draft structure: (1) The illusion of safety: why zero nominal risk still loses to inflation, (2) What a decade of 0.5% APY actually costs in real terms, (3) The three moves people avoid because they sound complicated, (4) A simple starting point that doesn't require expertise, (5) The one number to watch annually."
     },
     {
@@ -83,8 +84,12 @@
       "utterance": "That's pretty close. Maybe turn it into a draft, though I'm wondering if the numbers section will feel too dry without a real example.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -92,18 +97,15 @@
           "sec": ""
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
-      "utterance": "Draft is done. I used a concrete example in section 2: $20,000 sitting at 0.5% APY for 10 years versus the same amount in a total-market index fund at a conservative 7% annualized return. The gap comes out around $9,400. Let me know if you want a different figure."
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Draft is done. In section 2 I used a concrete example: $20,000 at 0.5% APY for 10 years versus a total-market index fund at a conservative 7%, a gap of about $9,400."
     },
     {
       "turn_count": 5,
@@ -111,8 +113,12 @@
       "utterance": "Actually the whole framing feels off now that I see it written out. The piece is too \"here's what you're doing wrong\" and not enough \"here's how to think about it.\" Can we restructure around the mindset shift instead?",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -120,17 +126,14 @@
           "sec": ""
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Restructured. The new arc opens with the question 'what is this money actually for?' and builds from there: clarity on purpose, understanding real returns, then a reframe of what 'risk' means when you have a 10-year horizon. The critical tone is mostly gone."
     },
     {
@@ -139,8 +142,12 @@
       "utterance": "The opening paragraph still feels a little lecture-y. Could you soften it a bit, maybe make it more like you're thinking alongside the reader?",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -148,17 +155,14 @@
           "sec": "opening paragraph"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 8,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Rewritten. The opener now starts with a question the reader has already asked themselves: 'How bad can it really be to leave money in savings?' It invites rather than instructs. The rest of the intro follows from there."
     },
     {
@@ -167,8 +171,12 @@
       "utterance": "That's much better. Does it sound like me throughout, or does it slip back into the formal voice in places?",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -176,13 +184,14 @@
           "sec": ""
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 10,
+      "role": "agent",
+      "actions": [
         "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

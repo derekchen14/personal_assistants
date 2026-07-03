@@ -72,23 +72,24 @@
       "utterance": "Can you pull up the July gardening draft? I need to get this out before the weekend.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "beginner gardens July draft"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Got it. 'Why Most Beginner Gardens Die in July', a draft with six sections: intro, the-july-problem, watering-mistakes, soil-heat, what-survives, closing. Ready to work on it."
     },
     {
@@ -97,8 +98,12 @@
       "utterance": "The middle sections are repeating the same point about heat three times. Can you consolidate them into something that flows?",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -106,17 +111,14 @@
           "sec": ""
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Restructured the middle. Merged watering-mistakes and soil-heat into one section called 'the heat trap' that treats both as a single feedback loop: less water means hotter soil means faster water loss. The repetition is gone. You still have five sections total."
     },
     {
@@ -125,8 +127,12 @@
       "utterance": "The closing feels rushed. Can you give it a bit more room to breathe?",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -134,17 +140,14 @@
           "sec": "closing"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Expanded the closing. It now ends on the 'August reset' idea: most beginners who lose their summer plants do a second planting and it works because the worst heat is behind them. Gives the piece a forward-looking note instead of just cataloguing what went wrong."
     },
     {
@@ -153,8 +156,12 @@
       "utterance": "Good. Does it still sound like me or did the rewrite drift the voice?",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -162,13 +169,14 @@
           "sec": ""
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

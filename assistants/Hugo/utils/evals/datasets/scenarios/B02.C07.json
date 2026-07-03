@@ -71,23 +71,24 @@
       "utterance": "Pull up the Edison draft, the one about the grid.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "Edison grid draft"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found it: 'Edison's Real Genius Was the Grid, Not the Bulb', draft status. Five sections, last edited three days ago."
     },
     {
@@ -96,8 +97,12 @@
       "utterance": "The middle two sections feel like they're saying the same thing. Rebuild them into one clear argument.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -105,17 +110,14 @@
           "sec": "pearl street station / what the grid meant"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Merged the two into a single section: 'Pearl Street and What It Proved.' The technical details now lead into the larger argument about commercial viability rather than running in parallel."
     },
     {
@@ -124,25 +126,26 @@
       "utterance": "Still not landing right. The whole post front-loads the myth stuff too heavy, the grid argument doesn't show up until you're halfway through.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Edison's Real Genius Was the Grid, Not the Bulb"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Restructured the whole post. The grid argument now opens the intro, the bulb myth becomes a brief reframe in section two, and the rest builds forward from there. Much less throat-clearing before the main point."
     },
     {
@@ -151,8 +154,12 @@
       "utterance": "Good, that's it. The intro paragraph is still a bit clunky though, clean it up.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -160,13 +167,14 @@
           "sec": "intro"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

@@ -12,21 +12,22 @@
       "utterance": "thinking of writing about why people sleep better on trains. got angles?",
       "labels": {
         "intent": "Draft",
-        "flow": "brainstorm",
-        "dax": "{39D}"
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [
-        "brainstorm_ideas"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
       "utterance": "The rhythm of the wheels, no phone notifications, the cabin as your own space. Maybe compare to hotels."
     },
     {
@@ -35,23 +36,24 @@
       "utterance": "solid. break this down by sections.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "topic": "overnight train as hotel"
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Intro: the sleep quality paradox. Then the physics (movement, darkness, temperature control). Then a comparison to hotels. Outro: why this matters for travel planning."
     },
     {
@@ -60,23 +62,24 @@
       "utterance": "turn it into prose for me, just push through.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "topic": "overnight train as hotel"
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Draft complete. The opening leans into the sensory experience, each section builds the argument, and the payoff compares sleeper cars to premium hotels."
     },
     {
@@ -85,20 +88,25 @@
       "utterance": "the second paragraf sounds stiff, make it flow.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "topic": "overnight train as hotel",
         "section": "physics"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B02",

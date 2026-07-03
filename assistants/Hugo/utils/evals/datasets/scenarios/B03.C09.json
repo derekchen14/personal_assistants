@@ -17,23 +17,24 @@
       "utterance": "Pull up everything I've saved on red-teaming.",
       "labels": {
         "intent": "Research",
-        "flow": "browse",
-        "dax": "{012}"
+        "stack": [
+          {
+            "flow": "browse",
+            "dax": "{012}"
+          }
+        ]
       },
       "slots": {
         "query": "red-teaming"
       },
-      "expected_tools": [
-        "search_notes"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "search_notes"
+      ],
       "utterance": "Found 2: Prompt injection basics and Red-team playbook."
     },
     {
@@ -42,25 +43,26 @@
       "utterance": "Start with the gist of the playbook note, then we move into drafting.",
       "labels": {
         "intent": "Research",
-        "flow": "summarize",
-        "dax": "{19A}"
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "note": "Red-team playbook"
         }
       },
-      "expected_tools": [
-        "summarize_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
       "utterance": "Quick version: it covers threat modeling, an attack catalog, running a red-team, and fixing findings. I'd call the post 'A Red-Team Playbook for LLM Apps'."
     },
     {
@@ -69,8 +71,12 @@
       "utterance": "That title nails it. Its sections next, please.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "note": "resolves the turn-3 ambiguity.",
       "slots": {
@@ -78,17 +84,14 @@
           "post": "A Red-Team Playbook for LLM Apps"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Here's a red-team flow that works: 1) Threat model 2) Attack catalog 3) Running a red-team 4) Fixing what you find."
     },
     {
@@ -97,21 +100,26 @@
       "utterance": "Good shape. Pull those red-team sections into prose.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "A Red-Team Playbook for LLM Apps"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B03",

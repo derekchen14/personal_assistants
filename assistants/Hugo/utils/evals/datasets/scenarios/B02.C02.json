@@ -58,19 +58,17 @@
       "utterance": "search for earlier pieces on heat pumps or cold-climate heating",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "heat pumps cold climate heating"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Are both published posts and drafts included in results",
@@ -85,25 +83,26 @@
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found two published posts on renewable heating and one draft about cold-climate misconceptions."
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "outline a piece from scratch on heat pump myths, focus on the temperature question",
+      "utterance": "start a fresh piece on heat pump myths, focus on the temperature question",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the outline address the core myth that heat pumps fail in cold",
@@ -114,6 +113,9 @@
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outlined five sections: the myth, how the physics works, real-world cold performance, cost and ROI, and the caveats."
     },
     {
@@ -122,17 +124,15 @@
       "utterance": "draft this into prose, keep the hedges where uncertainty exists",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the draft acknowledge known limitations without overselling",
@@ -143,16 +143,23 @@
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Composed all five sections with measured language on the temperature thresholds and regional variation."
     },
     {
       "turn_count": 7,
       "role": "user",
-      "utterance": "refine the physics section, the explanation feels dense",
+      "utterance": "the physics section feels dense, can you loosen it up",
       "labels": {
         "intent": "Draft",
-        "flow": "refine",
-        "dax": "{02B}"
+        "stack": [
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -160,13 +167,7 @@
           "sec": "How the Physics Works"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Is the refined section more accessible to general readers",
@@ -177,7 +178,10 @@
     {
       "turn_count": 8,
       "role": "agent",
-      "utterance": "Restructured the physics section. Split the explanation into smaller pieces, added an analogy, made it flow better."
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Restructured the physics section by splitting the explanation into smaller steps and adding an analogy so it reads more smoothly."
     },
     {
       "turn_count": 9,
@@ -185,8 +189,12 @@
       "utterance": "polish the sentences in the cost section, the language is a bit stiff",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -194,18 +202,19 @@
           "sec": "Cost and ROI"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Are the revised sentences more readable while keeping technical accuracy",
           "dimension": "useful"
         }
+      ]
+    },
+    {
+      "turn_count": 10,
+      "role": "agent",
+      "actions": [
+        "write_text"
       ]
     }
   ]

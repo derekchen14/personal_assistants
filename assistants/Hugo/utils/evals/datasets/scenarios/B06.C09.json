@@ -1,7 +1,7 @@
 {
   "convo_id": "B06.C09",
   "persona": "P: neutral + plain",
-  "use_case": "U: find -> clarify -> outline -> compose",
+  "use_case": "U: find -> outline -> outline -> compose",
   "topic": "T: Red-teaming",
   "title": "A Red-Team Playbook for LLM Apps",
   "available_data": {
@@ -17,24 +17,25 @@
       "utterance": "Pull up what I've posted on red-teaming, the prompt-injection side especially.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "note": "P4 direction-change spans turns: leans toward the narrow prompt-injection angle here, then drops it for the full playbook at turn 5. The final query is red-teaming.",
       "slots": {
         "query": "red-teaming"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Two posts: 'Prompt Injection Basics' and 'Red-Team Playbook.'"
     },
     {
@@ -42,22 +43,21 @@
       "role": "user",
       "utterance": "Cool, let's get something down.",
       "labels": {
-        "intent": "Clarify",
-        "flow": "clarify",
-        "dax": "{09F}"
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
-      "note": "ambiguous: underlying intent is Draft, but the post and its angle are undefined, so the agent must declare ambiguity (handle_ambiguity), not guess.",
-      "expected_tools": [
-        "handle_ambiguity"
-      ],
-      "ambiguity": {
-        "is_ambiguous": true,
-        "level": "general"
-      }
+      "note": "Underlying flow is outline {002}; the agent infers the specific post and asks the user to confirm rather than guess. Ambiguity is a tag on the real flow, resolved at the next turn \u2014 clarify is not a separate flow.",
+      "ambiguity": "confirmation"
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [],
       "utterance": "Should the post be a red-teaming playbook titled 'A Red-Team Playbook for LLM Apps'?"
     },
     {
@@ -66,8 +66,12 @@
       "utterance": "The full playbook over just injection, lay out its sections.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "note": "resolves the Clarify and completes the across-turns direction change: the user drops the turn-1 prompt-injection lean for the full red-team playbook.",
       "slots": {
@@ -75,17 +79,14 @@
           "post": "A Red-Team Playbook for LLM Apps"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Quick red-teaming outline for you: 1) Threat model 2) Attack catalog 3) Running a red-team 4) Fixing what you find."
     },
     {
@@ -94,21 +95,26 @@
       "utterance": "Nice, draft the whole thing now.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "A Red-Team Playbook for LLM Apps"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B06",
@@ -117,7 +123,7 @@
     "batch": "B06",
     "seed": null,
     "writer_model": "seed-grid",
-    "spec": "topic=Red-teaming | 7 turns | neutral + plain | arc=ambiguity | use_case=find->clarify->outline->compose ",
+    "spec": "topic=Red-teaming | 7 turns | neutral + plain | arc=ambiguity | use_case=find -> outline -> outline -> compose ",
     "draws": {
       "topic": "Red-teaming",
       "title_source": "grid",
@@ -130,7 +136,7 @@
       "arc": "ambiguity",
       "planning": null,
       "ambiguity": {
-        "level": "general",
+        "level": "confirmation",
         "tag": "none",
         "turn": 3
       },
@@ -138,7 +144,7 @@
         "phase_lead": "mixed",
         "sequence": [
           "find",
-          "clarify",
+          "outline",
           "outline",
           "compose"
         ]

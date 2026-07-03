@@ -20,25 +20,26 @@
       "utterance": "Turn the OpenTelemetry post's skeleton into a first draft.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Instrumenting LLM Apps with OpenTelemetry"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Done, all four sections are prose now. The 'Spans and traces' section reads a little tangled."
     },
     {
@@ -47,8 +48,12 @@
       "utterance": "The spans-and-traces part jumps around. Rebuild it so a single span comes first, then nested traces.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -56,17 +61,14 @@
           "sec": "Spans and traces"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Restructured it. Now it opens with one span, then layers in parent/child traces."
     },
     {
@@ -75,25 +77,26 @@
       "utterance": "Way better. Comb the whole post for anything unclear or repetitive.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Instrumenting LLM Apps with OpenTelemetry"
         }
       },
-      "expected_tools": [
-        "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
       "utterance": "Reviewed the full draft. It reads well, except the intro still has a `<tracer>` placeholder where the tool name should go."
     },
     {
@@ -102,8 +105,12 @@
       "utterance": "Right, fill that placeholder. Two or three names to drop in, and I'll pick.",
       "labels": {
         "intent": "Revise",
-        "flow": "propose",
-        "dax": "{39B}"
+        "stack": [
+          {
+            "flow": "propose",
+            "dax": "{39B}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -112,14 +119,15 @@
         },
         "context": "tracer name placeholder"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "read_section",
         "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B03",

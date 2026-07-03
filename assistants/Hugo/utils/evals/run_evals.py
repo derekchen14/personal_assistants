@@ -3,8 +3,8 @@
 Runs each scenario's user turns through a live orchestrator Agent and scores two metrics from the
 SAME pass (one live run, no double LLM cost):
   * completion_rate  — did the turn finish in the right mode (completion scorer).
-  * tool_match_rate  — did the dispatched domain tools match the turn's `expected_tools`, by mean
-                       per-turn Levenshtein similarity (tools scorer). Tool-name drift shows as red.
+  * tool_match_rate  — did the dispatched domain tools match the following agent turn's `actions`,
+                       by mean per-turn Levenshtein similarity (tools scorer). Drift shows as red.
 
 Writes report/<level>_metrics.json and calls the folded-baseline gate. Red-green: the gate stays
 green while a metric's `expected_fail` is true (feature unbuilt); flip it off once the agent reliably
@@ -14,8 +14,10 @@ hits the target, and a drop below it turns the gate red.
   python utils/evals/run_evals.py --record           # stamp the run into the baseline
   python utils/evals/run_evals.py --ids B01.C01,B01.C08    # release-gate subset (human-read)
 
-Wall times (per turn, per conversation, total) are printed in every run and read by QA against
-the latency budget in evaluation_suite.md (total <= 10 min; TTFT <= 1 min) — printed, not gated.
+Wall times (per turn, per conversation, total) are printed in every run and read against the
+latency ideals in evaluation_suite.md (TTFT <= 5s | turn <= 10s | convo <= 60s | 8-scenario gate
+<= 10 min) — measured, never gated. TTFT prints n/a until streaming lands (step 6). The one gated
+latency metric is mean_turn_seconds (red past baseline +20%).
 """
 import argparse
 import json
@@ -98,7 +100,7 @@ def _run_case(case:dict, domain_tools:set) -> tuple[int, int, list, list]:
     tool_log = _install_tool_logger(agent)
     completed = total = 0
     sims, turn_secs = [], []
-    for turn in case['turns']:
+    for idx, turn in enumerate(case['turns']):
         if turn.get('role') != 'user':
             continue
         total += 1
@@ -107,12 +109,13 @@ def _run_case(case:dict, domain_tools:set) -> tuple[int, int, list, list]:
         result = _run_turn(agent, turn['utterance'])
         turn_secs.append(time.time() - start)
         actual = [name for name in tool_log[mark:] if name in domain_tools]
+        expected = case['turns'][idx + 1]['actions']   # the following agent turn holds the actions
         ok, reason = is_completed(result, turn, agent.ambiguity.level)
-        sim = tool_similarity(actual, turn['expected_tools'])
+        sim = tool_similarity(actual, expected)
         completed += ok
         sims.append(sim)
         print(f"  {case['convo_id']} turn {total}: {'ok' if ok else reason} | "
-              f"tools {sim:.2f} (exp {turn['expected_tools']} got {actual}) | {turn_secs[-1]:.1f}s")
+              f"tools {sim:.2f} (exp {expected} got {actual}) | {turn_secs[-1]:.1f}s")
     agent.close()
 
     for post_id, title in seeded:
@@ -134,15 +137,16 @@ def _score_corpus(ids:list|None=None) -> dict:
     for case, result in zip(cases, results):
         print(f"{case['convo_id']}: {result[0]}/{result[1]} completed in {sum(result[3]):.0f}s")
     sweep_secs = time.time() - sweep_start
-    # Timing is printed, not gated (Derek 2026-07-03): QA reads these against the doctrine
-    # targets — turn <= 10s, convo <= 60s, 8-scenario gate <= 10 min.
+    # Latency ideals are measured, never gated (evaluation_suite.md: TTFT <= 5s, turn <= 10s,
+    # convo <= 60s, 8-scenario gate <= 10 min). mean_turn_seconds alone gates, at baseline +20%.
     worst_convo = max(sum(r[3]) for r in results) if results else 0.0
     worst_turn = max(turn_secs) if turn_secs else 0.0
     print(f'wall time: total {sweep_secs:.0f}s | worst convo {worst_convo:.0f}s | '
-          f'worst turn {worst_turn:.1f}s | {len(cases)} scenarios')
+          f'worst turn {worst_turn:.1f}s | TTFT n/a (no streaming) | {len(cases)} scenarios')
     return {
         'completion_rate': round(done / total, 4) if total else 0.0,
         'tool_match_rate': round(sum(sims) / len(sims), 4) if sims else 0.0,
+        'mean_turn_seconds': round(sum(turn_secs) / len(turn_secs), 2) if turn_secs else 0.0,
     }
 
 
@@ -156,7 +160,8 @@ def main():
     ids = [cid.strip() for cid in args.ids.split(',') if cid.strip()]
     metrics = _score_corpus(ids or None)
     print(f"completion_rate = {metrics['completion_rate']}   "
-          f"tool_match_rate = {metrics['tool_match_rate']}")
+          f"tool_match_rate = {metrics['tool_match_rate']}   "
+          f"mean_turn_seconds = {metrics['mean_turn_seconds']}")
     if ids:
         return  # subset runs (release gates) are read by a human, not graded against the corpus baseline
 

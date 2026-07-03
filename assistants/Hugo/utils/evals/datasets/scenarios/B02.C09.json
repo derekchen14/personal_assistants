@@ -63,23 +63,24 @@
       "utterance": "planning a piece on skipping the eval harness. anything of mine already circling that?",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "eval framework"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "One close hit: 'LLM-as-Judge Grades on a Curve'. Same neighborhood, different angle."
     },
     {
@@ -88,25 +89,26 @@
       "utterance": "ugh, i keep forgetting what that one even argued. give me the short of it before i build on it.",
       "labels": {
         "intent": "Research",
-        "flow": "summarize",
-        "dax": "{19A}"
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "LLM-as-Judge Grades on a Curve"
         }
       },
-      "expected_tools": [
-        "summarize_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
       "utterance": "The gist: judges drift toward the middle and reward safe answers, so raw judge scores flatter a mediocre agent. It never touches the small-set idea, so you've got clear room."
     },
     {
@@ -115,25 +117,26 @@
       "utterance": "oh nice, no overlap then. lay out the bones for the new one.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "You Don't Need an Eval Framework, Just 20 Examples"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Bones: 1) The framework tax 2) What 20 real examples buy you 3) Writing checks by hand 4) When to graduate to tooling."
     },
     {
@@ -142,21 +145,26 @@
       "utterance": "that order works great. run those into full prose.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "You Don't Need an Eval Framework, Just 20 Examples"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

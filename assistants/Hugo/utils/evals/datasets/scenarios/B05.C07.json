@@ -12,20 +12,21 @@
       "utterance": "A distributed-tracing post keeps nagging at me, but I'm worried it'll come out flat and generic.",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Great idea. People find it confusing, so a clear explainer would really help."
+      "actions": [],
+      "utterance": "People do find it confusing, so a clear explainer would really help."
     },
     {
       "turn_count": 3,
@@ -33,23 +34,24 @@
       "utterance": "A few ideas from you, if you would. The angle's beyond me, so whatever you'd pick.",
       "labels": {
         "intent": "Draft",
-        "flow": "brainstorm",
-        "dax": "{39D}"
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
       },
       "slots": {
         "query": "distributed tracing, beginner-friendly explainer"
       },
-      "expected_tools": [
-        "brainstorm_ideas"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
       "utterance": "Here are four: 1) Tracing explained with one slow request 2) Traces vs logs, plain English 3) Your first trace, step by step 4) Why one slow service ruins everything. Any of those catch your eye?"
     },
     {
@@ -58,8 +60,12 @@
       "utterance": "They all read fine, so maybe rough out the one you'd back?",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "note": "P3 defers the choice to the agent; agent selects an idea and proceeds to outline.",
       "slots": {
@@ -67,17 +73,14 @@
           "post": "Distributed Tracing, Explained Simply"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "I went with the plain-English explainer. Outline: 1) The problem with logs alone 2) What a trace shows 3) Following one request 4) When you actually need it."
     },
     {
@@ -86,15 +89,20 @@
       "utterance": "That's a real help, thanks. I can manage from here, but any advice?",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": []
     }
   ],
   "batch": "B05",

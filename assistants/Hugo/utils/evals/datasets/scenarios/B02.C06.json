@@ -12,23 +12,24 @@
       "utterance": "I've sketched the argument out. Let me turn it to prose.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "topic": "soreness and training adaptation"
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Draft generated. You've structured it as: why soreness is a poor proxy, what actually signals adaptation, and when to ignore the pain."
     },
     {
@@ -37,24 +38,25 @@
       "utterance": "the transition between the second and third sections reads choppy. smooth it out.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "topic": "soreness and training adaptation",
         "section": "transitions"
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Fixed the paragraph flow. The connection between adaptation markers and pain tolerance now reads more naturally."
     },
     {
@@ -63,24 +65,23 @@
       "utterance": "does this sound like me, or is it still too technical?",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "topic": "soreness and training adaptation"
       },
-      "expected_tools": [
-        "handle_ambiguity"
-      ],
-      "ambiguity": {
-        "is_ambiguous": true,
-        "level": "partial"
-      },
+      "ambiguity": "partial",
       "note": "Ambiguity: partial. User asks about voice but doesn't specify which section or tone to target. Agent must ask which parts feel off or what tone they prefer."
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [],
       "utterance": "I'd say the opening feels formal. Which tone do you want, more conversational or keep it precise?"
     },
     {
@@ -89,23 +90,24 @@
       "utterance": "conversational, like I'm talking to someone who lifts.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "topic": "soreness and training adaptation"
       },
-      "expected_tools": [
-        "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 8,
       "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
       "utterance": "Reworked the intro to sound less academic. Now it reads like you're advising a training partner."
     },
     {
@@ -114,24 +116,25 @@
       "utterance": "better. the middle part still feels stiff though, rebuild that section.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "topic": "soreness and training adaptation",
         "section": "adaptation markers"
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 10,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Restructured the section. It now moves from your direct experience into the physiology, rather than leading with jargon."
     },
     {
@@ -140,19 +143,24 @@
       "utterance": "one more pass. keep the conversational tone throughout and it's done.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "topic": "soreness and training adaptation"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 12,
+      "role": "agent",
+      "actions": [
         "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B02",

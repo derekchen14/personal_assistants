@@ -1,7 +1,7 @@
 {
   "convo_id": "B05.C15",
   "persona": "P: neutral + hedged",
-  "use_case": "U: compose -> clarify -> rework -> audit",
+  "use_case": "U: compose -> general -> rework -> audit",
   "topic": "T: Observability dashboards",
   "title": "Building Observability Dashboards for LLM Apps",
   "available_data": {
@@ -20,48 +20,43 @@
       "utterance": "The dashboard skeleton feels solid, so a draft is the right next step?",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Building Observability Dashboards for LLM Apps"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Done. I drafted all the sections of the observability dashboards post from the outline. Have a read whenever you're ready."
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "I drafted all the sections of the dashboards post from the outline."
     },
     {
       "turn_count": 3,
       "role": "user",
       "utterance": "It reads alright on the whole, but would a newcomer actually stay with it?",
       "labels": {
-        "intent": "Clarify",
-        "flow": "clarify",
-        "dax": "{09F}"
+        "intent": null,
+        "stack": []
       },
-      "note": "maximally vague revise: no section, no aspect, defers entirely to the agent. Underlying intent is Revise but nothing is specified, so the agent must ask a concrete question (handle_ambiguity) rather than guess.",
-      "expected_tools": [
-        "handle_ambiguity"
-      ],
-      "ambiguity": {
-        "is_ambiguous": true,
-        "level": "general"
-      }
+      "note": "General ambiguity: the task itself is open, so neither flow nor intent is committed (empty stack); the agent asks what the task is. The next user turn names the real flow.",
+      "ambiguity": "general"
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [],
       "utterance": "To point me in the right direction on the dashboards post: is one section bugging you, or the whole thing? And is it unclear, too dry, or too shallow?"
     },
     {
@@ -70,8 +65,12 @@
       "utterance": "The metrics part came across as vague to me.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "note": "resolves the Clarify: the agent's question pins it to the 'Choosing metrics' section and a concrete-examples rework.",
       "slots": {
@@ -80,17 +79,14 @@
           "sec": "Choosing metrics"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Reworked the 'Choosing metrics' section with concrete examples: latency, cost, and error rate. It reads much more grounded now."
     },
     {
@@ -99,21 +95,26 @@
       "utterance": "Much better, but I'm not sure a newcomer would follow it.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Building Observability Dashboards for LLM Apps"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B05",
@@ -122,7 +123,7 @@
     "batch": "B05",
     "seed": null,
     "writer_model": "seed-grid",
-    "spec": "topic=Observability dashboards | 7 turns | neutral + hedged | arc=ambiguity | use_case=compose -> clarify -> rework -> audit | converted from P3.U8.T1",
+    "spec": "topic=Observability dashboards | 7 turns | neutral + hedged | arc=ambiguity | use_case=compose -> general -> rework -> audit | converted from P3.U8.T1",
     "draws": {
       "topic": "Observability dashboards",
       "title_source": "grid",
@@ -143,7 +144,7 @@
         "phase_lead": "mixed",
         "sequence": [
           "compose",
-          "clarify",
+          "general",
           "rework",
           "audit"
         ]

@@ -20,25 +20,26 @@
       "utterance": "Looks right. Lock the lightbulb-history structure, then pull it into real prose.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Who Really Invented the Lightbulb?"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Drafted all four sections. The 'Edison vs Swan' section reads muddled."
     },
     {
@@ -47,8 +48,12 @@
       "utterance": "Rebuild the Edison vs Swan section. Actually, lead with Swan's work first, then how Edison built on it.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -56,17 +61,14 @@
           "sec": "Edison vs Swan"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Restructured it. Swan's vacuum bulbs first, then Edison's longer-lasting filament."
     },
     {
@@ -75,25 +77,26 @@
       "utterance": "Go through it with an editor's eye and flag what's still rough.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Who Really Invented the Lightbulb?"
         }
       },
-      "expected_tools": [
-        "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
       "utterance": "Reviewed it. The 'Filament breakthrough' section repeats the bamboo detail, and the conclusion lands flat."
     },
     {
@@ -103,8 +106,12 @@
       "note": "direction change mid-turn: user pivots from 'Filament breakthrough' to 'Conclusion'; the propose flow still completes on the final target.",
       "labels": {
         "intent": "Revise",
-        "flow": "propose",
-        "dax": "{39B}"
+        "stack": [
+          {
+            "flow": "propose",
+            "dax": "{39B}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -112,14 +119,15 @@
           "sec": "Conclusion"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "read_section",
         "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B06",

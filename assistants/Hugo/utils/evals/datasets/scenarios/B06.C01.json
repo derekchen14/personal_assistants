@@ -12,8 +12,12 @@
       "utterance": "Let's kick off an observability post for LLM apps. Takeaways at the end, but first intro, then traces versus logs, then instrumenting.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -26,17 +30,14 @@
           "takeaways"
         ]
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Okay, got an observability outline going: 1) Why observability matters 2) Traces vs logs 3) Instrumenting with OpenTelemetry 4) Takeaways."
     },
     {
@@ -45,25 +46,26 @@
       "utterance": "Oh nice. Straight into real prose now?",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Observability for LLM Apps"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "All four sections are drafted. Heads up, the instrumenting one feels a bit thin to me."
     },
     {
@@ -72,8 +74,12 @@
       "utterance": "Beef up the takeaways. Actually no, instrumenting is the weak one, so give it an OpenTelemetry example.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -82,17 +88,14 @@
         }
       },
       "note": "absent-minded direction change mid-turn: user starts toward the takeaways section, then redirects to the instrumenting section before finishing; the write flow still completes on the corrected section.",
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Expanded the instrumenting section with a span-instrumentation example."
     },
     {
@@ -101,21 +104,26 @@
       "utterance": "Cool. One read for flow, nothing heavier.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Observability for LLM Apps"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B06",

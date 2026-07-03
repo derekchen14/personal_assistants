@@ -71,8 +71,12 @@
       "utterance": "The watering mistakes section could maybe use a cleaner opening, if you think the current one drags a bit?",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -80,17 +84,14 @@
           "sec": "watering mistakes"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "The opening did run long before the first real point. Rewritten it to lead with the core problem: watering at noon when the soil can't hold it."
     },
     {
@@ -99,25 +100,26 @@
       "utterance": "That's better. Maybe a full pass to catch anything that reads like a bot wrote it?",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Why Most Beginner Gardens Die in July"
         }
       },
-      "expected_tools": [
-        "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
       "utterance": "Two spots flagged: the heat stress intro reads like a gardening FAQ, and the closing line is a bit advice-column. Rest sounds like you."
     },
     {
@@ -126,8 +128,12 @@
       "utterance": "We should probably back up the stat about July garden failures. Could you find something?",
       "labels": {
         "intent": "Publish",
-        "flow": "cite",
-        "dax": "{15B}"
+        "stack": [
+          {
+            "flow": "cite",
+            "dax": "{15B}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -135,17 +141,14 @@
           "snip": "July garden failure stat"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Found a 2022 National Gardening Association survey showing 34% of first-year garden plots are abandoned by August."
     },
     {
@@ -154,8 +157,12 @@
       "utterance": "That works. Publish it to the blog.",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -163,13 +170,14 @@
           "chl": "blog"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

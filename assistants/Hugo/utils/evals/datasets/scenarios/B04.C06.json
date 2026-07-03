@@ -17,23 +17,24 @@
       "utterance": "My home-electrification notes as a base, whatever's on file.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "home electrification"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Two notes: 'The first central power stations' and 'Wiring the early household'."
     },
     {
@@ -42,25 +43,26 @@
       "utterance": "'Wiring the Home: 1880 to 1930', sections sketched: gaslight, first grids, house wiring, the payoff.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Wiring the Home: 1880 to 1930"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline: 1) Before the grid 2) The first power stations 3) Knob-and-tube wiring 4) Appliances arrive."
     },
     {
@@ -69,8 +71,12 @@
       "utterance": "Knob-and-tube wiring for the next section.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -78,18 +84,15 @@
           "sec": "Knob-and-tube wiring"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
-      "utterance": "Done. Explained the ceramic knobs, tube insulators, and why it gave way to modern cable."
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "I explained the ceramic knobs, tube insulators, and why it gave way to modern cable."
     },
     {
       "turn_count": 7,
@@ -97,8 +100,12 @@
       "utterance": "The history blog or wherever you'd put it, your call.",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -106,13 +113,14 @@
         },
         "channel": "history blog"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B04",
@@ -152,7 +160,7 @@
       "writer_model": "seed-grid",
       "length": [
         1,
-        2,
+        1,
         1,
         1
       ],

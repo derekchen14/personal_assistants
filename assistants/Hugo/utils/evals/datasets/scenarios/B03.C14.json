@@ -20,44 +20,54 @@
       "utterance": "For the rival-inventors piece: round up my material, brief me on one, then set Edison against Swan.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          },
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          },
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
-      "note": "Plan turn. The agent decomposes the broad research request into find (gather sources), summarize (get up to speed on one inventor), then compare (Edison vs Swan). No single flow/dax; intent is Plan, executed over the next user turns.",
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (find -> summarize -> compare); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Love it. Plan: I'll find what we have on the lightbulb inventors, summarize one to get you grounded, then compare Edison and Swan. Starting with sources."
+      "actions": [],
+      "utterance": "Love it. Plan: I'll find what we have on the lightbulb inventors, summarize one to get you grounded, then compare Edison and Swan. Sound good to run?"
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "My lightbulb-inventor notes, what's on file?",
+      "utterance": "That works. What's on file for the inventors?",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "lightbulb inventors"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found 3: a post 'A Short History of the Lightbulb' plus two notes, 'Edison's Menlo Park breakthrough' and 'Joseph Swan's carbon filament'."
     },
     {
@@ -66,25 +76,26 @@
       "utterance": "The Edison note, is any of it still worth keeping?",
       "labels": {
         "intent": "Research",
-        "flow": "summarize",
-        "dax": "{19A}"
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "note": "Edison's Menlo Park breakthrough"
         }
       },
-      "expected_tools": [
-        "summarize_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
       "utterance": "In short, in 1879 Edison's Menlo Park team got a carbon-filament bulb to burn for hours, then built the generation-and-distribution system around it. His edge was commercialization, not just the bulb."
     },
     {
@@ -93,8 +104,12 @@
       "utterance": "Edison versus Swan, the real gaps.",
       "labels": {
         "intent": "Research",
-        "flow": "compare",
-        "dax": "{18A}"
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
       "slots": {
         "source": [
@@ -106,13 +121,14 @@
           }
         ]
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "compare_style"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B03",

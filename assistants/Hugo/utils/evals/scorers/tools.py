@@ -1,14 +1,14 @@
 """Traces-tier tool scorer (step_1_evals.md — Observability Traces).
 
-Scores the DOMAIN tools the live orchestrator actually dispatched on a turn against the turn's
-`expected_tools` label, by token-level Levenshtein similarity — NOT a strict pass/fail. A turn that
-lands 2 of 3 expected tools in order still earns partial credit; the aggregate metric is the mean
-per-turn similarity, and the gate passes once it crosses a threshold.
+Scores the DOMAIN tools the live orchestrator actually dispatched on a user turn against the
+following agent turn's `actions` label, by token-level Levenshtein similarity — NOT a strict
+pass/fail. A turn that lands 2 of 3 expected tools in order still earns partial credit; the
+aggregate metric is the mean per-turn similarity, and the gate passes once it crosses a threshold.
 
 `actual_tools` is the ordered list of domain tool names the agent dispatched, with orchestration
 plumbing already filtered out by the runner (a domain tool = a key in `schemas/tools.yaml`). Ambiguity
-is never scored here: it does not appear in `expected_tools` (it rides the `ambiguity` level field,
-checked by the completion scorer). Tool-name drift between a flow's live menu and its labeled tool
+is never scored here: it does not appear in `actions` (it rides the user turn's `ambiguity` level
+field, checked by the completion scorer). Tool-name drift between a flow's live menu and its labeled tool
 surfaces here as a sub-1.0 similarity — that red is the signal to fix, by design."""
 
 

@@ -17,23 +17,24 @@
       "utterance": "A post on when houses first got electricity, maybe one to pull from my notes and line up next.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "houses getting electricity"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "I found 2 notes: 'The first central power stations' and 'Wiring the early household'. A story about everyday homes getting wired could pull those together."
     },
     {
@@ -42,25 +43,26 @@
       "utterance": "Three or four sections, but would a curious newcomer follow them?",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "When the Lights Came On at Home"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Here's a draft outline for 'When the Lights Came On at Home': 1) Living by candle and gas 2) The first neighborhood grids 3) Getting your house connected 4) How daily life changed."
     },
     {
@@ -69,8 +71,12 @@
       "utterance": "Whichever section you'd open with, that one fleshed out.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -78,18 +84,15 @@
           "sec": "Living by candle and gas"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
-      "utterance": "I wrote 'Living by candle and gas'. It sets the scene of a home before electricity, with the smells and hazards of gaslight. Have a read."
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "I wrote 'Living by candle and gas'. It sets the scene of a home before electricity, with the smells and hazards of gaslight."
     },
     {
       "turn_count": 7,
@@ -97,8 +100,12 @@
       "utterance": "Really pleased with it. Out to the history blog, yes?",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -106,13 +113,14 @@
         },
         "channel": "history blog"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B05",

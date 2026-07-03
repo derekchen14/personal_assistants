@@ -20,44 +20,54 @@
       "utterance": "This eval-framework thing before a post, whatever order you think, your lead on the steps.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          },
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          },
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
-      "note": "Plan turn. Despite the hesitant voice, the request is a clear multi-step research ask; the agent decomposes it into find, summarize, then compare and drives the sequence. No single flow/dax; intent is Plan.",
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (find -> summarize -> compare); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "No problem, I'll lead. First I'll find what we have on eval frameworks, then summarize one to get you oriented, then compare the two main options. Pulling sources now."
+      "actions": [],
+      "utterance": "No problem, I'll lead. First I'll find what we have on eval frameworks, then summarize one to get you oriented, then compare the two main options. Should I get started?"
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "Could we look over what's on file for these?",
+      "utterance": "Yes, please. Let's look over what's on file.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "eval frameworks"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found 3: a post 'Getting Started with LLM Evals' and two notes, 'DeepEval first impressions' and 'Promptfoo setup notes'."
     },
     {
@@ -66,25 +76,26 @@
       "utterance": "Whatever note you'd start from works for me.",
       "labels": {
         "intent": "Research",
-        "flow": "summarize",
-        "dax": "{19A}"
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "note": "DeepEval first impressions"
         }
       },
-      "expected_tools": [
-        "summarize_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
       "utterance": "I'll start with the DeepEval note. Gist: it's a pytest-style harness. Metrics like faithfulness run as assertions, it plugs into CI easily, and it's lighter on dataset management."
     },
     {
@@ -93,8 +104,12 @@
       "utterance": "So how does that one stack up against the other?",
       "labels": {
         "intent": "Research",
-        "flow": "compare",
-        "dax": "{18A}"
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
       "slots": {
         "source": [
@@ -106,13 +121,14 @@
           }
         ]
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "compare_style"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B05",

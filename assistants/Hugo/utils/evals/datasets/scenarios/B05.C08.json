@@ -12,20 +12,21 @@
       "utterance": "Old street lamps and their history, I keep going back and forth on it, what would you do?",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "It really is. A cozy, surprising bit of history that readers love."
+      "actions": [],
+      "utterance": "That's a cozy, surprising bit of history, and readers tend to love it."
     },
     {
       "turn_count": 3,
@@ -33,23 +34,24 @@
       "utterance": "A handful my way and I'll carry it from there, though any tip on choosing would help.",
       "labels": {
         "intent": "Draft",
-        "flow": "brainstorm",
-        "dax": "{39D}"
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
       },
       "slots": {
         "query": "history of street lamps, accessible angle"
       },
-      "expected_tools": [
-        "brainstorm_ideas"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
       "utterance": "Four ideas: 1) The arc from oil to gas to electric 2) The lamplighter's daily round 3) The first night a city glowed 4) How lamps made cities safer after dark."
     },
     {
@@ -58,8 +60,12 @@
       "utterance": "They're all lovely and I can't choose, so your strongest one sketched out? Is the newsletter still going out Friday?",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "note": "P3 defers the choice to the agent; agent selects an idea and proceeds to outline.",
       "slots": {
@@ -67,17 +73,14 @@
           "post": "A Brief History of the Street Lamp"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "The Friday newsletter is still scheduled. I went with the oil-to-electric arc. Outline: 1) Lighting the night with oil 2) The gas-lamp era 3) The electric revolution 4) The world the lamps left us."
     },
     {
@@ -86,15 +89,20 @@
       "utterance": "Brilliant, thank you. I can take it from here.",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": []
     }
   ],
   "batch": "B05",

@@ -12,19 +12,20 @@
       "utterance": "Distributed tracing as a post. Or has that one been done to death?",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [],
       "utterance": "Still worth it. Most pieces explain spans and exporters, but few argue WHY tracing is worth the effort. A practitioner angle would stand out."
     },
     {
@@ -33,23 +34,24 @@
       "utterance": "Keep the angles sharper than your usual intro, and more opinionated.",
       "labels": {
         "intent": "Draft",
-        "flow": "brainstorm",
-        "dax": "{39D}"
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
       },
       "slots": {
         "query": "distributed tracing, opinionated practitioner angle"
       },
-      "expected_tools": [
-        "brainstorm_ideas"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
       "utterance": "A few angles: 1) 'What tracing buys you that logs never will' 2) The hidden cost of un-instrumented services 3) Tracing as a debugging-time multiplier 4) Sampling: the tradeoff nobody talks about."
     },
     {
@@ -58,25 +60,26 @@
       "utterance": "The first one, please. Lay its sections out.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "What Distributed Tracing Actually Buys You"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Outline: 1) The pain logs leave behind 2) What a trace actually shows you 3) Tracing as a debugging multiplier 4) When it's not worth it."
     },
     {
@@ -85,15 +88,20 @@
       "utterance": "That's great. I'll take it from here. Any parting tips?",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {},
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": []
     }
   ],
   "batch": "B03",

@@ -68,25 +68,26 @@
       "utterance": "The strucutre of the July gardens post feels off. Middle section drags and the close comes too fast.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Why Most Beginner Gardens Die in July"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Restructured. Moved the watering-frequency section up and split the close into two beats so the advice doesn't hit all at once. Middle reads lighter now."
     },
     {
@@ -95,8 +96,12 @@
       "utterance": "The heat-stress paragraph is still a bit flat, maybe something sharper for the opening sentence?",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -104,17 +109,14 @@
           "sec": "heat stress"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Replaced the opener with: 'July doesn't kill plants gradually, it kills them on the three days you forget to water.' Rest of the paragraph stays."
     },
     {
@@ -123,25 +125,26 @@
       "utterance": "Oh that's much better, love the new line. Does the whole thing hold together voice-wise now?",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Why Most Beginner Gardens Die in July"
         }
       },
-      "expected_tools": [
-        "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
       "utterance": "Voice is consistent except in the new closing section. It's more instructional than the rest of the post, a bit manual-like. Worth a quick pass there."
     },
     {
@@ -150,8 +153,12 @@
       "utterance": "Yeah, the closing could probably read more like I'm talking to a friend, not handing someone a checklist.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -160,13 +167,14 @@
         },
         "tone": "conversational"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

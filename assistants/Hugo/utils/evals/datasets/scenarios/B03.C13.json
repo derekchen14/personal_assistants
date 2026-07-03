@@ -20,44 +20,54 @@
       "utterance": "On eval frameworks: pull together what we have, walk me through one, then weigh the top contenders.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          },
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          },
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
-      "note": "Plan turn. The agent decomposes the broad research request into find (gather sources), summarize (get up to speed on one), then compare (weigh the contenders). No single flow/dax; intent is Plan and execution unfolds over the next user turns.",
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (find -> summarize -> compare); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Sounds good. Plan: I'll find everything we have on eval frameworks, summarize one to get you grounded, then compare the top two. Starting with sources."
+      "actions": [],
+      "utterance": "Sounds good. Plan: I'll find everything we have on eval frameworks, summarize one to get you grounded, then compare the top two. Want me to go ahead?"
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "What have I got on eval frameworks?",
+      "utterance": "Yes, go ahead. What have I got on file?",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "LLM eval frameworks"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found 3: a post 'Getting Started with LLM Evals' plus two notes, 'DeepEval first impressions' and 'Promptfoo setup notes'."
     },
     {
@@ -66,25 +76,26 @@
       "utterance": "Just the gist of the DeepEval note, and did that Promptfoo post ever ship?",
       "labels": {
         "intent": "Research",
-        "flow": "summarize",
-        "dax": "{19A}"
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "note": "DeepEval first impressions"
         }
       },
-      "expected_tools": [
-        "summarize_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
       "utterance": "That Promptfoo one is still a draft. In short, DeepEval is a pytest-style harness. Metrics like faithfulness and relevancy run as assertions, CI hookup is easy, and it's lighter on dataset management."
     },
     {
@@ -93,8 +104,12 @@
       "utterance": "So where do DeepEval and Promptfoo differ?",
       "labels": {
         "intent": "Research",
-        "flow": "compare",
-        "dax": "{18A}"
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
       "slots": {
         "source": [
@@ -106,13 +121,14 @@
           }
         ]
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "compare_style"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B03",

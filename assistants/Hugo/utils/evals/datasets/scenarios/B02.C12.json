@@ -59,8 +59,12 @@
       "utterance": "ok so the speaking-beats-studying post, maybe sketch out the sections? not sure where to start tbh",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -73,44 +77,42 @@
           "what to do instead"
         ]
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Here's a draft outline: 1) Why people keep studying instead of speaking 2) The input myth 3) What output practice actually does 4) A simple starting routine."
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "yeah that looks ok, go ahead and write it up",
+      "utterance": "yeah that looks ok, go ahead and draft it",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Why Speaking Beats Studying at Every Stage"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Draft's done. The input myth section landed well but the closing routine feels prescriptive, like a listicle rather than advice."
     },
     {
@@ -119,8 +121,12 @@
       "utterance": "actually wait, the structure's the real issue here. the myth section should come first, before you even explain why studying doesn't work. can we rearrange that?",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -128,17 +134,14 @@
           "sec": "The input myth"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Restructured it, myth section now opens the piece and the why-studying-fails argument builds from there. The routine at the end reads less listicle-y now too."
     },
     {
@@ -147,21 +150,26 @@
       "utterance": "does this even sound like me or does it still feel kind of generic",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Why Speaking Beats Studying at Every Stage"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

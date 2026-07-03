@@ -69,20 +69,24 @@
       "utterance": "The index funds post is done, I think. Get it out there, maybe a couple of channels if its ready.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          },
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
-      "note": "Plan turn. The agent needs to confirm which channels before decomposing (step_0). Plan decomposes into: audit (voice check before publishing), then release to two channels (fan_out).",
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (audit -> release); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
       "slots": {
         "source": {
           "post": "Index Funds for People Who Hate Spreadsheets"
         }
       },
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the agent pause to ask which channels before committing to publish?",
@@ -97,6 +101,7 @@
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [],
       "utterance": "Before I kick this off: which two channels did you have in mind? And do you want a voice pass first, or go straight to publish?"
     },
     {
@@ -105,8 +110,12 @@
       "utterance": "The main blog and Substack. And yeah, a quick check first sounds reasonable.",
       "labels": {
         "intent": "Converse",
-        "flow": "chat",
-        "dax": "{000}"
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
       },
       "slots": {
         "channel": [
@@ -114,11 +123,7 @@
           "Substack"
         ]
       },
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the agent record both channels (blog and Substack) before proceeding?",
@@ -133,6 +138,7 @@
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [],
       "utterance": "Got it. Plan: audit the index-funds post for voice, then release to the main blog, then Substack. Running the audit now."
     },
     {
@@ -141,21 +147,19 @@
       "utterance": "Is the tone actually consistent or does it drift halfway through I wasnt sure about that part",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Index Funds for People Who Hate Spreadsheets"
         }
       },
-      "expected_tools": [
-        "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the agent flag a specific section where tone drifts rather than giving a vague pass?",
@@ -170,6 +174,9 @@
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
       "utterance": "Tone holds through the first two thirds. The closing section shifts toward formal. Fixed it to match the opening voice. Ready to release."
     },
     {
@@ -178,8 +185,12 @@
       "utterance": "Fine. Main blog first, Substack after.",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -190,13 +201,7 @@
           "Substack"
         ]
       },
-      "expected_tools": [
-        "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the agent release to the main blog first, then Substack as a separate step?",
@@ -206,6 +211,13 @@
           "check": "Does the agent confirm completion for each channel separately?",
           "dimension": "useful"
         }
+      ]
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "release_post"
       ]
     }
   ]

@@ -60,90 +60,97 @@
     {
       "turn_count": 1,
       "role": "user",
-      "utterance": "Find posts about sleeper trains I've written please",
+      "utterance": "Pull up my posts about sleeper trains, please.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "sleeper trains overnight"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found three: 'The Case for Sleepers Over Hotels', a half-draft, and two notes on European routes."
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "sketch an outline from the draft, lead with comfort then cost",
+      "utterance": "sketch a structure from the draft, lead with comfort then cost",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "The Case for Sleepers Over Hotels"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Built five sections: comfort first, then cost versus hotels, routes that work, logistics, and why people skip them."
     },
     {
       "turn_count": 5,
       "role": "user",
-      "utterance": "write it into prose now keep the voice conversational",
+      "utterance": "turn it into prose now, keep the voice conversational",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "The Case for Sleepers Over Hotels"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Composed all sections. Each flows into the next, opening with the comfort angle that makes sleepers feel indulgent."
     },
     {
       "turn_count": 7,
       "role": "user",
-      "utterance": "release to the main blog now",
+      "utterance": "push it live to the main blog now",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -151,13 +158,14 @@
         },
         "channel": "main blog"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ]
 }

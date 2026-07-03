@@ -12,51 +12,61 @@
       "utterance": "A post to draft today, the whole thing.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          },
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          },
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
-      "note": "Plan turn. The agent decomposes the end-to-end request into the U6 Draft sub-flows: outline, compose, refine.",
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (outline -> compose -> refine); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Got it. Three steps: outline the structure, draft it in full, then refine. Starting the outline."
+      "actions": [],
+      "utterance": "Got it. Three steps: outline the structure, draft it in full, then refine. Shall I start?"
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "Lay out the sections next.",
+      "utterance": "Sounds right. Lay out the sections first.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Here's the outline I came up with: 1) Building the invention factory 2) The team of muckers 3) A system for inventing 4) The legacy of Menlo Park."
     },
     {
@@ -65,25 +75,26 @@
       "utterance": "Pull the sections into prose.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Drafted all four sections. They're a bit choppy where they hand off to each other."
     },
     {
@@ -92,25 +103,30 @@
       "utterance": "Not sold on how the draft reads. It comes off choppy.",
       "labels": {
         "intent": "Draft",
-        "flow": "refine",
-        "dax": "{02B}"
+        "stack": [
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B03",
-  "flagged": true,
+  "flagged": false,
   "generation": {
     "batch": "B03",
     "seed": null,
@@ -153,7 +169,7 @@
         1,
         2
       ],
-      "flagged": true
+      "flagged": false
     }
   }
 }

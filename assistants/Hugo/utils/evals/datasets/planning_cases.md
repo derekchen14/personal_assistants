@@ -1,8 +1,9 @@
 # Planning use cases (Plan intent, multi-flow chains)
 
 The 32 planning storylines for the Plan axis (data_aug_guide.md axis 6). A planning convo opens with a
-multi-step goal that NLU labels **Plan intent** (no flow of its own); PEX decomposes it into ordered
-**existing** catalog flows, chains them, and judges when the goal is met. These are a rough sketch like
+multi-step goal that NLU labels **Plan intent**, with the turn's label `stack` holding the ordered
+decomposition (no separate `plan` flow); PEX decomposes it into ordered **existing** catalog flows, proposes
+the stack, waits for the user's go-ahead, chains them, and judges when the goal is met. These are a rough sketch like
 `use_cases.md`: generation follows the FLOWS, the turn structure, and the checkpoint pattern, not the
 storyline wording.
 
@@ -36,7 +37,7 @@ main realism failure.
 
 `- [family] <chain> : <storyline> (tag)`
 
-- `plan` — the Plan-intent opener (turn 1, no flow/dax).
+- `plan` — the Plan-intent opener (turn 1, intent Plan; its label `stack` is the multi-flow decomposition of `{flow, dax}` entries).
 - `->` — the next item is a **later turn**.
 - `+` — items joined by `+` run in the **same turn** (batched same-type sub-agents, in parallel). This is the
   "single turn, multiple flows" case; a `->` chain of single flows is the "multiple turns, single flows" case.
@@ -69,7 +70,7 @@ fresh draft).
 Per planning convo: (1) turn 1 intent = Plan; (2) the **decomposition** (the ordered flows, scored on
 selection and order); (3) **turn structure** (batched in one turn vs. spread across turns); (4) **checkpoint
 behavior** (paused where `[check]` is marked, chained where it is not); (5) per-flow dax / slots /
-expected_tools from the catalog; (6) **goal completion** (concludes after the last flow); (7) disruption
+actions from the catalog; (6) **goal completion** (concludes after the last flow); (7) disruption
 resolution where tagged.
 
 ---

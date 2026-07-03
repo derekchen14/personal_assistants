@@ -61,8 +61,12 @@
       "utterance": "Can you, yeah structure it with four sections, the chemistry of pozzolanic ash, why Roman harbors haven't crumbled, the modern failure comparison, and implications for today's construction.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -75,13 +79,7 @@
           "implications for today's construction"
         ]
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the outline include all four named sections in the requested order?",
@@ -100,29 +98,30 @@
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Here is the structure: 1) The chemistry of pozzolanic ash: seawater reaction and aluminous tobermorite crystals. 2) Roman harbor longevity: case studies from Caesarea and Portus. 3) Modern Portland cement failures: sulfate attack and cracking timelines. 4) What today's engineers can borrow."
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "The outline reads correctly. Please turn it into a full draft.",
+      "utterance": "The structure reads correctly. Please turn it into a full draft.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Roman Concrete Heals Itself; Ours Just Crumbles"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the draft cover all four sections from the outline in prose form?",
@@ -141,6 +140,9 @@
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Draft is complete across all four sections. The harbor longevity section runs long; I may have over-explained the crystalline process."
     },
     {
@@ -149,8 +151,12 @@
       "utterance": "The harbor section is too detailed. Strip it back to the two case studies and drop the supplementary mineralogy.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -158,13 +164,7 @@
           "sec": "Roman harbor longevity"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the revised section retain both Caesarea and Portus as case studies?",
@@ -183,6 +183,9 @@
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Done. Kept Caesarea and Portus, removed the extended mineralogy. The section is now roughly half the length."
     },
     {
@@ -191,21 +194,19 @@
       "utterance": "Run a voice check on the full draft. Flag anything that does not read as my writing.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Roman Concrete Heals Itself; Ours Just Crumbles"
         }
       },
-      "expected_tools": [
-        "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the audit identify at least one specific phrase or passage that sounds off-voice?",
@@ -219,6 +220,13 @@
           "check": "Are the flagged items saved or surfaced for follow-up editing?",
           "dimension": "persisted"
         }
+      ]
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "editor_review"
       ]
     }
   ]

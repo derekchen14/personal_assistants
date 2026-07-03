@@ -79,19 +79,17 @@
       "utterance": "Pull up the dark sky draft, the structure needs work.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "dark sky telescope draft"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the agent return the correct post titled 'A Dark Sky Beats a Bigger Telescope'?",
@@ -106,6 +104,9 @@
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "Found it. 'A Dark Sky Beats a Bigger Telescope', a draft with five sections: intro, light-pollution-math, finding-dark-sky, what-to-expect, gear-notes. The light-pollution-math section is quite early; that might be contributing to the structural issue."
     },
     {
@@ -114,8 +115,12 @@
       "utterance": "Hold on, phone just rang, one sec. [pause] Math section buried up front is wrong, move it after the finding section and cut gear-notes.",
       "labels": {
         "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -123,13 +128,7 @@
           "sec": ""
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the agent move light-pollution-math to after finding-dark-sky as instructed?",
@@ -144,6 +143,9 @@
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
       "utterance": "Done. New order: intro, finding-dark-sky, light-pollution-math, what-to-expect. Gear-notes is gone. The math section now has context to land in. The reader knows what they're looking for before the numbers show up."
     },
     {
@@ -152,8 +154,12 @@
       "utterance": "Actually the intro is still weak. It opens with a question, which is the laziest possible hook.",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -161,13 +167,7 @@
           "sec": "intro"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the agent rewrite the intro without an opening question?",
@@ -182,6 +182,9 @@
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "write_text"
+      ],
       "utterance": "Rewritten. Opens with a statement instead: 'The most expensive upgrade you can make to your setup costs nothing and requires a two-hour drive.' No question, no throat-clearing. Hooks on the claim."
     },
     {
@@ -190,8 +193,12 @@
       "utterance": "Better. Check the whole thing sounds like me, not a gear review site.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -200,13 +207,7 @@
         },
         "tone": "natural"
       },
-      "expected_tools": [
-        "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      },
+      "ambiguity": null,
       "verify": [
         {
           "check": "Does the agent run a voice/tone check against the user's established style?",
@@ -216,6 +217,13 @@
           "check": "Does the agent flag specific phrases that sound like gear-review copy?",
           "dimension": "trustworthy"
         }
+      ]
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "editor_review"
       ]
     }
   ]

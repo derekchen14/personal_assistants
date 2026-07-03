@@ -20,44 +20,54 @@
       "utterance": "Edison against Swan for the rival-inventors piece, which one comes out ahead?",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          },
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          },
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
-      "note": "Plan turn. The agent decomposes the request into find (pull sources), summarize (one), then compare (Edison vs Swan). No single flow/dax; intent is Plan, executed over the following turns.",
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (find -> summarize -> compare); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Plan: 1) find lightbulb-inventor sources 2) summarize one 3) compare Edison vs Swan. Starting with find."
+      "actions": [],
+      "utterance": "Plan: 1) find lightbulb-inventor sources 2) summarize one 3) compare Edison vs Swan. Ready when you are."
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "The lightbulb-inventor notes from my own files, can you pull those?",
+      "utterance": "That works. Pull the inventor notes from my own files.",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "lightbulb inventors"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "3 hits: post 'A Short History of the Lightbulb', notes 'Edison's Menlo Park breakthrough' and 'Joseph Swan's carbon filament'."
     },
     {
@@ -66,25 +76,26 @@
       "utterance": "Edison's Menlo Park breakthrough, is any of it worth a mention?",
       "labels": {
         "intent": "Research",
-        "flow": "summarize",
-        "dax": "{19A}"
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "note": "Edison's Menlo Park breakthrough"
         }
       },
-      "expected_tools": [
-        "summarize_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
       "utterance": "Edison: 1879 long-burning carbon filament at Menlo Park, plus the power-distribution system. Edge was commercialization."
     },
     {
@@ -93,8 +104,12 @@
       "utterance": "Edison or Swan side by side, and I'll back whichever holds up.",
       "labels": {
         "intent": "Research",
-        "flow": "compare",
-        "dax": "{18A}"
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
       },
       "slots": {
         "source": [
@@ -106,13 +121,14 @@
           }
         ]
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "compare_style"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B04",

@@ -17,23 +17,24 @@
       "utterance": "A post on testing AI models, though I'm not sure where I'd even begin, any thoughts?",
       "labels": {
         "intent": "Research",
-        "flow": "find",
-        "dax": "{001}"
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
       },
       "slots": {
         "query": "testing AI models"
       },
-      "expected_tools": [
-        "find_posts"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
       "utterance": "I found 2 posts that touch on it: 'Why Benchmarks Lie' and 'Notes on Eval Harnesses'. A beginner-friendly guide to LLM evals could tie those together."
     },
     {
@@ -42,25 +43,26 @@
       "utterance": "Sure, that's fine. The sections grouped however you'd group them.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Getting Started with LLM Evals"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Here's a starter outline for 'Getting Started with LLM Evals': 1) What an eval is 2) Picking what to measure 3) Building your first test set 4) Acting on the scores."
     },
     {
@@ -69,8 +71,12 @@
       "utterance": "Could the first section take some filling-in now, do you think?",
       "labels": {
         "intent": "Revise",
-        "flow": "write",
-        "dax": "{003}"
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -78,18 +84,15 @@
           "sec": "What an eval is"
         }
       },
-      "expected_tools": [
-        "write_text"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
-      "utterance": "I wrote the 'What an eval is' section: a plain-language intro with a small worked example. Take a look."
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "I wrote the 'What an eval is' section: a plain-language intro with a small worked example."
     },
     {
       "turn_count": 7,
@@ -97,8 +100,12 @@
       "utterance": "It reads well to me. Is the engineering blog where these usually land?",
       "labels": {
         "intent": "Publish",
-        "flow": "release",
-        "dax": "{004}"
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -106,13 +113,14 @@
         },
         "channel": "engineering blog"
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "release_post"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B05",

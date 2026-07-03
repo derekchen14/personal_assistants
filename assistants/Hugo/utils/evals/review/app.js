@@ -75,13 +75,10 @@ function metaTag(raw, word) {
 
 function fmtSlot(v) { return typeof v === 'object' ? JSON.stringify(v) : String(v); }
 
-// Conversation-level no-flow intent: 'Plan' or 'Clarify' if any turn carries it, else null.
+// Conversation-level chip: 'Plan' if any turn is a plan (multi-flow stack / intent Plan), else null.
 function scanKind(c) {
   for (const t of c.turns) {
-    const intent = t.labels && t.labels.intent;
-    const flow = t.labels && t.labels.flow;
-    if (flow === 'Clarify') return 'Clarify';
-    if (intent === 'Plan' || intent === 'Clarify') return intent;
+    if (t.labels && t.labels.intent === 'Plan') return 'Plan';
   }
   return null;
 }
@@ -111,18 +108,15 @@ function renderScenario(c, fb) {
   for (const t of c.turns) {
     const who = t.role === 'user' ? 'user' : 'agent';
     let labels = '';
-    if (t.labels || t.slots || t.expected_tools) {
+    if (t.labels || t.slots || t.actions || t.ambiguity) {
       const intent = t.labels && t.labels.intent;
-      const flow = t.labels && t.labels.flow;
-      const dax = t.labels && t.labels.dax;
-      const isClarify = intent === 'Clarify' || flow === 'Clarify';
+      const stack = (t.labels && t.labels.stack) || [];
       labels = '<div class="labels">';
-      if (flow && flow !== 'Clarify') labels += chip(dax ? flow + ' ' + dax : flow, 'flow');
-      else if (isClarify) labels += chip('Clarify', 'clarify');
-      else if (intent === 'Plan') labels += chip('Plan', 'plan');
-      if (intent && flow && flow !== 'Clarify') labels += chip(intent, 'intent');
+      for (const s of stack) labels += chip(s.dax ? s.flow + ' ' + s.dax : s.flow, 'flow');
+      if (intent) labels += chip(intent, intent === 'Plan' ? 'plan' : 'intent');
+      if (t.ambiguity) labels += chip('❓ ' + t.ambiguity, 'clarify');
       if (t.slots) for (const k in t.slots) labels += chip(k + ': ' + fmtSlot(t.slots[k]));
-      if (t.expected_tools) for (const tool of t.expected_tools) labels += chip('🔧 ' + tool);
+      if (t.actions) for (const tool of t.actions) labels += chip('🔧 ' + tool);
       labels += '</div>';
     }
     const note = t.note ? `<div class="note">⚠ ${esc(t.note)}</div>` : '';

@@ -9,54 +9,64 @@
     {
       "turn_count": 1,
       "role": "user",
-      "utterance": "A short security note. Actually no, take a full securing-AI-apps post all the way to draft.",
+      "utterance": "A short security note. Actually no, take the full post all the way to draft.",
       "labels": {
         "intent": "Plan",
-        "flow": "plan",
-        "dax": "{29D}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          },
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          },
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
-      "note": "Plan turn. The agent decomposes the end-to-end request into the U6 Draft sub-flows: outline, compose, refine.",
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (outline -> compose -> refine); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
       "slots": {
         "source": {
           "post": "Securing AI Apps: A Practical Guide"
         }
       },
-      "expected_tools": [],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
-      "utterance": "Got it. For the security post I'll outline the structure, compose a full draft, then refine it. Starting the outline."
+      "actions": [],
+      "utterance": "Got it. For the security post I'll outline the structure, compose a full draft, then refine it. Good to go?"
     },
     {
       "turn_count": 3,
       "role": "user",
-      "utterance": "Sounds good. Security sections next, keep them tight.",
+      "utterance": "Sounds good. The sections next, keep them tight.",
       "labels": {
         "intent": "Draft",
-        "flow": "outline",
-        "dax": "{002}"
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Securing AI Apps: A Practical Guide"
         }
       },
-      "expected_tools": [
-        "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
       "utterance": "Okay, outline's done: 1) The AI threat surface 2) Securing prompts and inputs 3) Guarding tools and data access 4) Monitoring and incident response."
     },
     {
@@ -65,8 +75,12 @@
       "utterance": "Build up the threat-surface section. Actually scrap that, just pull the whole thing into a full draft.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
@@ -74,40 +88,42 @@
         }
       },
       "note": "absent-minded direction change mid-turn: user starts toward expanding a single section, then redirects to composing the whole draft; the compose flow still completes.",
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Drafted all four security sections. The handoffs between them are a little choppy."
     },
     {
       "turn_count": 7,
       "role": "user",
-      "utterance": "Smooth the security draft out and clean up the flow.",
+      "utterance": "Smooth the draft out and clean up the flow.",
       "labels": {
         "intent": "Draft",
-        "flow": "refine",
-        "dax": "{02B}"
+        "stack": [
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Securing AI Apps: A Practical Guide"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "generate_outline"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B06",

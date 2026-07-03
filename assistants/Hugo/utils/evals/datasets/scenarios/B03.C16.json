@@ -1,7 +1,7 @@
 {
   "convo_id": "B03.C16",
   "persona": "P: neutral + plain",
-  "use_case": "U: compose -> clarify -> rework -> audit",
+  "use_case": "U: compose -> general -> cite -> audit",
   "topic": "T: Electric vs Diesel Cars",
   "title": "Electric vs Diesel: Which Car Wins?",
   "available_data": {
@@ -20,25 +20,26 @@
       "utterance": "Nice work. Settle the electric-versus-diesel sections, then roll them into a draft.",
       "labels": {
         "intent": "Draft",
-        "flow": "compose",
-        "dax": "{3AD}"
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Electric vs Diesel: Which Car Wins?"
         }
       },
-      "expected_tools": [
-        "convert_to_prose"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 2,
       "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
       "utterance": "Drafted every section of the electric-vs-diesel post from the outline. It's ready for a read-through."
     },
     {
@@ -46,22 +47,16 @@
       "role": "user",
       "utterance": "Read it through, and something keeps nagging, I just can't name it.",
       "labels": {
-        "intent": "Clarify",
-        "flow": "clarify",
-        "dax": "{09F}"
+        "intent": null,
+        "stack": []
       },
-      "note": "ambiguous revise: 'make it better' gives no section or aspect. Underlying intent is Revise but the target and the change are undefined, so the agent must ask a concrete question (handle_ambiguity), not guess.",
-      "expected_tools": [
-        "handle_ambiguity"
-      ],
-      "ambiguity": {
-        "is_ambiguous": true,
-        "level": "general"
-      }
+      "note": "General ambiguity: the task itself is open, so neither flow nor intent is committed (empty stack); the agent asks what the task is. The next user turn names the real flow.",
+      "ambiguity": "general"
     },
     {
       "turn_count": 4,
       "role": "agent",
+      "actions": [],
       "utterance": "Is there a particular section that feels off, or is it the overall flow? And are we after clarity, tone, or depth?"
     },
     {
@@ -69,29 +64,30 @@
       "role": "user",
       "utterance": "What worries me is Cost of ownership, all hand-wavy with no fuel, maintenance, or resale numbers.",
       "labels": {
-        "intent": "Revise",
-        "flow": "rework",
-        "dax": "{006}"
+        "intent": "Publish",
+        "stack": [
+          {
+            "flow": "cite",
+            "dax": "{15B}"
+          }
+        ]
       },
-      "note": "resolves the Clarify: names the section and the concrete change.",
+      "note": "resolves the ambiguity: names the section and asks for real, sourced figures (fuel, maintenance, resale) \u2014 a citation task, not a restructure.",
       "slots": {
         "source": {
           "post": "Electric vs Diesel: Which Car Wins?",
           "sec": "Cost of ownership"
         }
       },
-      "expected_tools": [
-        "revise_content"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      "ambiguity": null
     },
     {
       "turn_count": 6,
       "role": "agent",
-      "utterance": "Reworked 'Cost of ownership' around fuel, maintenance, and resale value with concrete figures for each."
+      "actions": [
+        "revise_content"
+      ],
+      "utterance": "Added sourced fuel, maintenance, and resale figures to 'Cost of ownership', each backed by a reference."
     },
     {
       "turn_count": 7,
@@ -99,30 +95,35 @@
       "utterance": "Comb the car post for weak spots.",
       "labels": {
         "intent": "Revise",
-        "flow": "audit",
-        "dax": "{13A}"
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
       },
       "slots": {
         "source": {
           "post": "Electric vs Diesel: Which Car Wins?"
         }
       },
-      "expected_tools": [
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
         "editor_review"
-      ],
-      "ambiguity": {
-        "is_ambiguous": false,
-        "level": null
-      }
+      ]
     }
   ],
   "batch": "B03",
-  "flagged": false,
+  "flagged": true,
   "generation": {
     "batch": "B03",
     "seed": null,
     "writer_model": "seed-grid",
-    "spec": "topic=Electric vs Diesel Cars | 7 turns | neutral + plain | arc=ambiguity | use_case=compose -> clarify -> rework -> audit | converted from P1.U8.T2",
+    "spec": "topic=Electric vs Diesel Cars | 7 turns | neutral + plain | arc=ambiguity | use_case=compose -> general -> cite -> audit | converted from P1.U8.T2",
     "draws": {
       "topic": "Electric vs Diesel Cars",
       "title_source": "grid",
@@ -143,8 +144,8 @@
         "phase_lead": "mixed",
         "sequence": [
           "compose",
-          "clarify",
-          "rework",
+          "general",
+          "cite",
           "audit"
         ]
       },
@@ -161,7 +162,7 @@
         1,
         1
       ],
-      "flagged": false
+      "flagged": true
     }
   }
 }

@@ -19,26 +19,44 @@ Write files into `/Users/derekchen/Documents/repos/personal_assistants/assistant
 {
   "convo_id": "P{p}.U{n}.T{t}",
   "persona": "...", "use_case": "...", "topic": "...", "title": "<the blog post title>",
-  "available_data": { /* posts/notes the turns reference; {} if the conversation starts a fresh post */ },
+  "available_data": {  /* posts/notes the turns reference; {} if the conversation starts a fresh post */
+    "posts": [ { "post_id": "...", "title": "...", "status": "draft",
+                 "sections": { "<section-name>": "<section prose>" } } ],
+    "notes": [ /* separate key, unchanged */ ]
+  },
   "turns": [
-    { "turn_count": 1, "role": "user", "utWhat iterance": "...",
-      "labels": { "intent": "...", "flow": "...", "dax": "{...}" },
-      "slots": { /* e.g. source:{post|note,sec}, query, sections, channel */ },
-      "expected_tools": ["..."] },
-    { "turn_count": 2, "role": "agent", "utterance": "<short realistic reply that sets up the next user turn>" }
-    /* ...user 3, agent 4, user 5, agent 6, user 7 */
+    { "turn_count": 1, "role": "user", "utterance": "...",
+      "labels": { "intent": "...", "stack": [ { "flow": "...", "dax": "{...}" } ] },
+      "slots": { /* e.g. source:{post|note,sec}, query, sections, channel */ } },
+    { "turn_count": 2, "role": "agent", "actions": ["..."],
+      "utterance": "<short realistic reply that sets up the next user turn>" }
+    /* ...user 3, agent 4, user 5, agent 6, user 7, closing agent 8 (actions only) */
   ]
 }
 ```
-- Only user turns (1,3,5,7) carry `labels`/`slots`/`expected_tools`. Agent turns (2,4,6) are `role:"agent"` + a short utterance.
-- **Clarify turn (general ambiguity only):** `labels {"intent":"Clarify"}` (no flow/dax),
-  `expected_tools ["handle_ambiguity"]`, plus a `"note"` explaining the ambiguity. The agent's next reply
-  asks a concrete question; the NEXT user turn resolves it.
-- **Ambiguous flow turn (partial/specific/confirmation):** KEEPS its detected `flow`/`dax`, adds
-  `expected_tools ["handle_ambiguity"]`, plus a `"note"` naming the level and the removed context. Only
-  `general` ambiguity is no-flow (above). See axis 5 for the full model.
-- **Plan turn:** `labels {"intent":"Plan"}` (no flow/dax), `expected_tools []`, plus a `"note"` saying the agent
-  decomposes the request into the use case's sub-flows.
+- **Canonical `posts` shape (approved 2026-07-03):** every entry is
+  `{"post_id": str, "title": str, "status": str, "sections": {"<name>": "<prose>", ...}}` — the exact
+  `_seed_post` contract. Sections map names to real prose (never a bare name list); `notes` stays its own
+  key. Legacy shapes in older batches (bare title strings, dicts without `sections`, `sections` as a name
+  list) are upgraded on read by `_normalize_post` in `run_evals.py` until the next regeneration batch
+  rewrites them — new batches must emit the canonical shape directly.
+- User turns (1,3,5,7) carry `labels`/`slots`/`ambiguity`. Each agent turn carries `actions` — the ordered
+  domain tools that complete the PRECEDING user request — plus a short utterance. The conversation ends with a
+  closing agent turn holding `actions` only (its ground-truth reply is unauthored until a future batch).
+- **`labels` is always `{intent, stack}`**, where `stack` is an ordered list of `{flow, dax}` entries. MOST
+  turns have a ONE-item stack (a single flow). There is no separate top-level `flow`/`dax` — the label IS the
+  stack. `intent` = the single flow's intent, or `"Plan"` when the stack has more than one flow.
+- **Ambiguous turn:** `ambiguity` is a single value = the level (general|partial|specific|confirmation),
+  `null` when not ambiguous (no boolean). `general` = the flow itself is unknown, so the `stack` is EMPTY and
+  `intent` is null; `partial`/`specific`/`confirmation` = the flow is known but an entity/value is missing, so
+  the one-flow stack stays. Both run NO domain tool — the agent asks, so the reply turn's `actions` is `[]` —
+  plus a `"note"`. `clarify` is NOT a flow, and declaring ambiguity is NOT a tool: it rides the `ambiguity`
+  level field, never `actions`. The agent's next reply asks a concrete question and the NEXT user turn
+  resolves it. See axis 5.
+- **Plan turn:** `labels {"intent":"Plan"}` whose `stack` holds the MULTI-flow decomposition (`[{flow,dax},
+  ...]`), a reply turn with `actions []`, and a `"note"`. There is no separate `plan` flow — a plan is just a turn whose
+  stack has more than one flow. The agent proposes the stack, shares its key steps, waits for the user's
+  go-ahead, then runs it over the next turns.
 
 ## Rules (write like a real person, not an AI)
 - **Sound human, not like an AI.**
@@ -64,11 +82,16 @@ Write files into `/Users/derekchen/Documents/repos/personal_assistants/assistant
     defer, approve flatly, compare to a goal).
   - Vary openings: not every turn starts with a verb, sometimes lead with a noun, subject, or hedge.
 - **Phrase it like the user, not the system.**
-  - No flow names in utterances. Users don't say the 16 internal flow names (find, browse, summarize, compare,
-    outline, compose, refine, brainstorm, rework, write, audit, propose, release, schedule, cite, chat).
-    Express the intent with a natural synonym (outline → "sketch the structure"; compose → "turn it into
-    prose"; audit → "give it a once-over"); the meaning still carries the flow label. ("draft" and "publish"
-    are fine; they aren't flow names.)
+  - Mostly avoid flow names in utterances. Users usually don't say the 16 internal flow names (find, browse,
+    summarize, compare, outline, compose, refine, brainstorm, rework, write, audit, propose, release,
+    schedule, cite, chat); express the intent with a natural synonym instead (outline → "sketch the
+    structure"; compose → "turn it into prose"; audit → "give it a once-over"). ("draft" and "publish" are
+    always fine; they aren't flow names.)
+  - A flow name IS occasionally acceptable — the "easy case" — when it reads naturally and is NOT a bare
+    command: an intent ("I want to write something on X"), a noun/artifact ("the outline is set"), or a
+    natural question ("how's that compare to..."). Bare imperatives ("outline it", "write it up", "compare
+    the two") should still be reworded. Cap these easy cases at ~1/8 of conversations: at most 2 per batch
+    of 16.
   - Prefer anaphora ("it", "that one"), partial or fuzzy names, or position ("the second one"); this stresses
     the grounding layer.
   - **Say the post title rarely, or not at all.** The ground-truth title lives in the metadata; the agent
@@ -336,9 +359,10 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     note), not as a separate conversation, so the set also tests the hard direction: when the context is
     present, the agent must just act and not ask.
   * **The four locked levels** (each is the NLU correctness gate that failed):
-    - `general` (gate 1): the **task/goal** is unclear, so there is NO flow. The turn is the only no-flow
-      case: `{intent: Clarify, no dax, expected_tools [handle_ambiguity]}`. Agent asks "what are we doing?";
-      the resolution names a real flow.
+    - `general` (gate 1): the **task/goal** reads as open — the flow itself is unknown — so the `stack` is
+      EMPTY and `intent` is null. The agent asks "what are we doing?" and runs NO domain tool
+      (the reply turn's `actions` is `[]`); the next turn names the real flow. There is no `clarify` flow; the empty stack +
+      `ambiguity "general"` IS the label.
     - `partial` (gate 2): flow known, the grounded **entity** (post/section) is missing. Agent asks "which
       post?", or on a fuzzy match offers a candidate "did you mean 'X'?".
     - `specific` (gate 3): entity known, a **required value** (tone/channel/date/source) is missing AND
@@ -347,8 +371,11 @@ Each axis is an independent knob that provides degrees of freedom for the genera
       candidate, so the agent **verifies its guess** "casual, like your last posts?". Never about an entity
       (verifying an entity is `partial`); always a single inferred or fuzzy value, never a proposed deliverable
       (proposing options is not ambiguity, see the label model).
-  * **Label model.** Only `general` is a no-flow Clarify turn. `partial` / `specific` / `confirmation` KEEP
-    their detected flow + dax and add `expected_tools [handle_ambiguity]`. **Proposing options is NOT
+  * **Label model.** `ambiguity` is one value (a level, or null). `general` = flow unknown -> EMPTY stack +
+    null intent; `partial`/`specific`/`confirmation` = flow known, keep the one-flow stack; all three run no
+    domain tool (`actions []` — ambiguity is the level field, not a tool). `clarify` is NOT a flow —
+    the 16 catalog flows are the only labels.
+    **Proposing options is NOT
     ambiguity:** a flow that presents choices and lets the user pick (`propose`, `outline`) is operating
     normally, so it is never a `confirmation` — a chosen fill routes to `write` (insert), a reject re-runs the
     flow with new options.
@@ -365,11 +392,13 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     case opens with a `Post:` metadata line naming the ground-truth post and a `grounded: yes|no` flag; that
     post reaches the agent only through that channel, so **user turns almost never name it** (anaphora: "it",
     "that one"). Every user turn is labeled `(<flow> {dax})`; the ambiguous turn is `(ambiguous: <flow> {dax},
-    level: <level>)` and `general` routes to `chat {000}`. `ambiguity_cases.md` holds all 64 in this format.
+    level: <level>)` and `general` keeps its underlying flow too (no `clarify`/no-flow case).
+    `ambiguity_cases.md` holds all 64 in this format.
   * **Authoring rules (L1-L10), applied to every case:**
     1. **No dead turns.** Strict U/A alternation; every user turn changes state or redirects. Never narrate
        reading or acknowledging an artifact already on the panel ("let me read it", "ok", "looks good").
-    2. **Label every turn** (format above). `general` -> `chat {000}`; the others keep the detected flow.
+    2. **Label every turn** (format above). `general` = empty stack + null intent; the other levels keep the
+       one-flow stack; `clarify` is not a flow.
     3. **Ambiguity only where the flow truly stalls.** If the flow has a default action, the agent ACTS, it
        does not ask: `cite` searches the web on its own (ambiguous only when the search returns several
        candidates -> confirmation, or nothing -> specific); `release` with no channel defaults to the blog
@@ -528,9 +557,11 @@ Each axis is an independent knob that provides degrees of freedom for the genera
    agent infers an ordered sequence of existing flows, runs it, and judges when the goal is met. Inferring the
    decomposition from incomplete information is the thing being tested; spelling out every step is the main
    realism failure to avoid.
-  * The Plan turn carries no flow/dax (intent "Plan", expected_tools []). The decomposition (the ordered
-    flows) is the ground truth attached to that turn; later user turns are reactions at checkpoints, not new
-    flows.
+  * The Plan turn carries `intent "Plan"` and a `stack` holding the ordered decomposition (`[{flow, dax}, ...]`)
+    — the same `{intent, stack}` label every turn has, just with more than one flow. There is no separate
+    `plan` flow; the reply turn's `actions` is `[]`. The stack is the ground truth for the plan. The agent proposes the stack
+    and shares its key steps, WAITS for the user's go-ahead (it does not barrel ahead), then runs it; the first
+    post-plan user turn approves the plan, and later user turns react at checkpoints.
   * Shape: **2 or 3 unique flows only**, and the plan **stays within a phase or two adjacent ones** (no single
     plan runs outline -> publish). Realism comes from either a **heterogeneous** short sequence (distinct
     flows, one each) or a **fan-out** (one flow repeated per sub-task, each a sub-agent, plus a join), or a
@@ -546,7 +577,7 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     compose -> release.
   * Intent mix across the set skews ~20% Research / 30% Draft / 40% Revise / 10% Publish (blog work is mostly
     revising).
-  * Notation: `plan` = the Plan opener (no flow); `->` = a later turn; `+` = flows batched in one turn;
+  * Notation: `plan` = the Plan opener (intent Plan; its label stack IS the multi-flow decomposition); `->` = a later turn; `+` = flows batched in one turn;
     `[check]` = a checkpoint (not a flow); tags = clean / reject / redirect / prereq (mid-plan) or
     confirm / specific (the Step 0 clarification level). The 32 verified chains:
   * Straightforward, no checkpoint [8]
