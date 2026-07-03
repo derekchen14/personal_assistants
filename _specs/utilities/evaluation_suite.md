@@ -1,6 +1,6 @@
-# Evaluation
+# Evaluation Suite
 
-Engineering utility for evaluating the agent end-to-end. Lives outside the agent; a universal consumer of
+Engineering utility for evaluating the agent at a micro and macro level. Lives outside the agent; a universal consumer of
 signals from every module and component.
 
 **Trust framing.** Evaluation exists to earn the confidence to deploy the agent to customers. That trust is
@@ -9,11 +9,16 @@ to extend to new scenarios. The organizing principle is a **ladder**: cheap, sta
 the bottom; expensive, full-loop, judged checks at the top. Each level gates the next — a change must clear
 the lower rungs before the higher ones are worth running.
 
-> **Naming.** The three eval levels are **Model Unit Tests**, **Observability Traces**, and **E2E Agent
-> Evaluations** (shorthand **Tests**, **Traces**, **Evals**). We do **not** use `L1/L2/L3` codes — they collide
-> with the Memory Tiers. Each level has two stages, named descriptively (never lettered).
+> **Naming.** The three levels are **Model Unit Tests**, **Observability Traces**, and **E2E Agent
+> Evals** (shorthand **Tests**, **Traces**, **Evals**). We do **not** use `L1/L2/L3` codes — they collide
+> with the Memory Tiers. The full word 'evaluations' references the comprehensive suite which includes all
+three levels. The shorthand 'evals' is more commonly reserved for the level regarding E2E Agent Evals.
 
-## The eval ladder
+## The Evaluation Ladder
+
+Each level widens the scope. **Tests** check a **single decision** in isolation. **Traces** check a **series
+of decisions** where **order matters** — often a tool-call trajectory. **Evals** take the **broad end-to-end view**:
+less concerned with the specifics of what happened, and instead focused on the **final result**.
 
 | Level | Stage | LLM | Proves | Speed |
 |---|---|---|---|---|
@@ -21,8 +26,16 @@ the lower rungs before the higher ones are worth running.
 | | Component isolation | one call | a single module does its job (detect, fill, write) | sec |
 | **Observability Traces** | Trace replay | deterministic | the agent reproduces approved tool-call trajectories within tolerance | sec |
 | | Adversarial / robustness | varies | the agent recovers from ambiguity, bad input, and injection | varies |
-| **E2E Agent Evaluations** | Scenario / parity | full loop | end-to-end behavior matches the oracle on three axes | min |
+| **E2E Agent Evals** | Scenario / parity | full loop | end-to-end behavior matches the oracle on three axes | min |
 | | Quality / judge | judge | the spoken output is good (rubric, faithfulness, no overclaim) | min |
+
+**One entry point.** `utils/evals/run_evaluation_suite.py` runs any combination of levels via argparse:
+`--tests [MODULES]` (deterministic, free), `--model [MODULES]` (probabilistic, paid), `--traces`, `--evals`,
+`--all`. `MODULES` is an optional comma list (`nlu,pex,mem`) or `all` — so a level can be run for one module
+(`--tests nlu`, `--model nlu`) or all. **With no flags it runs only the free deterministic Model Unit Tests**
+— no model calls, no cost; every probabilistic / live level is opt-in. The deterministic tests are found by
+naming the `*_unit_tests.py` files **explicitly** (no `python_files` pattern, no directory scan). Each level
+runs as its own subprocess; the suite exits non-zero if any requested level fails.
 
 > **Out of scope — production feedback.** Online per-session metrics, explicit/implicit user-feedback
 > collection, prompt-version attribution, A/B infrastructure, and RFT signal collection are **not built
@@ -32,6 +45,26 @@ the lower rungs before the higher ones are worth running.
 ---
 
 ## Model Unit Tests
+
+The Model Unit Tests are **three parts — [NLU](../modules/nlu.md), [PEX](../modules/pex.md),
+[MEM](../modules/mem.md)** — and each part splits into **two halves**: **(a) deterministic** code (traditional
+unit tests, no model call) and **(b) probabilistic** model predictions (one model call per decision). On disk:
+
+- **Deterministic** — one file per module: `nlu_unit_tests.py`, `pex_unit_tests.py`, `mem_unit_tests.py`. Each
+  **stores its checks inline** and also holds that module's owned component/service/infra tests — NLU: Dialogue
+  State + Session Scratchpad; PEX: Task Artifact, FlowStack, the domain services, snapshots, the completion
+  gate, and the skill/schema lints; MEM: Context Coordinator (L1), sessions, Business Context (L3). Free tier
+  (`pytest -m "not llm"`), millisecond-fast.
+- **Probabilistic** — one file for all three modules: `model_tests.py`, selected by
+  `--module nlu,pex,mem,all`. It **stores no cases inline**: the labels already live in the eval corpus
+  (`utils/evals/datasets/scenarios/*.json`), so it loads that data and scores each module's single-decision
+  predictions (one model call per decision, no full loop — the trajectory view is the Traces tier's job).
+  Paid, so not in the default free run. NLU flow-detection accuracy is scored today; PEX/MEM scoring is declared
+  with its scope still to be defined.
+
+`conftest.py` holds the shared fixtures. The prune bar: keep tests that check **actual outputs vs. expected**
+(and that catch real drift); drop tests that only exercise a function's **signature / interface**. The two
+stages below are those two halves.
 
 ### Contract & property (no LLM)
 
@@ -82,6 +115,19 @@ where the judge axis tolerates vote-to-vote drift.
 
 Default to **full workflow** (strictest); report all four for diagnostics.
 
+### Operational tool scoring (implemented)
+
+The live Traces runner (`utils/evals/run_evals.py`) scores each user turn's tool calls against the following
+agent turn's `actions` with a **token-level Levenshtein similarity** — `1 − editDistance / max(len)` between
+the dispatched domain tools and the expected list (`utils/evals/scorers/tools.py`). It is **partial credit against
+a threshold** (target ~0.9), not strict pass/fail: a new feature passes once similarity clears the bar, so
+tool-name drift shows up as a graded red rather than a hard break. One live pass over the corpus emits **two**
+metrics from a single set of model calls — `completion_rate` and `tool_match_rate` (mean similarity). Only
+real domain tools count: dispatched names are filtered to the keys of `schemas/tools.yaml`, so orchestration
+plumbing is ignored. **Declaring ambiguity is not a tool** — NLU owns the Ambiguity Handler and PEX only
+declares it — so `handle_ambiguity` never appears in `actions`; ambiguity is scored separately from the
+user turn's `ambiguity` level, not from the tool trace.
+
 ### Adversarial / robustness
 
 Targeted probes of the failure surface — each asserts *bounded, graceful* recovery, not a happy path:
@@ -91,7 +137,7 @@ Targeted probes of the failure surface — each asserts *bounded, graceful* reco
 - Input guards — reserved-keyword / injection rejection, length and repeat guards.
 - The lethal-trifecta approval gate; the round budget and `_final_emit` wrap-up.
 
-## E2E Agent Evaluations
+## E2E Agent Evals
 
 ### Scenario / parity (full loop, three axes)
 
@@ -110,6 +156,28 @@ legitimately diverges turn to turn.
 The two headline metrics are **task completion rate** (ran end-to-end to a final answer, no crash / give-up /
 fallback) and **task success rate** (of completed tasks, the fraction that achieved the goal — end-state match
 plus a passing judge verdict).
+
+### The 7 Eval criteria
+
+The two headline rates are the coarse and rigorous poles; a full E2E run scores **seven** things:
+
+1. **Task completion** — did the turn reach the end without crashing?
+2. **Task correctness (actions)** — did the agent do the right thing per the rubric? Judge the *actions taken*.
+3. **Task success (response)** — is the final agent utterance close to the ground-truth answer? Judge the
+   *utterance*.
+4. **Task success (tasks)** — was the requested task actually completed? Judge the *final Dialogue State*.
+5. **Latency** — **ideal** targets we **measure** but do **not** gate on: time-to-first-token **≤ 5 s**,
+   full turn **≤ 10 s**, whole conversation **≤ 60 s**, the 8-scenario gate **≤ 10 min**. Track distance to
+   these goals rather than pass/fail them.
+6. **Ambiguity** — did the agent declare ambiguity when it existed, and avoid declaring it when it did not (no
+   false positives)?
+7. **Planning** — did the agent plan multi-flow requests, and avoid stacking too many flows when it was not
+   needed?
+
+Criteria 1-4 run cheap to rigorous: 1 is the completion rate; 2 judges the trajectory (the Traces axis brought
+up to the judge); 3 and 4 split the old single "task success" into utterance-judged (the rubric below) versus
+Dialogue-State-judged (the parity axes above). Criteria 6-7 are the behavioral axes the eval corpus already
+labels — the per-turn `ambiguity` level and the multi-item plan stacks.
 
 ### Quality / judge rubrics
 
@@ -131,9 +199,11 @@ reply describe the actual persisted state?) and **no-overclaim** (does it claim 
 
 ## Test-case format
 
-Multi-turn JSON. Each case: `convo_id`, `domain`, `available_data`, `turns`. Each agent turn carries
-`context` (slots, entities), `actions` (the expected `{flow, tools}` trajectory — Observability Traces / E2E
-Agent Evaluations), and `utterance` (the expected response — the judge rubric).
+Multi-turn JSON. Each case: `convo_id`, `domain`, `available_data`, `turns`. User turns carry the labels:
+`labels` (intent + the `{flow, dax}` stack — the dialog acts), `slots`, and the `ambiguity` level. Each agent
+turn carries `actions` (the ordered domain tools that complete the preceding user request — Observability
+Traces / E2E Agent Evaluations) and `utterance` (the expected response — the judge rubric). A conversation
+ends with a closing agent turn holding `actions` only, until a future batch authors its ground-truth reply.
 
 ## Regression gates
 
@@ -141,9 +211,14 @@ Agent Evaluations), and `utterance` (the expected response — the judge rubric)
 |---|---|---|
 | Flow-detection accuracy | Model Unit Tests | > 2% drop |
 | Trajectory (full workflow) | Observability Traces | > 3% drop |
+| Tool-match rate (Levenshtein) | Observability Traces | below 0.9 threshold |
 | Robustness pass rate | Observability Traces | any drop |
+| Task completion rate | E2E Agent Evaluations | absolute 0.90, then diff |
 | End-state / grounding parity | E2E Agent Evaluations | any break (hard) |
 | Output rubric (mean) | E2E Agent Evaluations | > 0.5 level drop |
+| Ambiguity accuracy (declare when present, no false positives) | E2E Agent Evaluations | any drop |
+| Planning appropriateness (plan multi-flow, no over-stacking) | E2E Agent Evaluations | any drop |
+| Latency (TTFT ≤5s · turn ≤10s · convo ≤60s · 8-scenario ≤10min) | E2E Agent Evaluations | measure-only, non-gating |
 | Mean latency | E2E Agent Evaluations | > 20% increase |
 
 Triggers: prompt-template change, ontology/config change, policy code change, or manual run.
