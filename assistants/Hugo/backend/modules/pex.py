@@ -148,11 +148,13 @@ class PEX:
         # Flows that reached Completed during the current turn — reset per execute(), read by the
         # end-of-turn checkpoint.
         self._completed_this_turn = []
-        self._nlu_thread = None  # this turn's parallel NLU think thread; joined+cleared by _settle_nlu
+        self._injected = False  # belief injected once per turn; reset in execute()
+        self._nlu_thread = None  # this turn's parallel NLU think thread; joined+cleared by _check_nlu
+        self.nlu = None  # wired by Agent after construction; used to re-consult on policy failures
         # Orchestrator hot-path tools — wiring only; the implementations live in
         # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
         self._orchestrator_dispatch = {
-            'read_state':           self._dispatch_read_state,
+            'read_state':           self.read_state,
             'write_state':          self._dispatch_write_state,
             'activate_flow':        self.activate_flow,
             'append_to_scratchpad': self._dispatch_append_scratchpad,
@@ -212,7 +214,7 @@ class PEX:
 
         return None
 
-    def _settle_nlu(self, wait:bool=True):
+    def _check_nlu(self, wait:bool=True):
         # Join this turn's parallel NLU think thread so belief reads see THIS turn's detection,
         # then clear it — later calls are no-ops. Plan/Clarify turns are REQUIRED to wait (their
         # read_state blocks); flow execution passes wait=False and continues if NLU is still
@@ -286,6 +288,7 @@ class PEX:
         dispatching tool calls through `_dispatch_tool`. Returns the spoken utterance."""
         self._nlu_thread = nlu_thread
         self._completed_this_turn = []
+        self._injected = False  # belief injected once per turn (whether or not it matches)
         if dax and not text.strip():
             utterance = self._execute_click(state, context, dax, payload or {})
         else:
@@ -352,6 +355,10 @@ class PEX:
             if not tool_uses:
                 if text:
                     context.append_message({'role': 'assistant', 'content': text})
+                    note = self.inject_belief_state()  # ⑤: text-only turn whose detection landed
+                    if note:
+                        context.append_message({'role': 'user', 'content': note})
+                        continue
                     return text
                 if nudged:  # thinking-only twice → canned fallback
                     context.append_message({'role': 'assistant', 'content': _FALLBACK_MESSAGE})
@@ -377,12 +384,19 @@ class PEX:
                     result = {'_success': False, '_error': 'server_error',
                               '_message': f'{type(ecp).__name__}: {ecp}'}
                     last_call = None
-                # hook: post-tool
+                # hook: post-tool — a policy execution failure re-consults NLU with narrowed
+                # candidates (contemplate, never think), then re-arms belief for the fresh detection.
+                if tool_use.name == 'activate_flow' and result.get('_error') == 'execution_error':
+                    self.nlu.understand(op='contemplate', user_text=self.world.context.last_user_text)
+                    self._injected = False
                 errors = errors + 1 if not result['_success'] else 0
                 log.info('  orch round=%d tool=%s ok=%s', round_idx + 1, tool_use.name,
                          result['_success'])
                 results.append({'type': 'tool_result', 'tool_use_id': tool_use.id,
                                 'content': json.dumps(result, default=str)})
+            note = self.inject_belief_state()  # hooks ②③④: ride the belief note beside the tool results
+            if note:
+                results.append({'type': 'text', 'text': note})
             context.append_message({'role': 'user', 'content': results})
             if errors >= self.max_corrective:
                 break  # the model keeps failing tool calls — stop burning rounds
@@ -568,16 +582,15 @@ class PEX:
     # write_state op, unknown flow, grounding violation) are caught by _dispatch_tool's
     # try/except and returned as corrective tool errors for the orchestrator loop to retry on.
 
-    def _dispatch_read_state(self, params:dict) -> dict:
-        self._settle_nlu()
+    def read_state(self, params:dict) -> dict:
+        self._check_nlu()
         return {'_success': True, 'state': self.world.current_state().read_state()}
 
     def _dispatch_write_state(self, params:dict) -> dict:
         state = self.world.current_state()
         kwargs = dict(params.get('fields', {}))
-        for key in ('flow_name', 'plan_id'):
-            if key in params:
-                kwargs[key] = params[key]
+        if 'flow_name' in params:
+            kwargs['flow_name'] = params['flow_name']
         if params['op'] == 'update_flow' and 'slots' in kwargs:
             top = rehydrate_flow(state.flow_stack[-1])
             unknown = [name for name in kwargs['slots'] if name not in top.slots]
@@ -593,7 +606,7 @@ class PEX:
         if params['op'] == 'stackon' and params.get('active'):
             # Single-call staging (Derek 2026-07-03): stackon handed over matching slots; fold
             # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
-            self._settle_nlu(wait=False)  # reap a landed detection so the fold reads fresh belief
+            self._check_nlu(wait=False)  # reap a landed detection so the fold reads fresh belief
             self._apply_belief_slots(state, params['flow_name'])
             return self.activate_flow({'flow_name': params['flow_name']})
         return {'_success': True, 'state': document}
@@ -608,6 +621,34 @@ class PEX:
                  if name in top.slots and value}
         if slots:
             state.write_state(self.world.state_file(), 'update_flow', slots=slots)
+
+    def inject_belief_state(self) -> str | None:
+        """Once per turn, format NLU's landed detection as a `[belief]` note for the orchestrator
+        context — regardless of whether it matches the active flow. Never blocks: reap a finished
+        NLU thread (wait=False); if detection has not landed yet, skip and retry at the next hook.
+        Flow-only difference is left to the orchestrator (the prompt rule). An INTENT difference is
+        forced in code here: pause the Active flow (→ Pending) and stage NLU's flow."""
+        self._check_nlu(wait=False)
+        state = self.world.current_state()
+        if self._injected or self._nlu_thread is not None or not state.pred_flows:
+            return None
+        self._injected = True
+        top = state.pred_flows[0]
+        note = (f"[belief] this turn's detection — intent: {state.pred_intent}, "
+                f"flow: {top['flow_name']} ({top['confidence']:.2f}), "
+                f"slots: {json.dumps(state.pred_slots, default=str)}. If you are on a different "
+                f"flow, prefer NLU's detection unless you have a concrete reason to stay.")
+        active = self.flow_stack.get_flow(status='Active')
+        if (active and not self.ambiguity.present()
+                and state.pred_intent in ('Research', 'Draft', 'Revise', 'Publish')
+                and state.pred_intent != active.intent):
+            state.write_state(self.world.state_file(), 'update_flow', status='Pending')
+            state.write_state(self.world.state_file(), 'stackon', flow_name=top['flow_name'])
+            self._apply_belief_slots(state, top['flow_name'])
+            active.status = 'Pending'  # mirror on the live stack — activate_flow re-syncs from it
+            note += (f" Intent changed: I paused {active.name()} and staged {top['flow_name']} "
+                     f"for the detected {state.pred_intent} intent — run it.")
+        return note
 
     def prestage(self, state) -> bool:
         """Fix 1 Option B: stage NLU's confident single-flow detection in code, so the loop
@@ -630,7 +671,7 @@ class PEX:
         around the policy run. On completion the flow's completion record is written to the
         session scratchpad and returned as the tool result. State-file persistence stays with
         write_state (the orchestrator epilogue)."""
-        self._settle_nlu(wait=False)  # flow execution never blocks on NLU — only Plan/Clarify wait
+        self._check_nlu(wait=False)  # flow execution never blocks on NLU — only Plan/Clarify wait
         state = self.world.current_state()
         flow = self._stage_flow(state, params['flow_name'])
 
@@ -957,7 +998,7 @@ class PEX:
                     "strings for single-value slots, lists for multi-value slots), `stage`, and "
                     "`status`. An entity-grounded flow cannot reach status=Completed while "
                     "grounding.post is empty.\n"
-                    "- `stackon`       — push `flow_name` (optional `plan_id`) on top of the "
+                    "- `stackon`       — push `flow_name` on top of the "
                     "stack; matching slot values hand over from the prior flow automatically. "
                     "Pass `active: true` to also fold in belief's `pred_slots` and run the "
                     "policy immediately — the one-call way to dispatch a flow.\n"
@@ -976,7 +1017,6 @@ class PEX:
                                    'description': 'for update / update_flow — the fields to set'},
                         'flow_name': {'type': 'string',
                                       'description': 'for stackon / fallback — the target flow'},
-                        'plan_id': {'type': 'string', 'description': 'for stackon under a Plan'},
                         'active': {'type': 'boolean',
                                    'description': 'for stackon — stage and run the flow in one call'},
                     },

@@ -65,11 +65,16 @@ TOOL_POLICY = (
     'PREFER Plan whenever in doubt: picking Plan means you wait on NLU\'s flow detection '
     '(`read_state` for belief) before deciding next steps, instead of guessing a flow or '
     'wandering through lookups. `read_state` always reflects THIS turn\'s detection — read it '
-    'before staging when you picked Plan. Then decide the order and stage and run the flows one '
-    'by one. '
+    'before staging when you picked Plan. Follow the Workflow Planner guidance in '
+    '`<workflow_planner>` to map the request to catalog flows, then stage and run them one at a '
+    'time. '
     'You own whether the plan is done: after each flow completes, judge whether '
     "the user's goal has been met — stage the next flow until it is, then conclude and report what "
     'was accomplished.\n'
+    '**Belief notes.** A `[belief]` note carries THIS turn\'s NLU detection (intent, flow, slots). '
+    'When it names a DIFFERENT flow than the one you are on, defer to NLU\'s detection unless you '
+    'have a concrete reason to stay — defer in 80%+ of cases. If the note says an intent change '
+    'was already forced (active flow paused, its flow staged), run the staged flow.\n'
     '**The commit rule.** For any Research / Draft / Revise / Publish turn, the turn is not done '
     'until you have called `activate_flow` (or declared ambiguity with `handle_ambiguity`). A '
     'plain-text reply with no `activate_flow` and no declared ambiguity is a failed turn. Reading '
@@ -220,6 +225,7 @@ def build_orchestrator_prompt(engineer, memory, conversation_id:str, username:st
         f'<workflow>\n{WORKFLOW}\n</workflow>',
         f'<flow_catalog>\n{_render_flow_catalog()}\n</flow_catalog>',
         f'<outline_levels>\n{_render_outline_levels()}\n</outline_levels>',
+        f'<workflow_planner>\n{engineer.load_skill_template("plan")}\n</workflow_planner>',
         f'<preferences>\n{_render_preferences(memory)}\n</preferences>',
         f'<session>\n{session_line}\n</session>',
     ]

@@ -52,7 +52,7 @@ guardrails:
 session:
   idle_timeout_ms: 3600000          # 60 min before idle session expires
   max_turns: 256                    # hard cap on turns per session (0 = unlimited)
-  max_flow_depth: 8                 # max flows on stack simultaneously
+  max_flow_depth: 16                # max flows on stack simultaneously; plans stack several sub-flows
   persistence:
     backend: postgres               # memory | postgres | redis
     ttl_hours: 24                   # how long to keep persisted sessions

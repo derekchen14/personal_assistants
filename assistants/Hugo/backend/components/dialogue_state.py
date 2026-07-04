@@ -6,7 +6,7 @@ from utils.helper import dax2flow
 
 GROUNDING_PARTS = ('post', 'sec', 'snip', 'chl', 'ver')
 _BELIEF_FIELDS = ('username', 'goal', 'confirmed', 'rejected', 'workflow_step',
-                  'turn_count', 'has_issues', 'has_plan')
+                  'turn_count', 'has_issues')
 _GROUNDED_SLOT_TYPES = ('source', 'target', 'removal', 'channel')
 
 
@@ -41,7 +41,6 @@ def rehydrate_flow(entry:dict):
     flow.flow_id = entry['flow_id']
     flow.status = entry['status']
     flow.stage = entry['stage']
-    flow.plan_id = entry['plan_id']
     flow.turn_ids = list(entry['turn_ids'])
     flow.fill_slot_values(entry['slots'])
     flow.is_filled()  # recompute every slot's .filled after the refill
@@ -59,7 +58,6 @@ class DialogueState:
 
         self.keep_going: bool = False
         self.has_issues: bool = False
-        self.has_plan: bool = False
         self.natural_birth: bool = True
         self.active_post: str | None = None
 
@@ -97,7 +95,6 @@ class DialogueState:
         self.turn_count = 0
         self.keep_going = False
         self.has_issues = False
-        self.has_plan = False
         self.natural_birth = True
         self.active_post = None
         self.slices = {'choices': [], 'channels': [], 'campaigns': []}
@@ -112,21 +109,20 @@ class DialogueState:
             'turn_count': self.turn_count,
             'keep_going': self.keep_going,
             'has_issues': self.has_issues,
-            'has_plan': self.has_plan,
             'natural_birth': self.natural_birth,
             'active_post': self.active_post,
         }
 
     def serialize_session(self) -> dict:
         """The per-session state.json document. Extends the serialize()
-        vocabulary: intent, turn_count, has_issues, and has_plan keep their meanings."""
+        vocabulary: intent, turn_count, and has_issues keep their meanings."""
         session = {'conversation_id': self.conversation_id, 'username': self.username,
                    'turn_count': self.turn_count}
         beliefs = {'intent': self.pred_intent, 'pred_flows': self.pred_flows,
                    'confidence': self.confidence, 'pred_slots': self.pred_slots,
                    'goal': self.goal, 'confirmed': self.confirmed,
                    'rejected': self.rejected, 'workflow_step': self.workflow_step}
-        flags = {'has_issues': self.has_issues, 'has_plan': self.has_plan}
+        flags = {'has_issues': self.has_issues}
         return {'session': session, 'user_beliefs': beliefs, 'grounding': dict(self.grounding),
                 'flow_stack': self.flow_stack, 'flags': flags}
 
@@ -152,7 +148,6 @@ class DialogueState:
         state.grounding = data['grounding']
         state.flow_stack = data['flow_stack']
         state.has_issues = data['flags']['has_issues']
-        state.has_plan = data['flags']['has_plan']
         return state
 
     # ── read_state / write_state tool surfaces ─────────
@@ -167,7 +162,7 @@ class DialogueState:
         'update'        mutate user-belief / grounding / flag fields (kwargs = fields),
         'update_flow'   mutate the top stack flow (slots= / stage= / status=; completion
                         is grounding-validated),
-        'stackon'       push flow_name= (plan_id= optional) with FlowStack semantics,
+        'stackon'       push flow_name= with FlowStack semantics,
         'fallback'      replace the top flow with flow_name=,
         'pop_completed' remove Completed/Invalid flows, activating the next Pending one.
         Every op mutates the rehydrated stack or the state fields, then saves exactly once."""
@@ -212,7 +207,7 @@ class DialogueState:
     def _run_stack_op(self, op:str, kwargs:dict):
         stack = self._rehydrate_stack()
         if op == 'stackon':
-            stack.stackon(kwargs['flow_name'], plan_id=kwargs.get('plan_id'))
+            stack.stackon(kwargs['flow_name'])
         elif op == 'fallback':
             stack.fallback(kwargs['flow_name'])
         else:
@@ -246,7 +241,6 @@ class DialogueState:
         state.pred_slots = data.get('pred_slots', {})
         state.keep_going = data.get('keep_going', False)
         state.has_issues = data.get('has_issues', False)
-        state.has_plan = data.get('has_plan', False)
         state.natural_birth = data.get('natural_birth', True)
         state.active_post = data.get('active_post')
         return state

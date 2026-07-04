@@ -9,12 +9,12 @@ class FlowStack:
     def __init__(self, config, flow_classes:dict|None=None):
         self.config = config
         self._stack: list[BaseFlow] = []
-        self._max_depth: int = config.get('session', {}).get('max_flow_depth', 8)
+        self._max_depth: int = config.get('session', {}).get('max_flow_depth', 16)
         self._flow_classes = flow_classes or {}
 
     # ── Public API ──────────────────────────────────────────────────
 
-    def stackon(self, flow_name:str, plan_id:str|None=None):
+    def stackon(self, flow_name:str):
         """Push a flow on top of the stack. The current flow stays below and resumes after the new flow completes.
         Transfers filled slot values to the new flow when slot names match across parent and child."""
         curr_flow = self._stack[-1] if self._stack else None
@@ -24,7 +24,7 @@ class FlowStack:
         _terminal = (FlowLifecycle.COMPLETED.value, FlowLifecycle.INVALID.value)
         if curr_flow and curr_flow.flow_type == flow_name and curr_flow.status not in _terminal:
             return curr_flow
-        new_flow = self._push(flow_name, plan_id)
+        new_flow = self._push(flow_name)
         # Slot transfer only from a flow still in flight — a Completed/Invalid top is stale
         # (see above), and seeding the new flow from it re-grounds fresh requests on old
         # entities (e.g. inspect post A, then "now check post B" inheriting A).
@@ -94,7 +94,7 @@ class FlowStack:
 
     # ── Internal ────────────────────────────────────────────────────
 
-    def _push(self, flow_name:str, plan_id:str|None=None):
+    def _push(self, flow_name:str):
         if len(self._stack) >= self._max_depth:
             raise RuntimeError(
                 f'Flow stack depth limit ({self._max_depth}) exceeded'
@@ -105,7 +105,6 @@ class FlowStack:
         flow = cls()
         flow.flow_id = str(uuid4())[:8]
         flow.status = FlowLifecycle.ACTIVE.value
-        flow.plan_id = plan_id
         self._stack.append(flow)
         return flow
 

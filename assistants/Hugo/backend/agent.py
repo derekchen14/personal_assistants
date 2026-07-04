@@ -42,6 +42,7 @@ class Agent:
 
         self.nlu = NLU(self.config, self.ambiguity, self.engineer, self.world)
         self.pex = PEX(self.config, self.ambiguity, self.engineer, self.memory, self.world)
+        self.pex.nlu = self.nlu  # PEX re-consults NLU (contemplate) on policy-execution failures
 
     def take_turn(self, text:str, dax:str|None=None, payload:dict|None=None) -> dict:
         try:
@@ -82,7 +83,7 @@ class Agent:
         utterance = self.pex.execute(state, self.world.context, self.system_prompt,
                                      dax=dax, payload=payload, text=text, nlu_thread=thread)
         if thread:
-            thread.join()                # settle the parallel detection at the turn boundary
+            thread.join()                # join the parallel detection at the turn boundary
         return self._epilogue(utterance)
 
     def _ensure_session(self):

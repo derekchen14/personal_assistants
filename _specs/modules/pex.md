@@ -241,6 +241,18 @@ detection that has already landed (NLU still running → the flow proceeds on st
 predicted flow already matches the active flow, nothing needs to change — that is the speed-up. The
 turn-boundary join settles whatever remains.
 
+**Belief state injection (2026-07-03):** once per turn, the landed detection (intent, top flows +
+confidence, slots) is injected into the orchestrator's context — mismatch or not. Injection is attempted
+at hooks ② pre-tool-call, ③ post-tool-call, ④ tool-retry, and ⑤ post-LLM until it succeeds once; ①
+pre-LLM is too early (NLU has usually not answered yet) and ⑥ verification is too late (the work is
+already done). None of these hook points force an NLU response — each checks briefly whether NLU has
+completed, incorporates what NLU has to say if so, and otherwise continues. This is in contrast to the
+injection points caused by Plan and Clarify, which require awaiting NLU. After injection: the predicted
+flow differs but the intent matches → the ORCHESTRATOR decides whether to continue the original flow or
+go with NLU's proposal, deferring to NLU in most cases (80%+); the predicted INTENT differs → code
+forces it — pause the active flow and stage NLU's detection. Any other issue during policy execution
+re-consults `nlu.contemplate()` (the narrowed failed-flow re-route), never `think()`.
+
 **Signal = read from belief** (no separate channel — the Dialogue State is the single source of truth):
 each hook reads `pred_intent` (NLU writes it on the branch-3 parallel `think()`) and compares it to the
 **active flow's intent** — **differs ⇒ medium** severity, **aligns ⇒ low**. A **user interrupt** is
