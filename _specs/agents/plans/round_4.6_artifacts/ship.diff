@@ -1,0 +1,44 @@
+diff --git a/assistants/Hugo/backend/components/prompt_engineer.py b/assistants/Hugo/backend/components/prompt_engineer.py
+index 9e27274..a2c96d8 100644
+--- a/assistants/Hugo/backend/components/prompt_engineer.py
++++ b/assistants/Hugo/backend/components/prompt_engineer.py
+@@ -180,15 +180,15 @@ class PromptEngineer:
+ 
+     def skill_call(self, flow, convo_history:str, scratchpad:dict, skill_name:str|None=None,
+                    skill_prompt:str|None=None, resolved:dict|None=None, max_tokens:int=1024,
+-                   user_text:str|None=None) -> str:
++                   user_text:str|None=None, model:str='med') -> str:
+         """Skill execution WITHOUT tool use. Sibling of tool_call."""
+         if skill_prompt is None:
+             skill_prompt = self.load_skill_template(skill_name or flow.name())
+         base_system = build_system(self.persona)
+         system = build_skill_system(base_system, flow, skill_prompt)
+         messages = list(build_skill_messages(flow, convo_history, user_text, resolved))
+-        model_id = self._resolve_model('med')
+-        match self._model_family('med'):
++        model_id = self._resolve_model(model)
++        match self._model_family(model):
+             case 'claude':
+                 r = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
+                 return ''.join(b.text for b in r.content if b.type == 'text')
+diff --git a/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py b/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
+index e103c18..1016542 100644
+--- a/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
++++ b/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
+@@ -559,6 +559,16 @@ class TestOrchestratorLoop:
+         engineer.tool_call(flow_classes['find'](), '', {}, [], None, skill_prompt='')
+         assert captured == [16, 8]  # extended cap for audit, base cap for find
+ 
++    def test_skill_call_honors_model_tier(self, engineer, monkeypatch):
++        """skill_call routes its per-call model tier to _resolve_model, defaulting to 'med'."""
++        seen = []
++        monkeypatch.setattr(engineer, '_resolve_model', lambda model: seen.append(model))
++        monkeypatch.setattr(engineer, '_model_family', lambda model: 'gemini')
++        monkeypatch.setattr(engineer, '_call_gemini', lambda *args, **kwargs: '')
++        engineer.skill_call(flow_classes['find'](), '', {}, skill_prompt='', model='high')
++        engineer.skill_call(flow_classes['find'](), '', {}, skill_prompt='')
++        assert seen == ['high', 'med']  # explicit tier honored, then the default
++
+     def test_recovery_keys_collapsed(self):
+         """The yaml declares each bound exactly once: no resilience or recovery sections survive,
+         and the promoted values sit under limits."""

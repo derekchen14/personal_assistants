@@ -180,15 +180,15 @@ class PromptEngineer:
 
     def skill_call(self, flow, convo_history:str, scratchpad:dict, skill_name:str|None=None,
                    skill_prompt:str|None=None, resolved:dict|None=None, max_tokens:int=1024,
-                   user_text:str|None=None) -> str:
+                   user_text:str|None=None, model:str='med') -> str:
         """Skill execution WITHOUT tool use. Sibling of tool_call."""
         if skill_prompt is None:
             skill_prompt = self.load_skill_template(skill_name or flow.name())
         base_system = build_system(self.persona)
         system = build_skill_system(base_system, flow, skill_prompt)
         messages = list(build_skill_messages(flow, convo_history, user_text, resolved))
-        model_id = self._resolve_model('med')
-        match self._model_family('med'):
+        model_id = self._resolve_model(model)
+        match self._model_family(model):
             case 'claude':
                 r = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
                 return ''.join(b.text for b in r.content if b.type == 'text')

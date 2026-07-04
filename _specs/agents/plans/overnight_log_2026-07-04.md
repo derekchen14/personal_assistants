@@ -112,6 +112,36 @@ APPLIED (committed on master):
   budget inside llm_execute, or skill-prompt discipline for browse/audit) — the cap that would
   actually move tool_match and latency.
 
+- 03:4x — Round 4.3 COMMITTED (dbc2b00, 33 files: 34 PEX exemplars, 13 detection exemplars, the
+  read cap, tests, artifacts incl. ship.diff). Gate-run seed mutations restored again (same
+  draft file — the eval-sandbox issue in the register keeps proving itself).
+- 03:4x — Round 4.6 (per-call skill tier, instruction 3) LAUNCHED through the full pipeline
+  (PM spec → SWE plans → DoE approve → worktree builds → adjudicate), task w2zoic924, base
+  dbc2b00. Small round: skill_call gains model:str='med' for symmetry with tool_call; the PM
+  decides whether any policy requests 'high' now or the round ships capability only.
+
+## Round 4.6 progress
+
+- 03:5x — Round 4.6 pipeline COMPLETE, 7/7 agents clean (no output-cap deaths, file-based diffs
+  again). PM spec at `round_4.6_spec.md` resolved the round's one decision as Option A: ship the
+  capability only, upgrade no call site — the only two skill_call sites (research find/summarize)
+  are not hard skills, and the named hard skills (audit/rework) already reach the tier knob via
+  tool_call's existing model= arg. Both SWE builds produced IDENTICAL code hunks (they differed
+  only in test docstring wording); DoE picked SWE2 (its reading of the test-location rule was
+  correct). Ponytail net +4/-0.
+- 03:5x — Ship diff applied to master: `skill_call` gains `model:str='med'` (last positional,
+  mirroring tool_call), the two hardcoded 'med' resolution calls now pass it through; one new
+  test (test_skill_call_honors_model_tier, asserts seen==['high','med']). 3 changed source lines
+  + 10 test lines. Free suite: 225 passed, 0 skipped (pex+nlu+mem+model). No live gate — default
+  'med' equals the old hardcoded tier, zero behavior change, nothing for a paid E2E run to
+  detect (per spec + both SWEs + DoE, unanimous). Artifacts persisted to round_4.6_artifacts/
+  incl. ship.diff. Committed.
+- With 4.6 done, instruction 3 is complete — the whole AFK queue (1: code-review triage,
+  2: round 4.3, 3: round 4.6) is finished. Stopping the round queue here: no further rounds were
+  sanctioned, and the next Master Plan work (step 2 MEM) is a major step that needs a plan
+  developed with the user first. Commits dbc2b00 + the 4.6 commit remain unpushed pending the
+  morning review, per the workflow (push after a few commits, HITL review first).
+
 DEFERRED to master_plan.md "Deferred register" (questionable / design-level, per instruction 1):
 - One-source-of-truth flow stack (the mirror fix treats the symptom; two writers remain).
 - read_state's unconditional blocking join serializes most parallel-think turns because the

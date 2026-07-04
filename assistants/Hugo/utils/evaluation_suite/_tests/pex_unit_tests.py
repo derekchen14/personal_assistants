@@ -559,6 +559,16 @@ class TestOrchestratorLoop:
         engineer.tool_call(flow_classes['find'](), '', {}, [], None, skill_prompt='')
         assert captured == [16, 8]  # extended cap for audit, base cap for find
 
+    def test_skill_call_honors_model_tier(self, engineer, monkeypatch):
+        """skill_call routes its per-call model tier to _resolve_model, defaulting to 'med'."""
+        seen = []
+        monkeypatch.setattr(engineer, '_resolve_model', lambda model: seen.append(model))
+        monkeypatch.setattr(engineer, '_model_family', lambda model: 'gemini')
+        monkeypatch.setattr(engineer, '_call_gemini', lambda *args, **kwargs: '')
+        engineer.skill_call(flow_classes['find'](), '', {}, skill_prompt='', model='high')
+        engineer.skill_call(flow_classes['find'](), '', {}, skill_prompt='')
+        assert seen == ['high', 'med']  # explicit tier honored, then the default
+
     def test_recovery_keys_collapsed(self):
         """The yaml declares each bound exactly once: no resilience or recovery sections survive,
         and the promoted values sit under limits."""
