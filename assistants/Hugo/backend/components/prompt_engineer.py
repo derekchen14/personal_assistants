@@ -83,7 +83,7 @@ class PromptEngineer:
         self.config = config
         self._models = config.get('models', {})
         self.persona = config.get('persona', {})
-        self._resilience = config.get('resilience', {})
+        self._limits = config['limits']
         self._clients: dict[str, object] = {}
 
     def _get_client(self, provider:str):
@@ -132,7 +132,7 @@ class PromptEngineer:
         return self._models.get('default', {}).get('temperature', 0.0)
 
     def _get_retry_config(self) -> tuple[int, float, float]:
-        llm_cfg = self._resilience.get('llm_retries', {})
+        llm_cfg = self._limits.get('llm_retries', {})
         max_attempts = llm_cfg.get('max_attempts', 2)
         backoff_base = llm_cfg.get('backoff_base_ms', 500) / 1000
         backoff_max = llm_cfg.get('backoff_max_ms', 10000) / 1000
@@ -212,9 +212,8 @@ class PromptEngineer:
         msgs = list(build_skill_messages(flow, convo_history, user_text, resolved))
         model_id = self._resolve_model(model)
 
-        max_num_calls = 8
-        if flow.name() in ['audit', 'refine', 'rework', 'compose']:
-            max_num_calls *= 2
+        extended = flow.name() in self._limits['extended_call_flows']
+        max_num_calls = self._limits['extended_tool_calls' if extended else 'max_tool_calls']
 
         family = self._model_family(model)
         adapted = self._adapt_tool_defs(family, tool_defs)

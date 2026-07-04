@@ -13,7 +13,7 @@ _DOMAIN = Path(__file__).resolve().parent / 'tools.yaml'
 
 _REQUIRED_SECTIONS = frozenset({
     'environment', 'models', 'persona', 'guardrails', 'session',
-    'memory', 'resilience', 'context_window', 'logging', 'display',
+    'memory', 'limits', 'context_window', 'logging', 'display',
     'thresholds', 'response_constraints', 'human_in_the_loop',
 })
 

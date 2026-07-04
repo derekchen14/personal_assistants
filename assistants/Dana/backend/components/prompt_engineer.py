@@ -54,7 +54,7 @@ class PromptEngineer:
         self.config = config
         self._models = config.get('models', {})
         self._persona = config.get('persona', {})
-        self._resilience = config.get('resilience', {})
+        self._limits = config.get('limits', {})
         self._api_key = os.getenv('ANTHROPIC_API_KEY')
         self._client: anthropic.Anthropic | None = None
         self._gemini_client = None
@@ -108,10 +108,10 @@ class PromptEngineer:
     def _get_provider(self, call_site:str='default') -> str:
         return self._get_model_param(call_site, 'provider', 'anthropic')
 
-    # ── Resilience config ────────────────────────────────────────────
+    # ── Limits config ────────────────────────────────────────────────
 
     def _get_retry_config(self) -> tuple[int, float, float]:
-        llm_cfg = self._resilience.get('llm_retries', {})
+        llm_cfg = self._limits.get('llm_retries', {})
         max_attempts = llm_cfg.get('max_attempts', 2)
         backoff_base = llm_cfg.get('backoff_base_ms', 500) / 1000
         backoff_max = llm_cfg.get('backoff_max_ms', 10000) / 1000
