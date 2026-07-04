@@ -78,7 +78,7 @@ class Agent:
             thread.start()
         else:                            # utterance, no active entity: think, awaited
             self.nlu.understand(op='think', user_text=text, payload=payload)
-            self.pex.prestage(state)     # fix 1 B: belief is fresh only on this awaited path
+            self.pex.prestack(state)     # fix 1 B: belief is fresh only on this awaited path
 
         utterance = self.pex.execute(state, self.world.context, self.system_prompt,
                                      dax=dax, payload=payload, text=text, nlu_thread=thread)

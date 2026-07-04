@@ -52,7 +52,7 @@ The FlowStack stores the flows; Workflow Planning / Sub-agent Routing is the act
   note to the scratchpad to revisit (no unbounded branching).
 - **Multiple active flows**: the Active block must be **contiguous** at the top, Pending strictly beneath.
 - **Flow lifecycle**: Pending → Active → Completed/Invalid. `complete_flow` sets `Completed` (grounding-gated).
-- **No FlowEntry**: BaseFlow IS the entry (flow_id, status, plan_id, turn_ids, result). `flow_classes` dict
+- **No FlowEntry**: BaseFlow IS the entry (flow_id, status, turn_ids, result). `flow_classes` dict
   maps names → classes; `push(flow_name)` instantiates and sets runtime fields. **PEX's Workflow Planner
   stacks flows** — NLU only records the detection.
 - **Flow class hierarchy**: BaseFlow + intent parents; methods `fill_slots_by_label()`, `fill_slot_values()`,
@@ -171,7 +171,7 @@ The append-only swarm ledger. **File**: lives on the World, beside the Ambiguity
 - **The acting loop** (`_run_loop`, bounded): tool-call hygiene (catalog validation, consecutive de-dup,
   corrective cap, thinking nudge, no-tool-text-ends-turn, `_final_emit`). Consults NLU (`understand` + the
   belief writes) and MEM (`recap`/`recall`/`retrieve`) in parallel.
-- **`activate_flow`**: stage + run a flow's policy as a **sub-agent** (level 2 — cannot nest). Every flow is
+- **`activate_flow`**: stack on + run a flow's policy as a **sub-agent** (level 2 — cannot nest). Every flow is
   **agentic**; deterministic operations are plain tools.
 - **Sub-agent toolset**: `append_to_scratchpad` / `read_from_scratchpad` / `understand` / `handle_ambiguity`
   (NLU); `recap` / `recall` / `retrieve` (MEM); plus `flow.tools`.

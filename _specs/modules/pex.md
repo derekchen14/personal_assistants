@@ -128,7 +128,7 @@ PEX loop.
 ## Policies (run via `activate_flow`)
 
 `activate_flow(flow_name)` promotes the top-of-stack pending flow to active and runs its policy as a
-**sub-agent**. It stages the flow (live-stack
+**sub-agent**. It puts the flow on top of the live stack (live-stack
 hit, else reload from the state file, else `stackon`), re-attaches the security and artifact checks, runs
 the per-intent policy, and on completion writes a `{flow, summary, metadata}` **completion record** to the
 scratchpad and returns it. A non-completed run returns the flow status plus any pending clarification.
@@ -250,7 +250,8 @@ completed, incorporates what NLU has to say if so, and otherwise continues. This
 injection points caused by Plan and Clarify, which require awaiting NLU. After injection: the predicted
 flow differs but the intent matches → the ORCHESTRATOR decides whether to continue the original flow or
 go with NLU's proposal, deferring to NLU in most cases (80%+); the predicted INTENT differs → code
-forces it — pause the active flow and stage NLU's detection. Any other issue during policy execution
+forces a FALLBACK — the active flow is marked Invalid (never returned to) and NLU's detection takes
+over as Active. Any other issue during policy execution
 re-consults `nlu.contemplate()` (the narrowed failed-flow re-route), never `think()`.
 
 **Signal = read from belief** (no separate channel — the Dialogue State is the single source of truth):
@@ -276,7 +277,7 @@ PEX picks a domain intent → its 1:1 default flow → activate → policy spins
 There is **no Plan policy** — Plan decomposition and sequencing are the **Workflow Planner's** job, not a
 sub-agent's. PEX's Workflow Planner decomposes a complex task into sub-flows rather than calling a tool. It
 generates a freeform plan (shared with the user) and a structured plan (stored on the state, not the
-scratchpad — the structure must survive); on approval it `stackon`s each sub-flow under a `plan_id`. The loop
+scratchpad — the structure must survive); on approval it `stackon`s ALL sub-flows at once — reverse execution order, first-to-run pushed last as the one Active flow, the rest waiting as Pending — so the stack itself holds the plan (observable by any agent; survives orchestrator mistakes and compaction). The loop
 drives sub-flow sequencing and mid-plan replanning, reading sub-flow results from their completion records in
 the scratchpad. See [Workflow Planner § Plan Flow Lifecycle](../components/workflow_planner.md).
 

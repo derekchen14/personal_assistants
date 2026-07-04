@@ -40,6 +40,7 @@ class FlowStack:
         old_flow = self._stack[-1]
         old_flow.status = FlowLifecycle.INVALID.value
         new_flow = self._push(flow_name)
+        new_flow.status = FlowLifecycle.ACTIVE.value  # replaces a running flow: takes over now
         for slot_name, slot in old_flow.slots.items():
             if slot_name in new_flow.slots and slot.filled:
                 new_flow.fill_slot_values({slot_name: slot.to_dict()})
@@ -104,7 +105,9 @@ class FlowStack:
             raise ValueError(f'Unknown flow: {flow_name}')
         flow = cls()
         flow.flow_id = str(uuid4())[:8]
-        flow.status = FlowLifecycle.ACTIVE.value
+        # Pushed flows wait as Pending (Derek 2026-07-03) — activation promotes to Active
+        # (activate_flow via _stack_flow, or pop_completed surfacing the next top).
+        flow.status = FlowLifecycle.PENDING.value
         self._stack.append(flow)
         return flow
 

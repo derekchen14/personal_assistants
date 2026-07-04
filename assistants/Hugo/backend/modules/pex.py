@@ -604,7 +604,7 @@ class PEX:
             # state.flow_stack from it, so a stale live entry would resurrect popped flows.
             self.flow_stack.pop_completed()
         if params['op'] == 'stackon' and params.get('active'):
-            # Single-call staging (Derek 2026-07-03): stackon handed over matching slots; fold
+            # Single-call stack-on (Derek 2026-07-03): stackon handed over matching slots; fold
             # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
             self._check_nlu(wait=False)  # reap a landed detection so the fold reads fresh belief
             self._apply_belief_slots(state, params['flow_name'])
@@ -627,7 +627,8 @@ class PEX:
         context — regardless of whether it matches the active flow. Never blocks: reap a finished
         NLU thread (wait=False); if detection has not landed yet, skip and retry at the next hook.
         Flow-only difference is left to the orchestrator (the prompt rule). An INTENT difference is
-        forced in code here: pause the Active flow (→ Pending) and stage NLU's flow."""
+        forced in code here as a FALLBACK: the active flow is marked Invalid (we are not coming
+        back to it) and NLU's flow takes over as Active (Derek 2026-07-03)."""
         self._check_nlu(wait=False)
         state = self.world.current_state()
         if self._injected or self._nlu_thread is not None or not state.pred_flows:
@@ -642,17 +643,18 @@ class PEX:
         if (active and not self.ambiguity.present()
                 and state.pred_intent in ('Research', 'Draft', 'Revise', 'Publish')
                 and state.pred_intent != active.intent):
-            state.write_state(self.world.state_file(), 'update_flow', status='Pending')
-            state.write_state(self.world.state_file(), 'stackon', flow_name=top['flow_name'])
+            old_name = active.name()
+            state.write_state(self.world.state_file(), 'fallback', flow_name=top['flow_name'])
             self._apply_belief_slots(state, top['flow_name'])
-            active.status = 'Pending'  # mirror on the live stack — activate_flow re-syncs from it
-            note += (f" Intent changed: I paused {active.name()} and staged {top['flow_name']} "
-                     f"for the detected {state.pred_intent} intent — run it.")
+            self.flow_stack.fallback(top['flow_name'])  # live-stack mirror: old → Invalid, new Active
+            note += (f" Intent changed: I dropped {old_name} (Invalid) and swapped in "
+                     f"{top['flow_name']} for the detected {state.pred_intent} intent — run it "
+                     f"with activate_flow.")
         return note
 
-    def prestage(self, state) -> bool:
-        """Fix 1 Option B: stage NLU's confident single-flow detection in code, so the loop
-        starts with the flow staged and its first useful move is activate_flow. Callers invoke
+    def prestack(self, state) -> bool:
+        """Fix 1 Option B: stack NLU's confident single-flow detection in code, so the loop
+        starts with the flow on the stack and its first useful move is activate_flow. Callers invoke
         this ONLY where belief is fresh (the awaited think path — the parallel-think path
         reaches PEX before this turn's detection lands). Plan / Converse turns stay the
         orchestrator's call, and a low-confidence detection has already declared ambiguity."""
@@ -673,7 +675,7 @@ class PEX:
         write_state (the orchestrator epilogue)."""
         self._check_nlu(wait=False)  # flow execution never blocks on NLU — only Plan/Clarify wait
         state = self.world.current_state()
-        flow = self._stage_flow(state, params['flow_name'])
+        flow = self._stack_flow(state, params['flow_name'])
 
         # hook: pre-flow
         approval = self._security_check(flow)
@@ -710,15 +712,15 @@ class PEX:
             record = self.scratchpad.write_completion(flow.name(), summary, metadata=artifact.data)
         return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
 
-    def _stage_flow(self, state, flow_name:str):
+    def _stack_flow(self, state, flow_name:str):
         """Make the named flow the live top-of-stack for the policy run, rehydrating it
         from the state file's flow_stack block when an entry exists.
-        A live flow staged on an earlier turn gets the entry's slot fills layered on —
+        A live flow stacked on an earlier turn gets the entry's slot fills layered on —
         write_state slot fills land in the state file, so the entry is authoritative for
         slots while the live flow keeps policy-side attributes the file does not carry."""
         live = self.flow_stack.find_by_name(flow_name)
         if live and live.status in ('Completed', 'Invalid'):
-            # A finished run of this flow is history, never a staging target: refilling it
+            # A finished run of this flow is history, never a stack-on target: refilling it
             # would APPEND this turn's entity onto last turn's SourceSlot values and the
             # policy would ground on the stale first entry (the grounding-switch bug).
             live = None
@@ -729,9 +731,12 @@ class PEX:
             if entry:
                 live.fill_slot_values(entry['slots'])
                 live.is_filled()
+            live.status = 'Active'  # pushes wait as Pending; running the policy promotes
             return live
         if entry is None:
-            return self.flow_stack.stackon(flow_name)
+            flow = self.flow_stack.stackon(flow_name)
+            flow.status = 'Active'
+            return flow
         flow = rehydrate_flow(entry)
         flow.status = 'Active'
         self.flow_stack._stack.append(flow)
@@ -998,10 +1003,12 @@ class PEX:
                     "strings for single-value slots, lists for multi-value slots), `stage`, and "
                     "`status`. An entity-grounded flow cannot reach status=Completed while "
                     "grounding.post is empty.\n"
-                    "- `stackon`       — push `flow_name` on top of the "
-                    "stack; matching slot values hand over from the prior flow automatically. "
-                    "Pass `active: true` to also fold in belief's `pred_slots` and run the "
-                    "policy immediately — the one-call way to dispatch a flow.\n"
+                    "- `stackon`       — push `flow_name` on top of the stack as Pending; "
+                    "matching slot values hand over from the prior flow automatically. Pass "
+                    "`active: true` to also fold in belief's `pred_slots`, promote to Active, "
+                    "and run the policy immediately — the one-call way to dispatch a flow. A "
+                    "Plan stacks ALL its flows at once (reverse execution order, first-to-run "
+                    "pushed last with `active: true`); the rest wait as Pending.\n"
                     "- `fallback`      — replace the top flow with `flow_name`, transferring "
                     "matching slot values.\n"
                     "- `pop_completed` — remove Completed/Invalid flows, activating the next "
@@ -1018,7 +1025,7 @@ class PEX:
                         'flow_name': {'type': 'string',
                                       'description': 'for stackon / fallback — the target flow'},
                         'active': {'type': 'boolean',
-                                   'description': 'for stackon — stage and run the flow in one call'},
+                                   'description': 'for stackon — promote to Active and run the flow in one call'},
                     },
                     'required': ['op'],
                 },

@@ -5,6 +5,19 @@ round 5.0 gate analysis called this a "mismatch gate" — wrong on both words. I
 state injection**: belief is injected into the PEX orchestrator context on every turn, mismatch or
 not. Implements `step_5_plan.md` (locked §5.1-§5.4) plus the injection.
 
+**AMENDMENT 2 (Derek 2026-07-03, applied post-build):**
+- No "staging" language anywhere — it is "stacking on" / "stacking a flow". Code renames:
+  `prestage()` → `prestack()`, `_stage_flow()` → `_stack_flow()`; prompt and spec text swept.
+  (The pre-existing `stage` FIELD on flow entries is a different concept and stays.)
+- No "catalog flows" — say "flows in the existing ontology" / "existing flows". The
+  anti-invention clause stays (LLMs do make up flow names).
+- Plans stack ALL relevant flows AT ONCE (reversing the one-at-a-time model): reverse execution
+  order, first-to-run pushed last with `active: true`. The stack holds the plan — observable by
+  any agent, survives orchestrator mistakes and compaction.
+- The pending mode is real now: `_push` lands flows as Pending (was hardcoded Active);
+  activation (`_stack_flow`, `pop_completed`) promotes to Active. `fallback`'s replacement goes
+  straight to Active — it takes over from a flow that was already running.
+
 **AMENDMENT (Derek 2026-07-03, applied by the orchestrator after the builds land):**
 - Rename `_dispatch_read_state()` → `pex.read_state()` (public) — it IS how PEX reads the NLU
   belief state; the name should say so.
@@ -30,8 +43,9 @@ not. Implements `step_5_plan.md` (locked §5.1-§5.4) plus the injection.
      REQUIRE awaiting NLU (their `read_state` blocks).
    - **Flow differs, same intent** → the ORCHESTRATOR decides: continue the original flow or stop
      and go with NLU's proposed flow. The prompt tells it to defer to NLU in most cases (80%+).
-   - **Intent differs** → CODE forces it: pause the active flow (Active → Pending) and stage
-     NLU's detected flow. No orchestrator discretion.
+   - **Intent differs** → CODE forces a FALLBACK (Derek 2026-07-03): the active flow is marked
+     Invalid — we are not coming back to it — and NLU's detected flow takes over as Active. No
+     orchestrator discretion.
    - **Any other issue during policy execution** → re-consult NLU via `nlu.contemplate()`
      (nlu.py:118, the failed-flow re-route with narrowed candidates) — never `think()`.
 3. **Depth 8→16** (`shared/shared_defaults.yaml:55`, `stack.py:12` fallback). Keep the overflow
@@ -81,8 +95,9 @@ into Tier 2 (locked step_5 decision; ~250 tokens/turn riding the prompt cache), 
 constant or on-demand loading.
 
 **3. Intent-differs forcing mechanics.** Code compares `pred_intent` to the active flow's intent
-at injection time; on difference (and no pending ambiguity, and a domain `pred_intent`): active
-flow → Pending, `stackon` NLU's `pred_flows[0]`, and the belief note states what was forced.
+at injection time; on difference (and no pending ambiguity, and a domain `pred_intent`): a
+`fallback` — active flow → Invalid, NLU's `pred_flows[0]` swapped in as Active — and the belief
+note states what was forced.
 Trade-off: a wrong NLU intent now overrides the orchestrator with no appeal — accepted, NLU's
 intent is authoritative by design ("coarse intent is NLU's authoritative write", pex.md); the
 counterweight is round 4.3 exemplars.
