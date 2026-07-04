@@ -573,7 +573,38 @@ class PEX:
             # Mirror the pop onto the live stack: activate_flow's epilogue re-syncs
             # state.flow_stack from it, so a stale live entry would resurrect popped flows.
             self.flow_stack.pop_completed()
+        if params['op'] == 'stackon' and params.get('active'):
+            # Single-call staging (Derek 2026-07-03): stackon handed over matching slots; fold
+            # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
+            self._apply_belief_slots(state, params['flow_name'])
+            return self.activate_flow({'flow_name': params['flow_name']})
         return {'_success': True, 'state': document}
+
+    def _apply_belief_slots(self, state, flow_name:str):
+        """Fold belief's `pred_slots` into the just-stacked flow entry when NLU's detection is
+        this same flow — the code-side replacement for the recipe's update_flow step."""
+        if not state.pred_flows or state.pred_flows[0]['flow_name'] != flow_name:
+            return
+        top = rehydrate_flow(state.flow_stack[-1])
+        slots = {name: value for name, value in state.pred_slots.items()
+                 if name in top.slots and value}
+        if slots:
+            state.write_state(self.world.state_file(), 'update_flow', slots=slots)
+
+    def prestage(self, state) -> bool:
+        """Fix 1 Option B: stage NLU's confident single-flow detection in code, so the loop
+        starts with the flow staged and its first useful move is activate_flow. Callers invoke
+        this ONLY where belief is fresh (the awaited think path — the parallel-think path
+        reaches PEX before this turn's detection lands). Plan / Converse turns stay the
+        orchestrator's call, and a low-confidence detection has already declared ambiguity."""
+        if self.ambiguity.present() or not state.pred_flows:
+            return False
+        if state.pred_intent not in ('Research', 'Draft', 'Revise', 'Publish'):
+            return False
+        flow_name = state.pred_flows[0]['flow_name']
+        state.write_state(self.world.state_file(), 'stackon', flow_name=flow_name)
+        self._apply_belief_slots(state, flow_name)
+        return True
 
     def activate_flow(self, params:dict) -> dict:
         """Run the named flow's policy inline — the delegate_task analogue. Grounding comes
@@ -905,8 +936,10 @@ class PEX:
                     "strings for single-value slots, lists for multi-value slots), `stage`, and "
                     "`status`. An entity-grounded flow cannot reach status=Completed while "
                     "grounding.post is empty.\n"
-                    "- `stackon`       — push `flow_name` (optional `plan_id`) as a prerequisite "
-                    "flow on top of the stack.\n"
+                    "- `stackon`       — push `flow_name` (optional `plan_id`) on top of the "
+                    "stack; matching slot values hand over from the prior flow automatically. "
+                    "Pass `active: true` to also fold in belief's `pred_slots` and run the "
+                    "policy immediately — the one-call way to dispatch a flow.\n"
                     "- `fallback`      — replace the top flow with `flow_name`, transferring "
                     "matching slot values.\n"
                     "- `pop_completed` — remove Completed/Invalid flows, activating the next "
@@ -923,6 +956,8 @@ class PEX:
                         'flow_name': {'type': 'string',
                                       'description': 'for stackon / fallback — the target flow'},
                         'plan_id': {'type': 'string', 'description': 'for stackon under a Plan'},
+                        'active': {'type': 'boolean',
+                                   'description': 'for stackon — stage and run the flow in one call'},
                     },
                     'required': ['op'],
                 },
