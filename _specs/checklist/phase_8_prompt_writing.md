@@ -10,7 +10,7 @@ Prompts are the agent's instructions. **Sub-agent and tool prompts** follow the 
 
 **Outputs**: Complete prompt suite across all `for_*.py` files, prompt versioning.
 
-**Spec references**: [style_guide.md § Prompt Engineering](../style_guide.md), [prompt_engineer.md](../components/prompt_engineer.md), [tool_smith.md § Skill Templates](../utilities/tool_smith.md)
+**Spec references**: [flow_authoring.md § Writing the prompt](./flow_authoring.md) (three-layer prompt architecture, starter/skill conventions, few-shot discipline), [style_guide.md § Prompt Engineering](../style_guide.md), [prompt_engineer.md](../components/prompt_engineer.md), [tool_smith.md § Skill Templates](../utilities/tool_smith.md)
 
 ---
 
