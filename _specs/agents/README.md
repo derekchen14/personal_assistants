@@ -17,8 +17,25 @@ Roles: [PM](./pm.md) · [SWE1](./swe1.md) · [SWE2](./swe2.md) · [DoE](./doe.md
 | **Verdict** | QA | DoE | Pass/fail per acceptance criterion, with cited evidence |
 | **Commit + PR** | DoE | human | Final commit and PR for review |
 
-Artifacts pass agent-to-agent — the orchestrator hands each as the next role's input. Persist them with
-the step (e.g. under `plans/`) when a durable record is useful.
+Artifacts pass agent-to-agent — the orchestrator hands each as the next role's input. Every round,
+persist all of them under `plans/round_<id>_artifacts/` (the SWE plans, the DoE approval and
+adjudication, the QA verdict) so the back-and-forth is readable after the fact, and relay the DoE's
+approval notes and adjudication summary to Derek during the round, not only the final report.
+
+## Presenting a plan (required in every plan, PM or orchestrator)
+
+Every plan presented for sign-off — a PM Spec sheet or a plan the orchestrator writes directly — must
+state, up front:
+
+1. **New concepts** — anything the change adds that did not exist before: a class, component, config
+   key, field, file kind, or term. For each, show a concrete example of what is actually added. When
+   there are none, say "no new concepts" explicitly.
+2. **Big decisions** — each one with its pros and cons spelled out.
+3. **Alternatives** — for each big decision, 1-2 alternatives we could have taken, with their own pros
+   and cons.
+
+A plan missing these three call-outs is not ready for sign-off. Small rounds still state them — often
+the answer is one line ("no new concepts; no big decisions"), and that line is the point.
 
 ## Pipeline
 

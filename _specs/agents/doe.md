@@ -18,3 +18,7 @@
 - **Done when:**
   - Both SWE plans are reviewed before build; the winning change set is chosen via the divergence ladder.
   - The PR is opened only after a passing QA verdict.
+
+## Preferred Model
+
+Latest version of Fable.
