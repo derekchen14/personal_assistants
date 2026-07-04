@@ -49,7 +49,7 @@ def minimal_config():
                 },
             },
         },
-        'resilience': {},
+        'limits': {},
     })
 
 

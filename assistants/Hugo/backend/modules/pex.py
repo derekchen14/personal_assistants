@@ -16,10 +16,6 @@ from utils.helper import dax2flow
 
 log = logging.getLogger(__name__)
 
-# Acting-loop bounds. _MAX_CORRECTIVE bounds consecutive failed tool calls before the loop stops
-# burning rounds.
-_MAX_ROUNDS = 8
-_MAX_CORRECTIVE = 3
 _FALLBACK_MESSAGE = "I wasn't able to finish that. Could you try rephrasing?"
 _NUDGE_MESSAGE = ('Your last response had no visible text and no tool calls. Reply with your '
                   'final response to the user, or call a tool.')
@@ -91,6 +87,8 @@ class PEX:
 
     def __init__(self, config, ambiguity, engineer, memory, world):
         self.config = config
+        self.max_rounds = config['limits']['max_rounds']
+        self.max_corrective = config['limits']['max_corrective']
         self.ambiguity = ambiguity
         self.engineer = engineer
         self.memory = memory
@@ -329,7 +327,7 @@ class PEX:
         nudged = False
         errors = 0
         last_call = None
-        for round_idx in range(_MAX_ROUNDS):
+        for round_idx in range(self.max_rounds):
             response = self.engineer._call_claude(system_prompt, context.messages,
                                                   model_id, tools=tools, max_tokens=4096)
             self._track_usage(response)
@@ -371,7 +369,7 @@ class PEX:
                 results.append({'type': 'tool_result', 'tool_use_id': tool_use.id,
                                 'content': json.dumps(result, default=str)})
             context.append_message({'role': 'user', 'content': results})
-            if errors >= _MAX_CORRECTIVE:
+            if errors >= self.max_corrective:
                 break  # the model keeps failing tool calls — stop burning rounds
         return self._final_emit(system_prompt, model_id)
 

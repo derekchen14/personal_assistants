@@ -23,6 +23,7 @@ from backend.components.user_preferences import UserPreferences
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.session_scratchpad import SessionScratchpad
 from backend.prompts.for_orchestrator import build_orchestrator_prompt
+from schemas.config import load_config
 from schemas.ontology import FLOW_CATALOG
 
 _HOT_PATH_TOOLS = ('read_state', 'write_state', 'activate_flow',
@@ -511,6 +512,50 @@ class TestOrchestratorLoop:
         lines = (session / 'messages.jsonl').read_text().splitlines()
         assert len(lines) == 2  # user message + assistant text, mirrored to disk
 
+    def test_max_rounds_read_from_config(self, sessions_dir, monkeypatch):
+        """The round budget flows from config: max_rounds=1 stops the loop after one round and
+        routes to the wrap-up emit. A dead config wire would silently keep the yaml 8."""
+        limits = {'max_rounds': 1, 'max_corrective': 3, 'max_tool_calls': 8,
+                  'extended_tool_calls': 16,
+                  'extended_call_flows': ['audit', 'refine', 'rework', 'compose']}
+        monkeypatch.setattr('backend.agent.load_config',
+                            lambda: load_config(overrides={'debug': True, 'limits': limits}))
+        agent = Agent(username='test_user')
+        agent.nlu.understand = lambda *args, **kwargs: None
+        queue = _script(agent, [_response(_tool_block('read_state', {})),
+                                _response(_text_block('Wrapped up after one round.'))])
+        result = agent.take_turn('walk the whole backlog')
+        agent.close()
+        assert result['message'] == 'Wrapped up after one round.'
+        assert queue == []  # one tool round + the forced no-tools wrap-up, nothing more
+        assert agent.world.context.messages[-2] == {'role': 'user',
+                                                    'content': _WRAP_UP_MESSAGE}
+
+    def test_call_cap_read_from_config(self, engineer, monkeypatch):
+        """The per-flow call cap flows from config: extended_call_flows get extended_tool_calls,
+        every other flow gets max_tool_calls."""
+        captured = []
+
+        def fake_call(system, msgs, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):
+            captured.append(max_num_calls)
+            return ('', [])
+        monkeypatch.setattr(engineer, '_model_family', lambda model: 'claude')
+        monkeypatch.setattr(engineer, '_call_claude_with_tools', fake_call)
+        engineer.tool_call(flow_classes['audit'](), '', {}, [], None, skill_prompt='')
+        engineer.tool_call(flow_classes['find'](), '', {}, [], None, skill_prompt='')
+        assert captured == [16, 8]  # extended cap for audit, base cap for find
+
+    def test_recovery_keys_collapsed(self):
+        """The yaml declares each bound exactly once: no resilience or recovery sections survive,
+        and the promoted values sit under limits."""
+        cfg = load_config()
+        assert 'recovery' not in cfg and 'resilience' not in cfg
+        limits = cfg['limits']
+        assert limits['max_recovery_attempts'] == 2  # the ONE surviving recovery key
+        assert (limits['max_rounds'], limits['max_corrective']) == (8, 3)
+        assert (limits['max_tool_calls'], limits['extended_tool_calls']) == (8, 16)
+        assert limits['extended_call_flows'] == ('audit', 'refine', 'rework', 'compose')
+
 
 
 
@@ -579,7 +624,7 @@ from backend.utilities.services import (
 )
 from backend.components.dialogue_state import DialogueState, rehydrate_flow
 from backend.components.flow_stack import FlowStack
-from utils.evals.gates import gate, grade
+from utils.gates import gate, grade
 
 
 def _without_ids(entries:list) -> list:
@@ -1538,7 +1583,7 @@ TestFlowStackMachine = _build_flowstack_machine().TestCase
 # Orchestrator tool catalog wiring (changes.md §4.1–4.3, decision 16)
 # ═══════════════════════════════════════════════════════════════════
 
-from utils.evals.gates import gate, grade
+from utils.gates import gate, grade
 
 
 

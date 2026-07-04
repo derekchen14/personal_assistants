@@ -76,7 +76,7 @@ memory:
     similarity_threshold: 0.5       # 0.0–1.0, minimum score to include
     embedding_model: null           # embedding model ID; null = provider default
 
-resilience:
+limits:
   tool_retries:
     max_attempts: 3                 # total attempts (1 = no retry)
     backoff_strategy: exponential   # none | linear | exponential
@@ -89,9 +89,11 @@ resilience:
     retriable_errors: [rate_limit, timeout, server_error]
   fallback_model: null              # model_id to try if primary fails; null = none
   max_recovery_attempts: 2          # max times Agent tries re-route before escalate
-
-recovery:
-  max_repair_attempts: 2            # 1 original + 1 retry = 2 total attempts
+  max_rounds: 8                     # orchestrator acting-loop rounds per turn
+  max_corrective: 3                 # consecutive failed tool calls before wrap-up
+  max_tool_calls: 8                 # per-flow tool-call cap in tool_call
+  extended_tool_calls: 16           # cap for the heavy flows below
+  extended_call_flows: [audit, refine, rework, compose]   # Hugo-specific flow names
 
 context_window:
   max_input_tokens: 128000          # total input budget (model-dependent)
