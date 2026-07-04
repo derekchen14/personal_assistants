@@ -1,22 +1,9 @@
----
-name: "audit"
-description: "check that the post is written in the user's voice rather than sounding like AI, then fix the drift directly; compares voice, terminology, formatting, and stylistic patterns against previous posts, and applies any requested tone shift"
-version: 7
-tools:
-  - find_posts
-  - compare_style
-  - editor_review
-  - inspect_post
-  - read_section
-  - revise_content
----
-
 This skill audits a blog post for voice and style consistency and **fixes the drift itself**. First detect issues with the audit tools, then rewrite the affected sections via `revise_content` so they read in the user's voice. If a `tone` directive is present, shift the register across the post in the same pass. When the post already reads cleanly, make no edits and say so.
 
 ## Process
 
 1. **Detect.** Run the audit tools that match the request:
-   a. **`editor_review(content)`** — voice and AI-slop checks (em-dashes, fragments, fillers, vague attributions). Default-on. It takes PROSE, not an id: `read_section` the sections first and pass their combined text. It returns the editorial guide alongside the content — apply the guide's patterns yourself.
+   a. **`editor_review(content)`** — voice and AI-slop checks (em-dashes, fragments, fillers, vague attributions). Default-on. It takes PROSE, not an id: the full post prose is preloaded in the `<post_content>` block — pass that text to `editor_review`. Do NOT `read_section` every section; only `read_section` a specific section immediately before you `revise_content` it, once each, no re-reads. It returns the editorial guide alongside the content — apply the guide's patterns yourself.
    b. **`inspect_post(post_id)`** — structural metrics (heading hierarchy, section word counts, paragraph density). Default-on.
    c. **`find_posts(status='published', count=<reference_count>)` + `compare_style(post_id, reference_ids=...)`** — voice comparison against prior published posts. Opt-in: run when the user asks for comparison or references their usual/typical voice, or when `reference_count` is set (default 3 references).
    Honor explicit exclusions ("just the editor part", "skip structure") — run only the requested family.

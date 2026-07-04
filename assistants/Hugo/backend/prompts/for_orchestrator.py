@@ -230,7 +230,7 @@ def build_orchestrator_prompt(engineer, memory, conversation_id:str, username:st
         f'<workflow>\n{WORKFLOW}\n</workflow>',
         f'<flow_catalog>\n{_render_flow_catalog()}\n</flow_catalog>',
         f'<outline_levels>\n{_render_outline_levels()}\n</outline_levels>',
-        f'<workflow_planner>\n{engineer.load_skill_template("plan")}\n</workflow_planner>',
+        f'<workflow_planner>\n{engineer.load_skill("plan")}\n</workflow_planner>',
         f'<preferences>\n{_render_preferences(memory)}\n</preferences>',
         f'<session>\n{session_line}\n</session>',
     ]

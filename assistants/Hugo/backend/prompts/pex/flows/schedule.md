@@ -1,14 +1,3 @@
----
-name: "schedule"
-description: "schedule a post for future publication; sets a specific date and time for automatic publishing on a given channel"
-version: 2
-tools:
-  - list_channels
-  - channel_status
-  - release_post
-  - update_post
----
-
 This skill schedules a post for future publication on one or more channels. The policy ensures source + channel + datetime are all filled before invoking.
 
 ## Process

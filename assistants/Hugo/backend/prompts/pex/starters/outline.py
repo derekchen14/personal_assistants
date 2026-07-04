@@ -10,46 +10,8 @@ and surfaces the depth + topic + sections."""
 from backend.prompts.for_pex import render_freetext, render_checklist
 
 
-TEMPLATE = """<task>
-Outline the post on "{topic}" at depth {depth}. {tool_sequence}. {end_condition}.
-</task>
-
-<resolved_details>
-{parameters}
-</resolved_details>"""
-
-
 def build(flow, resolved:dict, user_text:str) -> str:
-    sections_filled = flow.slots['sections'].check_if_filled()
-    propose_mode = bool(resolved.get('propose_mode'))
-    topic = _topic_text(flow, resolved)
-    depth = resolved.get('depth', 2)
-
-    if propose_mode or not sections_filled:
-        tool_sequence = (
-            'Emit three candidate outlines as text. '
-            'Forbidden tools this turn: read_metadata, generate_outline, inspect_post, write_text. '
-            'find_posts is optional (at most once) — skip it for green-field topics'
-        )
-        end_condition = 'Stop after Option 3 — no trailing commentary'
-    else:
-        tool_sequence = 'Generate the markdown outline and save it via `generate_outline`'
-        end_condition = 'End once `generate_outline` returns success'
-
-    return TEMPLATE.format(
-        topic=topic,
-        depth=depth,
-        tool_sequence=tool_sequence,
-        end_condition=end_condition,
-        parameters=_format_parameters(flow),
-    )
-
-
-def _topic_text(flow, resolved:dict) -> str:
-    topic_slot = flow.slots['topic']
-    if topic_slot.check_if_filled():
-        return str(topic_slot.to_dict())
-    return resolved.get('post_title') or 'this post'
+    return f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>'
 
 
 def _format_parameters(flow) -> str:

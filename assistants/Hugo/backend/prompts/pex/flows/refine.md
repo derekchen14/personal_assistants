@@ -1,19 +1,3 @@
----
-name: "refine"
-description: "refine the bullet points in the outline; adjust headings, reorder points, add or remove subsections, and incorporate feedback"
-version: 5
-tools:
-  - find_posts
-  - read_metadata
-  - read_section
-  - update_post
-  - insert_section
-  - revise_content
-  - remove_content
-  - write_text
-  - insert_media
----
-
 This skill describes how to refine outlines. The current outline is provided in the user message inside the `<post_content>` block. Use it directly as your starting point rather than creating a new one from scratch.
 
 ## Process

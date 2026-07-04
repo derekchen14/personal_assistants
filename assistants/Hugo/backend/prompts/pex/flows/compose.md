@@ -1,15 +1,3 @@
----
-name: "compose"
-description: "Convert an outline into prose. Given a post in standard outline format, this skill provides the process to convert to a first written draft."
-version: 4
-tools:
-  - read_metadata
-  - read_section
-  - convert_to_prose
-  - write_text
-  - revise_content
----
-
 This skill describes how to convert an outline into prose. The current outline is provided in the user message inside the `<post_content>` block as per-section previews. Use it to plan scope; read the full bullets with `read_section` before converting each section.
 
 ## Process
@@ -91,7 +79,7 @@ If the user's request doesn't make sense given the outline, call `handle_ambigui
 
 ### Task-specific tools
 
-- `read_section(post_id, sec_id)` — required before composing any section. Never write without reading.
+- `read_section(post_id, sec_id)` — required before composing any section. Never write without reading. Read each in-scope section at most once; never re-read a section you have already converted.
 - `convert_to_prose(content)` — bullets → rough prose. Retry once on failure.
 - `revise_content(post_id, sec_id, content)` — save prose back. This skill owns persistence: the policy does NOT auto-save.
 

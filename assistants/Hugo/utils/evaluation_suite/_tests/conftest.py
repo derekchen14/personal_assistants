@@ -73,7 +73,7 @@ def mock_agent(monkeypatch):
     """Agent with LLM calls stubbed out — tests routing without API keys."""
     monkeypatch.setattr('backend.agent.load_config', lambda: load_config(overrides={'debug': True}))
     a = Agent(username='test_user')
-    a.engineer.tool_call = _stub_tool_call
+    a.engineer.flow_execute = _stub_tool_call
     a.engineer._call_claude = _stub_call_claude
     yield a
     a.close()

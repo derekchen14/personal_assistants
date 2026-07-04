@@ -1,11 +1,3 @@
----
-name: "find"
-description: "search previous posts and drafts by keyword or topic. Narrates the matches sorted by relevance; read-only, does not modify posts"
-version: 1
-tools:
-  - find_posts
----
-
 This skill narrates a find result. The policy has already expanded the user's query into related terms, called `find_posts` for each, deduped the matches, and passed the results below via `<resolved_details>`. Your job is to describe what was found in 1–2 sentences.
 
 ## Process

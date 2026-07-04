@@ -1,13 +1,3 @@
----
-name: "propose"
-description: "generate 2-3 targeted alternatives to fill a placeholder gap in existing content, presented inline for the user to pick; like brainstorm but scoped to a specific slot in a draft"
-version: 1
-tools:
-  - read_metadata
-  - read_section
-  - revise_content
----
-
 This skill fills a placeholder gap — a `<fill in here>` marker, a `[TODO]`, or an obviously blank slot — inside ONE existing section. You generate **2-3 distinct alternatives yourself** and present them as plain text for the user to choose from. You do NOT write content with a tool during generation; the candidates are your own prose. The user's pick lands later, on a follow-up action turn, via `revise_content`.
 
 ## Process

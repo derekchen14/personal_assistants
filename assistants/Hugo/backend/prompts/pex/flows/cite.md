@@ -1,14 +1,3 @@
----
-name: "cite"
-description: "add a citation to a sentence or phrase within a post; if a URL is provided, attach it directly; if only a target snippet is provided, search the web for a supporting source and propose it for user confirmation"
-version: 2
-tools:
-  - read_metadata
-  - read_section
-  - revise_content
-  - web_search
----
-
 This skill attaches a citation to a snippet of text. Two modes: direct attach when a URL is given, or web-search-and-propose when only a target snippet is given.
 
 ## Process

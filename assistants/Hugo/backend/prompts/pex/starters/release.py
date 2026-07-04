@@ -4,20 +4,8 @@ Publishes the post to its primary blog. Release always targets the primary chann
 calls channel_status (against the primary) then release_post."""
 
 
-TEMPLATE = """<task>
-Release "{post_title}". Publish to each channel in `channel` below; when none is named, default to the primary blog. Per channel, call `channel_status` first then `release_post` on success — one channel's failure must not abort the rest.
-</task>
-
-<resolved_details>
-{parameters}
-</resolved_details>"""
-
-
 def build(flow, resolved:dict, user_text:str) -> str:
-    return TEMPLATE.format(
-        post_title=resolved.get('post_title', 'this post'),
-        parameters=_format_parameters(flow, resolved),
-    )
+    return f'<resolved_details>\n{_format_parameters(flow, resolved)}\n</resolved_details>'
 
 
 def _format_parameters(flow, resolved:dict) -> str:

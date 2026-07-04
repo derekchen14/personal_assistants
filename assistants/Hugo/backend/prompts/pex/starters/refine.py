@@ -6,28 +6,13 @@ payload — post title, current outline (as XML), and the filled feedback / step
 from backend.prompts.for_pex import render_freetext, render_checklist
 
 
-TEMPLATE = """<task>
-Refine the outline of "{post_title}". Apply the changes from the user's final utterance to the outline below. Use `revise_content` to rewrite an existing section's body, `insert_section` (then `revise_content` for the body) to add a new H2 at a position, `update_post` with `rename_section` to rename an existing heading, or `remove_content` to delete a section. To insert an image, call `insert_media` at the position named in `Image`/`Position`. To normalize formatting per `Formatting settings`, rewrite the affected sections via `revise_content`/`update_post`. End once you have successfully saved all your refinements.
-</task>
-
-<post_content>
-{current_outline}
-</post_content>
-
-<resolved_details>
-{parameters}
-</resolved_details>"""
-
-
 def build(flow, resolved:dict, user_text:str) -> str:
-    return TEMPLATE.format(
-        post_title=resolved.get('post_title', 'this post'),
-        current_outline=resolved.get(
-            'current_outline',
-            '(outline not preloaded — call read_metadata with include_outline=True)',
-        ),
-        parameters=_format_parameters(flow),
+    current_outline = resolved.get(
+        'current_outline',
+        '(outline not preloaded — call read_metadata with include_outline=True)',
     )
+    return (f'<post_content>\n{current_outline}\n</post_content>\n\n'
+            f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>')
 
 
 def _format_parameters(flow) -> str:

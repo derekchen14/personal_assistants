@@ -1,0 +1,1377 @@
+diff --git a/assistants/Hugo/backend/components/prompt_engineer.py b/assistants/Hugo/backend/components/prompt_engineer.py
+index a2c96d8..a67524a 100644
+--- a/assistants/Hugo/backend/components/prompt_engineer.py
++++ b/assistants/Hugo/backend/components/prompt_engineer.py
+@@ -9,11 +9,10 @@ from google import genai
+ import openai
+ 
+ import logging
+-import yaml
+ from pydantic import BaseModel
+ 
+ from backend.prompts.general import build_system
+-from backend.prompts.for_pex import build_skill_system, build_skill_messages
++from backend.prompts.for_pex import build_flow_system, build_flow_messages
+ 
+ log = logging.getLogger(__name__)
+ 
+@@ -67,10 +66,8 @@ _TIER_KEYS        = {'low', 'med', 'high'}
+ class PromptEngineer:
+ 
+     VERSION = 'v1'
+-    _SKILL_DIRS = (
+-        Path(__file__).resolve().parents[1] / 'prompts' / 'pex' / 'skills',
+-        Path(__file__).resolve().parents[1] / 'prompts' / 'skills',
+-    )
++    _FLOW_DIR  = Path(__file__).resolve().parents[1] / 'prompts' / 'pex' / 'flows'
++    _SKILL_DIR = Path(__file__).resolve().parents[1] / 'prompts' / 'pex' / 'skills'
+ 
+     _CLIENT_ENVARS = {
+         'anthropic': 'ANTHROPIC_API_KEY',
+@@ -178,15 +175,15 @@ class PromptEngineer:
+             return schema.model_json_schema()
+         raise TypeError(f'schema must be a dict or Pydantic BaseModel subclass, got {type(schema)!r}')
+ 
+-    def skill_call(self, flow, convo_history:str, scratchpad:dict, skill_name:str|None=None,
+-                   skill_prompt:str|None=None, resolved:dict|None=None, max_tokens:int=1024,
++    def flow_reply(self, flow, convo_history:str, scratchpad:dict, skill_name:str|None=None,
++                   flow_prompt:str|None=None, resolved:dict|None=None, max_tokens:int=1024,
+                    user_text:str|None=None, model:str='med') -> str:
+-        """Skill execution WITHOUT tool use. Sibling of tool_call."""
+-        if skill_prompt is None:
+-            skill_prompt = self.load_skill_template(skill_name or flow.name())
++        """Flow sub-agent turn WITHOUT tool use. Sibling of flow_execute."""
++        if flow_prompt is None:
++            flow_prompt = self.load_flow_prompt(skill_name or flow.name())
+         base_system = build_system(self.persona)
+-        system = build_skill_system(base_system, flow, skill_prompt)
+-        messages = list(build_skill_messages(flow, convo_history, user_text, resolved))
++        system = build_flow_system(base_system, flow, flow_prompt)
++        messages = list(build_flow_messages(flow, convo_history, user_text, resolved))
+         model_id = self._resolve_model(model)
+         match self._model_family(model):
+             case 'claude':
+@@ -196,20 +193,20 @@ class PromptEngineer:
+             case 'together': return self._call_together(system, messages, model_id, max_tokens)
+             case 'gpt':      return self._call_gpt(system, messages, model_id, max_tokens)
+ 
+-    def tool_call(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], tool_dispatcher,
+-                  skill_name:str|None=None, skill_prompt:str|None=None, resolved:dict|None=None,
++    def flow_execute(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], tool_dispatcher,
++                  skill_name:str|None=None, flow_prompt:str|None=None, resolved:dict|None=None,
+                   max_tokens:int=4096, user_text:str|None=None,
+                   model:str='med', schema:dict|None=None) -> tuple[str, list[dict]]:
+-        """Skill execution WITH tool use. Sibling of skill_call.
++        """Flow sub-agent turn WITH tool use. Sibling of flow_reply.
+ 
+-        Pass `model='high'` for skills that need stronger reasoning (e.g. brainstorm). Pass
++        Pass `model='high'` for flows that need stronger reasoning (e.g. brainstorm). Pass
+         `schema=<json-schema dict>` to force a schema-constrained final emit — applied as a
+         no-tools follow-up call when the tool loop terminates with empty text."""
+-        if skill_prompt is None:
+-            skill_prompt = self.load_skill_template(skill_name or flow.name())
++        if flow_prompt is None:
++            flow_prompt = self.load_flow_prompt(skill_name or flow.name())
+         base_system = build_system(self.persona)
+-        system = build_skill_system(base_system, flow, skill_prompt)
+-        msgs = list(build_skill_messages(flow, convo_history, user_text, resolved))
++        system = build_flow_system(base_system, flow, flow_prompt)
++        msgs = list(build_flow_messages(flow, convo_history, user_text, resolved))
+         model_id = self._resolve_model(model)
+ 
+         extended = flow.name() in self._limits['extended_call_flows']
+@@ -684,39 +681,14 @@ class PromptEngineer:
+         return '\n'.join(sections) if sections else ''
+ 
+     @classmethod
+-    def _resolve_skill_path(cls, flow_name:str):
+-        for base in cls._SKILL_DIRS:
+-            path = base / f'{flow_name}.md'
+-            if path.exists():
+-                return path
+-        return None
+-
+-    @classmethod
+-    def load_skill_template(cls, flow_name:str) -> str | None:
+-        path = cls._resolve_skill_path(flow_name)
+-        if path is None:
+-            return None
+-        _, body = cls._split_frontmatter(path.read_text(encoding='utf-8'))
+-        return body
++    def load_flow_prompt(cls, flow_name:str) -> str:
++        """Full markdown instruction prompt for a flow sub-agent (pex/flows/<flow>.md)."""
++        return (cls._FLOW_DIR / f'{flow_name}.md').read_text(encoding='utf-8')
+ 
+     @classmethod
+-    def load_skill_meta(cls, flow_name:str) -> dict:
+-        path = cls._resolve_skill_path(flow_name)
+-        if path is None:
+-            return {}
+-        meta, _ = cls._split_frontmatter(path.read_text(encoding='utf-8'))
+-        return meta
+-
+-    @staticmethod
+-    def _split_frontmatter(text:str) -> tuple[dict, str]:
+-        if not text.startswith('---\n'):
+-            return {}, text
+-        end = text.find('\n---\n', 4)
+-        if end == -1:
+-            return {}, text
+-        meta = yaml.safe_load(text[4:end]) or {}
+-        body = text[end + 5:]
+-        return meta, body
++    def load_skill(cls, skill_name:str) -> str:
++        """An agent-level skill body (pex/skills/<skill>.md) — currently only the Workflow Planner."""
++        return (cls._SKILL_DIR / f'{skill_name}.md').read_text(encoding='utf-8')
+ 
+     @staticmethod
+     def extract_tool_result(tool_log:list, tool_name:str) -> dict:
+diff --git a/assistants/Hugo/backend/modules/policies/base.py b/assistants/Hugo/backend/modules/policies/base.py
+index edfc93e..07a7338 100644
+--- a/assistants/Hugo/backend/modules/policies/base.py
++++ b/assistants/Hugo/backend/modules/policies/base.py
+@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
+ # action, so each point is an interception hook for an NLU signal (read from belief) or a user
+ # interrupt. Three already have bodies elsewhere: pre_tool ← PEX._security_check,
+ # verification ← PEX._validate_artifact, tool_retry ← retry_tool. pre_llm/post_llm are wired
+-# live in llm_execute; post_tool's body lives in the engineer.tool_call loop (integration point).
++# live in llm_execute; post_tool's body lives in the engineer.flow_execute loop (integration point).
+ HOOK_POINTS = ('pre_llm', 'pre_tool', 'post_tool', 'tool_retry', 'post_llm', 'verification')
+ 
+ 
+@@ -80,7 +80,7 @@ class BasePolicy:
+         tool_defs = self._get_tools_fn(flow)
+         if exclude_tools:
+             tool_defs = [td for td in tool_defs if td['name'] not in exclude_tools]
+-        result = self.engineer.tool_call(
++        result = self.engineer.flow_execute(
+             flow, convo_history, self.scratchpad.read(),
+             tool_defs, tools, resolved=resolved,
+             user_text=context.last_user_text,
+diff --git a/assistants/Hugo/backend/modules/policies/research.py b/assistants/Hugo/backend/modules/policies/research.py
+index dc91733..57ce3d0 100644
+--- a/assistants/Hugo/backend/modules/policies/research.py
++++ b/assistants/Hugo/backend/modules/policies/research.py
+@@ -43,7 +43,7 @@ class ResearchPolicy(BasePolicy):
+ 
+         convo_history = context.compile_history()
+         history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
+-        text = self.engineer.skill_call(flow, history_with_data, self.scratchpad.read())
++        text = self.engineer.flow_reply(flow, history_with_data, self.scratchpad.read())
+ 
+         self.complete_flow(flow, state, summary, metadata={'tags': tags, 'target': target})
+         artifact = TaskArtifact(flow.name(), thoughts=text)
+@@ -69,10 +69,10 @@ class ResearchPolicy(BasePolicy):
+                 f"{convo_history}\n\n[Post content]\nTitle: {flow_metadata['title']}\n"
+                 f"Content: {flow_metadata['outline']}"
+             )
+-            skill_prompt = self.engineer.load_skill_template(flow.name()) + length_hint
+-            summary = self.engineer.skill_call(
++            flow_prompt = self.engineer.load_flow_prompt(flow.name()) + length_hint
++            summary = self.engineer.flow_reply(
+                 flow, history_with_data, self.scratchpad.read(),
+-                skill_prompt=skill_prompt,
++                flow_prompt=flow_prompt,
+             )
+             self.complete_flow(flow, state, f"Summarized '{flow_metadata['title']}'.",
+                 metadata={'post_id': post_id})
+diff --git a/assistants/Hugo/backend/modules/policies/revise.py b/assistants/Hugo/backend/modules/policies/revise.py
+index 7eebc55..7c0fe4b 100644
+--- a/assistants/Hugo/backend/modules/policies/revise.py
++++ b/assistants/Hugo/backend/modules/policies/revise.py
+@@ -231,7 +231,9 @@ class RevisePolicy(BasePolicy):
+         if error: return error
+ 
+         self.record_snapshot(self.content, flow, context, post_id)
+-        text, tool_log = self.llm_execute(flow, state, context, tools)
++        pre = self._read_post_content(post_id, tools)
++        text, tool_log = self.llm_execute(flow, state, context, tools,
++            extra_resolved={'post_prose': pre.get('content', '')})
+         if self.ambiguity.present():
+             return TaskArtifact(flow.name())
+ 
+diff --git a/assistants/Hugo/backend/prompts/for_orchestrator.py b/assistants/Hugo/backend/prompts/for_orchestrator.py
+index 48f756d..ac72de5 100644
+--- a/assistants/Hugo/backend/prompts/for_orchestrator.py
++++ b/assistants/Hugo/backend/prompts/for_orchestrator.py
+@@ -230,7 +230,7 @@ def build_orchestrator_prompt(engineer, memory, conversation_id:str, username:st
+         f'<workflow>\n{WORKFLOW}\n</workflow>',
+         f'<flow_catalog>\n{_render_flow_catalog()}\n</flow_catalog>',
+         f'<outline_levels>\n{_render_outline_levels()}\n</outline_levels>',
+-        f'<workflow_planner>\n{engineer.load_skill_template("plan")}\n</workflow_planner>',
++        f'<workflow_planner>\n{engineer.load_skill("plan")}\n</workflow_planner>',
+         f'<preferences>\n{_render_preferences(memory)}\n</preferences>',
+         f'<session>\n{session_line}\n</session>',
+     ]
+diff --git a/assistants/Hugo/backend/prompts/for_pex.py b/assistants/Hugo/backend/prompts/for_pex.py
+index a17d3e2..3127f6b 100644
+--- a/assistants/Hugo/backend/prompts/for_pex.py
++++ b/assistants/Hugo/backend/prompts/for_pex.py
+@@ -1,18 +1,18 @@
+-"""Skill prompt assembly.
++"""Flow prompt assembly.
+ 
+ Three layers, each owned by a different file:
+ 
+   - System prompt = persona (`general.build_system`) + intent prompt
+-    (`pex/sys_prompts.py::PROMPTS[intent]`) + skill body
+-    (`pex/skills/<flow>.md`) + closing reminder suffix.
++    (`pex/sys_prompts.py::PROMPTS[intent]`) + ambiguity block + flow prompt
++    (`pex/flows/<flow>.md`) + closing reminder suffix.
+ 
+-  - User message = filled starter (`pex/starters/<flow>.py::build`) +
+-    recent conversation + latest utterance.
++  - User message = filled starter (`pex/starters/<flow>.py::build`,
++    runtime parameters + preloaded content) + recent conversation + latest utterance.
+ 
+-  - Per-flow customization lives entirely in the skill file (static
++  - Per-flow customization lives entirely in the flow prompt (static
+     behavior) and the starter (runtime parameters with placeholders).
+ 
+-Slot-rendering helpers below are used by starter modules; add new ones
++Slot render helpers below are used by starter modules; add new ones
+ here on demand. The helpers are deliberately minimal — most slots
+ serialize fine via direct attribute access in the starter template."""
+ 
+@@ -48,31 +48,32 @@ In contrast to semantic mis-understanding, there may also be systemic errors cau
+ Use the `handle_ambiguity()` or `execution_error()` tools to signal such issues only after considering all other paths to resolution."""
+ 
+ 
+-def build_skill_system(base_system:str, flow, skill_prompt:str|None) -> str:
+-    """System prompt = persona + intent prompt + ambiguity block + skill body + closing reminder.
++def build_flow_system(base_system:str, flow, flow_prompt:str|None) -> str:
++    """System prompt = persona + intent prompt + ambiguity block + flow prompt + closing reminder.
+ 
+     The slot-7 closing reminder is the shared suffix — it restates the agentic output contract
+-    at the highest-recency position. The `--- {Flow_name} Skill Instructions ---` divider keeps
+-    the handoff from context to skill body visually obvious."""
++    at the highest-recency position. The `--- {Flow_name} Flow Instructions ---` divider keeps
++    the handoff from context to flow prompt visually obvious."""
+     from backend.prompts.pex.sys_prompts import get_intent_prompt
+     intent_prompt = get_intent_prompt(flow.intent)
+ 
+     parts = [base_system, '\n\n', intent_prompt, '\n\n', AMBIGUITY_AND_ERRORS]
+-    if skill_prompt:
++    if flow_prompt:
+         flow_name = flow.name().capitalize()
+-        parts.append(f'\n\n--- {flow_name} Skill Instructions ---\n\n{skill_prompt}')
++        parts.append(f'\n\n--- {flow_name} Flow Instructions ---\n\n{flow_prompt}')
+     parts.append(f'\n\n{SLOT_7_REMINDER}')
+     return ''.join(parts)
+ 
+ 
+-def build_skill_messages(flow, convo_history:str,
++def build_flow_messages(flow, convo_history:str,
+                          user_text:str|None=None,
+                          resolved:dict|None=None) -> list[dict]:
+     """User message = filled starter + <recent_conversation>.
+ 
+-    The starter owns task framing, preloaded content, and resolved details. Conversation history
+-    follows in its own XML tag; the tail of that tag is the latest utterance, so no separate block
+-    is emitted. Falls back to a minimal scaffold for flows that don't yet have a starter module."""
++    The starter renders runtime parameters and any preloaded content; task framing now lives in
++    the flow prompt. Conversation history follows in its own XML tag; the tail of that tag is the
++    latest utterance, so no separate block is emitted. Falls back to a minimal scaffold for flows
++    that don't yet have a starter module."""
+     starter_text = _render_starter(flow, resolved or {}, user_text or '')
+ 
+     segments = []
+@@ -93,18 +94,8 @@ def _render_starter(flow, resolved:dict, user_text:str) -> str:
+ 
+ 
+ def _default_starter(flow, resolved:dict) -> str:
+-    """Generic fallback for flows without a custom starter module.
+-
+-    Produces the canonical XML shape (<task>, <resolved_details>) so that
+-    unmigrated flows still render a consistent prompt. Per-flow starters
+-    can override this for shape-specific needs (e.g. <post_content>)."""
+-    post_title = resolved.get('post_title', '')
+-    title_clause = f' for "{post_title}"' if post_title else ''
+-    task = (
+-        f'Execute the {flow.name()} skill{title_clause}. '
+-        'Follow the Process steps in the skill instructions above. '
+-        'Call the task-specific tools in the order they describe.'
+-    )
++    """Generic renderer for flows without a custom starter module. Emits only <resolved_details>;
++    task framing lives in the flow prompt."""
+     details_lines = []
+     for slot_name, slot in flow.slots.items():
+         if not slot.check_if_filled():
+@@ -119,10 +110,7 @@ def _default_starter(flow, resolved:dict) -> str:
+         else:  # single / numeric criteria — to_dict() yields the value / level
+             details_lines.append(f'{label}: {slot.to_dict()}')
+     details = '\n'.join(details_lines) if details_lines else '(no parameters filled)'
+-    return (
+-        f'<task>\n{task}\n</task>\n\n'
+-        f'<resolved_details>\n{details}\n</resolved_details>'
+-    )
++    return f'<resolved_details>\n{details}\n</resolved_details>'
+ 
+ 
+ def _summarize_entity(val) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/audit.md b/assistants/Hugo/backend/prompts/pex/flows/audit.md
+similarity index 92%
+rename from assistants/Hugo/backend/prompts/pex/skills/audit.md
+rename to assistants/Hugo/backend/prompts/pex/flows/audit.md
+index 33967ce..7f8c536 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/audit.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/audit.md
+@@ -1,22 +1,9 @@
+----
+-name: "audit"
+-description: "check that the post is written in the user's voice rather than sounding like AI, then fix the drift directly; compares voice, terminology, formatting, and stylistic patterns against previous posts, and applies any requested tone shift"
+-version: 7
+-tools:
+-  - find_posts
+-  - compare_style
+-  - editor_review
+-  - inspect_post
+-  - read_section
+-  - revise_content
+----
+-
+ This skill audits a blog post for voice and style consistency and **fixes the drift itself**. First detect issues with the audit tools, then rewrite the affected sections via `revise_content` so they read in the user's voice. If a `tone` directive is present, shift the register across the post in the same pass. When the post already reads cleanly, make no edits and say so.
+ 
+ ## Process
+ 
+ 1. **Detect.** Run the audit tools that match the request:
+-   a. **`editor_review(content)`** — voice and AI-slop checks (em-dashes, fragments, fillers, vague attributions). Default-on. It takes PROSE, not an id: `read_section` the sections first and pass their combined text. It returns the editorial guide alongside the content — apply the guide's patterns yourself.
++   a. **`editor_review(content)`** — voice and AI-slop checks (em-dashes, fragments, fillers, vague attributions). Default-on. It takes PROSE, not an id: the full post prose is preloaded in the `<post_content>` block — pass that text to `editor_review`. Do NOT `read_section` every section; only `read_section` a specific section immediately before you `revise_content` it, once each, no re-reads. It returns the editorial guide alongside the content — apply the guide's patterns yourself.
+    b. **`inspect_post(post_id)`** — structural metrics (heading hierarchy, section word counts, paragraph density). Default-on.
+    c. **`find_posts(status='published', count=<reference_count>)` + `compare_style(post_id, reference_ids=...)`** — voice comparison against prior published posts. Opt-in: run when the user asks for comparison or references their usual/typical voice, or when `reference_count` is set (default 3 references).
+    Honor explicit exclusions ("just the editor part", "skip structure") — run only the requested family.
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/brainstorm.md b/assistants/Hugo/backend/prompts/pex/flows/brainstorm.md
+similarity index 94%
+rename from assistants/Hugo/backend/prompts/pex/skills/brainstorm.md
+rename to assistants/Hugo/backend/prompts/pex/flows/brainstorm.md
+index 9ab6d5a..9ec49fd 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/brainstorm.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/brainstorm.md
+@@ -1,14 +1,3 @@
+----
+-name: "brainstorm"
+-description: "come up with new ideas or angles for a given topic, word, or phrase; may include hooks, opening lines, synonyms, or new perspectives the user can choose from"
+-version: 3
+-tools:
+-  - brainstorm_ideas
+-  - find_posts
+-  - search_notes
+-  - read_section
+----
+-
+ This skill produces creative angles for a topic, or alternative phrasings for a highlighted snippet. Which case applies depends on the filled slots: `topic` drives idea generation, `source.snip` drives phrase alternatives.
+ 
+ **Your turn ends only when you emit the JSON output described below. Tool calls are optional context-gathering — do not stop after a tool call.**
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/browse.md b/assistants/Hugo/backend/prompts/pex/flows/browse.md
+similarity index 94%
+rename from assistants/Hugo/backend/prompts/pex/skills/browse.md
+rename to assistants/Hugo/backend/prompts/pex/flows/browse.md
+index 83550ee..de37dc2 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/browse.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/browse.md
+@@ -1,13 +1,3 @@
+----
+-name: "browse"
+-description: "browse posts by tag, topic, or status. Narrates search results; does not modify posts"
+-version: 2
+-tools:
+-  - find_posts
+-  - brainstorm_ideas
+-  - search_notes
+----
+-
+ This skill narrates a browse result. The policy has already called `find_posts` with the user's tags + target and passed the results below via `<resolved_details>`. Your job is to describe what was found in 1–2 sentences.
+ 
+ ## Process
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/chat.md b/assistants/Hugo/backend/prompts/pex/flows/chat.md
+similarity index 94%
+rename from assistants/Hugo/backend/prompts/pex/skills/chat.md
+rename to assistants/Hugo/backend/prompts/pex/flows/chat.md
+index b756251..bb774c3 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/chat.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/chat.md
+@@ -1,9 +1,3 @@
+----
+-name: "chat"
+-description: "open-ended conversation; general Q&A about writing craft, blogging strategy, SEO, audience engagement, or any topic not tied to a specific post action"
+-version: 4
+----
+-
+ This skill is the chat **voice layer**: you produce the assistant's spoken reply for conversational turns — greetings, writing-craft questions, casual chat, next-step suggestions, and answers that weave in findings another flow already gathered. You do NOT route or dispatch sub-flows; the orchestrator decides what runs before invoking you.
+ 
+ Write a clean, human 1–3 sentence reply in the assistant's own voice — never sounding like a generic large language model. No markdown sections, no JSON, no tool calls.
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/cite.md b/assistants/Hugo/backend/prompts/pex/flows/cite.md
+similarity index 93%
+rename from assistants/Hugo/backend/prompts/pex/skills/cite.md
+rename to assistants/Hugo/backend/prompts/pex/flows/cite.md
+index f6aaad0..881fc05 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/cite.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/cite.md
+@@ -1,14 +1,3 @@
+----
+-name: "cite"
+-description: "add a citation to a sentence or phrase within a post; if a URL is provided, attach it directly; if only a target snippet is provided, search the web for a supporting source and propose it for user confirmation"
+-version: 2
+-tools:
+-  - read_metadata
+-  - read_section
+-  - revise_content
+-  - web_search
+----
+-
+ This skill attaches a citation to a snippet of text. Two modes: direct attach when a URL is given, or web-search-and-propose when only a target snippet is given.
+ 
+ ## Process
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/compare.md b/assistants/Hugo/backend/prompts/pex/flows/compare.md
+similarity index 95%
+rename from assistants/Hugo/backend/prompts/pex/skills/compare.md
+rename to assistants/Hugo/backend/prompts/pex/flows/compare.md
+index 8f6934a..98237d6 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/compare.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/compare.md
+@@ -1,14 +1,3 @@
+----
+-name: "compare"
+-description: "compare style or structure across two or more posts; sentence length, paragraph density, heading patterns, vocabulary, and tonal consistency"
+-version: 3
+-tools:
+-  - read_metadata
+-  - read_section
+-  - inspect_post
+-  - diff_section
+----
+-
+ This skill narrates a side-by-side comparison of two posts. The policy resolves both posts and supplies their IDs and the comparison `Category` in `<resolved_details>`. Branch your tool calls on `Category`, then describe the differences in 2–3 sentences.
+ 
+ ## Process
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/compose.md b/assistants/Hugo/backend/prompts/pex/flows/compose.md
+similarity index 95%
+rename from assistants/Hugo/backend/prompts/pex/skills/compose.md
+rename to assistants/Hugo/backend/prompts/pex/flows/compose.md
+index 43f039b..3e2bb05 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/compose.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/compose.md
+@@ -1,15 +1,3 @@
+----
+-name: "compose"
+-description: "Convert an outline into prose. Given a post in standard outline format, this skill provides the process to convert to a first written draft."
+-version: 4
+-tools:
+-  - read_metadata
+-  - read_section
+-  - convert_to_prose
+-  - write_text
+-  - revise_content
+----
+-
+ This skill describes how to convert an outline into prose. The current outline is provided in the user message inside the `<post_content>` block as per-section previews. Use it to plan scope; read the full bullets with `read_section` before converting each section.
+ 
+ ## Process
+@@ -91,7 +79,7 @@ If the user's request doesn't make sense given the outline, call `handle_ambigui
+ 
+ ### Task-specific tools
+ 
+-- `read_section(post_id, sec_id)` — required before composing any section. Never write without reading.
++- `read_section(post_id, sec_id)` — required before composing any section. Never write without reading. Read each in-scope section at most once; never re-read a section you have already converted.
+ - `convert_to_prose(content)` — bullets → rough prose. Retry once on failure.
+ - `revise_content(post_id, sec_id, content)` — save prose back. This skill owns persistence: the policy does NOT auto-save.
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/find.md b/assistants/Hugo/backend/prompts/pex/flows/find.md
+similarity index 94%
+rename from assistants/Hugo/backend/prompts/pex/skills/find.md
+rename to assistants/Hugo/backend/prompts/pex/flows/find.md
+index 1e116a2..98116c3 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/find.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/find.md
+@@ -1,11 +1,3 @@
+----
+-name: "find"
+-description: "search previous posts and drafts by keyword or topic. Narrates the matches sorted by relevance; read-only, does not modify posts"
+-version: 1
+-tools:
+-  - find_posts
+----
+-
+ This skill narrates a find result. The policy has already expanded the user's query into related terms, called `find_posts` for each, deduped the matches, and passed the results below via `<resolved_details>`. Your job is to describe what was found in 1–2 sentences.
+ 
+ ## Process
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/outline.md b/assistants/Hugo/backend/prompts/pex/flows/outline.md
+similarity index 95%
+rename from assistants/Hugo/backend/prompts/pex/skills/outline.md
+rename to assistants/Hugo/backend/prompts/pex/flows/outline.md
+index 48f7267..94fc5e3 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/outline.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/outline.md
+@@ -1,16 +1,3 @@
+----
+-name: "outline"
+-description: "generate an outline including section headings, key bullet points, estimated word counts, and suggested reading order"
+-version: 3
+-stages:
+-  - propose
+-  - direct
+-tools:
+-  - find_posts
+-  - brainstorm_ideas
+-  - generate_outline
+----
+-
+ This skill describes how to generate a fresh outline for a post. You operate in one of two modes, signaled by the `stage` field in `<resolved_details>`: `propose` means produce three candidate outlines as options for the user to pick from; `direct` means to save the chosen outline via `generate_outline()`.
+ 
+ ## Process
+@@ -21,7 +8,7 @@ This skill describes how to generate a fresh outline for a post. You operate in
+    a. Use the `<resolved_details>` block to see the post metadata.
+    b. Do not call `read_metadata()` unless absolutely necessary.
+ 2. Emit exactly 3 outline options as markdown unless instructed otherwise by the user. Use the strict format `### Option N` then `## <section title>` and a 1 to 2 sentence description per section. Each option should have 3-5 sections. No trailing commentary.
+-3. Do not call `generate_outline`. End the turn by returning the text you just wrote.
++3. Call NO tools in propose mode except an optional single `find_posts`; specifically do not call `read_metadata`, `generate_outline`, `inspect_post`, or `write_text`. End the turn by returning the text you just wrote.
+ 
+ ### Direct mode
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/propose.md b/assistants/Hugo/backend/prompts/pex/flows/propose.md
+similarity index 95%
+rename from assistants/Hugo/backend/prompts/pex/skills/propose.md
+rename to assistants/Hugo/backend/prompts/pex/flows/propose.md
+index be35140..693b8aa 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/propose.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/propose.md
+@@ -1,13 +1,3 @@
+----
+-name: "propose"
+-description: "generate 2-3 targeted alternatives to fill a placeholder gap in existing content, presented inline for the user to pick; like brainstorm but scoped to a specific slot in a draft"
+-version: 1
+-tools:
+-  - read_metadata
+-  - read_section
+-  - revise_content
+----
+-
+ This skill fills a placeholder gap — a `<fill in here>` marker, a `[TODO]`, or an obviously blank slot — inside ONE existing section. You generate **2-3 distinct alternatives yourself** and present them as plain text for the user to choose from. You do NOT write content with a tool during generation; the candidates are your own prose. The user's pick lands later, on a follow-up action turn, via `revise_content`.
+ 
+ ## Process
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/refine.md b/assistants/Hugo/backend/prompts/pex/flows/refine.md
+similarity index 96%
+rename from assistants/Hugo/backend/prompts/pex/skills/refine.md
+rename to assistants/Hugo/backend/prompts/pex/flows/refine.md
+index 0719f55..3052060 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/refine.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/refine.md
+@@ -1,19 +1,3 @@
+----
+-name: "refine"
+-description: "refine the bullet points in the outline; adjust headings, reorder points, add or remove subsections, and incorporate feedback"
+-version: 5
+-tools:
+-  - find_posts
+-  - read_metadata
+-  - read_section
+-  - update_post
+-  - insert_section
+-  - revise_content
+-  - remove_content
+-  - write_text
+-  - insert_media
+----
+-
+ This skill describes how to refine outlines. The current outline is provided in the user message inside the `<post_content>` block. Use it directly as your starting point rather than creating a new one from scratch.
+ 
+ ## Process
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/release.md b/assistants/Hugo/backend/prompts/pex/flows/release.md
+similarity index 96%
+rename from assistants/Hugo/backend/prompts/pex/skills/release.md
+rename to assistants/Hugo/backend/prompts/pex/flows/release.md
+index bb7f733..4629922 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/release.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/release.md
+@@ -1,13 +1,3 @@
+----
+-name: "release"
+-description: "publish the post to the primary blog and optionally cross-post to secondary channels; makes the post live immediately on each target channel"
+-version: 4
+-tools:
+-  - read_metadata
+-  - channel_status
+-  - release_post
+----
+-
+ This skill publishes a post to one or more channels. For each channel, check availability first, then release. Results are collected in a structured JSON response that names the status and URL per channel. The policy flips the post status after the skill returns, so focus on channel orchestration and the output shape.
+ 
+ ## Process
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/rework.md b/assistants/Hugo/backend/prompts/pex/flows/rework.md
+similarity index 95%
+rename from assistants/Hugo/backend/prompts/pex/skills/rework.md
+rename to assistants/Hugo/backend/prompts/pex/flows/rework.md
+index 7e4b811..7f6e21a 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/rework.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/rework.md
+@@ -1,15 +1,3 @@
+----
+-name: "rework"
+-description: "major revision of draft content; restructures arguments, replaces weak sections, weaves in itemized suggestions. Operates across more than one section, up to the whole post. For paragraph-level edits use write."
+-version: 4
+-tools:
+-  - read_metadata
+-  - read_section
+-  - revise_content
+-  - insert_section
+-  - remove_content
+----
+-
+ This skill describes how to rework a blog post given user-supplied items: a list of `suggestions`, an explicit `remove`, or both. The post's current prose is preloaded in the `<post_preview>` block, so use it as your starting view.
+ 
+ ## Process
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/schedule.md b/assistants/Hugo/backend/prompts/pex/flows/schedule.md
+similarity index 94%
+rename from assistants/Hugo/backend/prompts/pex/skills/schedule.md
+rename to assistants/Hugo/backend/prompts/pex/flows/schedule.md
+index ba25908..473d2e3 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/schedule.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/schedule.md
+@@ -1,14 +1,3 @@
+----
+-name: "schedule"
+-description: "schedule a post for future publication; sets a specific date and time for automatic publishing on a given channel"
+-version: 2
+-tools:
+-  - list_channels
+-  - channel_status
+-  - release_post
+-  - update_post
+----
+-
+ This skill schedules a post for future publication on one or more channels. The policy ensures source + channel + datetime are all filled before invoking.
+ 
+ ## Process
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/summarize.md b/assistants/Hugo/backend/prompts/pex/flows/summarize.md
+similarity index 93%
+rename from assistants/Hugo/backend/prompts/pex/skills/summarize.md
+rename to assistants/Hugo/backend/prompts/pex/flows/summarize.md
+index 84d3934..f020f5c 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/summarize.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/summarize.md
+@@ -1,13 +1,3 @@
+----
+-name: "summarize"
+-description: "synthesize a post into a short paragraph capturing the core argument, target audience, and main takeaways; useful for excerpts, SEO descriptions, or pre-reads before writing a follow-up"
+-version: 2
+-tools:
+-  - read_metadata
+-  - read_section
+-  - summarize_text
+----
+-
+ This skill produces a standalone summary paragraph for a post. The policy preloads the full post content (title + outline) into `<resolved_details>` plus an optional `length` hint. Read directly from the block; only call `read_section` if you need extra detail beyond what was preloaded.
+ 
+ ## Process
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/write.md b/assistants/Hugo/backend/prompts/pex/flows/write.md
+similarity index 95%
+rename from assistants/Hugo/backend/prompts/pex/skills/write.md
+rename to assistants/Hugo/backend/prompts/pex/flows/write.md
+index 64db8c8..80cd82d 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/write.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/write.md
+@@ -1,14 +1,3 @@
+----
+-name: "write"
+-description: "sentence-level editing of a paragraph, sentence, or phrase; improves word choice, tightens sentences, fixes transitions, smooths flow, and trims or simplifies wording. Scope stays within a single paragraph or image, not across the whole post"
+-version: 3
+-tools:
+-  - read_metadata
+-  - read_section
+-  - revise_content
+-  - remove_content
+----
+-
+ This skill edits a paragraph, sentence, or text snippet by rephrasing, adding, or removing sentences within the target section. The scope is **always within one section** — but the operation is flexible: edit existing prose, append or insert a new sentence, swap word choice, fix transitions, drop filler. The constant is "stay inside the section." The variable is what you do there.
+ 
+ ## Process
+@@ -26,6 +15,7 @@ This skill edits a paragraph, sentence, or text snippet by rephrasing, adding, o
+    - **Add**: compose a new sentence consistent with the surrounding prose's voice and content. Insert at the position the user named (e.g. "at the end" → append, "after sentence 2" → insert at index 3).
+    - **Remove**: drop the named sentence/range via `remove_content`, or trim/shorten an over-long span by rewriting it with `revise_content`.
+    - When a style hint or `suggestions` slot is provided in the resolved details, treat it as the priority signal — the user is telling you what they want.
++   - When an `image` parameter is present, judge whether the image fits the section's main idea and replace or drop it via `revise_content` / `remove_content`.
+ 
+ 4. Save with `revise_content(post_id, sec_id, content, snip_id=<int|[start, end]>)`:
+    - Whole-section rewrite → omit `snip_id`.
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/audit.py b/assistants/Hugo/backend/prompts/pex/starters/audit.py
+index b439cbe..a683c7c 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/audit.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/audit.py
+@@ -6,26 +6,10 @@ applies any requested tone shift. The policy snapshots before the skill runs, so
+ from backend.prompts.for_pex import render_source, render_checklist
+ 
+ 
+-TEMPLATE = """<task>
+-Audit "{post_title}" for voice + style consistency, then fix it. {tool_sequence}. Rewrite each drifting section with `revise_content` so it reads in the user's voice; apply the `Tone` shift below when present. If the post already reads cleanly, make no edits and say so.
+-</task>
+-
+-<resolved_details>
+-{parameters}
+-</resolved_details>"""
+-
+-
+ def build(flow, resolved:dict, user_text:str) -> str:
+-    tool_sequence = (
+-        'Detect with `editor_review` and `inspect_post` by default; only chain `find_posts` + '
+-        '`compare_style` when the user asks for comparison against prior posts or `Reference count` is '
+-        'shown below. Honor explicit exclusions ("just the editor part", "skip structure")'
+-    )
+-    return TEMPLATE.format(
+-        post_title=resolved.get('post_title', 'this post'),
+-        tool_sequence=tool_sequence,
+-        parameters=_format_parameters(flow, resolved),
+-    )
++    prose = (resolved.get('post_prose') or '').strip()
++    block = f'<post_content>\n{prose}\n</post_content>\n\n' if prose else ''
++    return block + f'<resolved_details>\n{_format_parameters(flow, resolved)}\n</resolved_details>'
+ 
+ 
+ def _format_parameters(flow, resolved:dict) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/brainstorm.py b/assistants/Hugo/backend/prompts/pex/starters/brainstorm.py
+index 57e6d41..b1dcc46 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/brainstorm.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/brainstorm.py
+@@ -6,52 +6,8 @@ Generates angle ideas when `topic` is filled, or phrase alternatives when
+ from backend.prompts.for_pex import render_source
+ 
+ 
+-TEMPLATE = """<task>
+-{verb}. {tool_sequence}. {end_condition}.
+-</task>
+-
+-<resolved_details>
+-{parameters}
+-</resolved_details>"""
+-
+-
+ def build(flow, resolved:dict, user_text:str) -> str:
+-    topic = flow.slots['topic']
+-    source = flow.slots['source']
+-    snippet = _snippet_text(source)
+-
+-    if topic.check_if_filled() and not snippet:
+-        seeded = flow.slots['ideas'].check_if_filled()
+-        verb = f'Brainstorm angles for "{topic.to_dict()}"'
+-        if seeded:
+-            verb += '. The user already seeded the brainstorm — do NOT repeat their items; extend the direction with complementary ideas'
+-        tool_sequence = 'Call `read_section` to gain context on what the source post already covers; optionally `find_posts` once to dedup against prior coverage'
+-        end_condition = 'Emit 3–5 distinct ideas as JSON'
+-    elif snippet:
+-        verb = f'Suggest alternative phrasings for the highlighted snippet'
+-        tool_sequence = 'Call `read_section` for surrounding tone context, then propose 2–3 alternatives'
+-        end_condition = 'Emit alternatives as JSON'
+-    else:
+-        # Should not happen — policy guards against this. Render a generic artifact.
+-        verb = 'Brainstorm based on the latest utterance'
+-        tool_sequence = 'Pick the right helper from your tool list'
+-        end_condition = 'Emit results as JSON'
+-
+-    return TEMPLATE.format(
+-        verb=verb,
+-        tool_sequence=tool_sequence,
+-        end_condition=end_condition,
+-        parameters=_format_parameters(flow),
+-    )
+-
+-
+-def _snippet_text(source_slot) -> str:
+-    if not source_slot.check_if_filled() or not source_slot.values:
+-        return ''
+-    val = source_slot.values[0]
+-    if isinstance(val, dict):
+-        return val.get('snip') or ''
+-    return ''
++    return f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>'
+ 
+ 
+ def _format_parameters(flow) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/browse.py b/assistants/Hugo/backend/prompts/pex/starters/browse.py
+index 92c86b0..a64e3d8 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/browse.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/browse.py
+@@ -7,17 +7,8 @@ query, the target scope, and the result set for narration."""
+ from backend.prompts.for_pex import render_freetext
+ 
+ 
+-TEMPLATE = """<task>
+-Narrate the browse result in 1–2 sentences. Highlight the top matches by title; keep it short. Do NOT modify any post.
+-</task>
+-
+-<resolved_details>
+-{parameters}
+-</resolved_details>"""
+-
+-
+ def build(flow, resolved:dict, user_text:str) -> str:
+-    return TEMPLATE.format(parameters=_format_parameters(flow, resolved))
++    return f'<resolved_details>\n{_format_parameters(flow, resolved)}\n</resolved_details>'
+ 
+ 
+ def _format_parameters(flow, resolved:dict) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/cite.py b/assistants/Hugo/backend/prompts/pex/starters/cite.py
+index 325fb61..5ceacdd 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/cite.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/cite.py
+@@ -9,11 +9,7 @@ The starter shows the snippet (when known) plus the URL when present."""
+ from backend.prompts.for_pex import render_freetext
+ 
+ 
+-TEMPLATE_WITH_SNIPPET = """<task>
+-Cite a snippet in "{post_title}". {tool_sequence}. {end_condition}.
+-</task>
+-
+-<line_content>
++TEMPLATE_WITH_SNIPPET = """<line_content>
+ {snippet}
+ </line_content>
+ 
+@@ -22,35 +18,17 @@ Cite a snippet in "{post_title}". {tool_sequence}. {end_condition}.
+ </resolved_details>"""
+ 
+ 
+-TEMPLATE_NO_SNIPPET = """<task>
+-Cite content in "{post_title}". {tool_sequence}. {end_condition}.
+-</task>
+-
+-<resolved_details>
++TEMPLATE_NO_SNIPPET = """<resolved_details>
+ {parameters}
+ </resolved_details>"""
+ 
+ 
+ def build(flow, resolved:dict, user_text:str) -> str:
+-    has_url = flow.slots['url'].check_if_filled()
+     snippet = _snippet_text(flow)
+-
+-    if has_url:
+-        tool_sequence = 'Call `revise_content` to attach the URL alongside the snippet'
+-        end_condition = 'End once the citation is saved'
+-    else:
+-        tool_sequence = 'Call `web_search` to find a credible source, then propose it for confirmation'
+-        end_condition = 'End after proposing — do NOT call revise_content until confirmed'
+-
+-    common = {
+-        'post_title': resolved.get('post_title', 'this post'),
+-        'tool_sequence': tool_sequence,
+-        'end_condition': end_condition,
+-        'parameters': _format_parameters(flow),
+-    }
++    parameters = _format_parameters(flow)
+     if snippet:
+-        return TEMPLATE_WITH_SNIPPET.format(snippet=snippet, **common)
+-    return TEMPLATE_NO_SNIPPET.format(**common)
++        return TEMPLATE_WITH_SNIPPET.format(snippet=snippet, parameters=parameters)
++    return TEMPLATE_NO_SNIPPET.format(parameters=parameters)
+ 
+ 
+ def _snippet_text(flow) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/compare.py b/assistants/Hugo/backend/prompts/pex/starters/compare.py
+index f8cd9af..b68b2ff 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/compare.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/compare.py
+@@ -4,13 +4,7 @@ Two-post structural comparison. The policy preloads metadata for both posts. Ski
+ compare_style + read_section, then narrates differences in 2-3 sentences."""
+ 
+ 
+-_DIFF_CLAUSE = ' If `Lookback` or `Mapping` is set instead, run a single-post version diff: call `diff_section(post_id, sec_id, lookback=N)` (or `mapping=...`) and narrate what changed between the two versions.'
+-
+-TEMPLATE_WITH_PREVIEWS = """<task>
+-Compare two posts: {post_labels}. Branch on the `Category` in `<resolved_details>`: `inspect` → `inspect_post` per post (numeric metrics); `check` → `read_metadata` per post (status / tags / dates); `tone` → `read_section` per post on a representative section (judge voice from prose). End by narrating the differences in 2-3 sentences, scoped to the chosen category.""" + _DIFF_CLAUSE + """
+-</task>
+-
+-<post_content>
++TEMPLATE_WITH_PREVIEWS = """<post_content>
+ {post_previews}
+ </post_content>
+ 
+@@ -19,11 +13,7 @@ Compare two posts: {post_labels}. Branch on the `Category` in `<resolved_details
+ </resolved_details>"""
+ 
+ 
+-TEMPLATE_NO_PREVIEWS = """<task>
+-Compare two posts. Branch on the `Category` in `<resolved_details>`: `inspect` → `inspect_post` per post; `check` → `read_metadata` per post; `tone` → `read_section` per post on a representative section. End by narrating the differences in 2-3 sentences, scoped to the chosen category.""" + _DIFF_CLAUSE + """
+-</task>
+-
+-<resolved_details>
++TEMPLATE_NO_PREVIEWS = """<resolved_details>
+ {parameters}
+ </resolved_details>"""
+ 
+@@ -31,21 +21,14 @@ Compare two posts. Branch on the `Category` in `<resolved_details>`: `inspect` 
+ def build(flow, resolved:dict, user_text:str) -> str:
+     posts = resolved.get('posts') or []
+     if posts:
+-        labels = ' vs. '.join(_post_label(p) for p in posts[:2])
+         previews = '\n\n'.join(_post_preview(p) for p in posts[:2])
+         return TEMPLATE_WITH_PREVIEWS.format(
+-            post_labels=labels,
+             post_previews=previews,
+             parameters=_format_parameters(flow),
+         )
+     return TEMPLATE_NO_PREVIEWS.format(parameters=_format_parameters(flow))
+ 
+ 
+-def _post_label(post:dict) -> str:
+-    title = post.get('title', 'Untitled')
+-    return f'"{title}"'
+-
+-
+ def _post_preview(post:dict) -> str:
+     title = post.get('title', 'Untitled')
+     sections = post.get('section_ids', [])
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/compose.py b/assistants/Hugo/backend/prompts/pex/starters/compose.py
+index 6a99877..35cf51f 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/compose.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/compose.py
+@@ -8,28 +8,12 @@ from backend.prompts.for_pex import (
+ )
+ 
+ 
+-TEMPLATE = """<task>
+-Compose prose for sections of "{post_title}". For each in-scope section, call `read_section`, `convert_to_prose`, then `revise_content`. Decide scope from the parameters and the user's latest utterance.
+-</task>
+-
+-<post_content>
+-{section_previews}
+-</post_content>
+-
+-<resolved_details>
+-{parameters}
+-</resolved_details>"""
+-
+-
+ def build(flow, resolved:dict, user_text:str) -> str:
+     section_previews = render_section_preview(resolved.get('section_preview') or {})
+     if not section_previews:
+         section_previews = '(section previews not preloaded — call read_metadata with include_preview=True before composing)'
+-    return TEMPLATE.format(
+-        post_title=resolved.get('post_title', 'this post'),
+-        section_previews=section_previews,
+-        parameters=_format_parameters(flow),
+-    )
++    return (f'<post_content>\n{section_previews}\n</post_content>\n\n'
++            f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>')
+ 
+ 
+ def _format_parameters(flow) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/outline.py b/assistants/Hugo/backend/prompts/pex/starters/outline.py
+index 22b73a0..4aa7c76 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/outline.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/outline.py
+@@ -10,46 +10,8 @@ and surfaces the depth + topic + sections."""
+ from backend.prompts.for_pex import render_freetext, render_checklist
+ 
+ 
+-TEMPLATE = """<task>
+-Outline the post on "{topic}" at depth {depth}. {tool_sequence}. {end_condition}.
+-</task>
+-
+-<resolved_details>
+-{parameters}
+-</resolved_details>"""
+-
+-
+ def build(flow, resolved:dict, user_text:str) -> str:
+-    sections_filled = flow.slots['sections'].check_if_filled()
+-    propose_mode = bool(resolved.get('propose_mode'))
+-    topic = _topic_text(flow, resolved)
+-    depth = resolved.get('depth', 2)
+-
+-    if propose_mode or not sections_filled:
+-        tool_sequence = (
+-            'Emit three candidate outlines as text. '
+-            'Forbidden tools this turn: read_metadata, generate_outline, inspect_post, write_text. '
+-            'find_posts is optional (at most once) — skip it for green-field topics'
+-        )
+-        end_condition = 'Stop after Option 3 — no trailing commentary'
+-    else:
+-        tool_sequence = 'Generate the markdown outline and save it via `generate_outline`'
+-        end_condition = 'End once `generate_outline` returns success'
+-
+-    return TEMPLATE.format(
+-        topic=topic,
+-        depth=depth,
+-        tool_sequence=tool_sequence,
+-        end_condition=end_condition,
+-        parameters=_format_parameters(flow),
+-    )
+-
+-
+-def _topic_text(flow, resolved:dict) -> str:
+-    topic_slot = flow.slots['topic']
+-    if topic_slot.check_if_filled():
+-        return str(topic_slot.to_dict())
+-    return resolved.get('post_title') or 'this post'
++    return f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>'
+ 
+ 
+ def _format_parameters(flow) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/refine.py b/assistants/Hugo/backend/prompts/pex/starters/refine.py
+index a20ce44..c2f4fc5 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/refine.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/refine.py
+@@ -6,28 +6,13 @@ payload — post title, current outline (as XML), and the filled feedback / step
+ from backend.prompts.for_pex import render_freetext, render_checklist
+ 
+ 
+-TEMPLATE = """<task>
+-Refine the outline of "{post_title}". Apply the changes from the user's final utterance to the outline below. Use `revise_content` to rewrite an existing section's body, `insert_section` (then `revise_content` for the body) to add a new H2 at a position, `update_post` with `rename_section` to rename an existing heading, or `remove_content` to delete a section. To insert an image, call `insert_media` at the position named in `Image`/`Position`. To normalize formatting per `Formatting settings`, rewrite the affected sections via `revise_content`/`update_post`. End once you have successfully saved all your refinements.
+-</task>
+-
+-<post_content>
+-{current_outline}
+-</post_content>
+-
+-<resolved_details>
+-{parameters}
+-</resolved_details>"""
+-
+-
+ def build(flow, resolved:dict, user_text:str) -> str:
+-    return TEMPLATE.format(
+-        post_title=resolved.get('post_title', 'this post'),
+-        current_outline=resolved.get(
+-            'current_outline',
+-            '(outline not preloaded — call read_metadata with include_outline=True)',
+-        ),
+-        parameters=_format_parameters(flow),
++    current_outline = resolved.get(
++        'current_outline',
++        '(outline not preloaded — call read_metadata with include_outline=True)',
+     )
++    return (f'<post_content>\n{current_outline}\n</post_content>\n\n'
++            f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>')
+ 
+ 
+ def _format_parameters(flow) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/release.py b/assistants/Hugo/backend/prompts/pex/starters/release.py
+index c3d5f7c..26cea4a 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/release.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/release.py
+@@ -4,20 +4,8 @@ Publishes the post to its primary blog. Release always targets the primary chann
+ calls channel_status (against the primary) then release_post."""
+ 
+ 
+-TEMPLATE = """<task>
+-Release "{post_title}". Publish to each channel in `channel` below; when none is named, default to the primary blog. Per channel, call `channel_status` first then `release_post` on success — one channel's failure must not abort the rest.
+-</task>
+-
+-<resolved_details>
+-{parameters}
+-</resolved_details>"""
+-
+-
+ def build(flow, resolved:dict, user_text:str) -> str:
+-    return TEMPLATE.format(
+-        post_title=resolved.get('post_title', 'this post'),
+-        parameters=_format_parameters(flow, resolved),
+-    )
++    return f'<resolved_details>\n{_format_parameters(flow, resolved)}\n</resolved_details>'
+ 
+ 
+ def _format_parameters(flow, resolved:dict) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/rework.py b/assistants/Hugo/backend/prompts/pex/starters/rework.py
+index 232a4c2..01fc7dd 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/rework.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/rework.py
+@@ -9,32 +9,10 @@ from backend.prompts.for_pex import (
+ )
+ 
+ 
+-TEMPLATE = """<task>
+-{tool_sequence} from '{post_title}' to meet the user's requests while avoiding common AI writing mannerisms.
+-</task>
+-
+-<post_preview>
+-{post_preview}
+-</post_preview>
+-
+-<resolved_details>
+-{parameters}
+-</resolved_details>"""
+-
+-
+ def build(flow, resolved:dict, user_text:str) -> str:
+-    has_remove = flow.slots['remove'].check_if_filled()
+-    if has_remove:
+-        tool_sequence = 'Remove content as needed'
+-    else:
+-        tool_sequence = 'Read and revise content'
+-
+-    return TEMPLATE.format(
+-        post_title=resolved.get('post_title', 'this post'),
+-        tool_sequence=tool_sequence,
+-        post_preview=render_section_preview(resolved['section_preview']),
+-        parameters=_format_parameters(flow),
+-    )
++    post_preview = render_section_preview(resolved['section_preview'])
++    return (f'<post_preview>\n{post_preview}\n</post_preview>\n\n'
++            f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>')
+ 
+ 
+ def _format_parameters(flow) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/schedule.py b/assistants/Hugo/backend/prompts/pex/starters/schedule.py
+index f4057a7..36b549f 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/schedule.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/schedule.py
+@@ -4,22 +4,8 @@ Schedules a post for future publication on one or more channels. The
+ datetime slot carries `{start, stop, time_len, unit, recurrence}`."""
+ 
+ 
+-TEMPLATE = """<task>
+-Schedule "{post_title}" for {datetime_label} on {channels}. Sequence per channel: `channel_status` → `release_post(scheduled_for=<start>)`. Then `update_post` to persist the schedule on the post. End once every channel is scheduled or has surfaced an error.
+-</task>
+-
+-<resolved_details>
+-{parameters}
+-</resolved_details>"""
+-
+-
+ def build(flow, resolved:dict, user_text:str) -> str:
+-    return TEMPLATE.format(
+-        post_title=resolved.get('post_title', 'this post'),
+-        datetime_label=_datetime_label(flow),
+-        channels=_channel_label(flow),
+-        parameters=_format_parameters(flow),
+-    )
++    return f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>'
+ 
+ 
+ def _datetime_label(flow) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/summarize.py b/assistants/Hugo/backend/prompts/pex/starters/summarize.py
+index ddb1695..129fcee 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/summarize.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/summarize.py
+@@ -4,11 +4,7 @@ Produces a standalone summary paragraph. The policy preloads the post title + ou
+ <resolved_details>'s post block (when available) plus an optional length hint."""
+ 
+ 
+-TEMPLATE = """<task>
+-Summarize "{post_title}" in {length_clause}. Read the outline below; only call `read_section` if you need detail beyond it. End by emitting the summary as your final reply (no tool calls needed).
+-</task>
+-
+-<post_content>
++TEMPLATE = """<post_content>
+ {outline}
+ </post_content>
+ 
+@@ -17,36 +13,17 @@ Summarize "{post_title}" in {length_clause}. Read the outline below; only call `
+ </resolved_details>"""
+ 
+ 
+-TEMPLATE_NO_OUTLINE = """<task>
+-Summarize "{post_title}" in {length_clause}. Call `read_metadata(include_outline=True)` then `read_section` per section as needed. End by emitting the summary as your final reply.
+-</task>
+-
+-<resolved_details>
++TEMPLATE_NO_OUTLINE = """<resolved_details>
+ {parameters}
+ </resolved_details>"""
+ 
+ 
+ def build(flow, resolved:dict, user_text:str) -> str:
+     outline = (resolved.get('outline') or '').strip()
+-    length_clause = _length_clause(flow)
+-    common = {
+-        'post_title': resolved.get('post_title', 'this post'),
+-        'length_clause': length_clause,
+-        'parameters': _format_parameters(flow),
+-    }
++    parameters = _format_parameters(flow)
+     if outline:
+-        return TEMPLATE.format(outline=outline, **common)
+-    return TEMPLATE_NO_OUTLINE.format(**common)
+-
+-
+-def _length_clause(flow) -> str:
+-    length_slot = flow.slots['length']
+-    if not length_slot.check_if_filled():
+-        return '~75 words (default)'
+-    target = int(length_slot.level) if hasattr(length_slot, 'level') else 75
+-    if target < 30:
+-        return f'a single hook sentence (~{target} words)'
+-    return f'~{target} words'
++        return TEMPLATE.format(outline=outline, parameters=parameters)
++    return TEMPLATE_NO_OUTLINE.format(parameters=parameters)
+ 
+ 
+ def _format_parameters(flow) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/starters/write.py b/assistants/Hugo/backend/prompts/pex/starters/write.py
+index 436048e..c33afa3 100644
+--- a/assistants/Hugo/backend/prompts/pex/starters/write.py
++++ b/assistants/Hugo/backend/prompts/pex/starters/write.py
+@@ -6,31 +6,8 @@ style from the existing prose. Image edits are also supported via the image slot
+ from backend.prompts.for_pex import render_source, render_freetext
+ 
+ 
+-TEMPLATE = """<task>
+-Edit the named span in "{post_title}". {tool_sequence}. End once `revise_content` saves the edited section.
+-</task>
+-
+-<resolved_details>
+-{parameters}
+-</resolved_details>"""
+-
+-
+ def build(flow, resolved:dict, user_text:str) -> str:
+-    has_style_notes = flow.slots['style_notes'].check_if_filled()
+-    has_image = flow.slots['image'].check_if_filled()
+-
+-    if has_image:
+-        tool_sequence = "Read the section, assess the image vs. the section's main idea, propose a replacement via `revise_content` if needed"
+-    elif has_style_notes:
+-        tool_sequence = 'Read the section, rewrite the named span to the requested style (style_notes overrides current register), save via `revise_content`'
+-    else:
+-        tool_sequence = 'Read the section, tighten sentences and word choice within the named span, save via `revise_content`'
+-
+-    return TEMPLATE.format(
+-        post_title=resolved.get('post_title', 'this post'),
+-        tool_sequence=tool_sequence,
+-        parameters=_format_parameters(flow),
+-    )
++    return f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>'
+ 
+ 
+ def _format_parameters(flow) -> str:
+diff --git a/assistants/Hugo/utils/evaluation_suite/_tests/conftest.py b/assistants/Hugo/utils/evaluation_suite/_tests/conftest.py
+index 4eb4b00..9f8d07c 100644
+--- a/assistants/Hugo/utils/evaluation_suite/_tests/conftest.py
++++ b/assistants/Hugo/utils/evaluation_suite/_tests/conftest.py
+@@ -73,7 +73,7 @@ def mock_agent(monkeypatch):
+     """Agent with LLM calls stubbed out — tests routing without API keys."""
+     monkeypatch.setattr('backend.agent.load_config', lambda: load_config(overrides={'debug': True}))
+     a = Agent(username='test_user')
+-    a.engineer.tool_call = _stub_tool_call
++    a.engineer.flow_execute = _stub_tool_call
+     a.engineer._call_claude = _stub_call_claude
+     yield a
+     a.close()
+diff --git a/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py b/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
+index d366d51..ffa8218 100644
+--- a/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
++++ b/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
+@@ -553,18 +553,18 @@ class TestOrchestratorLoop:
+             return ('', [])
+         monkeypatch.setattr(engineer, '_model_family', lambda model: 'claude')
+         monkeypatch.setattr(engineer, '_call_claude_with_tools', fake_call)
+-        engineer.tool_call(flow_classes['audit'](), '', {}, [], None, skill_prompt='')
+-        engineer.tool_call(flow_classes['find'](), '', {}, [], None, skill_prompt='')
++        engineer.flow_execute(flow_classes['audit'](), '', {}, [], None, flow_prompt='')
++        engineer.flow_execute(flow_classes['find'](), '', {}, [], None, flow_prompt='')
+         assert captured == [16, 8]  # extended cap for audit, base cap for find
+ 
+-    def test_skill_call_honors_model_tier(self, engineer, monkeypatch):
+-        """skill_call routes its per-call model tier to _resolve_model, defaulting to 'med'."""
++    def test_flow_reply_honors_model_tier(self, engineer, monkeypatch):
++        """flow_reply routes its per-call model tier to _resolve_model, defaulting to 'med'."""
+         seen = []
+         monkeypatch.setattr(engineer, '_resolve_model', lambda model: seen.append(model))
+         monkeypatch.setattr(engineer, '_model_family', lambda model: 'gemini')
+         monkeypatch.setattr(engineer, '_call_gemini', lambda *args, **kwargs: '')
+-        engineer.skill_call(flow_classes['find'](), '', {}, skill_prompt='', model='high')
+-        engineer.skill_call(flow_classes['find'](), '', {}, skill_prompt='')
++        engineer.flow_reply(flow_classes['find'](), '', {}, flow_prompt='', model='high')
++        engineer.flow_reply(flow_classes['find'](), '', {}, flow_prompt='')
+         assert seen == ['high', 'med']  # explicit tier honored, then the default
+ 
+     def test_recovery_keys_collapsed(self):
+@@ -1644,17 +1644,16 @@ from pathlib import Path as _Path
+ 
+ from backend.components.prompt_engineer import _TASK_SUFFIXES
+ from backend.prompts import general
+-from backend.prompts.for_pex import build_skill_system
++from backend.prompts.for_pex import build_flow_system
+ 
+-_SKILL_DIR = _Path(__file__).resolve().parents[3] / 'backend' / 'prompts' / 'pex' / 'skills'
++_FLOW_DIR = _Path(__file__).resolve().parents[3] / 'backend' / 'prompts' / 'pex' / 'flows'
+ _TOOLS_YAML = _Path(__file__).resolve().parents[3] / 'schemas' / 'tools.yaml'
+-_PEX_AGENT_SKILLS = {'plan'}  # plan = Workflow Planner (orchestrator skill)
+ _COMPONENT_TOOLS = {'handle_ambiguity', 'coordinate_context', 'manage_memory',
+                     'call_flow_stack', 'execution_error', 'save_findings'}
+ 
+ 
+-def _skill_files():
+-    return sorted(p.stem for p in _SKILL_DIR.glob('*.md'))
++def _flow_files():
++    return sorted(p.stem for p in _FLOW_DIR.glob('*.md'))
+ 
+ 
+ def _yaml_tools():
+@@ -1666,35 +1665,17 @@ def _few_shot_tool_calls(body):
+     return set(_re.findall(r'`([a-z][a-z0-9_]+)\(', body[idx:])) if idx != -1 else set()
+ 
+ 
+-def test_skill_tools_match_flow():
+-    """Every skill .md's declared `tools:` frontmatter matches its flow.tools (PEX-agent skills:
+-    only registered tools). Loops all skills."""
+-    yaml_tools = _yaml_tools()
+-    bad = []
+-    for skill in _skill_files():
+-        declared = list(PromptEngineer.load_skill_meta(skill).get('tools') or [])
+-        if skill in _PEX_AGENT_SKILLS:
+-            unknown = [t for t in declared if t not in yaml_tools and t not in _COMPONENT_TOOLS]
+-            if unknown:
+-                bad.append((skill, 'unregistered', unknown))
+-        elif skill not in flow_classes:
+-            bad.append((skill, 'orphan-skill', None))
+-        elif declared != list(flow_classes[skill]().tools):
+-            bad.append((skill, declared, list(flow_classes[skill]().tools)))
+-    assert not bad, f'skill tools != flow.tools: {bad}'
+-
+-
+ def test_few_shot_tools_are_allowlisted():
+-    """Every tool referenced in a skill's `## Few-shot` block is in that flow.tools or is a
+-    component tool. Loops all skill/flow pairs."""
++    """Every tool referenced in a flow's `## Few-shot` block is in that flow.tools or is a
++    component tool. Loops all flow files."""
+     bad = []
+-    for skill in _skill_files():
+-        if skill not in flow_classes:
++    for flow in _flow_files():
++        if flow not in flow_classes:
+             continue
+-        allowed = set(flow_classes[skill]().tools) | _COMPONENT_TOOLS
+-        unknown = _few_shot_tool_calls(PromptEngineer.load_skill_template(skill) or '') - allowed
++        allowed = set(flow_classes[flow]().tools) | _COMPONENT_TOOLS
++        unknown = _few_shot_tool_calls(PromptEngineer.load_flow_prompt(flow)) - allowed
+         if unknown:
+-            bad.append((skill, sorted(unknown)))
++            bad.append((flow, sorted(unknown)))
+     assert not bad, f'few-shot tools not in flow.tools/component: {bad}'
+ 
+ 
+@@ -1706,16 +1687,16 @@ def test_flow_tools_are_registered():
+     assert not bad, f'flow.tools with no tools.yaml def: {bad}'
+ 
+ 
+-def test_loader_strips_frontmatter():
+-    body = PromptEngineer.load_skill_template('outline')
+-    assert body is not None and not body.startswith('---') and '## Process' in body
++def test_loader_reads_flow_prompt():
++    body = PromptEngineer.load_flow_prompt('outline')
++    assert body and not body.startswith('---') and '## Process' in body
+ 
+ 
+ def test_skill_system_ends_with_reminder():
+     """The agentic reminder closes every assembled sub-agent system prompt, with or without a body."""
+     flow = flow_classes['outline']()
+-    for skill_prompt in ('skill body', None):
+-        assert build_skill_system('base', flow, skill_prompt).endswith(general.SLOT_7_REMINDER)
++    for flow_prompt in ('flow body', None):
++        assert build_flow_system('base', flow, flow_prompt).endswith(general.SLOT_7_REMINDER)
+ 
+ 
+ def test_reminder_is_agentic():
+diff --git a/assistants/Hugo/utils/helper_ref.md b/assistants/Hugo/utils/helper_ref.md
+index e8026ac..90653ad 100644
+--- a/assistants/Hugo/utils/helper_ref.md
++++ b/assistants/Hugo/utils/helper_ref.md
+@@ -33,7 +33,7 @@ File I/O + tool-log helpers:
+ 
+ Instance attribute: `persona` (public) — `dict` loaded from `config.persona`. For the persona-based system prompt, call `build_system(engineer.persona)` directly from `prompts/general.py`.
+ 
+-Class constant: `_SKILL_DIRS` → `(backend/prompts/pex/skills/, backend/prompts/skills/)` — pex/skills primary, skills legacy fallback. Task suffixes in `_TASK_SUFFIXES` (module-level) map each `task` label to a system-prompt suffix: `classify_intent`, `detect_flow`, `fill_slots`, `contemplate`, `repair_slot`, `skill`, `naturalize`, `quality_check`, `clarify`.
++Class constants: `_FLOW_DIR` → `backend/prompts/pex/flows/` (flow instruction prompts, read by `load_flow_prompt`) and `_SKILL_DIR` → `backend/prompts/pex/skills/` (agent skills, read by `load_skill` — currently only `plan.md`). Task suffixes in `_TASK_SUFFIXES` (module-level) map each `task` label to a system-prompt suffix: `classify_intent`, `detect_flow`, `fill_slots`, `contemplate`, `repair_slot`, `skill`, `naturalize`, `quality_check`, `clarify`.
+ 
+ **Prompt compilation is NOT a PromptEngineer concern.** The `backend/prompts/` module owns prompt-text compilation; consumer modules import what they need:
+ - NLU owns `_detect_flow_prompt`, `_fill_slot_prompt`, `_contemplate_prompt` (all >2 lines of real work). `build_intent_prompt` is called inline at its one use site.

@@ -33,7 +33,7 @@ File I/O + tool-log helpers:
 
 Instance attribute: `persona` (public) — `dict` loaded from `config.persona`. For the persona-based system prompt, call `build_system(engineer.persona)` directly from `prompts/general.py`.
 
-Class constant: `_SKILL_DIRS` → `(backend/prompts/pex/skills/, backend/prompts/skills/)` — pex/skills primary, skills legacy fallback. Task suffixes in `_TASK_SUFFIXES` (module-level) map each `task` label to a system-prompt suffix: `classify_intent`, `detect_flow`, `fill_slots`, `contemplate`, `repair_slot`, `skill`, `naturalize`, `quality_check`, `clarify`.
+Class constants: `_FLOW_DIR` → `backend/prompts/pex/flows/` (flow instruction prompts, read by `load_flow_prompt`) and `_SKILL_DIR` → `backend/prompts/pex/skills/` (agent skills, read by `load_skill` — currently only `plan.md`). Task suffixes in `_TASK_SUFFIXES` (module-level) map each `task` label to a system-prompt suffix: `classify_intent`, `detect_flow`, `fill_slots`, `contemplate`, `repair_slot`, `skill`, `naturalize`, `quality_check`, `clarify`.
 
 **Prompt compilation is NOT a PromptEngineer concern.** The `backend/prompts/` module owns prompt-text compilation; consumer modules import what they need:
 - NLU owns `_detect_flow_prompt`, `_fill_slot_prompt`, `_contemplate_prompt` (all >2 lines of real work). `build_intent_prompt` is called inline at its one use site.

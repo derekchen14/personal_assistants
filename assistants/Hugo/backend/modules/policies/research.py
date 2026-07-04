@@ -43,7 +43,7 @@ class ResearchPolicy(BasePolicy):
 
         convo_history = context.compile_history()
         history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
-        text = self.engineer.skill_call(flow, history_with_data, self.scratchpad.read())
+        text = self.engineer.flow_reply(flow, history_with_data, self.scratchpad.read())
 
         self.complete_flow(flow, state, summary, metadata={'tags': tags, 'target': target})
         artifact = TaskArtifact(flow.name(), thoughts=text)
@@ -69,10 +69,10 @@ class ResearchPolicy(BasePolicy):
                 f"{convo_history}\n\n[Post content]\nTitle: {flow_metadata['title']}\n"
                 f"Content: {flow_metadata['outline']}"
             )
-            skill_prompt = self.engineer.load_skill_template(flow.name()) + length_hint
-            summary = self.engineer.skill_call(
+            flow_prompt = self.engineer.load_flow_prompt(flow.name()) + length_hint
+            summary = self.engineer.flow_reply(
                 flow, history_with_data, self.scratchpad.read(),
-                skill_prompt=skill_prompt,
+                flow_prompt=flow_prompt,
             )
             self.complete_flow(flow, state, f"Summarized '{flow_metadata['title']}'.",
                 metadata={'post_id': post_id})

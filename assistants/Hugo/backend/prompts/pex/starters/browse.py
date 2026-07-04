@@ -7,17 +7,8 @@ query, the target scope, and the result set for narration."""
 from backend.prompts.for_pex import render_freetext
 
 
-TEMPLATE = """<task>
-Narrate the browse result in 1–2 sentences. Highlight the top matches by title; keep it short. Do NOT modify any post.
-</task>
-
-<resolved_details>
-{parameters}
-</resolved_details>"""
-
-
 def build(flow, resolved:dict, user_text:str) -> str:
-    return TEMPLATE.format(parameters=_format_parameters(flow, resolved))
+    return f'<resolved_details>\n{_format_parameters(flow, resolved)}\n</resolved_details>'
 
 
 def _format_parameters(flow, resolved:dict) -> str:

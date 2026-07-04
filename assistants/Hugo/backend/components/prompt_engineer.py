@@ -9,11 +9,10 @@ from google import genai
 import openai
 
 import logging
-import yaml
 from pydantic import BaseModel
 
 from backend.prompts.general import build_system
-from backend.prompts.for_pex import build_skill_system, build_skill_messages
+from backend.prompts.for_pex import build_flow_system, build_flow_messages
 
 log = logging.getLogger(__name__)
 
@@ -67,10 +66,8 @@ _TIER_KEYS        = {'low', 'med', 'high'}
 class PromptEngineer:
 
     VERSION = 'v1'
-    _SKILL_DIRS = (
-        Path(__file__).resolve().parents[1] / 'prompts' / 'pex' / 'skills',
-        Path(__file__).resolve().parents[1] / 'prompts' / 'skills',
-    )
+    _FLOW_DIR  = Path(__file__).resolve().parents[1] / 'prompts' / 'pex' / 'flows'
+    _SKILL_DIR = Path(__file__).resolve().parents[1] / 'prompts' / 'pex' / 'skills'
 
     _CLIENT_ENVARS = {
         'anthropic': 'ANTHROPIC_API_KEY',
@@ -178,15 +175,15 @@ class PromptEngineer:
             return schema.model_json_schema()
         raise TypeError(f'schema must be a dict or Pydantic BaseModel subclass, got {type(schema)!r}')
 
-    def skill_call(self, flow, convo_history:str, scratchpad:dict, skill_name:str|None=None,
-                   skill_prompt:str|None=None, resolved:dict|None=None, max_tokens:int=1024,
+    def flow_reply(self, flow, convo_history:str, scratchpad:dict, skill_name:str|None=None,
+                   flow_prompt:str|None=None, resolved:dict|None=None, max_tokens:int=1024,
                    user_text:str|None=None, model:str='med') -> str:
-        """Skill execution WITHOUT tool use. Sibling of tool_call."""
-        if skill_prompt is None:
-            skill_prompt = self.load_skill_template(skill_name or flow.name())
+        """Flow sub-agent turn WITHOUT tool use. Sibling of flow_execute."""
+        if flow_prompt is None:
+            flow_prompt = self.load_flow_prompt(skill_name or flow.name())
         base_system = build_system(self.persona)
-        system = build_skill_system(base_system, flow, skill_prompt)
-        messages = list(build_skill_messages(flow, convo_history, user_text, resolved))
+        system = build_flow_system(base_system, flow, flow_prompt)
+        messages = list(build_flow_messages(flow, convo_history, user_text, resolved))
         model_id = self._resolve_model(model)
         match self._model_family(model):
             case 'claude':
@@ -196,20 +193,20 @@ class PromptEngineer:
             case 'together': return self._call_together(system, messages, model_id, max_tokens)
             case 'gpt':      return self._call_gpt(system, messages, model_id, max_tokens)
 
-    def tool_call(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], tool_dispatcher,
-                  skill_name:str|None=None, skill_prompt:str|None=None, resolved:dict|None=None,
+    def flow_execute(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], tool_dispatcher,
+                  skill_name:str|None=None, flow_prompt:str|None=None, resolved:dict|None=None,
                   max_tokens:int=4096, user_text:str|None=None,
                   model:str='med', schema:dict|None=None) -> tuple[str, list[dict]]:
-        """Skill execution WITH tool use. Sibling of skill_call.
+        """Flow sub-agent turn WITH tool use. Sibling of flow_reply.
 
-        Pass `model='high'` for skills that need stronger reasoning (e.g. brainstorm). Pass
+        Pass `model='high'` for flows that need stronger reasoning (e.g. brainstorm). Pass
         `schema=<json-schema dict>` to force a schema-constrained final emit — applied as a
         no-tools follow-up call when the tool loop terminates with empty text."""
-        if skill_prompt is None:
-            skill_prompt = self.load_skill_template(skill_name or flow.name())
+        if flow_prompt is None:
+            flow_prompt = self.load_flow_prompt(skill_name or flow.name())
         base_system = build_system(self.persona)
-        system = build_skill_system(base_system, flow, skill_prompt)
-        msgs = list(build_skill_messages(flow, convo_history, user_text, resolved))
+        system = build_flow_system(base_system, flow, flow_prompt)
+        msgs = list(build_flow_messages(flow, convo_history, user_text, resolved))
         model_id = self._resolve_model(model)
 
         extended = flow.name() in self._limits['extended_call_flows']
@@ -684,39 +681,14 @@ class PromptEngineer:
         return '\n'.join(sections) if sections else ''
 
     @classmethod
-    def _resolve_skill_path(cls, flow_name:str):
-        for base in cls._SKILL_DIRS:
-            path = base / f'{flow_name}.md'
-            if path.exists():
-                return path
-        return None
+    def load_flow_prompt(cls, flow_name:str) -> str:
+        """Full markdown instruction prompt for a flow sub-agent (pex/flows/<flow>.md)."""
+        return (cls._FLOW_DIR / f'{flow_name}.md').read_text(encoding='utf-8')
 
     @classmethod
-    def load_skill_template(cls, flow_name:str) -> str | None:
-        path = cls._resolve_skill_path(flow_name)
-        if path is None:
-            return None
-        _, body = cls._split_frontmatter(path.read_text(encoding='utf-8'))
-        return body
-
-    @classmethod
-    def load_skill_meta(cls, flow_name:str) -> dict:
-        path = cls._resolve_skill_path(flow_name)
-        if path is None:
-            return {}
-        meta, _ = cls._split_frontmatter(path.read_text(encoding='utf-8'))
-        return meta
-
-    @staticmethod
-    def _split_frontmatter(text:str) -> tuple[dict, str]:
-        if not text.startswith('---\n'):
-            return {}, text
-        end = text.find('\n---\n', 4)
-        if end == -1:
-            return {}, text
-        meta = yaml.safe_load(text[4:end]) or {}
-        body = text[end + 5:]
-        return meta, body
+    def load_skill(cls, skill_name:str) -> str:
+        """An agent-level skill body (pex/skills/<skill>.md) — currently only the Workflow Planner."""
+        return (cls._SKILL_DIR / f'{skill_name}.md').read_text(encoding='utf-8')
 
     @staticmethod
     def extract_tool_result(tool_log:list, tool_name:str) -> dict:

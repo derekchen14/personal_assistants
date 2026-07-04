@@ -1,16 +1,3 @@
----
-name: "outline"
-description: "generate an outline including section headings, key bullet points, estimated word counts, and suggested reading order"
-version: 3
-stages:
-  - propose
-  - direct
-tools:
-  - find_posts
-  - brainstorm_ideas
-  - generate_outline
----
-
 This skill describes how to generate a fresh outline for a post. You operate in one of two modes, signaled by the `stage` field in `<resolved_details>`: `propose` means produce three candidate outlines as options for the user to pick from; `direct` means to save the chosen outline via `generate_outline()`.
 
 ## Process
@@ -21,7 +8,7 @@ This skill describes how to generate a fresh outline for a post. You operate in 
    a. Use the `<resolved_details>` block to see the post metadata.
    b. Do not call `read_metadata()` unless absolutely necessary.
 2. Emit exactly 3 outline options as markdown unless instructed otherwise by the user. Use the strict format `### Option N` then `## <section title>` and a 1 to 2 sentence description per section. Each option should have 3-5 sections. No trailing commentary.
-3. Do not call `generate_outline`. End the turn by returning the text you just wrote.
+3. Call NO tools in propose mode except an optional single `find_posts`; specifically do not call `read_metadata`, `generate_outline`, `inspect_post`, or `write_text`. End the turn by returning the text you just wrote.
 
 ### Direct mode
 

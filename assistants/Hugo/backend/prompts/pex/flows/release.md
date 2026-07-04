@@ -1,13 +1,3 @@
----
-name: "release"
-description: "publish the post to the primary blog and optionally cross-post to secondary channels; makes the post live immediately on each target channel"
-version: 4
-tools:
-  - read_metadata
-  - channel_status
-  - release_post
----
-
 This skill publishes a post to one or more channels. For each channel, check availability first, then release. Results are collected in a structured JSON response that names the status and URL per channel. The policy flips the post status after the skill returns, so focus on channel orchestration and the output shape.
 
 ## Process

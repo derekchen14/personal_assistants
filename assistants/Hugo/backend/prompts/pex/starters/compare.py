@@ -4,13 +4,7 @@ Two-post structural comparison. The policy preloads metadata for both posts. Ski
 compare_style + read_section, then narrates differences in 2-3 sentences."""
 
 
-_DIFF_CLAUSE = ' If `Lookback` or `Mapping` is set instead, run a single-post version diff: call `diff_section(post_id, sec_id, lookback=N)` (or `mapping=...`) and narrate what changed between the two versions.'
-
-TEMPLATE_WITH_PREVIEWS = """<task>
-Compare two posts: {post_labels}. Branch on the `Category` in `<resolved_details>`: `inspect` → `inspect_post` per post (numeric metrics); `check` → `read_metadata` per post (status / tags / dates); `tone` → `read_section` per post on a representative section (judge voice from prose). End by narrating the differences in 2-3 sentences, scoped to the chosen category.""" + _DIFF_CLAUSE + """
-</task>
-
-<post_content>
+TEMPLATE_WITH_PREVIEWS = """<post_content>
 {post_previews}
 </post_content>
 
@@ -19,11 +13,7 @@ Compare two posts: {post_labels}. Branch on the `Category` in `<resolved_details
 </resolved_details>"""
 
 
-TEMPLATE_NO_PREVIEWS = """<task>
-Compare two posts. Branch on the `Category` in `<resolved_details>`: `inspect` → `inspect_post` per post; `check` → `read_metadata` per post; `tone` → `read_section` per post on a representative section. End by narrating the differences in 2-3 sentences, scoped to the chosen category.""" + _DIFF_CLAUSE + """
-</task>
-
-<resolved_details>
+TEMPLATE_NO_PREVIEWS = """<resolved_details>
 {parameters}
 </resolved_details>"""
 
@@ -31,19 +21,12 @@ Compare two posts. Branch on the `Category` in `<resolved_details>`: `inspect` �
 def build(flow, resolved:dict, user_text:str) -> str:
     posts = resolved.get('posts') or []
     if posts:
-        labels = ' vs. '.join(_post_label(p) for p in posts[:2])
         previews = '\n\n'.join(_post_preview(p) for p in posts[:2])
         return TEMPLATE_WITH_PREVIEWS.format(
-            post_labels=labels,
             post_previews=previews,
             parameters=_format_parameters(flow),
         )
     return TEMPLATE_NO_PREVIEWS.format(parameters=_format_parameters(flow))
-
-
-def _post_label(post:dict) -> str:
-    title = post.get('title', 'Untitled')
-    return f'"{title}"'
 
 
 def _post_preview(post:dict) -> str:

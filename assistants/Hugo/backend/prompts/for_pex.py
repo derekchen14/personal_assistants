@@ -1,18 +1,18 @@
-"""Skill prompt assembly.
+"""Flow prompt assembly.
 
 Three layers, each owned by a different file:
 
   - System prompt = persona (`general.build_system`) + intent prompt
-    (`pex/sys_prompts.py::PROMPTS[intent]`) + skill body
-    (`pex/skills/<flow>.md`) + closing reminder suffix.
+    (`pex/sys_prompts.py::PROMPTS[intent]`) + ambiguity block + flow prompt
+    (`pex/flows/<flow>.md`) + closing reminder suffix.
 
-  - User message = filled starter (`pex/starters/<flow>.py::build`) +
-    recent conversation + latest utterance.
+  - User message = filled starter (`pex/starters/<flow>.py::build`,
+    runtime parameters + preloaded content) + recent conversation + latest utterance.
 
-  - Per-flow customization lives entirely in the skill file (static
+  - Per-flow customization lives entirely in the flow prompt (static
     behavior) and the starter (runtime parameters with placeholders).
 
-Slot-rendering helpers below are used by starter modules; add new ones
+Slot render helpers below are used by starter modules; add new ones
 here on demand. The helpers are deliberately minimal — most slots
 serialize fine via direct attribute access in the starter template."""
 
@@ -48,31 +48,32 @@ In contrast to semantic mis-understanding, there may also be systemic errors cau
 Use the `handle_ambiguity()` or `execution_error()` tools to signal such issues only after considering all other paths to resolution."""
 
 
-def build_skill_system(base_system:str, flow, skill_prompt:str|None) -> str:
-    """System prompt = persona + intent prompt + ambiguity block + skill body + closing reminder.
+def build_flow_system(base_system:str, flow, flow_prompt:str|None) -> str:
+    """System prompt = persona + intent prompt + ambiguity block + flow prompt + closing reminder.
 
     The slot-7 closing reminder is the shared suffix — it restates the agentic output contract
-    at the highest-recency position. The `--- {Flow_name} Skill Instructions ---` divider keeps
-    the handoff from context to skill body visually obvious."""
+    at the highest-recency position. The `--- {Flow_name} Flow Instructions ---` divider keeps
+    the handoff from context to flow prompt visually obvious."""
     from backend.prompts.pex.sys_prompts import get_intent_prompt
     intent_prompt = get_intent_prompt(flow.intent)
 
     parts = [base_system, '\n\n', intent_prompt, '\n\n', AMBIGUITY_AND_ERRORS]
-    if skill_prompt:
+    if flow_prompt:
         flow_name = flow.name().capitalize()
-        parts.append(f'\n\n--- {flow_name} Skill Instructions ---\n\n{skill_prompt}')
+        parts.append(f'\n\n--- {flow_name} Flow Instructions ---\n\n{flow_prompt}')
     parts.append(f'\n\n{SLOT_7_REMINDER}')
     return ''.join(parts)
 
 
-def build_skill_messages(flow, convo_history:str,
+def build_flow_messages(flow, convo_history:str,
                          user_text:str|None=None,
                          resolved:dict|None=None) -> list[dict]:
     """User message = filled starter + <recent_conversation>.
 
-    The starter owns task framing, preloaded content, and resolved details. Conversation history
-    follows in its own XML tag; the tail of that tag is the latest utterance, so no separate block
-    is emitted. Falls back to a minimal scaffold for flows that don't yet have a starter module."""
+    The starter renders runtime parameters and any preloaded content; task framing now lives in
+    the flow prompt. Conversation history follows in its own XML tag; the tail of that tag is the
+    latest utterance, so no separate block is emitted. Falls back to a minimal scaffold for flows
+    that don't yet have a starter module."""
     starter_text = _render_starter(flow, resolved or {}, user_text or '')
 
     segments = []
@@ -93,18 +94,8 @@ def _render_starter(flow, resolved:dict, user_text:str) -> str:
 
 
 def _default_starter(flow, resolved:dict) -> str:
-    """Generic fallback for flows without a custom starter module.
-
-    Produces the canonical XML shape (<task>, <resolved_details>) so that
-    unmigrated flows still render a consistent prompt. Per-flow starters
-    can override this for shape-specific needs (e.g. <post_content>)."""
-    post_title = resolved.get('post_title', '')
-    title_clause = f' for "{post_title}"' if post_title else ''
-    task = (
-        f'Execute the {flow.name()} skill{title_clause}. '
-        'Follow the Process steps in the skill instructions above. '
-        'Call the task-specific tools in the order they describe.'
-    )
+    """Generic renderer for flows without a custom starter module. Emits only <resolved_details>;
+    task framing lives in the flow prompt."""
     details_lines = []
     for slot_name, slot in flow.slots.items():
         if not slot.check_if_filled():
@@ -119,10 +110,7 @@ def _default_starter(flow, resolved:dict) -> str:
         else:  # single / numeric criteria — to_dict() yields the value / level
             details_lines.append(f'{label}: {slot.to_dict()}')
     details = '\n'.join(details_lines) if details_lines else '(no parameters filled)'
-    return (
-        f'<task>\n{task}\n</task>\n\n'
-        f'<resolved_details>\n{details}\n</resolved_details>'
-    )
+    return f'<resolved_details>\n{details}\n</resolved_details>'
 
 
 def _summarize_entity(val) -> str:

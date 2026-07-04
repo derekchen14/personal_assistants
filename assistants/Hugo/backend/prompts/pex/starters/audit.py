@@ -6,26 +6,10 @@ applies any requested tone shift. The policy snapshots before the skill runs, so
 from backend.prompts.for_pex import render_source, render_checklist
 
 
-TEMPLATE = """<task>
-Audit "{post_title}" for voice + style consistency, then fix it. {tool_sequence}. Rewrite each drifting section with `revise_content` so it reads in the user's voice; apply the `Tone` shift below when present. If the post already reads cleanly, make no edits and say so.
-</task>
-
-<resolved_details>
-{parameters}
-</resolved_details>"""
-
-
 def build(flow, resolved:dict, user_text:str) -> str:
-    tool_sequence = (
-        'Detect with `editor_review` and `inspect_post` by default; only chain `find_posts` + '
-        '`compare_style` when the user asks for comparison against prior posts or `Reference count` is '
-        'shown below. Honor explicit exclusions ("just the editor part", "skip structure")'
-    )
-    return TEMPLATE.format(
-        post_title=resolved.get('post_title', 'this post'),
-        tool_sequence=tool_sequence,
-        parameters=_format_parameters(flow, resolved),
-    )
+    prose = (resolved.get('post_prose') or '').strip()
+    block = f'<post_content>\n{prose}\n</post_content>\n\n' if prose else ''
+    return block + f'<resolved_details>\n{_format_parameters(flow, resolved)}\n</resolved_details>'
 
 
 def _format_parameters(flow, resolved:dict) -> str:

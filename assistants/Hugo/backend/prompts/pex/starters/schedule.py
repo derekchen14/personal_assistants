@@ -4,22 +4,8 @@ Schedules a post for future publication on one or more channels. The
 datetime slot carries `{start, stop, time_len, unit, recurrence}`."""
 
 
-TEMPLATE = """<task>
-Schedule "{post_title}" for {datetime_label} on {channels}. Sequence per channel: `channel_status` → `release_post(scheduled_for=<start>)`. Then `update_post` to persist the schedule on the post. End once every channel is scheduled or has surfaced an error.
-</task>
-
-<resolved_details>
-{parameters}
-</resolved_details>"""
-
-
 def build(flow, resolved:dict, user_text:str) -> str:
-    return TEMPLATE.format(
-        post_title=resolved.get('post_title', 'this post'),
-        datetime_label=_datetime_label(flow),
-        channels=_channel_label(flow),
-        parameters=_format_parameters(flow),
-    )
+    return f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>'
 
 
 def _datetime_label(flow) -> str:

@@ -8,28 +8,12 @@ from backend.prompts.for_pex import (
 )
 
 
-TEMPLATE = """<task>
-Compose prose for sections of "{post_title}". For each in-scope section, call `read_section`, `convert_to_prose`, then `revise_content`. Decide scope from the parameters and the user's latest utterance.
-</task>
-
-<post_content>
-{section_previews}
-</post_content>
-
-<resolved_details>
-{parameters}
-</resolved_details>"""
-
-
 def build(flow, resolved:dict, user_text:str) -> str:
     section_previews = render_section_preview(resolved.get('section_preview') or {})
     if not section_previews:
         section_previews = '(section previews not preloaded — call read_metadata with include_preview=True before composing)'
-    return TEMPLATE.format(
-        post_title=resolved.get('post_title', 'this post'),
-        section_previews=section_previews,
-        parameters=_format_parameters(flow),
-    )
+    return (f'<post_content>\n{section_previews}\n</post_content>\n\n'
+            f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>')
 
 
 def _format_parameters(flow) -> str:

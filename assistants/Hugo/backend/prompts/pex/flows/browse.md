@@ -1,13 +1,3 @@
----
-name: "browse"
-description: "browse posts by tag, topic, or status. Narrates search results; does not modify posts"
-version: 2
-tools:
-  - find_posts
-  - brainstorm_ideas
-  - search_notes
----
-
 This skill narrates a browse result. The policy has already called `find_posts` with the user's tags + target and passed the results below via `<resolved_details>`. Your job is to describe what was found in 1–2 sentences.
 
 ## Process

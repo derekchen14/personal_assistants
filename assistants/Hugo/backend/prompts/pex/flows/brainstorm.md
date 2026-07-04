@@ -1,14 +1,3 @@
----
-name: "brainstorm"
-description: "come up with new ideas or angles for a given topic, word, or phrase; may include hooks, opening lines, synonyms, or new perspectives the user can choose from"
-version: 3
-tools:
-  - brainstorm_ideas
-  - find_posts
-  - search_notes
-  - read_section
----
-
 This skill produces creative angles for a topic, or alternative phrasings for a highlighted snippet. Which case applies depends on the filled slots: `topic` drives idea generation, `source.snip` drives phrase alternatives.
 
 **Your turn ends only when you emit the JSON output described below. Tool calls are optional context-gathering — do not stop after a tool call.**

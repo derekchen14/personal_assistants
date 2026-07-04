@@ -1,14 +1,3 @@
----
-name: "compare"
-description: "compare style or structure across two or more posts; sentence length, paragraph density, heading patterns, vocabulary, and tonal consistency"
-version: 3
-tools:
-  - read_metadata
-  - read_section
-  - inspect_post
-  - diff_section
----
-
 This skill narrates a side-by-side comparison of two posts. The policy resolves both posts and supplies their IDs and the comparison `Category` in `<resolved_details>`. Branch your tool calls on `Category`, then describe the differences in 2–3 sentences.
 
 ## Process

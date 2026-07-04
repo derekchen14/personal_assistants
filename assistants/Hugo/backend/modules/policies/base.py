@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 # action, so each point is an interception hook for an NLU signal (read from belief) or a user
 # interrupt. Three already have bodies elsewhere: pre_tool ← PEX._security_check,
 # verification ← PEX._validate_artifact, tool_retry ← retry_tool. pre_llm/post_llm are wired
-# live in llm_execute; post_tool's body lives in the engineer.tool_call loop (integration point).
+# live in llm_execute; post_tool's body lives in the engineer.flow_execute loop (integration point).
 HOOK_POINTS = ('pre_llm', 'pre_tool', 'post_tool', 'tool_retry', 'post_llm', 'verification')
 
 
@@ -80,7 +80,7 @@ class BasePolicy:
         tool_defs = self._get_tools_fn(flow)
         if exclude_tools:
             tool_defs = [td for td in tool_defs if td['name'] not in exclude_tools]
-        result = self.engineer.tool_call(
+        result = self.engineer.flow_execute(
             flow, convo_history, self.scratchpad.read(),
             tool_defs, tools, resolved=resolved,
             user_text=context.last_user_text,

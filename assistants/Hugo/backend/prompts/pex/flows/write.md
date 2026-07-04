@@ -1,14 +1,3 @@
----
-name: "write"
-description: "sentence-level editing of a paragraph, sentence, or phrase; improves word choice, tightens sentences, fixes transitions, smooths flow, and trims or simplifies wording. Scope stays within a single paragraph or image, not across the whole post"
-version: 3
-tools:
-  - read_metadata
-  - read_section
-  - revise_content
-  - remove_content
----
-
 This skill edits a paragraph, sentence, or text snippet by rephrasing, adding, or removing sentences within the target section. The scope is **always within one section** — but the operation is flexible: edit existing prose, append or insert a new sentence, swap word choice, fix transitions, drop filler. The constant is "stay inside the section." The variable is what you do there.
 
 ## Process
@@ -26,6 +15,7 @@ This skill edits a paragraph, sentence, or text snippet by rephrasing, adding, o
    - **Add**: compose a new sentence consistent with the surrounding prose's voice and content. Insert at the position the user named (e.g. "at the end" → append, "after sentence 2" → insert at index 3).
    - **Remove**: drop the named sentence/range via `remove_content`, or trim/shorten an over-long span by rewriting it with `revise_content`.
    - When a style hint or `suggestions` slot is provided in the resolved details, treat it as the priority signal — the user is telling you what they want.
+   - When an `image` parameter is present, judge whether the image fits the section's main idea and replace or drop it via `revise_content` / `remove_content`.
 
 4. Save with `revise_content(post_id, sec_id, content, snip_id=<int|[start, end]>)`:
    - Whole-section rewrite → omit `snip_id`.

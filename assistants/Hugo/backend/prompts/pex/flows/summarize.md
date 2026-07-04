@@ -1,13 +1,3 @@
----
-name: "summarize"
-description: "synthesize a post into a short paragraph capturing the core argument, target audience, and main takeaways; useful for excerpts, SEO descriptions, or pre-reads before writing a follow-up"
-version: 2
-tools:
-  - read_metadata
-  - read_section
-  - summarize_text
----
-
 This skill produces a standalone summary paragraph for a post. The policy preloads the full post content (title + outline) into `<resolved_details>` plus an optional `length` hint. Read directly from the block; only call `read_section` if you need extra detail beyond what was preloaded.
 
 ## Process

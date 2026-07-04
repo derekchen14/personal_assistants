@@ -231,7 +231,9 @@ class RevisePolicy(BasePolicy):
         if error: return error
 
         self.record_snapshot(self.content, flow, context, post_id)
-        text, tool_log = self.llm_execute(flow, state, context, tools)
+        pre = self._read_post_content(post_id, tools)
+        text, tool_log = self.llm_execute(flow, state, context, tools,
+            extra_resolved={'post_prose': pre.get('content', '')})
         if self.ambiguity.present():
             return TaskArtifact(flow.name())
 

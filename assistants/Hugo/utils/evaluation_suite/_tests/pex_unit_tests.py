@@ -553,18 +553,18 @@ class TestOrchestratorLoop:
             return ('', [])
         monkeypatch.setattr(engineer, '_model_family', lambda model: 'claude')
         monkeypatch.setattr(engineer, '_call_claude_with_tools', fake_call)
-        engineer.tool_call(flow_classes['audit'](), '', {}, [], None, skill_prompt='')
-        engineer.tool_call(flow_classes['find'](), '', {}, [], None, skill_prompt='')
+        engineer.flow_execute(flow_classes['audit'](), '', {}, [], None, flow_prompt='')
+        engineer.flow_execute(flow_classes['find'](), '', {}, [], None, flow_prompt='')
         assert captured == [16, 8]  # extended cap for audit, base cap for find
 
-    def test_skill_call_honors_model_tier(self, engineer, monkeypatch):
-        """skill_call routes its per-call model tier to _resolve_model, defaulting to 'med'."""
+    def test_flow_reply_honors_model_tier(self, engineer, monkeypatch):
+        """flow_reply routes its per-call model tier to _resolve_model, defaulting to 'med'."""
         seen = []
         monkeypatch.setattr(engineer, '_resolve_model', lambda model: seen.append(model))
         monkeypatch.setattr(engineer, '_model_family', lambda model: 'gemini')
         monkeypatch.setattr(engineer, '_call_gemini', lambda *args, **kwargs: '')
-        engineer.skill_call(flow_classes['find'](), '', {}, skill_prompt='', model='high')
-        engineer.skill_call(flow_classes['find'](), '', {}, skill_prompt='')
+        engineer.flow_reply(flow_classes['find'](), '', {}, flow_prompt='', model='high')
+        engineer.flow_reply(flow_classes['find'](), '', {}, flow_prompt='')
         assert seen == ['high', 'med']  # explicit tier honored, then the default
 
     def test_recovery_keys_collapsed(self):
@@ -1644,17 +1644,16 @@ from pathlib import Path as _Path
 
 from backend.components.prompt_engineer import _TASK_SUFFIXES
 from backend.prompts import general
-from backend.prompts.for_pex import build_skill_system
+from backend.prompts.for_pex import build_flow_system
 
-_SKILL_DIR = _Path(__file__).resolve().parents[3] / 'backend' / 'prompts' / 'pex' / 'skills'
+_FLOW_DIR = _Path(__file__).resolve().parents[3] / 'backend' / 'prompts' / 'pex' / 'flows'
 _TOOLS_YAML = _Path(__file__).resolve().parents[3] / 'schemas' / 'tools.yaml'
-_PEX_AGENT_SKILLS = {'plan'}  # plan = Workflow Planner (orchestrator skill)
 _COMPONENT_TOOLS = {'handle_ambiguity', 'coordinate_context', 'manage_memory',
                     'call_flow_stack', 'execution_error', 'save_findings'}
 
 
-def _skill_files():
-    return sorted(p.stem for p in _SKILL_DIR.glob('*.md'))
+def _flow_files():
+    return sorted(p.stem for p in _FLOW_DIR.glob('*.md'))
 
 
 def _yaml_tools():
@@ -1666,35 +1665,17 @@ def _few_shot_tool_calls(body):
     return set(_re.findall(r'`([a-z][a-z0-9_]+)\(', body[idx:])) if idx != -1 else set()
 
 
-def test_skill_tools_match_flow():
-    """Every skill .md's declared `tools:` frontmatter matches its flow.tools (PEX-agent skills:
-    only registered tools). Loops all skills."""
-    yaml_tools = _yaml_tools()
-    bad = []
-    for skill in _skill_files():
-        declared = list(PromptEngineer.load_skill_meta(skill).get('tools') or [])
-        if skill in _PEX_AGENT_SKILLS:
-            unknown = [t for t in declared if t not in yaml_tools and t not in _COMPONENT_TOOLS]
-            if unknown:
-                bad.append((skill, 'unregistered', unknown))
-        elif skill not in flow_classes:
-            bad.append((skill, 'orphan-skill', None))
-        elif declared != list(flow_classes[skill]().tools):
-            bad.append((skill, declared, list(flow_classes[skill]().tools)))
-    assert not bad, f'skill tools != flow.tools: {bad}'
-
-
 def test_few_shot_tools_are_allowlisted():
-    """Every tool referenced in a skill's `## Few-shot` block is in that flow.tools or is a
-    component tool. Loops all skill/flow pairs."""
+    """Every tool referenced in a flow's `## Few-shot` block is in that flow.tools or is a
+    component tool. Loops all flow files."""
     bad = []
-    for skill in _skill_files():
-        if skill not in flow_classes:
+    for flow in _flow_files():
+        if flow not in flow_classes:
             continue
-        allowed = set(flow_classes[skill]().tools) | _COMPONENT_TOOLS
-        unknown = _few_shot_tool_calls(PromptEngineer.load_skill_template(skill) or '') - allowed
+        allowed = set(flow_classes[flow]().tools) | _COMPONENT_TOOLS
+        unknown = _few_shot_tool_calls(PromptEngineer.load_flow_prompt(flow)) - allowed
         if unknown:
-            bad.append((skill, sorted(unknown)))
+            bad.append((flow, sorted(unknown)))
     assert not bad, f'few-shot tools not in flow.tools/component: {bad}'
 
 
@@ -1706,16 +1687,16 @@ def test_flow_tools_are_registered():
     assert not bad, f'flow.tools with no tools.yaml def: {bad}'
 
 
-def test_loader_strips_frontmatter():
-    body = PromptEngineer.load_skill_template('outline')
-    assert body is not None and not body.startswith('---') and '## Process' in body
+def test_loader_reads_flow_prompt():
+    body = PromptEngineer.load_flow_prompt('outline')
+    assert body and not body.startswith('---') and '## Process' in body
 
 
 def test_skill_system_ends_with_reminder():
     """The agentic reminder closes every assembled sub-agent system prompt, with or without a body."""
     flow = flow_classes['outline']()
-    for skill_prompt in ('skill body', None):
-        assert build_skill_system('base', flow, skill_prompt).endswith(general.SLOT_7_REMINDER)
+    for flow_prompt in ('flow body', None):
+        assert build_flow_system('base', flow, flow_prompt).endswith(general.SLOT_7_REMINDER)
 
 
 def test_reminder_is_agentic():

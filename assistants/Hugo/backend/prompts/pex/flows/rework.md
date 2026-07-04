@@ -1,15 +1,3 @@
----
-name: "rework"
-description: "major revision of draft content; restructures arguments, replaces weak sections, weaves in itemized suggestions. Operates across more than one section, up to the whole post. For paragraph-level edits use write."
-version: 4
-tools:
-  - read_metadata
-  - read_section
-  - revise_content
-  - insert_section
-  - remove_content
----
-
 This skill describes how to rework a blog post given user-supplied items: a list of `suggestions`, an explicit `remove`, or both. The post's current prose is preloaded in the `<post_preview>` block, so use it as your starting view.
 
 ## Process

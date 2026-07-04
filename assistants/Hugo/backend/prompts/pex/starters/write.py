@@ -6,31 +6,8 @@ style from the existing prose. Image edits are also supported via the image slot
 from backend.prompts.for_pex import render_source, render_freetext
 
 
-TEMPLATE = """<task>
-Edit the named span in "{post_title}". {tool_sequence}. End once `revise_content` saves the edited section.
-</task>
-
-<resolved_details>
-{parameters}
-</resolved_details>"""
-
-
 def build(flow, resolved:dict, user_text:str) -> str:
-    has_style_notes = flow.slots['style_notes'].check_if_filled()
-    has_image = flow.slots['image'].check_if_filled()
-
-    if has_image:
-        tool_sequence = "Read the section, assess the image vs. the section's main idea, propose a replacement via `revise_content` if needed"
-    elif has_style_notes:
-        tool_sequence = 'Read the section, rewrite the named span to the requested style (style_notes overrides current register), save via `revise_content`'
-    else:
-        tool_sequence = 'Read the section, tighten sentences and word choice within the named span, save via `revise_content`'
-
-    return TEMPLATE.format(
-        post_title=resolved.get('post_title', 'this post'),
-        tool_sequence=tool_sequence,
-        parameters=_format_parameters(flow),
-    )
+    return f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>'
 
 
 def _format_parameters(flow) -> str:
