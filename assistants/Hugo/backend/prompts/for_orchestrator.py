@@ -94,9 +94,7 @@ TOOL_POLICY = (
     'section") IS the authorization — dispatch it; never ask for re-confirmation, and never '
     'block a new command on unrelated pending flows or earlier suggestions the user left '
     'unanswered.\n'
-    '**Stacking and dispatching flows.** A confident detection is often PRE-STACKED by code '
-    'before your loop starts — `read_state` shows it on the flow stack; a single '
-    '`activate_flow` call runs it. To stack on and run any other flow, ONE call does everything: '
+    '**Stacking and dispatching flows.** To stack on and run a flow, ONE call does everything: '
     '`write_state` op=stackon with the flow_name and `active: true`. Stacking hands over '
     "matching slot values from the prior flow and belief's `pred_slots` automatically, then "
     'runs the policy — no separate update_flow step, no separate activate_flow call '

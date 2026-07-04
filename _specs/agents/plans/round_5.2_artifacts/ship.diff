@@ -1,0 +1,829 @@
+diff --git a/assistants/Hugo/backend/agent.py b/assistants/Hugo/backend/agent.py
+index 1df520c..266f150 100644
+--- a/assistants/Hugo/backend/agent.py
++++ b/assistants/Hugo/backend/agent.py
+@@ -78,7 +78,6 @@ class Agent:
+             thread.start()
+         else:                            # utterance, no active entity: think, awaited
+             self.nlu.understand(op='think', user_text=text, payload=payload)
+-            self.pex.prestack(state)     # fix 1 B: belief is fresh only on this awaited path
+ 
+         utterance = self.pex.execute(state, self.world.context, self.system_prompt,
+                                      dax=dax, payload=payload, text=text, nlu_thread=thread)
+@@ -111,6 +110,7 @@ class Agent:
+         self.world.context.add_turn('Agent', utterance, turn_type='utterance')
+         state = self.world.current_state()
+         state.turn_count += 1
++        state.flow_stack = self.pex.flow_stack.to_list()  # refresh the saved copy, then save
+         state.save(self.world.state_file())  # _ensure_session guarantees a bound session
+         self._compression_check()
+         log.info('AGENT: %s', utterance[:256])
+diff --git a/assistants/Hugo/backend/components/dialogue_state.py b/assistants/Hugo/backend/components/dialogue_state.py
+index bf83af7..1562e23 100644
+--- a/assistants/Hugo/backend/components/dialogue_state.py
++++ b/assistants/Hugo/backend/components/dialogue_state.py
+@@ -1,7 +1,7 @@
+ import json
+ from pathlib import Path
+ 
+-from backend.components.flow_stack import FlowStack, flow_classes
++from backend.components.flow_stack import flow_classes
+ from utils.helper import dax2flow
+ 
+ GROUNDING_PARTS = ('post', 'sec', 'snip', 'chl', 'ver')
+@@ -12,7 +12,7 @@ _GROUNDED_SLOT_TYPES = ('source', 'target', 'removal', 'channel')
+ 
+ def normalize_slot_values(flow, slots:dict) -> dict:
+     """Coerce LLM-authored write_state slot values into the flow's fill_slot_values
+-    vocabulary (tool arguments are genuinely unpredictable input).
++    vocabulary (tool arguments are unpredictable input).
+     Multi-value slots accept a bare item in place of a list; checklist items may arrive as
+     plain step names; source-family items may arrive as bare post references. Unknown slot
+     names pass through untouched (fill_slot_values ignores them); PEX rejects them with a
+@@ -36,7 +36,8 @@ def rehydrate_flow(entry:dict):
+     """Rebuild a BaseFlow from one flow_stack entry of the state file:
+     instantiate from flow_classes, restore the lifecycle fields, then refill slots through
+     the flow's own fill_slot_values so BaseFlow.to_dict / Slot.to_dict stays the single
+-    round-trip vocabulary."""
++    round-trip vocabulary. Used at session load (World.open_session) and in serialization
++    round-trip tests."""
+     flow = flow_classes[entry['flow_name']]()
+     flow.flow_id = entry['flow_id']
+     flow.status = entry['status']
+@@ -71,7 +72,7 @@ class DialogueState:
+         self.rejected: list = []
+         self.workflow_step: int = 0
+         self.grounding: dict = {'post': '', 'sec': '', 'snip': '', 'chl': '', 'ver': False}
+-        self.flow_stack: list[dict] = []
++        self.flow_stack: list[dict] = []  # saved copy of the FlowStack component (see write_state)
+ 
+     def flow_name(self, string=False):
+         if string:
+@@ -157,23 +158,30 @@ class DialogueState:
+         """The read_state tool surface: user beliefs, grounding, flow stack, and flags."""
+         return self.serialize_session()
+ 
+-    def write_state(self, path, op, **kwargs) -> dict:
++    def write_state(self, path, op, stack=None, **kwargs) -> dict:
+         """The write_state tool surface — the ONLY writer of state.json. Ops:
+         'update'        mutate user-belief / grounding / flag fields (kwargs = fields),
+-        'update_flow'   mutate the top stack flow (slots= / stage= / status=; completion
+-                        is grounding-validated),
++        'update_flow'   mutate the top flow of the live stack (slots= / stage= / status=;
++                        completion is grounding-validated),
+         'stackon'       push flow_name= with FlowStack semantics,
+         'fallback'      replace the top flow with flow_name=,
+         'pop_completed' remove Completed/Invalid flows, activating the next Pending one.
+-        Every op mutates the rehydrated stack or the state fields, then saves exactly once."""
++        `stack` is the FlowStack component — the one flow stack. Stack ops mutate it directly;
++        self.flow_stack is only a saved copy, refreshed from stack.to_list() before the save."""
+         if op == 'update':
+             self._apply_update(kwargs)
+         elif op == 'update_flow':
+-            self._update_flow(kwargs)
+-        elif op in ('stackon', 'fallback', 'pop_completed'):
+-            self._run_stack_op(op, kwargs)
++            self._update_flow(stack, kwargs)
++        elif op == 'stackon':
++            stack.stackon(kwargs['flow_name'])
++        elif op == 'fallback':
++            stack.fallback(kwargs['flow_name'])
++        elif op == 'pop_completed':
++            stack.pop_completed()
+         else:
+             raise ValueError(f'Unknown write_state op: {op!r}')
++        if stack is not None:
++            self.flow_stack = stack.to_list()
+         self.save(path)
+         return self.serialize_session()
+ 
+@@ -191,34 +199,17 @@ class DialogueState:
+             else:
+                 raise KeyError(f'write_state update does not accept field {key!r}')
+ 
+-    def _update_flow(self, fields:dict):
+-        stack = self._rehydrate_stack()
++    def _update_flow(self, stack, fields:dict):
+         flow = stack.peek()
++        if 'status' in fields:  # validate first — a rejected write must not mutate the live flow
++            self._check_grounding(flow, fields['status'])
+         if 'slots' in fields:
+             flow.fill_slot_values(normalize_slot_values(flow, fields['slots']))
+             flow.is_filled()
+         if 'stage' in fields:
+             flow.stage = fields['stage']
+         if 'status' in fields:
+-            self._check_grounding(flow, fields['status'])
+             flow.status = fields['status']
+-        self.flow_stack = stack.to_list()
+-
+-    def _run_stack_op(self, op:str, kwargs:dict):
+-        stack = self._rehydrate_stack()
+-        if op == 'stackon':
+-            stack.stackon(kwargs['flow_name'])
+-        elif op == 'fallback':
+-            stack.fallback(kwargs['flow_name'])
+-        else:
+-            stack.pop_completed()
+-        self.flow_stack = stack.to_list()
+-
+-    def _rehydrate_stack(self) -> FlowStack:
+-        """Load the flow_stack block into a live FlowStack (load → mutate → save)."""
+-        stack = FlowStack({}, flow_classes=flow_classes)
+-        stack._stack = [rehydrate_flow(entry) for entry in self.flow_stack]
+-        return stack
+ 
+     def _check_grounding(self, flow, status:str):
+         """An entity-grounded flow cannot reach Completed while grounding.post is
+diff --git a/assistants/Hugo/backend/components/flow_stack/stack.py b/assistants/Hugo/backend/components/flow_stack/stack.py
+index f905294..b2afb0c 100644
+--- a/assistants/Hugo/backend/components/flow_stack/stack.py
++++ b/assistants/Hugo/backend/components/flow_stack/stack.py
+@@ -106,7 +106,7 @@ class FlowStack:
+         flow = cls()
+         flow.flow_id = str(uuid4())[:8]
+         # Pushed flows wait as Pending (the user 2026-07-03) — activation promotes to Active
+-        # (activate_flow via _stack_flow, or pop_completed surfacing the next top).
++        # (activate_flow, or pop_completed surfacing the next top).
+         flow.status = FlowLifecycle.PENDING.value
+         self._stack.append(flow)
+         return flow
+diff --git a/assistants/Hugo/backend/components/world.py b/assistants/Hugo/backend/components/world.py
+index 72e55a4..bb378f7 100644
+--- a/assistants/Hugo/backend/components/world.py
++++ b/assistants/Hugo/backend/components/world.py
+@@ -1,7 +1,7 @@
+ import shutil
+ from pathlib import Path
+ 
+-from backend.components.dialogue_state import DialogueState
++from backend.components.dialogue_state import DialogueState, rehydrate_flow
+ from backend.components.task_artifact import TaskArtifact
+ from backend.components.flow_stack import FlowStack, flow_classes
+ from backend.components.context_coordinator import ContextCoordinator
+@@ -47,15 +47,17 @@ class World:
+     # ── Session-dir lifecycle ─────
+ 
+     def open_session(self, conversation_id:str) -> DialogueState | None:
+-        """Bind this World to a session. An existing dir rehydrates its state.json as the
+-        current state and its messages.jsonl as the persistent message list; a fresh id
+-        defers dir creation to session_dir() (lazy, first turn)."""
++        """Bind this World to a session. An existing dir reloads its state.json as the current
++        state and rebuilds the flow stack from it; messages.jsonl is attached as the persistent
++        message list; a fresh id defers dir creation to session_dir() (lazy, first turn)."""
+         self.conversation_id = conversation_id
+         session_path = _SESSIONS_DIR / conversation_id
+         self.context.attach_messages(session_path / 'messages.jsonl')
+         state_file = session_path / 'state.json'
+         if state_file.exists():
+-            return self.insert_state(DialogueState.load(state_file))
++            state = self.insert_state(DialogueState.load(state_file))
++            self.flow_stack._stack = [rehydrate_flow(entry) for entry in state.flow_stack]
++            return state
+         return None
+ 
+     def session_dir(self) -> Path:
+diff --git a/assistants/Hugo/backend/modules/pex.py b/assistants/Hugo/backend/modules/pex.py
+index cc84bf4..1809e3a 100644
+--- a/assistants/Hugo/backend/modules/pex.py
++++ b/assistants/Hugo/backend/modules/pex.py
+@@ -4,7 +4,6 @@ from dataclasses import dataclass
+ from types import MappingProxyType
+ 
+ from backend.components.task_artifact import TaskArtifact
+-from backend.components.dialogue_state import rehydrate_flow
+ 
+ from backend.utilities.services import (
+     PostService, ContentService, AnalysisService, PlatformService,
+@@ -426,7 +425,7 @@ class PEX:
+         return corrective errors instead of dispatching. Everything else routes through
+         `_dispatch_tool`, which already converts bad args into corrective tool errors the model
+         can retry on. These guards are the legitimate exception to the no-defensive-code rule —
+-        LLM output is genuinely unpredictable input.
++        LLM output is unpredictable input.
+ 
+         `last_call` is (name+args key, succeeded). Dedupe only fires when the previous identical
+         call SUCCEEDED — retrying the same call after a transient tool error (server_error from
+@@ -595,7 +594,9 @@ class PEX:
+ 
+     def read_state(self, params:dict) -> dict:
+         self._check_nlu()
+-        return {'_success': True, 'state': self.world.current_state().read_state()}
++        state = self.world.current_state()
++        state.flow_stack = self.flow_stack.to_list()  # saved copy tracks the one stack
++        return {'_success': True, 'state': state.read_state()}
+ 
+     def _dispatch_write_state(self, params:dict) -> dict:
+         state = self.world.current_state()
+@@ -603,24 +604,14 @@ class PEX:
+         if 'flow_name' in params:
+             kwargs['flow_name'] = params['flow_name']
+         if params['op'] == 'update_flow' and 'slots' in kwargs:
+-            top = rehydrate_flow(state.flow_stack[-1])
++            top = self.flow_stack.peek()
+             unknown = [name for name in kwargs['slots'] if name not in top.slots]
+             if unknown:  # corrective error — fill_slot_values would drop these silently
+                 return {'_success': False, '_error': 'invalid_input',
+                         '_message': f'flow {top.name()!r} has no slot(s) {unknown}; '
+                                     f'valid slots: {list(top.slots)}'}
+-        document = state.write_state(self.world.state_file(), params['op'], **kwargs)
+-        # Mirror every stack op onto the FlowStack component: complete_flow and the last lines of
+-        # activate_flow copy the component's stack back into state.flow_stack, so an entry that
+-        # exists only in state.json is wiped on the next completion — losing a plan's Pending
+-        # flows (code review 2026-07-04). pop_completed's mirror predates this; stackon/fallback
+-        # gained theirs from the same root cause.
+-        if params['op'] == 'pop_completed':
+-            self.flow_stack.pop_completed()
+-        elif params['op'] == 'stackon':
+-            self.flow_stack.stackon(kwargs['flow_name'])
+-        elif params['op'] == 'fallback':
+-            self.flow_stack.fallback(kwargs['flow_name'])
++        document = state.write_state(self.world.state_file(), params['op'],
++                                     stack=self.flow_stack, **kwargs)
+         if params['op'] == 'stackon' and params.get('active'):
+             # Single-call stack-on (the user 2026-07-03): stackon handed over matching slots; fold
+             # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
+@@ -631,15 +622,16 @@ class PEX:
+         return {'_success': True, 'state': document}
+ 
+     def _apply_belief_slots(self, state, flow_name:str):
+-        """Fold belief's `pred_slots` into the just-stacked flow entry when NLU's detection is
+-        this same flow — the code-side replacement for the recipe's update_flow step."""
++        """Fold belief's `pred_slots` into the just-stacked flow when NLU's detection is this
++        same flow — the code-side replacement for the recipe's update_flow step."""
+         if not state.pred_flows or state.pred_flows[0]['flow_name'] != flow_name:
+             return
+-        top = rehydrate_flow(state.flow_stack[-1])
++        top = self.flow_stack.peek()
+         slots = {name: value for name, value in state.pred_slots.items()
+                  if name in top.slots and value}
+         if slots:
+-            state.write_state(self.world.state_file(), 'update_flow', slots=slots)
++            state.write_state(self.world.state_file(), 'update_flow',
++                              stack=self.flow_stack, slots=slots)
+ 
+     def inject_belief_state(self) -> str | None:
+         """Once per turn, format NLU's landed detection as a `[belief]` note for the orchestrator
+@@ -663,30 +655,14 @@ class PEX:
+                 and state.pred_intent in ('Research', 'Draft', 'Revise', 'Publish')
+                 and state.pred_intent != active.intent):
+             old_name = active.name()
+-            state.write_state(self.world.state_file(), 'fallback', flow_name=top['flow_name'])
++            state.write_state(self.world.state_file(), 'fallback',
++                              stack=self.flow_stack, flow_name=top['flow_name'])
+             self._apply_belief_slots(state, top['flow_name'])
+-            self.flow_stack.fallback(top['flow_name'])  # live-stack mirror: old → Invalid, new Active
+             note += (f" Intent changed: I dropped {old_name} (Invalid) and swapped in "
+                      f"{top['flow_name']} for the detected {state.pred_intent} intent — run it "
+                      f"with activate_flow.")
+         return note
+ 
+-    def prestack(self, state) -> bool:
+-        """Fix 1 Option B: stack NLU's confident single-flow detection in code, so the loop
+-        starts with the flow on the stack and its first useful move is activate_flow. Callers invoke
+-        this ONLY where belief is fresh (the awaited think path — the parallel-think path
+-        reaches PEX before this turn's detection lands). Plan / Converse turns stay the
+-        orchestrator's call, and a low-confidence detection has already declared ambiguity."""
+-        if self.ambiguity.present() or not state.pred_flows:
+-            return False
+-        if state.pred_intent not in ('Research', 'Draft', 'Revise', 'Publish'):
+-            return False
+-        flow_name = state.pred_flows[0]['flow_name']
+-        state.write_state(self.world.state_file(), 'stackon', flow_name=flow_name)
+-        self.flow_stack.stackon(flow_name)  # live-stack mirror — same wipe risk as write_state
+-        self._apply_belief_slots(state, flow_name)
+-        return True
+-
+     def activate_flow(self, params:dict) -> dict:
+         """Run the named flow's policy inline — the delegate_task analogue. Grounding comes
+         from the state file's grounding block; _security_check and _validate_artifact re-attach
+@@ -695,7 +671,9 @@ class PEX:
+         write_state."""
+         self._check_nlu(wait=False)  # flow execution never blocks on NLU — only Plan/Clarify wait
+         state = self.world.current_state()
+-        flow = self._stack_flow(state, params['flow_name'])
++        name = params['flow_name']
++        flow = self.flow_stack.find_by_name(name) or self.flow_stack.stackon(name)
++        flow.status = 'Active'  # pushes wait as Pending; running the policy promotes
+ 
+         # hook: pre-flow
+         approval = self._security_check(flow)
+@@ -732,36 +710,6 @@ class PEX:
+             record = self.scratchpad.write_completion(flow.name(), summary, metadata=artifact.data)
+         return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
+ 
+-    def _stack_flow(self, state, flow_name:str):
+-        """Make the named flow the live top-of-stack for the policy run, rehydrating it
+-        from the state file's flow_stack block when an entry exists.
+-        A live flow stacked on an earlier turn gets the entry's slot fills layered on —
+-        write_state slot fills land in the state file, so the entry is authoritative for
+-        slots while the live flow keeps policy-side attributes the file does not carry."""
+-        live = self.flow_stack.find_by_name(flow_name)
+-        if live and live.status in ('Completed', 'Invalid'):
+-            # A finished run of this flow is history, never a stack-on target: refilling it
+-            # would APPEND this turn's entity onto last turn's SourceSlot values and the
+-            # policy would ground on the stale first entry (the grounding-switch bug).
+-            live = None
+-        entry = next((item for item in reversed(state.flow_stack)
+-                      if item['flow_name'] == flow_name
+-                      and item['status'] not in ('Completed', 'Invalid')), None)
+-        if live:
+-            if entry:
+-                live.fill_slot_values(entry['slots'])
+-                live.is_filled()
+-            live.status = 'Active'  # pushes wait as Pending; running the policy promotes
+-            return live
+-        if entry is None:
+-            flow = self.flow_stack.stackon(flow_name)
+-            flow.status = 'Active'
+-            return flow
+-        flow = rehydrate_flow(entry)
+-        flow.status = 'Active'
+-        self.flow_stack._stack.append(flow)
+-        return flow
+-
+     def _dispatch_append_scratchpad(self, params:dict) -> dict:
+         self.scratchpad.write(params['entry'])  # `writer` stamped by code
+         return {'_success': True, 'size': self.scratchpad.size}
+diff --git a/assistants/Hugo/backend/modules/policies/base.py b/assistants/Hugo/backend/modules/policies/base.py
+index b9d23f1..edfc93e 100644
+--- a/assistants/Hugo/backend/modules/policies/base.py
++++ b/assistants/Hugo/backend/modules/policies/base.py
+@@ -9,10 +9,10 @@ from backend.utilities.services import ToolService
+ log = logging.getLogger(__name__)
+ 
+ # The six sub-agent hook points (pex.md). A policy runs a sub-agent that can take destructive
+-# action, so each point is an interception seam for an NLU signal (read from belief) or a user
++# action, so each point is an interception hook for an NLU signal (read from belief) or a user
+ # interrupt. Three already have bodies elsewhere: pre_tool ← PEX._security_check,
+ # verification ← PEX._validate_artifact, tool_retry ← retry_tool. pre_llm/post_llm are wired
+-# live in llm_execute; post_tool's body lives in the engineer.tool_call loop (integration seam).
++# live in llm_execute; post_tool's body lives in the engineer.tool_call loop (integration point).
+ HOOK_POINTS = ('pre_llm', 'pre_tool', 'post_tool', 'tool_retry', 'post_llm', 'verification')
+ 
+ 
+@@ -103,7 +103,7 @@ class BasePolicy:
+ 
+         post = {}
+         if meta['_success']:
+-            # Strip the hidden-section sentinel heading so prose-only posts display cleanly without the marker
++            # Strip the hidden-section marker heading so prose-only posts display cleanly without the marker
+             content = re.sub(r'^## _hidden_section_title\n', '', meta['outline'], flags=re.M)
+             post = {'post_id': post_id, 'title': meta['title'], 'status': meta['status'], 'content': content}
+         return post
+@@ -225,15 +225,16 @@ class BasePolicy:
+         """The single call a policy makes at the moment its flow finishes. The status change goes
+         through write_state op='update_flow' (so the grounding validation fires and state.json is
+         rewritten) and the completion record {flow, summary, metadata} is appended to the session
+-        scratchpad; activate_flow collects it via pop_completion and returns it as the tool result.
+-        Call it before stacking any follow-up flow — the completing flow must be top of stack."""
+-        state.flow_stack = self.flow_stack.to_list()  # live stack → block so write_state sees it
+-        if state.flow_stack[-1]['flow_id'] != flow.flow_id:
++        scratchpad; activate_flow collects it via pop_completion and returns it as the tool
++        result. Call it before stacking any follow-up flow — the completing flow must be top of
++        stack."""
++        if self.flow_stack.peek().flow_id != flow.flow_id:
+             raise ValueError(f'complete_flow: {flow.name()!r} is not top of stack — finish or '
+                              f'pop the flows above it first')
+-        state.write_state(self._state_file(), 'update_flow', status='Completed')
+-        flow.status = 'Completed'  # mirror onto the live flow object
+-        self._completion = self.scratchpad.write_completion(flow.name(), summary, metadata=metadata)
++        state.write_state(self._state_file(), 'update_flow', stack=self.flow_stack,
++                          status='Completed')
++        self._completion = self.scratchpad.write_completion(flow.name(), summary,
++                                                            metadata=metadata)
+         return self._completion
+ 
+     def pop_completion(self) -> dict|None:
+diff --git a/assistants/Hugo/backend/prompts/for_orchestrator.py b/assistants/Hugo/backend/prompts/for_orchestrator.py
+index a7bd468..48f756d 100644
+--- a/assistants/Hugo/backend/prompts/for_orchestrator.py
++++ b/assistants/Hugo/backend/prompts/for_orchestrator.py
+@@ -94,9 +94,7 @@ TOOL_POLICY = (
+     'section") IS the authorization — dispatch it; never ask for re-confirmation, and never '
+     'block a new command on unrelated pending flows or earlier suggestions the user left '
+     'unanswered.\n'
+-    '**Stacking and dispatching flows.** A confident detection is often PRE-STACKED by code '
+-    'before your loop starts — `read_state` shows it on the flow stack; a single '
+-    '`activate_flow` call runs it. To stack on and run any other flow, ONE call does everything: '
++    '**Stacking and dispatching flows.** To stack on and run a flow, ONE call does everything: '
+     '`write_state` op=stackon with the flow_name and `active: true`. Stacking hands over '
+     "matching slot values from the prior flow and belief's `pred_slots` automatically, then "
+     'runs the policy — no separate update_flow step, no separate activate_flow call '
+diff --git a/assistants/Hugo/utils/evaluation_suite/_tests/mem_unit_tests.py b/assistants/Hugo/utils/evaluation_suite/_tests/mem_unit_tests.py
+index 4003fc7..87edc90 100644
+--- a/assistants/Hugo/utils/evaluation_suite/_tests/mem_unit_tests.py
++++ b/assistants/Hugo/utils/evaluation_suite/_tests/mem_unit_tests.py
+@@ -282,8 +282,11 @@ def _session_state() -> DialogueState:
+     state.rejected = ['listicle format']
+     state.workflow_step = 4
+     state.grounding = {'post': 'p1', 'sec': 'intro', 'snip': '', 'chl': 'substack', 'ver': True}
+-    state.flow_stack = [{'name': 'compose', 'status': 'Active', 'stage': 'writing',
+-                         'slots': {'source': {'post': 'p1'}}}]
++    state.flow_stack = [{'flow_id': 'compose01', 'flow_name': 'compose', 'dax': '{3AD}',
++                         'intent': 'Draft', 'status': 'Active', 'stage': 'writing',
++                         'slots': {'source': [{'post': 'p1', 'sec': '', 'snip': '',
++                                               'chl': '', 'ver': False}]},
++                         'turn_ids': []}]
+     return state
+ 
+ 
+@@ -491,13 +494,26 @@ class TestMessageList:
+         world.open_session('convo-42')
+         assert world.context.messages == _tool_call_messages()
+ 
++    def test_open_session_rebuilds_flow_stack(self, sessions_dir, minimal_config):
++        stack = FlowStack({}, flow_classes=flow_classes)
++        state = DialogueState(intent='Draft', dax=None, turn_count=1)
++        state.conversation_id = 'convo-43'
++        (sessions_dir / 'convo-43').mkdir(parents=True)
++        state.write_state(sessions_dir / 'convo-43' / 'state.json', 'stackon',
++                          stack=stack, flow_name='outline')
++        world = World(minimal_config)
++        world.open_session('convo-43')
++        top = world.flow_stack.peek()
++        assert top.flow_type == 'outline' and top.status == 'Pending'
++        assert top.flow_id == stack.peek().flow_id
++
+ 
+ # ═══════════════════════════════════════════════════════════════════
+ # write_state ops + flow rehydration (changes.md §4.1, §5.2, §6)
+ # ═══════════════════════════════════════════════════════════════════
+ 
+ from backend.components.dialogue_state import rehydrate_flow
+-from backend.components.flow_stack import FlowStack
++from backend.components.flow_stack import FlowStack, flow_classes
+ 
+ 
+ 
+diff --git a/assistants/Hugo/utils/evaluation_suite/_tests/nlu_unit_tests.py b/assistants/Hugo/utils/evaluation_suite/_tests/nlu_unit_tests.py
+index 7fac98f..afd4e72 100644
+--- a/assistants/Hugo/utils/evaluation_suite/_tests/nlu_unit_tests.py
++++ b/assistants/Hugo/utils/evaluation_suite/_tests/nlu_unit_tests.py
+@@ -480,13 +480,6 @@ class TestSessionStateFile:
+ 
+ 
+ 
+-def _without_ids(entries:list) -> list:
+-    """Stack entries minus the random flow_id, for cross-implementation comparison."""
+-    return [{key: val for key, val in entry.items() if key != 'flow_id'} for entry in entries]
+-
+-
+-
+-
+ def _ops_state() -> DialogueState:
+     state = DialogueState(intent='Draft', dax=None, turn_count=1)
+     state.conversation_id = 'convo-ops'
+@@ -496,7 +489,8 @@ def _ops_state() -> DialogueState:
+ 
+ 
+ class TestWriteStateOps:
+-    """write_state is the only writer of state.json; flow-stack ops are write_state ops."""
++    """write_state is the only writer of state.json; stack ops mutate the FlowStack passed in as
++    `stack` and refresh the saved copy."""
+ 
+     def test_read_state_returns_document(self):
+         document = _ops_state().read_state()
+@@ -523,49 +517,42 @@ class TestWriteStateOps:
+             state.write_state(path, 'update', grounding={'version': 2})
+         assert not path.exists()  # rejected ops never reach save()
+ 
+-    def test_op_sequence_matches_in_memory_flowstack(self, tmp_path):
+-        """Equivalence: the same stackon/fill/fallback/complete/pop sequence on the
+-        in-memory FlowStack and on the file-backed write_state yields the same stack."""
++    def test_op_sequence_keeps_saved_copy_current(self, tmp_path):
++        """The stackon/fill/fallback/complete/pop sequence run through write_state keeps the
++        saved copy and the file in step with the one flow stack."""
+         path = tmp_path / 'state.json'
+         state = _ops_state()
+         stack = FlowStack({}, flow_classes=flow_classes)
+ 
+-        state.write_state(path, 'stackon', flow_name='outline')
+-        stack.stackon('outline')
+-        state.write_state(path, 'update_flow', slots={'source': [{'post': 'p1'}]},
++        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
++        state.write_state(path, 'update_flow', stack=stack, slots={'source': [{'post': 'p1'}]},
+                           stage='discovery')
+-        top = stack.get_flow()
+-        top.fill_slot_values({'source': [{'post': 'p1'}]})
+-        top.is_filled()
+-        top.stage = 'discovery'
+-        state.write_state(path, 'stackon', flow_name='brainstorm')
+-        stack.stackon('brainstorm')
+-        state.write_state(path, 'fallback', flow_name='refine')
+-        stack.fallback('refine')
++        state.write_state(path, 'stackon', stack=stack, flow_name='brainstorm')
++        state.write_state(path, 'fallback', stack=stack, flow_name='refine')
+         state.write_state(path, 'update', grounding={'post': 'p1'})
+-        state.write_state(path, 'update_flow', status='Completed')
+-        stack.get_flow().status = 'Completed'
+-        state.write_state(path, 'pop_completed')
+-        stack.pop_completed()
++        state.write_state(path, 'update_flow', stack=stack, status='Completed')
++        state.write_state(path, 'pop_completed', stack=stack)
+ 
+-        assert _without_ids(state.flow_stack) == _without_ids(stack.to_list())
+-        assert _without_ids(DialogueState.load(path).flow_stack) == _without_ids(stack.to_list())
++        assert state.flow_stack == stack.to_list()
++        assert DialogueState.load(path).flow_stack == state.flow_stack
+ 
+     def test_grounding_validation_raises_on_ungrounded_completion(self, tmp_path):
+         path = tmp_path / 'state.json'
+         state = _ops_state()
+-        state.write_state(path, 'stackon', flow_name='outline')
++        stack = FlowStack({}, flow_classes=flow_classes)
++        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
+         with pytest.raises(ValueError, match='grounding.post is empty'):
+-            state.write_state(path, 'update_flow', status='Completed')
++            state.write_state(path, 'update_flow', stack=stack, status='Completed')
+         assert state.flow_stack[0]['status'] == 'Pending'  # rejected write left no trace
+         assert DialogueState.load(path).flow_stack[0]['status'] == 'Pending'
+ 
+     def test_grounding_validation_passes_once_post_is_set(self, tmp_path):
+         path = tmp_path / 'state.json'
+         state = _ops_state()
+-        state.write_state(path, 'stackon', flow_name='outline')
++        stack = FlowStack({}, flow_classes=flow_classes)
++        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
+         state.write_state(path, 'update', grounding={'post': 'p1'})
+-        state.write_state(path, 'update_flow', status='Completed')
++        state.write_state(path, 'update_flow', stack=stack, status='Completed')
+         assert state.flow_stack[0]['status'] == 'Completed'
+ 
+     def test_update_flow_normalizes_llm_shaped_slot_values(self, tmp_path):
+@@ -573,8 +560,9 @@ class TestWriteStateOps:
+         entities, and a bare item in place of a list, all coerce instead of crashing."""
+         path = tmp_path / 'state.json'
+         state = _ops_state()
+-        state.write_state(path, 'stackon', flow_name='outline')
+-        state.write_state(path, 'update_flow',
++        stack = FlowStack({}, flow_classes=flow_classes)
++        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
++        state.write_state(path, 'update_flow', stack=stack,
+                           slots={'sections': ['Motivation', 'Process'], 'source': 'p1',
+                                  'topic': 'agents'})
+         slots = state.flow_stack[0]['slots']
+@@ -587,11 +575,12 @@ class TestWriteStateOps:
+         mirroring the old PEX post-hook's slot-type filter."""
+         path = tmp_path / 'state.json'
+         state = _ops_state()
+-        state.write_state(path, 'stackon', flow_name='chat')
+-        state.write_state(path, 'update_flow', status='Completed')
+-        state.write_state(path, 'pop_completed')
+-        state.write_state(path, 'stackon', flow_name='find')
+-        state.write_state(path, 'update_flow', status='Completed')
++        stack = FlowStack({}, flow_classes=flow_classes)
++        state.write_state(path, 'stackon', stack=stack, flow_name='chat')
++        state.write_state(path, 'update_flow', stack=stack, status='Completed')
++        state.write_state(path, 'pop_completed', stack=stack)
++        state.write_state(path, 'stackon', stack=stack, flow_name='find')
++        state.write_state(path, 'update_flow', stack=stack, status='Completed')
+         assert state.flow_stack[0]['status'] == 'Completed'
+ 
+ 
+diff --git a/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py b/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
+index a4fc0a6..d366d51 100644
+--- a/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
++++ b/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
+@@ -100,21 +100,17 @@ class TestOrchestratorDispatch:
+         assert result['_success'] is True
+         assert result['state']['flow_stack'][0]['flow_name'] == 'outline'
+         assert (sessions_dir / 'wire-test' / 'state.json').exists()
++        assert mock_agent.pex.flow_stack.peek().flow_type == 'outline'
+ 
+-    def test_write_state_pop_completed_mirrors_live_stack(self, sessions_dir, mock_agent):
+-        """A write_state pop must also pop the live PEX stack — activate_flow's epilogue
+-        re-syncs state.flow_stack from it, so a stale Completed live entry would resurrect
+-        the popped flow on the next dispatch."""
++    def test_write_state_pop_completed_pops_the_stack(self, sessions_dir, mock_agent):
++        """pop_completed acts on the one flow stack and the saved document shows it."""
+         mock_agent.world.open_session('wire-test')
+         pex = mock_agent.pex
+-        flow = pex.flow_stack.stackon('chat')
+-        flow.status = 'Completed'
+-        state = mock_agent.world.current_state()
+-        state.flow_stack = pex.flow_stack.to_list()
++        pex.flow_stack.stackon('chat').status = 'Completed'
+         result = pex._dispatch_tool('write_state', {'op': 'pop_completed'})
+         assert result['_success'] is True
+         assert result['state']['flow_stack'] == []
+-        assert pex.flow_stack.to_list() == []  # live stack mirrored — no resurrection
++        assert pex.flow_stack.to_list() == []
+ 
+     def test_write_state_bad_op_returns_corrective_error(self, sessions_dir, mock_agent):
+         mock_agent.world.open_session('wire-test')
+@@ -191,12 +187,14 @@ class TestDispatchFlow:
+         assert state.flow_stack[-1]['status'] == 'Completed'
+         assert state.active_post == 'cafe01'
+ 
+-    def test_rehydrates_flow_from_state_file_entry(self, wired):
++    def test_write_state_slots_reach_the_policy_run(self, wired):
++        """slots written via write_state land on the live flow that activate_flow runs."""
+         pex = wired.pex
+         state = wired.world.current_state()
+-        state.write_state(wired.world.state_file(), 'stackon', flow_name='outline')
++        state.write_state(wired.world.state_file(), 'stackon',
++                          stack=pex.flow_stack, flow_name='outline')
+         state.write_state(wired.world.state_file(), 'update_flow',
+-                          slots={'source': [{'post': 'cafe01'}]})
++                          stack=pex.flow_stack, slots={'source': [{'post': 'cafe01'}]})
+         state.grounding['post'] = 'cafe01'
+         captured = {}
+ 
+@@ -206,7 +204,7 @@ class TestDispatchFlow:
+                 return super().execute(policy_state, context, tools)
+ 
+         pex._policies['Draft'] = _CapturingPolicy(pex.flow_stack)
+-        assert pex.flow_stack.find_by_name('outline') is None  # lives only in the state file
++        assert pex.flow_stack.find_by_name('outline') is not None
+         result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+         assert result['status'] == 'Completed'
+         assert captured['slots']['source'][0]['post'] == 'cafe01'
+@@ -1453,13 +1451,10 @@ class TestFlowRehydration:
+ 
+ # ═══════════════════════════════════════════════════════════════════
+ # Pillar 3 — Hypothesis stateful test for FlowStack
+-# Drives the in-memory FlowStack AND the file-backed write_state ops
+-# through the same random-but-valid op sequence (changes.md Phase 1
+-# gate). Catches FSM-discipline regressions (depth bounds, status
+-# transitions, pop_completed semantics, get_flow filtering) and any
+-# divergence between the two implementations, including serialization
+-# round-trip loss. Recorded counter-examples become permanent
+-# regression tests via @reproduce_failure.
++# Drives the FlowStack component through random-but-valid write_state op
++# sequences. Catches FSM-discipline regressions (depth bounds, status
++# transitions, pop_completed semantics, get_flow filtering) and
++# serialization round-trip loss of the saved copy in state.json.
+ # ═══════════════════════════════════════════════════════════════════
+ 
+ 
+@@ -1485,8 +1480,7 @@ def _build_flowstack_machine():
+             super().__init__()
+             config = MappingProxyType({'session': {'max_flow_depth': 8}})
+             self.stack = FlowStack(config, flow_classes=_all_classes)
+-            # File-backed twin: the same ops run as write_state ops on a
+-            # DialogueState whose stack lives in the state file's flow_stack block.
++            # The DialogueState carries the saved copy of this stack in its flow_stack block.
+             self.state = DialogueState(intent='Draft', dax=None, turn_count=0)
+             self.state.conversation_id = 'machine'
+             self.state.grounding['post'] = 'p1'  # keep completions grounded; the §6
+@@ -1501,8 +1495,8 @@ def _build_flowstack_machine():
+         def stackon(self, name):
+             if len(self.stack._stack) < self.stack._max_depth:
+                 top_before = self.stack._stack[-1] if self.stack._stack else None
+-                new_flow = self.stack.stackon(name)
+-                self.state.write_state(self.state_file, 'stackon', flow_name=name)
++                self.state.write_state(self.state_file, 'stackon', stack=self.stack, flow_name=name)
++                new_flow = self.stack._stack[-1]
+                 # Two valid outcomes: pushed a new Pending flow (activation promotes),
+                 # OR returned the existing in-flight top (no-consecutive-same-type).
+                 assert new_flow.flow_id and len(new_flow.flow_id) >= 6
+@@ -1521,8 +1515,7 @@ def _build_flowstack_machine():
+             if len(self.stack._stack) >= self.stack._max_depth:
+                 return
+             old_top = self.stack._stack[-1]
+-            self.stack.fallback(name)
+-            self.state.write_state(self.state_file, 'fallback', flow_name=name)
++            self.state.write_state(self.state_file, 'fallback', stack=self.stack, flow_name=name)
+             assert old_top.status == 'Invalid'
+             assert self.stack._stack[-1].status == 'Active'
+             assert self.stack._stack[-1].flow_type == name
+@@ -1532,31 +1525,27 @@ def _build_flowstack_machine():
+             # Exercises slot round-trip fidelity: flows without a 'source' slot
+             # ignore the fill on both implementations.
+             if self.stack._stack:
+-                top = self.stack._stack[-1]
+-                top.fill_slot_values({'source': [{'post': post}]})
+-                top.is_filled()
+                 self.state.write_state(self.state_file, 'update_flow',
+-                                       slots={'source': [{'post': post}]})
++                                       stack=self.stack, slots={'source': [{'post': post}]})
+ 
+         @rule()
+         def complete_top(self):
+             if self.stack._stack:
+-                self.stack._stack[-1].status = 'Completed'
+-                self.state.write_state(self.state_file, 'update_flow', status='Completed')
++                self.state.write_state(self.state_file, 'update_flow',
++                                       stack=self.stack, status='Completed')
+ 
+         @rule()
+         def mark_pending(self):
+             # Some flows are pushed Pending by plans; simulate that state by
+             # marking top Pending. Then pop_completed should activate it.
+             if self.stack._stack:
+-                self.stack._stack[-1].status = 'Pending'
+-                self.state.write_state(self.state_file, 'update_flow', status='Pending')
++                self.state.write_state(self.state_file, 'update_flow',
++                                       stack=self.stack, status='Pending')
+ 
+         @rule()
+         def pop_completed(self):
+             before_completed = [e for e in self.stack._stack if e.status == 'Completed']
+-            self.stack.pop_completed()
+-            self.state.write_state(self.state_file, 'pop_completed')
++            self.state.write_state(self.state_file, 'pop_completed', stack=self.stack)
+             for entry in self.stack._stack:
+                 assert entry.status not in ('Completed', 'Invalid'), \
+                     f'pop_completed left a {entry.status} flow on the stack'
+@@ -1587,9 +1576,8 @@ def _build_flowstack_machine():
+                 assert entry.status in valid, f'unknown status {entry.status!r}'
+ 
+         @invariant()
+-        def file_backed_stack_matches_in_memory(self):
+-            # The Phase-1 equivalence gate: same op sequence → same stack, both in
+-            # the live state object and in the saved state.json.
++        def saved_copy_matches_the_stack(self):
++            # the saved copy and file track the one stack
+             in_memory = _without_ids(self.stack.to_list())
+             assert _without_ids(self.state.flow_stack) == in_memory
+             if self.state_file.exists():
+@@ -1736,14 +1724,14 @@ def test_reminder_is_agentic():
+ 
+ 
+ # ═══════════════════════════════════════════════════════════════════
+-# Single-call staging + prestack (fix_1: stackon active=true, Option B)
++# Single-call stackon (write_state op=stackon active=true)
+ # ═══════════════════════════════════════════════════════════════════
+ 
+ 
+ 
+ class TestSingleCallStackon:
+-    """`write_state op=stackon active=true` stacks on, folds belief slots, and runs the policy in
+-    one call; `prestack` is the code-side stack-on for the awaited-NLU path (fix 1 Option B)."""
++    """`write_state op=stackon active=true` stacks on, folds belief slots, and runs the
++    policy in one call."""
+ 
+     def _believe(self, state, flow_name, intent='Draft'):
+         state.pred_intent = intent
+@@ -1762,7 +1750,7 @@ class TestSingleCallStackon:
+                                     {'op': 'stackon', 'flow_name': 'outline', 'active': True})
+         assert result['_success'] is True
+         assert ran['flow_name'] == 'outline'   # policy ran with no separate activate_flow call
+-        top = rehydrate_flow(state.flow_stack[-1])
++        top = pex.flow_stack.peek()
+         assert top.slots['source'].values[0]['post'] == 'p1'   # belief slots folded in
+ 
+     def test_stackon_without_active_only_stacks(self, sessions_dir, mock_agent, monkeypatch):
+@@ -1775,26 +1763,7 @@ class TestSingleCallStackon:
+                                                {'op': 'stackon', 'flow_name': 'outline'})
+         assert result['_success'] is True and not called
+ 
+-    def test_prestack_stacks_confident_detection(self, sessions_dir, mock_agent):
+-        mock_agent.world.open_session('wire-test')
+-        state = mock_agent.world.current_state()
+-        self._believe(state, 'outline')
+-        assert mock_agent.pex.prestack(state) is True
+-        top = rehydrate_flow(state.flow_stack[-1])
+-        assert top.flow_type == 'outline'
+-        assert top.slots['source'].values[0]['post'] == 'p1'
+ 
+-    def test_prestack_skips_plan_converse_and_ambiguity(self, sessions_dir, mock_agent, monkeypatch):
+-        mock_agent.world.open_session('wire-test')
+-        state = mock_agent.world.current_state()
+-        self._believe(state, 'outline', intent='Plan')
+-        assert mock_agent.pex.prestack(state) is False
+-        self._believe(state, 'chat', intent='Converse')
+-        assert mock_agent.pex.prestack(state) is False
+-        self._believe(state, 'outline')
+-        monkeypatch.setattr(mock_agent.pex.ambiguity, 'present', lambda: True)
+-        assert mock_agent.pex.prestack(state) is False
+-        assert state.flow_stack == []
+ class TestCheckNlu:
+     """The parallel NLU think thread joins at the hooks: a belief read blocks (the Plan/Clarify
+     wait); flow execution reaps a landed detection without blocking (the user 2026-07-03)."""
+@@ -1873,8 +1842,8 @@ class TestBeliefInjection:
+         mock_agent.world.open_session('wire-test')
+         pex = mock_agent.pex
+         state = mock_agent.world.current_state()
+-        state.write_state(mock_agent.world.state_file(), 'stackon', flow_name='outline')
+-        live = pex.flow_stack.stackon('outline')
++        pex._dispatch_tool('write_state', {'op': 'stackon', 'flow_name': 'outline'})
++        live = pex.flow_stack.peek()
+         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
+         self._believe(state, 'release', intent='Publish')
+         note = pex.inject_belief_state()
+@@ -1887,8 +1856,8 @@ class TestBeliefInjection:
+         mock_agent.world.open_session('wire-test')
+         pex = mock_agent.pex
+         state = mock_agent.world.current_state()
+-        state.write_state(mock_agent.world.state_file(), 'stackon', flow_name='outline')
+-        live = pex.flow_stack.stackon('outline')
++        pex._dispatch_tool('write_state', {'op': 'stackon', 'flow_name': 'outline'})
++        live = pex.flow_stack.peek()
+         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
+         self._believe(state, 'refine', intent='Draft')
+         note = pex.inject_belief_state()
+@@ -1897,9 +1866,9 @@ class TestBeliefInjection:
+ 
+ 
+ class TestPlanLifecycle:
+-    """A stacked multi-flow plan survives completions: write_state stack ops mirror onto the
+-    live stack, so the complete_flow / activate_flow re-syncs no longer wipe Pending flows
+-    (code review 2026-07-04, Critical 1)."""
++    """A stacked multi-flow plan survives completions: there is exactly one flow stack, so a
++    completion can no longer wipe the Pending flows of a plan (code review 2026-07-04,
++    Critical 1)."""
+ 
+     def test_plan_flows_survive_completion(self, sessions_dir, mock_agent, monkeypatch):
+         from schemas.ontology import Intent

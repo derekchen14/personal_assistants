@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 
-from backend.components.dialogue_state import DialogueState
+from backend.components.dialogue_state import DialogueState, rehydrate_flow
 from backend.components.task_artifact import TaskArtifact
 from backend.components.flow_stack import FlowStack, flow_classes
 from backend.components.context_coordinator import ContextCoordinator
@@ -47,15 +47,17 @@ class World:
     # ── Session-dir lifecycle ─────
 
     def open_session(self, conversation_id:str) -> DialogueState | None:
-        """Bind this World to a session. An existing dir rehydrates its state.json as the
-        current state and its messages.jsonl as the persistent message list; a fresh id
-        defers dir creation to session_dir() (lazy, first turn)."""
+        """Bind this World to a session. An existing dir reloads its state.json as the current
+        state and rebuilds the flow stack from it; messages.jsonl is attached as the persistent
+        message list; a fresh id defers dir creation to session_dir() (lazy, first turn)."""
         self.conversation_id = conversation_id
         session_path = _SESSIONS_DIR / conversation_id
         self.context.attach_messages(session_path / 'messages.jsonl')
         state_file = session_path / 'state.json'
         if state_file.exists():
-            return self.insert_state(DialogueState.load(state_file))
+            state = self.insert_state(DialogueState.load(state_file))
+            self.flow_stack._stack = [rehydrate_flow(entry) for entry in state.flow_stack]
+            return state
         return None
 
     def session_dir(self) -> Path:

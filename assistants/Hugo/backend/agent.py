@@ -78,7 +78,6 @@ class Agent:
             thread.start()
         else:                            # utterance, no active entity: think, awaited
             self.nlu.understand(op='think', user_text=text, payload=payload)
-            self.pex.prestack(state)     # fix 1 B: belief is fresh only on this awaited path
 
         utterance = self.pex.execute(state, self.world.context, self.system_prompt,
                                      dax=dax, payload=payload, text=text, nlu_thread=thread)
@@ -111,6 +110,7 @@ class Agent:
         self.world.context.add_turn('Agent', utterance, turn_type='utterance')
         state = self.world.current_state()
         state.turn_count += 1
+        state.flow_stack = self.pex.flow_stack.to_list()  # refresh the saved copy, then save
         state.save(self.world.state_file())  # _ensure_session guarantees a bound session
         self._compression_check()
         log.info('AGENT: %s', utterance[:256])

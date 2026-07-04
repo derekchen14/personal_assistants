@@ -106,7 +106,7 @@ class FlowStack:
         flow = cls()
         flow.flow_id = str(uuid4())[:8]
         # Pushed flows wait as Pending (the user 2026-07-03) — activation promotes to Active
-        # (activate_flow via _stack_flow, or pop_completed surfacing the next top).
+        # (activate_flow, or pop_completed surfacing the next top).
         flow.status = FlowLifecycle.PENDING.value
         self._stack.append(flow)
         return flow

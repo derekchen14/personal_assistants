@@ -5,7 +5,8 @@ against the 7 Eval criteria from `_specs/utilities/evaluation_suite.md`. Unlike 
 trajectory, order matters), Evals cares about the FINAL result. All seven are wired — the ground
 truth already lives in the corpus (96 examples):
   1 completion  — the turn finished in the right mode                     (is_completed)
-  2 correctness — the dispatched tools match the labelled actions          (tool_similarity vs expected_tools)
+  2 correctness — the dispatched tools match the labelled actions          (tool_similarity vs the
+                  next agent turn's `actions`)
   3 response    — the reply matches the ground-truth agent turn            (embedding sim by default)
   4 state       — NLU belief detected the labelled flow                    (pred_flows vs labels.stack)
   5 latency     — conversation wall-time vs the 60s budget (measure-only)
@@ -47,14 +48,16 @@ def _run_turn(agent, utterance:str) -> dict:
             return {'message': '(turn timed out)', 'artifact': None}
 
 
-def _reference_reply(turns:list, idx:int) -> str:
-    """The corpus's ground-truth agent reply for the user turn at `idx` — the next agent turn."""
+def _reference_turn(turns:list, idx:int) -> dict:
+    """The corpus's ground-truth agent turn for the user turn at `idx` — the next agent turn.
+    Every user turn has one (the corpus alternates user/agent), and it carries both the labelled
+    `actions` (criterion 2) and the reference `utterance` (criterion 3)."""
     for turn in turns[idx + 1:]:
         if turn.get('role') == 'agent':
-            return turn['utterance']
+            return turn
         if turn.get('role') == 'user':
             break
-    return ''
+    return {}
 
 
 def _history_text(turns:list, idx:int) -> str:
@@ -92,16 +95,18 @@ def _score_convo(case:dict, domain_tools:set, judge:bool=False) -> dict:
 
         ok, _ = is_completed(result, turn, agent.ambiguity.level)
         completion.append(1.0 if ok else 0.0)
-        correctness.append(tool_similarity(actual, turn['expected_tools']))
+        reference = _reference_turn(turns, idx)           # the labelled agent turn (actions + reply)
+        correctness.append(tool_similarity(actual, reference['actions']))
 
-        reference = _reference_reply(turns, idx)          # 3: response — embedding by default, judge opt-in
-        if reference:
+        if reference.get('utterance'):                    # 3: response — embedding by default, judge
+                                                          # opt-in; the final agent turn is action-only
             if judge:
                 history = _history_text(turns, idx)
                 response.append(1.0 if judge_response(
-                    agent.engineer, history, turn['utterance'], reference, result['message']) else 0.0)
+                    agent.engineer, history, turn['utterance'], reference['utterance'],
+                    result['message']) else 0.0)
             else:
-                response.append(semantic_similarity(result['message'], reference))
+                response.append(semantic_similarity(result['message'], reference['utterance']))
 
         expected_flow = _single_flow(turn)                # 4: belief detected the right flow
         if expected_flow is not None:

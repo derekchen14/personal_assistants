@@ -282,8 +282,11 @@ def _session_state() -> DialogueState:
     state.rejected = ['listicle format']
     state.workflow_step = 4
     state.grounding = {'post': 'p1', 'sec': 'intro', 'snip': '', 'chl': 'substack', 'ver': True}
-    state.flow_stack = [{'name': 'compose', 'status': 'Active', 'stage': 'writing',
-                         'slots': {'source': {'post': 'p1'}}}]
+    state.flow_stack = [{'flow_id': 'compose01', 'flow_name': 'compose', 'dax': '{3AD}',
+                         'intent': 'Draft', 'status': 'Active', 'stage': 'writing',
+                         'slots': {'source': [{'post': 'p1', 'sec': '', 'snip': '',
+                                               'chl': '', 'ver': False}]},
+                         'turn_ids': []}]
     return state
 
 
@@ -491,13 +494,26 @@ class TestMessageList:
         world.open_session('convo-42')
         assert world.context.messages == _tool_call_messages()
 
+    def test_open_session_rebuilds_flow_stack(self, sessions_dir, minimal_config):
+        stack = FlowStack({}, flow_classes=flow_classes)
+        state = DialogueState(intent='Draft', dax=None, turn_count=1)
+        state.conversation_id = 'convo-43'
+        (sessions_dir / 'convo-43').mkdir(parents=True)
+        state.write_state(sessions_dir / 'convo-43' / 'state.json', 'stackon',
+                          stack=stack, flow_name='outline')
+        world = World(minimal_config)
+        world.open_session('convo-43')
+        top = world.flow_stack.peek()
+        assert top.flow_type == 'outline' and top.status == 'Pending'
+        assert top.flow_id == stack.peek().flow_id
+
 
 # ═══════════════════════════════════════════════════════════════════
 # write_state ops + flow rehydration (changes.md §4.1, §5.2, §6)
 # ═══════════════════════════════════════════════════════════════════
 
 from backend.components.dialogue_state import rehydrate_flow
-from backend.components.flow_stack import FlowStack
+from backend.components.flow_stack import FlowStack, flow_classes
 
 
 

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from backend.components.flow_stack import FlowStack, flow_classes
+from backend.components.flow_stack import flow_classes
 from utils.helper import dax2flow
 
 GROUNDING_PARTS = ('post', 'sec', 'snip', 'chl', 'ver')
@@ -12,7 +12,7 @@ _GROUNDED_SLOT_TYPES = ('source', 'target', 'removal', 'channel')
 
 def normalize_slot_values(flow, slots:dict) -> dict:
     """Coerce LLM-authored write_state slot values into the flow's fill_slot_values
-    vocabulary (tool arguments are genuinely unpredictable input).
+    vocabulary (tool arguments are unpredictable input).
     Multi-value slots accept a bare item in place of a list; checklist items may arrive as
     plain step names; source-family items may arrive as bare post references. Unknown slot
     names pass through untouched (fill_slot_values ignores them); PEX rejects them with a
@@ -36,7 +36,8 @@ def rehydrate_flow(entry:dict):
     """Rebuild a BaseFlow from one flow_stack entry of the state file:
     instantiate from flow_classes, restore the lifecycle fields, then refill slots through
     the flow's own fill_slot_values so BaseFlow.to_dict / Slot.to_dict stays the single
-    round-trip vocabulary."""
+    round-trip vocabulary. Used at session load (World.open_session) and in serialization
+    round-trip tests."""
     flow = flow_classes[entry['flow_name']]()
     flow.flow_id = entry['flow_id']
     flow.status = entry['status']
@@ -71,7 +72,7 @@ class DialogueState:
         self.rejected: list = []
         self.workflow_step: int = 0
         self.grounding: dict = {'post': '', 'sec': '', 'snip': '', 'chl': '', 'ver': False}
-        self.flow_stack: list[dict] = []
+        self.flow_stack: list[dict] = []  # saved copy of the FlowStack component (see write_state)
 
     def flow_name(self, string=False):
         if string:
@@ -157,23 +158,30 @@ class DialogueState:
         """The read_state tool surface: user beliefs, grounding, flow stack, and flags."""
         return self.serialize_session()
 
-    def write_state(self, path, op, **kwargs) -> dict:
+    def write_state(self, path, op, stack=None, **kwargs) -> dict:
         """The write_state tool surface — the ONLY writer of state.json. Ops:
         'update'        mutate user-belief / grounding / flag fields (kwargs = fields),
-        'update_flow'   mutate the top stack flow (slots= / stage= / status=; completion
-                        is grounding-validated),
+        'update_flow'   mutate the top flow of the live stack (slots= / stage= / status=;
+                        completion is grounding-validated),
         'stackon'       push flow_name= with FlowStack semantics,
         'fallback'      replace the top flow with flow_name=,
         'pop_completed' remove Completed/Invalid flows, activating the next Pending one.
-        Every op mutates the rehydrated stack or the state fields, then saves exactly once."""
+        `stack` is the FlowStack component — the one flow stack. Stack ops mutate it directly;
+        self.flow_stack is only a saved copy, refreshed from stack.to_list() before the save."""
         if op == 'update':
             self._apply_update(kwargs)
         elif op == 'update_flow':
-            self._update_flow(kwargs)
-        elif op in ('stackon', 'fallback', 'pop_completed'):
-            self._run_stack_op(op, kwargs)
+            self._update_flow(stack, kwargs)
+        elif op == 'stackon':
+            stack.stackon(kwargs['flow_name'])
+        elif op == 'fallback':
+            stack.fallback(kwargs['flow_name'])
+        elif op == 'pop_completed':
+            stack.pop_completed()
         else:
             raise ValueError(f'Unknown write_state op: {op!r}')
+        if stack is not None:
+            self.flow_stack = stack.to_list()
         self.save(path)
         return self.serialize_session()
 
@@ -191,34 +199,17 @@ class DialogueState:
             else:
                 raise KeyError(f'write_state update does not accept field {key!r}')
 
-    def _update_flow(self, fields:dict):
-        stack = self._rehydrate_stack()
+    def _update_flow(self, stack, fields:dict):
         flow = stack.peek()
+        if 'status' in fields:  # validate first — a rejected write must not mutate the live flow
+            self._check_grounding(flow, fields['status'])
         if 'slots' in fields:
             flow.fill_slot_values(normalize_slot_values(flow, fields['slots']))
             flow.is_filled()
         if 'stage' in fields:
             flow.stage = fields['stage']
         if 'status' in fields:
-            self._check_grounding(flow, fields['status'])
             flow.status = fields['status']
-        self.flow_stack = stack.to_list()
-
-    def _run_stack_op(self, op:str, kwargs:dict):
-        stack = self._rehydrate_stack()
-        if op == 'stackon':
-            stack.stackon(kwargs['flow_name'])
-        elif op == 'fallback':
-            stack.fallback(kwargs['flow_name'])
-        else:
-            stack.pop_completed()
-        self.flow_stack = stack.to_list()
-
-    def _rehydrate_stack(self) -> FlowStack:
-        """Load the flow_stack block into a live FlowStack (load → mutate → save)."""
-        stack = FlowStack({}, flow_classes=flow_classes)
-        stack._stack = [rehydrate_flow(entry) for entry in self.flow_stack]
-        return stack
 
     def _check_grounding(self, flow, status:str):
         """An entity-grounded flow cannot reach Completed while grounding.post is

@@ -9,10 +9,10 @@ from backend.utilities.services import ToolService
 log = logging.getLogger(__name__)
 
 # The six sub-agent hook points (pex.md). A policy runs a sub-agent that can take destructive
-# action, so each point is an interception seam for an NLU signal (read from belief) or a user
+# action, so each point is an interception hook for an NLU signal (read from belief) or a user
 # interrupt. Three already have bodies elsewhere: pre_tool ← PEX._security_check,
 # verification ← PEX._validate_artifact, tool_retry ← retry_tool. pre_llm/post_llm are wired
-# live in llm_execute; post_tool's body lives in the engineer.tool_call loop (integration seam).
+# live in llm_execute; post_tool's body lives in the engineer.tool_call loop (integration point).
 HOOK_POINTS = ('pre_llm', 'pre_tool', 'post_tool', 'tool_retry', 'post_llm', 'verification')
 
 
@@ -103,7 +103,7 @@ class BasePolicy:
 
         post = {}
         if meta['_success']:
-            # Strip the hidden-section sentinel heading so prose-only posts display cleanly without the marker
+            # Strip the hidden-section marker heading so prose-only posts display cleanly without the marker
             content = re.sub(r'^## _hidden_section_title\n', '', meta['outline'], flags=re.M)
             post = {'post_id': post_id, 'title': meta['title'], 'status': meta['status'], 'content': content}
         return post
@@ -225,15 +225,16 @@ class BasePolicy:
         """The single call a policy makes at the moment its flow finishes. The status change goes
         through write_state op='update_flow' (so the grounding validation fires and state.json is
         rewritten) and the completion record {flow, summary, metadata} is appended to the session
-        scratchpad; activate_flow collects it via pop_completion and returns it as the tool result.
-        Call it before stacking any follow-up flow — the completing flow must be top of stack."""
-        state.flow_stack = self.flow_stack.to_list()  # live stack → block so write_state sees it
-        if state.flow_stack[-1]['flow_id'] != flow.flow_id:
+        scratchpad; activate_flow collects it via pop_completion and returns it as the tool
+        result. Call it before stacking any follow-up flow — the completing flow must be top of
+        stack."""
+        if self.flow_stack.peek().flow_id != flow.flow_id:
             raise ValueError(f'complete_flow: {flow.name()!r} is not top of stack — finish or '
                              f'pop the flows above it first')
-        state.write_state(self._state_file(), 'update_flow', status='Completed')
-        flow.status = 'Completed'  # mirror onto the live flow object
-        self._completion = self.scratchpad.write_completion(flow.name(), summary, metadata=metadata)
+        state.write_state(self._state_file(), 'update_flow', stack=self.flow_stack,
+                          status='Completed')
+        self._completion = self.scratchpad.write_completion(flow.name(), summary,
+                                                            metadata=metadata)
         return self._completion
 
     def pop_completion(self) -> dict|None:

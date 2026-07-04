@@ -100,21 +100,17 @@ class TestOrchestratorDispatch:
         assert result['_success'] is True
         assert result['state']['flow_stack'][0]['flow_name'] == 'outline'
         assert (sessions_dir / 'wire-test' / 'state.json').exists()
+        assert mock_agent.pex.flow_stack.peek().flow_type == 'outline'
 
-    def test_write_state_pop_completed_mirrors_live_stack(self, sessions_dir, mock_agent):
-        """A write_state pop must also pop the live PEX stack — activate_flow's epilogue
-        re-syncs state.flow_stack from it, so a stale Completed live entry would resurrect
-        the popped flow on the next dispatch."""
+    def test_write_state_pop_completed_pops_the_stack(self, sessions_dir, mock_agent):
+        """pop_completed acts on the one flow stack and the saved document shows it."""
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
-        flow = pex.flow_stack.stackon('chat')
-        flow.status = 'Completed'
-        state = mock_agent.world.current_state()
-        state.flow_stack = pex.flow_stack.to_list()
+        pex.flow_stack.stackon('chat').status = 'Completed'
         result = pex._dispatch_tool('write_state', {'op': 'pop_completed'})
         assert result['_success'] is True
         assert result['state']['flow_stack'] == []
-        assert pex.flow_stack.to_list() == []  # live stack mirrored — no resurrection
+        assert pex.flow_stack.to_list() == []
 
     def test_write_state_bad_op_returns_corrective_error(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
@@ -191,12 +187,14 @@ class TestDispatchFlow:
         assert state.flow_stack[-1]['status'] == 'Completed'
         assert state.active_post == 'cafe01'
 
-    def test_rehydrates_flow_from_state_file_entry(self, wired):
+    def test_write_state_slots_reach_the_policy_run(self, wired):
+        """slots written via write_state land on the live flow that activate_flow runs."""
         pex = wired.pex
         state = wired.world.current_state()
-        state.write_state(wired.world.state_file(), 'stackon', flow_name='outline')
+        state.write_state(wired.world.state_file(), 'stackon',
+                          stack=pex.flow_stack, flow_name='outline')
         state.write_state(wired.world.state_file(), 'update_flow',
-                          slots={'source': [{'post': 'cafe01'}]})
+                          stack=pex.flow_stack, slots={'source': [{'post': 'cafe01'}]})
         state.grounding['post'] = 'cafe01'
         captured = {}
 
@@ -206,7 +204,7 @@ class TestDispatchFlow:
                 return super().execute(policy_state, context, tools)
 
         pex._policies['Draft'] = _CapturingPolicy(pex.flow_stack)
-        assert pex.flow_stack.find_by_name('outline') is None  # lives only in the state file
+        assert pex.flow_stack.find_by_name('outline') is not None
         result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
         assert result['status'] == 'Completed'
         assert captured['slots']['source'][0]['post'] == 'cafe01'
@@ -1453,13 +1451,10 @@ class TestFlowRehydration:
 
 # ═══════════════════════════════════════════════════════════════════
 # Pillar 3 — Hypothesis stateful test for FlowStack
-# Drives the in-memory FlowStack AND the file-backed write_state ops
-# through the same random-but-valid op sequence (changes.md Phase 1
-# gate). Catches FSM-discipline regressions (depth bounds, status
-# transitions, pop_completed semantics, get_flow filtering) and any
-# divergence between the two implementations, including serialization
-# round-trip loss. Recorded counter-examples become permanent
-# regression tests via @reproduce_failure.
+# Drives the FlowStack component through random-but-valid write_state op
+# sequences. Catches FSM-discipline regressions (depth bounds, status
+# transitions, pop_completed semantics, get_flow filtering) and
+# serialization round-trip loss of the saved copy in state.json.
 # ═══════════════════════════════════════════════════════════════════
 
 
@@ -1485,8 +1480,7 @@ def _build_flowstack_machine():
             super().__init__()
             config = MappingProxyType({'session': {'max_flow_depth': 8}})
             self.stack = FlowStack(config, flow_classes=_all_classes)
-            # File-backed twin: the same ops run as write_state ops on a
-            # DialogueState whose stack lives in the state file's flow_stack block.
+            # The DialogueState carries the saved copy of this stack in its flow_stack block.
             self.state = DialogueState(intent='Draft', dax=None, turn_count=0)
             self.state.conversation_id = 'machine'
             self.state.grounding['post'] = 'p1'  # keep completions grounded; the §6
@@ -1501,8 +1495,8 @@ def _build_flowstack_machine():
         def stackon(self, name):
             if len(self.stack._stack) < self.stack._max_depth:
                 top_before = self.stack._stack[-1] if self.stack._stack else None
-                new_flow = self.stack.stackon(name)
-                self.state.write_state(self.state_file, 'stackon', flow_name=name)
+                self.state.write_state(self.state_file, 'stackon', stack=self.stack, flow_name=name)
+                new_flow = self.stack._stack[-1]
                 # Two valid outcomes: pushed a new Pending flow (activation promotes),
                 # OR returned the existing in-flight top (no-consecutive-same-type).
                 assert new_flow.flow_id and len(new_flow.flow_id) >= 6
@@ -1521,8 +1515,7 @@ def _build_flowstack_machine():
             if len(self.stack._stack) >= self.stack._max_depth:
                 return
             old_top = self.stack._stack[-1]
-            self.stack.fallback(name)
-            self.state.write_state(self.state_file, 'fallback', flow_name=name)
+            self.state.write_state(self.state_file, 'fallback', stack=self.stack, flow_name=name)
             assert old_top.status == 'Invalid'
             assert self.stack._stack[-1].status == 'Active'
             assert self.stack._stack[-1].flow_type == name
@@ -1532,31 +1525,27 @@ def _build_flowstack_machine():
             # Exercises slot round-trip fidelity: flows without a 'source' slot
             # ignore the fill on both implementations.
             if self.stack._stack:
-                top = self.stack._stack[-1]
-                top.fill_slot_values({'source': [{'post': post}]})
-                top.is_filled()
                 self.state.write_state(self.state_file, 'update_flow',
-                                       slots={'source': [{'post': post}]})
+                                       stack=self.stack, slots={'source': [{'post': post}]})
 
         @rule()
         def complete_top(self):
             if self.stack._stack:
-                self.stack._stack[-1].status = 'Completed'
-                self.state.write_state(self.state_file, 'update_flow', status='Completed')
+                self.state.write_state(self.state_file, 'update_flow',
+                                       stack=self.stack, status='Completed')
 
         @rule()
         def mark_pending(self):
             # Some flows are pushed Pending by plans; simulate that state by
             # marking top Pending. Then pop_completed should activate it.
             if self.stack._stack:
-                self.stack._stack[-1].status = 'Pending'
-                self.state.write_state(self.state_file, 'update_flow', status='Pending')
+                self.state.write_state(self.state_file, 'update_flow',
+                                       stack=self.stack, status='Pending')
 
         @rule()
         def pop_completed(self):
             before_completed = [e for e in self.stack._stack if e.status == 'Completed']
-            self.stack.pop_completed()
-            self.state.write_state(self.state_file, 'pop_completed')
+            self.state.write_state(self.state_file, 'pop_completed', stack=self.stack)
             for entry in self.stack._stack:
                 assert entry.status not in ('Completed', 'Invalid'), \
                     f'pop_completed left a {entry.status} flow on the stack'
@@ -1587,9 +1576,8 @@ def _build_flowstack_machine():
                 assert entry.status in valid, f'unknown status {entry.status!r}'
 
         @invariant()
-        def file_backed_stack_matches_in_memory(self):
-            # The Phase-1 equivalence gate: same op sequence → same stack, both in
-            # the live state object and in the saved state.json.
+        def saved_copy_matches_the_stack(self):
+            # the saved copy and file track the one stack
             in_memory = _without_ids(self.stack.to_list())
             assert _without_ids(self.state.flow_stack) == in_memory
             if self.state_file.exists():
@@ -1736,14 +1724,14 @@ def test_reminder_is_agentic():
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Single-call staging + prestack (fix_1: stackon active=true, Option B)
+# Single-call stackon (write_state op=stackon active=true)
 # ═══════════════════════════════════════════════════════════════════
 
 
 
 class TestSingleCallStackon:
-    """`write_state op=stackon active=true` stacks on, folds belief slots, and runs the policy in
-    one call; `prestack` is the code-side stack-on for the awaited-NLU path (fix 1 Option B)."""
+    """`write_state op=stackon active=true` stacks on, folds belief slots, and runs the
+    policy in one call."""
 
     def _believe(self, state, flow_name, intent='Draft'):
         state.pred_intent = intent
@@ -1762,7 +1750,7 @@ class TestSingleCallStackon:
                                     {'op': 'stackon', 'flow_name': 'outline', 'active': True})
         assert result['_success'] is True
         assert ran['flow_name'] == 'outline'   # policy ran with no separate activate_flow call
-        top = rehydrate_flow(state.flow_stack[-1])
+        top = pex.flow_stack.peek()
         assert top.slots['source'].values[0]['post'] == 'p1'   # belief slots folded in
 
     def test_stackon_without_active_only_stacks(self, sessions_dir, mock_agent, monkeypatch):
@@ -1775,26 +1763,7 @@ class TestSingleCallStackon:
                                                {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True and not called
 
-    def test_prestack_stacks_confident_detection(self, sessions_dir, mock_agent):
-        mock_agent.world.open_session('wire-test')
-        state = mock_agent.world.current_state()
-        self._believe(state, 'outline')
-        assert mock_agent.pex.prestack(state) is True
-        top = rehydrate_flow(state.flow_stack[-1])
-        assert top.flow_type == 'outline'
-        assert top.slots['source'].values[0]['post'] == 'p1'
 
-    def test_prestack_skips_plan_converse_and_ambiguity(self, sessions_dir, mock_agent, monkeypatch):
-        mock_agent.world.open_session('wire-test')
-        state = mock_agent.world.current_state()
-        self._believe(state, 'outline', intent='Plan')
-        assert mock_agent.pex.prestack(state) is False
-        self._believe(state, 'chat', intent='Converse')
-        assert mock_agent.pex.prestack(state) is False
-        self._believe(state, 'outline')
-        monkeypatch.setattr(mock_agent.pex.ambiguity, 'present', lambda: True)
-        assert mock_agent.pex.prestack(state) is False
-        assert state.flow_stack == []
 class TestCheckNlu:
     """The parallel NLU think thread joins at the hooks: a belief read blocks (the Plan/Clarify
     wait); flow execution reaps a landed detection without blocking (the user 2026-07-03)."""
@@ -1873,8 +1842,8 @@ class TestBeliefInjection:
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         state = mock_agent.world.current_state()
-        state.write_state(mock_agent.world.state_file(), 'stackon', flow_name='outline')
-        live = pex.flow_stack.stackon('outline')
+        pex._dispatch_tool('write_state', {'op': 'stackon', 'flow_name': 'outline'})
+        live = pex.flow_stack.peek()
         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
         self._believe(state, 'release', intent='Publish')
         note = pex.inject_belief_state()
@@ -1887,8 +1856,8 @@ class TestBeliefInjection:
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         state = mock_agent.world.current_state()
-        state.write_state(mock_agent.world.state_file(), 'stackon', flow_name='outline')
-        live = pex.flow_stack.stackon('outline')
+        pex._dispatch_tool('write_state', {'op': 'stackon', 'flow_name': 'outline'})
+        live = pex.flow_stack.peek()
         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
         self._believe(state, 'refine', intent='Draft')
         note = pex.inject_belief_state()
@@ -1897,9 +1866,9 @@ class TestBeliefInjection:
 
 
 class TestPlanLifecycle:
-    """A stacked multi-flow plan survives completions: write_state stack ops mirror onto the
-    live stack, so the complete_flow / activate_flow re-syncs no longer wipe Pending flows
-    (code review 2026-07-04, Critical 1)."""
+    """A stacked multi-flow plan survives completions: there is exactly one flow stack, so a
+    completion can no longer wipe the Pending flows of a plan (code review 2026-07-04,
+    Critical 1)."""
 
     def test_plan_flows_survive_completion(self, sessions_dir, mock_agent, monkeypatch):
         from schemas.ontology import Intent

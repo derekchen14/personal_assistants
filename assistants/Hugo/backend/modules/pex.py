@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from backend.components.task_artifact import TaskArtifact
-from backend.components.dialogue_state import rehydrate_flow
 
 from backend.utilities.services import (
     PostService, ContentService, AnalysisService, PlatformService,
@@ -426,7 +425,7 @@ class PEX:
         return corrective errors instead of dispatching. Everything else routes through
         `_dispatch_tool`, which already converts bad args into corrective tool errors the model
         can retry on. These guards are the legitimate exception to the no-defensive-code rule —
-        LLM output is genuinely unpredictable input.
+        LLM output is unpredictable input.
 
         `last_call` is (name+args key, succeeded). Dedupe only fires when the previous identical
         call SUCCEEDED — retrying the same call after a transient tool error (server_error from
@@ -595,7 +594,9 @@ class PEX:
 
     def read_state(self, params:dict) -> dict:
         self._check_nlu()
-        return {'_success': True, 'state': self.world.current_state().read_state()}
+        state = self.world.current_state()
+        state.flow_stack = self.flow_stack.to_list()  # saved copy tracks the one stack
+        return {'_success': True, 'state': state.read_state()}
 
     def _dispatch_write_state(self, params:dict) -> dict:
         state = self.world.current_state()
@@ -603,24 +604,14 @@ class PEX:
         if 'flow_name' in params:
             kwargs['flow_name'] = params['flow_name']
         if params['op'] == 'update_flow' and 'slots' in kwargs:
-            top = rehydrate_flow(state.flow_stack[-1])
+            top = self.flow_stack.peek()
             unknown = [name for name in kwargs['slots'] if name not in top.slots]
             if unknown:  # corrective error — fill_slot_values would drop these silently
                 return {'_success': False, '_error': 'invalid_input',
                         '_message': f'flow {top.name()!r} has no slot(s) {unknown}; '
                                     f'valid slots: {list(top.slots)}'}
-        document = state.write_state(self.world.state_file(), params['op'], **kwargs)
-        # Mirror every stack op onto the FlowStack component: complete_flow and the last lines of
-        # activate_flow copy the component's stack back into state.flow_stack, so an entry that
-        # exists only in state.json is wiped on the next completion — losing a plan's Pending
-        # flows (code review 2026-07-04). pop_completed's mirror predates this; stackon/fallback
-        # gained theirs from the same root cause.
-        if params['op'] == 'pop_completed':
-            self.flow_stack.pop_completed()
-        elif params['op'] == 'stackon':
-            self.flow_stack.stackon(kwargs['flow_name'])
-        elif params['op'] == 'fallback':
-            self.flow_stack.fallback(kwargs['flow_name'])
+        document = state.write_state(self.world.state_file(), params['op'],
+                                     stack=self.flow_stack, **kwargs)
         if params['op'] == 'stackon' and params.get('active'):
             # Single-call stack-on (the user 2026-07-03): stackon handed over matching slots; fold
             # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
@@ -631,15 +622,16 @@ class PEX:
         return {'_success': True, 'state': document}
 
     def _apply_belief_slots(self, state, flow_name:str):
-        """Fold belief's `pred_slots` into the just-stacked flow entry when NLU's detection is
-        this same flow — the code-side replacement for the recipe's update_flow step."""
+        """Fold belief's `pred_slots` into the just-stacked flow when NLU's detection is this
+        same flow — the code-side replacement for the recipe's update_flow step."""
         if not state.pred_flows or state.pred_flows[0]['flow_name'] != flow_name:
             return
-        top = rehydrate_flow(state.flow_stack[-1])
+        top = self.flow_stack.peek()
         slots = {name: value for name, value in state.pred_slots.items()
                  if name in top.slots and value}
         if slots:
-            state.write_state(self.world.state_file(), 'update_flow', slots=slots)
+            state.write_state(self.world.state_file(), 'update_flow',
+                              stack=self.flow_stack, slots=slots)
 
     def inject_belief_state(self) -> str | None:
         """Once per turn, format NLU's landed detection as a `[belief]` note for the orchestrator
@@ -663,29 +655,13 @@ class PEX:
                 and state.pred_intent in ('Research', 'Draft', 'Revise', 'Publish')
                 and state.pred_intent != active.intent):
             old_name = active.name()
-            state.write_state(self.world.state_file(), 'fallback', flow_name=top['flow_name'])
+            state.write_state(self.world.state_file(), 'fallback',
+                              stack=self.flow_stack, flow_name=top['flow_name'])
             self._apply_belief_slots(state, top['flow_name'])
-            self.flow_stack.fallback(top['flow_name'])  # live-stack mirror: old → Invalid, new Active
             note += (f" Intent changed: I dropped {old_name} (Invalid) and swapped in "
                      f"{top['flow_name']} for the detected {state.pred_intent} intent — run it "
                      f"with activate_flow.")
         return note
-
-    def prestack(self, state) -> bool:
-        """Fix 1 Option B: stack NLU's confident single-flow detection in code, so the loop
-        starts with the flow on the stack and its first useful move is activate_flow. Callers invoke
-        this ONLY where belief is fresh (the awaited think path — the parallel-think path
-        reaches PEX before this turn's detection lands). Plan / Converse turns stay the
-        orchestrator's call, and a low-confidence detection has already declared ambiguity."""
-        if self.ambiguity.present() or not state.pred_flows:
-            return False
-        if state.pred_intent not in ('Research', 'Draft', 'Revise', 'Publish'):
-            return False
-        flow_name = state.pred_flows[0]['flow_name']
-        state.write_state(self.world.state_file(), 'stackon', flow_name=flow_name)
-        self.flow_stack.stackon(flow_name)  # live-stack mirror — same wipe risk as write_state
-        self._apply_belief_slots(state, flow_name)
-        return True
 
     def activate_flow(self, params:dict) -> dict:
         """Run the named flow's policy inline — the delegate_task analogue. Grounding comes
@@ -695,7 +671,9 @@ class PEX:
         write_state."""
         self._check_nlu(wait=False)  # flow execution never blocks on NLU — only Plan/Clarify wait
         state = self.world.current_state()
-        flow = self._stack_flow(state, params['flow_name'])
+        name = params['flow_name']
+        flow = self.flow_stack.find_by_name(name) or self.flow_stack.stackon(name)
+        flow.status = 'Active'  # pushes wait as Pending; running the policy promotes
 
         # hook: pre-flow
         approval = self._security_check(flow)
@@ -731,36 +709,6 @@ class PEX:
             summary = artifact.thoughts or f'{flow.name()} completed'
             record = self.scratchpad.write_completion(flow.name(), summary, metadata=artifact.data)
         return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
-
-    def _stack_flow(self, state, flow_name:str):
-        """Make the named flow the live top-of-stack for the policy run, rehydrating it
-        from the state file's flow_stack block when an entry exists.
-        A live flow stacked on an earlier turn gets the entry's slot fills layered on —
-        write_state slot fills land in the state file, so the entry is authoritative for
-        slots while the live flow keeps policy-side attributes the file does not carry."""
-        live = self.flow_stack.find_by_name(flow_name)
-        if live and live.status in ('Completed', 'Invalid'):
-            # A finished run of this flow is history, never a stack-on target: refilling it
-            # would APPEND this turn's entity onto last turn's SourceSlot values and the
-            # policy would ground on the stale first entry (the grounding-switch bug).
-            live = None
-        entry = next((item for item in reversed(state.flow_stack)
-                      if item['flow_name'] == flow_name
-                      and item['status'] not in ('Completed', 'Invalid')), None)
-        if live:
-            if entry:
-                live.fill_slot_values(entry['slots'])
-                live.is_filled()
-            live.status = 'Active'  # pushes wait as Pending; running the policy promotes
-            return live
-        if entry is None:
-            flow = self.flow_stack.stackon(flow_name)
-            flow.status = 'Active'
-            return flow
-        flow = rehydrate_flow(entry)
-        flow.status = 'Active'
-        self.flow_stack._stack.append(flow)
-        return flow
 
     def _dispatch_append_scratchpad(self, params:dict) -> dict:
         self.scratchpad.write(params['entry'])  # `writer` stamped by code

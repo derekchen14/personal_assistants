@@ -480,13 +480,6 @@ class TestSessionStateFile:
 
 
 
-def _without_ids(entries:list) -> list:
-    """Stack entries minus the random flow_id, for cross-implementation comparison."""
-    return [{key: val for key, val in entry.items() if key != 'flow_id'} for entry in entries]
-
-
-
-
 def _ops_state() -> DialogueState:
     state = DialogueState(intent='Draft', dax=None, turn_count=1)
     state.conversation_id = 'convo-ops'
@@ -496,7 +489,8 @@ def _ops_state() -> DialogueState:
 
 
 class TestWriteStateOps:
-    """write_state is the only writer of state.json; flow-stack ops are write_state ops."""
+    """write_state is the only writer of state.json; stack ops mutate the FlowStack passed in as
+    `stack` and refresh the saved copy."""
 
     def test_read_state_returns_document(self):
         document = _ops_state().read_state()
@@ -523,49 +517,42 @@ class TestWriteStateOps:
             state.write_state(path, 'update', grounding={'version': 2})
         assert not path.exists()  # rejected ops never reach save()
 
-    def test_op_sequence_matches_in_memory_flowstack(self, tmp_path):
-        """Equivalence: the same stackon/fill/fallback/complete/pop sequence on the
-        in-memory FlowStack and on the file-backed write_state yields the same stack."""
+    def test_op_sequence_keeps_saved_copy_current(self, tmp_path):
+        """The stackon/fill/fallback/complete/pop sequence run through write_state keeps the
+        saved copy and the file in step with the one flow stack."""
         path = tmp_path / 'state.json'
         state = _ops_state()
         stack = FlowStack({}, flow_classes=flow_classes)
 
-        state.write_state(path, 'stackon', flow_name='outline')
-        stack.stackon('outline')
-        state.write_state(path, 'update_flow', slots={'source': [{'post': 'p1'}]},
+        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
+        state.write_state(path, 'update_flow', stack=stack, slots={'source': [{'post': 'p1'}]},
                           stage='discovery')
-        top = stack.get_flow()
-        top.fill_slot_values({'source': [{'post': 'p1'}]})
-        top.is_filled()
-        top.stage = 'discovery'
-        state.write_state(path, 'stackon', flow_name='brainstorm')
-        stack.stackon('brainstorm')
-        state.write_state(path, 'fallback', flow_name='refine')
-        stack.fallback('refine')
+        state.write_state(path, 'stackon', stack=stack, flow_name='brainstorm')
+        state.write_state(path, 'fallback', stack=stack, flow_name='refine')
         state.write_state(path, 'update', grounding={'post': 'p1'})
-        state.write_state(path, 'update_flow', status='Completed')
-        stack.get_flow().status = 'Completed'
-        state.write_state(path, 'pop_completed')
-        stack.pop_completed()
+        state.write_state(path, 'update_flow', stack=stack, status='Completed')
+        state.write_state(path, 'pop_completed', stack=stack)
 
-        assert _without_ids(state.flow_stack) == _without_ids(stack.to_list())
-        assert _without_ids(DialogueState.load(path).flow_stack) == _without_ids(stack.to_list())
+        assert state.flow_stack == stack.to_list()
+        assert DialogueState.load(path).flow_stack == state.flow_stack
 
     def test_grounding_validation_raises_on_ungrounded_completion(self, tmp_path):
         path = tmp_path / 'state.json'
         state = _ops_state()
-        state.write_state(path, 'stackon', flow_name='outline')
+        stack = FlowStack({}, flow_classes=flow_classes)
+        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
         with pytest.raises(ValueError, match='grounding.post is empty'):
-            state.write_state(path, 'update_flow', status='Completed')
+            state.write_state(path, 'update_flow', stack=stack, status='Completed')
         assert state.flow_stack[0]['status'] == 'Pending'  # rejected write left no trace
         assert DialogueState.load(path).flow_stack[0]['status'] == 'Pending'
 
     def test_grounding_validation_passes_once_post_is_set(self, tmp_path):
         path = tmp_path / 'state.json'
         state = _ops_state()
-        state.write_state(path, 'stackon', flow_name='outline')
+        stack = FlowStack({}, flow_classes=flow_classes)
+        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
         state.write_state(path, 'update', grounding={'post': 'p1'})
-        state.write_state(path, 'update_flow', status='Completed')
+        state.write_state(path, 'update_flow', stack=stack, status='Completed')
         assert state.flow_stack[0]['status'] == 'Completed'
 
     def test_update_flow_normalizes_llm_shaped_slot_values(self, tmp_path):
@@ -573,8 +560,9 @@ class TestWriteStateOps:
         entities, and a bare item in place of a list, all coerce instead of crashing."""
         path = tmp_path / 'state.json'
         state = _ops_state()
-        state.write_state(path, 'stackon', flow_name='outline')
-        state.write_state(path, 'update_flow',
+        stack = FlowStack({}, flow_classes=flow_classes)
+        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
+        state.write_state(path, 'update_flow', stack=stack,
                           slots={'sections': ['Motivation', 'Process'], 'source': 'p1',
                                  'topic': 'agents'})
         slots = state.flow_stack[0]['slots']
@@ -587,11 +575,12 @@ class TestWriteStateOps:
         mirroring the old PEX post-hook's slot-type filter."""
         path = tmp_path / 'state.json'
         state = _ops_state()
-        state.write_state(path, 'stackon', flow_name='chat')
-        state.write_state(path, 'update_flow', status='Completed')
-        state.write_state(path, 'pop_completed')
-        state.write_state(path, 'stackon', flow_name='find')
-        state.write_state(path, 'update_flow', status='Completed')
+        stack = FlowStack({}, flow_classes=flow_classes)
+        state.write_state(path, 'stackon', stack=stack, flow_name='chat')
+        state.write_state(path, 'update_flow', stack=stack, status='Completed')
+        state.write_state(path, 'pop_completed', stack=stack)
+        state.write_state(path, 'stackon', stack=stack, flow_name='find')
+        state.write_state(path, 'update_flow', stack=stack, status='Completed')
         assert state.flow_stack[0]['status'] == 'Completed'
 
 
