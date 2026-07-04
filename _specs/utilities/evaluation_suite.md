@@ -29,13 +29,43 @@ less concerned with the specifics of what happened, and instead focused on the *
 | **E2E Agent Evals** | Scenario / parity | full loop | end-to-end behavior matches the oracle on three axes | min |
 | | Quality / judge | judge | the spoken output is good (rubric, faithfulness, no overclaim) | min |
 
-**One entry point.** `utils/evals/run_evaluation_suite.py` runs any combination of levels via argparse:
+**One entry point.** `utils/evaluation_suite/run_suite.py` runs any combination of levels via argparse:
 `--tests [MODULES]` (deterministic, free), `--model [MODULES]` (probabilistic, paid), `--traces`, `--evals`,
 `--all`. `MODULES` is an optional comma list (`nlu,pex,mem`) or `all` — so a level can be run for one module
 (`--tests nlu`, `--model nlu`) or all. **With no flags it runs only the free deterministic Model Unit Tests**
 — no model calls, no cost; every probabilistic / live level is opt-in. The deterministic tests are found by
 naming the `*_unit_tests.py` files **explicitly** (no `python_files` pattern, no directory scan). Each level
 runs as its own subprocess; the suite exits non-zero if any requested level fails.
+
+**Layout — everything lives under `utils/evaluation_suite/`.** Each tier folder holds only its runner; the
+shared infrastructure sits alongside them.
+
+| Path | Role |
+|---|---|
+| `run_suite.py` | the single entry point (drives all three tiers) |
+| `_tests/` | Tests tier — `{nlu,pex,mem}_unit_tests.py` (deterministic) + `model_tests.py` (probabilistic) + `conftest.py` |
+| `_traces/` | Traces tier — `run_traces.py` + `traces.json` (folded baseline) + `tolerance_rules.md` |
+| `_evals/` | Evals tier — `run_evals.py` (the 7 criteria) |
+| `datasets/` | the corpus as three JSONL splits: `train.jsonl` (96 labelled conversations, one JSON per line) + `dev.jsonl` / `test.jsonl` (placeholders) — pure data |
+| `harness.py` | shared: build/seed agents + load/`sample()` the corpus splits |
+| `scoring.py` | shared: the scorers (completion, tools, response) + the red-green gate |
+| `_snapshot.py` | shared: structural snapshot assertion |
+| `review_app/` | the seed-scenario review UI (`server.py` + `index.html` + `app.js`) + its `feedback/` verdicts |
+
+**Train / dev / test.** `train.jsonl` holds all 96 labelled conversations (one JSON per line); `dev.jsonl`
+and `test.jsonl` are placeholders for now. The **dev set is a fresh random ~8 drawn from train per build**
+(`harness.sample`) — not a fixed list — so each iteration judges against a new slice; pass feature-relevant
+ids with `--ids` to override, or `--all` for the whole train split (a release gate). One shared model,
+offline: `scoring.semantic_similarity` and the (designed) business-context vector retrieval both use
+`backend/utilities/embeddings.py` (`all-MiniLM-L6-v2`), so nothing extra is downloaded.
+
+```
+python utils/evaluation_suite/run_suite.py                      # free deterministic tests, all modules
+python utils/evaluation_suite/run_suite.py --tests nlu --model nlu
+python utils/evaluation_suite/_traces/run_traces.py --ids B01.C01,B02.C04   # traces on a chosen set
+python utils/evaluation_suite/_evals/run_evals.py               # 7 criteria, embedding response, sample of 8
+python utils/evaluation_suite/_evals/run_evals.py --judge-response          # response via the LLM judge instead
+```
 
 > **Out of scope — production feedback.** Online per-session metrics, explicit/implicit user-feedback
 > collection, prompt-version attribution, A/B infrastructure, and RFT signal collection are **not built
@@ -57,7 +87,7 @@ unit tests, no model call) and **(b) probabilistic** model predictions (one mode
   (`pytest -m "not llm"`), millisecond-fast.
 - **Probabilistic** — one file for all three modules: `model_tests.py`, selected by
   `--module nlu,pex,mem,all`. It **stores no cases inline**: the labels already live in the eval corpus
-  (`utils/evals/datasets/scenarios/*.json`), so it loads that data and scores each module's single-decision
+  (`utils/evaluation_suite/datasets/train.jsonl`), so it loads that data and scores each module's single-decision
   predictions (one model call per decision, no full loop — the trajectory view is the Traces tier's job).
   Paid, so not in the default free run. NLU flow-detection accuracy is scored today; PEX/MEM scoring is declared
   with its scope still to be defined.
@@ -117,9 +147,9 @@ Default to **full workflow** (strictest); report all four for diagnostics.
 
 ### Operational tool scoring (implemented)
 
-The live Traces runner (`utils/evals/run_evals.py`) scores each user turn's tool calls against the following
-agent turn's `actions` with a **token-level Levenshtein similarity** — `1 − editDistance / max(len)` between
-the dispatched domain tools and the expected list (`utils/evals/scorers/tools.py`). It is **partial credit against
+The live Traces runner (`utils/evaluation_suite/_traces/run_traces.py`) scores each user turn's tool calls against
+the following agent turn's `actions` with a **token-level Levenshtein similarity** — `1 − editDistance / max(len)`
+between the dispatched domain tools and the expected list (`utils/evaluation_suite/scoring.py`). It is **partial credit against
 a threshold** (target ~0.9), not strict pass/fail: a new feature passes once similarity clears the bar, so
 tool-name drift shows up as a graded red rather than a hard break. One live pass over the corpus emits **two**
 metrics from a single set of model calls — `completion_rate` and `tool_match_rate` (mean similarity). Only
@@ -159,25 +189,24 @@ plus a passing judge verdict).
 
 ### The 7 Eval criteria
 
-The two headline rates are the coarse and rigorous poles; a full E2E run scores **seven** things:
+All **seven are wired** in `utils/evaluation_suite/_evals/run_evals.py` — the ground truth already lives in the
+96-example corpus, so most are deterministic. **Only criterion 3 needs a model** (and it defaults to a cheap
+offline embedding, not an LLM), so scoring adds no meaningful cost on top of running the agent itself:
 
-1. **Task completion** — did the turn reach the end without crashing?
-2. **Task correctness (actions)** — did the agent do the right thing per the rubric? Judge the *actions taken*.
-3. **Task success (response)** — is the final agent utterance close to the ground-truth answer? Judge the
-   *utterance*.
-4. **Task success (tasks)** — was the requested task actually completed? Judge the *final Dialogue State*.
+1. **Task completion** — did the turn reach the end in the right mode? `is_completed` (artifact origin == label flow).
+2. **Task correctness (actions)** — did the agent take the right actions? **Deterministic**: per-turn tool-match
+   (Levenshtein similarity vs the label's `expected_tools`), aggregated over the conversation.
+3. **Task success (response)** — is the reply close to the ground-truth agent turn? **Default: offline embedding
+   similarity** (cosine over the shared `all-MiniLM-L6-v2`, no API); `--judge-response` swaps in an LLM-as-judge
+   that also sees the conversation lead-up. This is the only criterion that costs a model call, and it is opt-out.
+4. **Task success (state)** — did NLU's belief detect the labelled flow? **Deterministic**:
+   `pred_flows[0].flow_name == labels.stack[0].flow`.
 5. **Latency** — **ideal** targets we **measure** but do **not** gate on: time-to-first-token **≤ 5 s**,
    full turn **≤ 10 s**, whole conversation **≤ 60 s**, the 8-scenario gate **≤ 10 min**. Track distance to
    these goals rather than pass/fail them.
-6. **Ambiguity** — did the agent declare ambiguity when it existed, and avoid declaring it when it did not (no
-   false positives)?
-7. **Planning** — did the agent plan multi-flow requests, and avoid stacking too many flows when it was not
-   needed?
-
-Criteria 1-4 run cheap to rigorous: 1 is the completion rate; 2 judges the trajectory (the Traces axis brought
-up to the judge); 3 and 4 split the old single "task success" into utterance-judged (the rubric below) versus
-Dialogue-State-judged (the parity axes above). Criteria 6-7 are the behavioral axes the eval corpus already
-labels — the per-turn `ambiguity` level and the multi-item plan stacks.
+6. **Ambiguity** — did the agent declare ambiguity when the label says the turn is ambiguous (no false positives)?
+   **Deterministic** from the per-turn `ambiguity` level.
+7. **Planning** — did multi-flow plan turns complete? **Deterministic** from the multi-item plan stacks.
 
 ### Quality / judge rubrics
 
