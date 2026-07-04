@@ -1,0 +1,221 @@
+{
+  "convo_id": "B02.C02",
+  "persona": "formal/neutral/hedged",
+  "use_case": "find \u2192 outline \u2192 compose \u2192 refine \u2192 write",
+  "topic": "Clean Energy",
+  "title": "Heat Pumps Work Fine in the Cold",
+  "available_data": {},
+  "flagged": false,
+  "batch": "B02",
+  "generation": {
+    "batch": "B02",
+    "seed": 20260701,
+    "writer_model": "claude-haiku-4-5",
+    "spec": "topic=Clean Energy \u00b7 9 turns \u00b7 formal/neutral/hedged \u00b7 arc=straight_build \u00b7 use_case=find->outline->compose->refine->write \u00b7 noise=no \u00b7 verify=yes \u00b7 flagged=no",
+    "draws": {
+      "topic": "Clean Energy",
+      "title_source": "banked",
+      "turn_count": 9,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "find",
+          "outline",
+          "compose",
+          "refine",
+          "write"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": true,
+      "flagged": false,
+      "writer_model": "claude-haiku-4-5",
+      "length": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "search for earlier pieces on heat pumps or cold-climate heating",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "heat pumps cold climate heating"
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Are both published posts and drafts included in results",
+          "dimension": "useful"
+        },
+        {
+          "check": "Is the search capturing posts on heating efficiency broadly",
+          "dimension": "trustworthy"
+        }
+      ]
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
+      "utterance": "Found two published posts on renewable heating and one draft about cold-climate misconceptions."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "start a fresh piece on heat pump myths, focus on the temperature question",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {},
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Does the outline address the core myth that heat pumps fail in cold",
+          "dimension": "useful"
+        }
+      ]
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Outlined five sections: the myth, how the physics works, real-world cold performance, cost and ROI, and the caveats."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "draft this into prose, keep the hedges where uncertainty exists",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {},
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Does the draft acknowledge known limitations without overselling",
+          "dimension": "trustworthy"
+        }
+      ]
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Composed all five sections with measured language on the temperature thresholds and regional variation."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "the physics section feels dense, can you loosen it up",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Heat Pumps Work Fine in the Cold",
+          "sec": "How the Physics Works"
+        }
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Is the refined section more accessible to general readers",
+          "dimension": "useful"
+        }
+      ]
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Restructured the physics section by splitting the explanation into smaller steps and adding an analogy so it reads more smoothly."
+    },
+    {
+      "turn_count": 9,
+      "role": "user",
+      "utterance": "polish the sentences in the cost section, the language is a bit stiff",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Heat Pumps Work Fine in the Cold",
+          "sec": "Cost and ROI"
+        }
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Are the revised sentences more readable while keeping technical accuracy",
+          "dimension": "useful"
+        }
+      ]
+    },
+    {
+      "turn_count": 10,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ]
+    }
+  ]
+}

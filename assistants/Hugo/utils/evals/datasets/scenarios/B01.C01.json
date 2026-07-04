@@ -1,0 +1,171 @@
+{
+  "convo_id": "B01.C01",
+  "persona": "formal/neutral/plain",
+  "use_case": "find \u2192 outline \u2192 compose \u2192 release",
+  "topic": "Long-Distance Train Travel",
+  "title": "An Overnight Train Is a Hotel in Disguise",
+  "available_data": {},
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-haiku-4-5",
+    "spec": "topic=Long-Distance Train Travel \u00b7 7 turns \u00b7 formal/neutral/plain \u00b7 arc=straight_build \u00b7 use_case=find->outline->compose->release \u00b7 noise=t[1, 3, 7](punctuation) \u00b7 verify=no \u00b7 flagged=no",
+    "draws": {
+      "topic": "Long-Distance Train Travel",
+      "title_source": "banked",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Publish",
+        "sequence": [
+          "find",
+          "outline",
+          "compose",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": {
+          "turns": [
+            1,
+            3,
+            7
+          ],
+          "type": "punctuation"
+        },
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-haiku-4-5",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Pull up my posts about sleeper trains, please.",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "sleeper trains overnight"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
+      "utterance": "Found three: 'The Case for Sleepers Over Hotels', a half-draft, and two notes on European routes."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "sketch a structure from the draft, lead with comfort then cost",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "The Case for Sleepers Over Hotels"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Built five sections: comfort first, then cost versus hotels, routes that work, logistics, and why people skip them."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "turn it into prose now, keep the voice conversational",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "The Case for Sleepers Over Hotels"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Composed all sections. Each flows into the next, opening with the comfort angle that makes sleepers feel indulgent."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "push it live to the main blog now",
+      "labels": {
+        "intent": "Publish",
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "The Case for Sleepers Over Hotels"
+        },
+        "channel": "main blog"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "release_post"
+      ]
+    }
+  ]
+}

@@ -7,9 +7,8 @@ SYSTEM_PROMPT = (
     '- Never fabricate post content — use find_posts/read_metadata to verify'
 )
 
-JSON_REMINDER = 'Your entire response must be well-formatted JSON with no further text.'
-
-SLOT_7_REMINDER = 'Respond with ONLY valid JSON. No markdown fences, no explanation outside the JSON.'
+SLOT_7_REMINDER = ('Finish the turn by EITHER calling a tool OR replying to the user in plain '
+                   'prose. Do not wrap your reply in JSON or restate these instructions.')
 
 
 def build_system(persona: dict) -> str:

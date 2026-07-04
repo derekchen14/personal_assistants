@@ -4,16 +4,27 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from backend.components.task_artifact import TaskArtifact
+from backend.components.dialogue_state import rehydrate_flow
 
 from backend.utilities.services import (
     PostService, ContentService, AnalysisService, PlatformService,
     OutlineValidationError, PostNotFoundError,
 )
-from backend.utilities.faq_service import FAQService
 from backend.modules.policies import *
 from schemas.ontology import Intent
+from utils.helper import dax2flow
 
 log = logging.getLogger(__name__)
+
+# Acting-loop bounds. _MAX_CORRECTIVE bounds consecutive failed tool calls before the loop stops
+# burning rounds.
+_MAX_ROUNDS = 8
+_MAX_CORRECTIVE = 3
+_FALLBACK_MESSAGE = "I wasn't able to finish that. Could you try rephrasing?"
+_NUDGE_MESSAGE = ('Your last response had no visible text and no tool calls. Reply with your '
+                  'final response to the user, or call a tool.')
+_WRAP_UP_MESSAGE = ('Stop calling tools. Reply to the user now in 1-2 sentences of plain text: '
+                    'summarize what was accomplished this turn, or ask what they need.')
 
 
 @dataclass
@@ -28,6 +39,29 @@ _GENERAL_ERROR = {'misclassified', 'misdetected', 'user_error'}
 _PARTIAL_MISSING = {'source', 'target', 'title', 'query'}
 _PARTIAL_ENTITY = {'post', 'section', 'snippet', 'channel'}
 _SPECIFIC_REASON = {'invalid_value', 'unclear_value', 'wrong_slot'}
+
+# Read-only domain tools the orchestrator may call directly for trivial lookups. Every write
+# still goes through a flow via activate_flow, preserving policy invariants, grounding
+# discipline, and completion records.
+READ_ONLY_DOMAIN_TOOLS = ('find_posts', 'read_metadata', 'read_section', 'search_notes',
+                          'list_channels', 'channel_status')
+
+
+def _block_summaries(artifact) -> list:
+    """Compact view of the artifact blocks for the activate_flow tool result, so the
+    orchestrator knows what the frontend will render (it must reference blocks, never
+    restate them). Same card-shaped summary the e2e harness and agent logging use;
+    selection blocks additionally carry their option labels."""
+    summaries = []
+    for block in artifact.blocks:
+        data = block.data or {}
+        summary = {'type': block.block_type, 'data_keys': sorted(data.keys())}
+        if block.block_type in ('selection', 'checklist'):
+            summary['options'] = [opt['label'] for opt in data['options']]
+        if 'title' in data:  # e.g. a selection block's heading shown above its options
+            summary['title'] = data['title']
+        summaries.append(summary)
+    return summaries
 
 
 def _validate_ambig_metadata(level:str, metadata:dict) -> str | None:
@@ -62,12 +96,12 @@ class PEX:
         self.memory = memory
         self.world = world
         self.flow_stack = world.flow_stack
+        self.scratchpad = world.scratchpad
 
         self._post_service = PostService()
         self._content_service = ContentService()
         self._analysis_service = AnalysisService()
         self._platform_service = PlatformService()
-        self._faq_service = FAQService(engineer)
 
         self.tools: dict[str, tuple[object, str]] = {
             # PostService (9)
@@ -106,13 +140,31 @@ class PEX:
             'cancel_release':    (self._platform_service, 'cancel_release'),
             'list_channels':     (self._platform_service, 'list_channels'),
             'channel_status':    (self._platform_service, 'channel_status'),
-            # FAQService (1)
-            'search_faqs':       (self._faq_service, 'search_faqs'),
+            # BusinessContext / FAQs (1)
+            'search_faqs':       (self.memory.business, 'search_faqs'),
+        }
+
+        # Real prompt-token usage off the last acting-loop API response — Agent's compression
+        # check reads it in the post-hook epilogue.
+        self.last_prompt_tokens = 0
+        # Flows that reached Completed during the current turn — reset per execute(), read by the
+        # end-of-turn checkpoint.
+        self._completed_this_turn = []
+        # Orchestrator hot-path tools — wiring only; the implementations live in
+        # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
+        self._orchestrator_dispatch = {
+            'read_state':           self._dispatch_read_state,
+            'write_state':          self._dispatch_write_state,
+            'activate_flow':        self.activate_flow,
+            'append_to_scratchpad': self._dispatch_append_scratchpad,
+            'read_scratchpad':      self._dispatch_read_scratchpad,
+            'store_preference':     self._dispatch_store_preference,
         }
 
         components = {'engineer': engineer, 'memory': memory, 'config': config, 'ambiguity': ambiguity,
             'get_tools': self.get_tools_for_flow, 'flow_stack': self.flow_stack,
-            'content_service': self._content_service,
+            'content_service': self._content_service, 'state_file': self.world.state_file,
+            'scratchpad': self.scratchpad,
         }
         self._policies: dict[str, object] = {
             Intent.CONVERSE: ConversePolicy(components),
@@ -120,8 +172,6 @@ class PEX:
             Intent.DRAFT: DraftPolicy(components),
             Intent.REVISE: RevisePolicy(components),
             Intent.PUBLISH: PublishPolicy(components),
-            Intent.PLAN: PlanPolicy(components),
-            Intent.INTERNAL: InternalPolicy(components),
         }
         self.initialization()
 
@@ -129,42 +179,6 @@ class PEX:
         # Wipe snapshot history from prior sessions
         for stale in self._content_service._snap_root.glob('snap_*.json'):
             stale.unlink()
-
-    def execute(self, state, context):
-        active_flow = self.flow_stack.get_flow()
-
-        check_result = self._security_check(active_flow)
-        if check_result:
-            return check_result, False
-
-        policy = self._policies[active_flow.intent]
-        artifact = policy.execute(state, context, self._dispatch_tool)
-        log.info(
-            f'PEX: flow={active_flow.name()!r} stage={active_flow.stage} '
-            f'metadata_keys={sorted(artifact.data.keys())} '
-            f'block_types={[b.block_type for b in artifact.blocks]} '
-            f'thoughts_len={len(artifact.thoughts or "")}'
-        )
-
-        check = self._validate_artifact(artifact, active_flow)
-        if not check.passed:
-            # Error frames are already classified by the policy — no generic retry. Pass them
-            # straight to RES; the template keys off metadata['violation'] and artifact.thoughts.
-            if check.is_error_frame:
-                state.has_issues = True
-                self.world.insert_artifact(artifact)
-                self._verify(active_flow)
-                return artifact, False
-            artifact, escalated = self.recover(check, active_flow, context)
-            if escalated:
-                state.has_issues = True
-                self.world.insert_artifact(artifact)
-                self._verify(active_flow)
-                return artifact, False
-
-        self.world.insert_artifact(artifact)
-        keep_going = self._verify(active_flow)
-        return artifact, keep_going
 
     # -- Pre-hook ---------------------------------------------------------
 
@@ -191,7 +205,7 @@ class PEX:
                 )
                 artifact = TaskArtifact(flow.name())
                 artifact.add_block({'type': 'confirmation', 'data': {
-                    'prompt': self.ambiguity.ask(),
+                    'prompt': self.ambiguity.ask(flow.name()),
                     'confirm_label': 'Approve',
                     'cancel_label': 'Cancel',
                 }})
@@ -199,20 +213,12 @@ class PEX:
 
         return None
 
-    def _verify_active_post(self, flow):
-        """Read-only check: if the flow is grounded on a post/section/channel, state.active_post
-        must be set by the policy. Topic-grounded flows skip this."""
-        state = self.world.current_state()
-        ent_slot = flow.slots[flow.entity_slot]
-        if ent_slot.slot_type in ['source', 'target', 'removal', 'channel'] and not state.active_post:
-            state.has_issues = True
-
     # -- Validation -------------------------------------------------------
 
     def _validate_artifact(self, artifact, flow):
         """Check whether a artifact is good enough to show to the user. A artifact with a 'violation'
         set is already recognized as an error artifact, so it does NOT need Tier-1 retry. Return
-        passed=False + is_error_frame=True so the outer caller routes it directly to RES."""
+        passed=False + is_error_frame=True so the outer caller routes it directly to the error path."""
         if self.ambiguity.present():
             return ArtifactCheck(passed=True)
         if 'violation' in artifact.data:
@@ -260,49 +266,161 @@ class PEX:
         except Exception:
             return ArtifactCheck(passed=True)
 
-    # -- Recovery ---------------------------------------------------------
+    # -- Acting loop (the Assistant's single PEX entry) -------------------
 
-    def recover(self, check, flow, context):
-        """Attempt to recover from a failed artifact validation.
+    def execute(self, state, context, system_prompt, *, dax=None, payload=None, text='') -> str:
+        """The acting loop the Assistant calls once per turn, after NLU has written belief. A
+        pure click (dax, no text) is resolved deterministically — no LLM. Otherwise the bounded
+        orchestrator loop reads belief (read_state) and decides by intent per the system prompt,
+        dispatching tool calls through `_dispatch_tool`. Returns the spoken utterance."""
+        self._completed_this_turn = []
+        if dax and not text.strip():
+            utterance = self._execute_click(state, context, dax, payload or {})
+        else:
+            message = text
+            if dax:  # action + text: inject the resolved flow as context, then run the loop
+                flow_name = dax2flow(dax)
+                message = (f'[action] This turn arrived with a resolved flow: {flow_name!r} '
+                           f'(dax {dax}, payload {json.dumps(payload or {}, default=str)}). '
+                           f'Do not re-decide the click — build on it.\n{text}')
+            context.append_message({'role': 'user', 'content': message})
+            utterance = self._run_loop(system_prompt)
+        self._record_checkpoint(state, context)
+        return utterance
 
-        Returns (artifact, escalated). escalated=True means the caller should flip state.has_issues
-        and surface the ambiguity to the user; False means the retry succeeded.
+    def _record_checkpoint(self, state, context):
+        """Backward-looking end-of-turn snapshot recorded as a 'System' turn in the Context:
+        which flows completed this turn, which flow is still active, and the grounded entity. A
+        record of what just happened — distinct from the forward-looking active-flow pointer."""
+        active = self.flow_stack.get_flow(status='Active')
+        parts = [f"completed: {', '.join(self._completed_this_turn) or 'none'}",
+                 f"active: {active.name() if active else 'none'}"]
+        if state.grounding['post']:
+            parts.append(f"post: {state.grounding['post']}")
+        context.add_turn('System', f"[checkpoint] {' | '.join(parts)}", turn_type='checkpoint')
 
-        Only runs when `check.is_error_frame` is False — error frames bypass this path and go
-        straight to RES.
+    def _execute_click(self, state, context, dax:str, payload:dict) -> str:
+        """Pure click: the dax names the flow and NLU.react already filled belief. Stack the
+        flow, apply the react-filled slots from belief, activate it — the artifact thoughts ARE
+        the reply (no LLM loop)."""
+        flow_name = dax2flow(dax)
+        context.append_message({'role': 'user', 'content':
+            f'[click] dax={dax} flow={flow_name} payload={json.dumps(payload, default=str)}'})
+        flow = self.flow_stack.find_by_name(flow_name) or self.flow_stack.stackon(flow_name)
+        if state.pred_slots:
+            flow.fill_slot_values(state.pred_slots)
+            flow.is_filled()
+        result = self.activate_flow({'flow_name': flow_name})
+        artifact = self.world.latest_artifact()
+        utterance = result.get('question') or artifact.thoughts or _FALLBACK_MESSAGE
+        context.append_message({'role': 'assistant', 'content': utterance})
+        return utterance
 
-        Tier 2 (retrieve-based context gather) and Tier 3 (NLU re-route) are intentionally not
-        live: reviving them requires a concrete driving failure mode plus dedicated tests.
-        Escalation is the terminal fallback."""
-        log.warning('recover: %s (flow=%s)', check.reason, flow.name())
+    def _run_loop(self, system_prompt:str) -> str:
+        """The bounded acting loop: call the LLM with the frozen system prompt + persistent
+        message list + orchestrator tool catalog; dispatch tool calls through `_dispatch_tool`;
+        append results. A plain-text response with no tool calls ends the turn and IS the
+        utterance, verbatim."""
+        context = self.world.context
+        tools = self.get_tools_for_orchestrator()
+        valid = {tool['name'] for tool in tools}
+        model_id = self.config['models']['overrides']['orchestrator']['model_id']
 
-        # ── Tier 1: Retry skill with error feedback ─────────────────
-        repair_msg = (
-            f'[Recovery] Your previous output was rejected: {check.reason}. '
-            f'Please try again, addressing this issue.'
-        )
-        self.memory.write_scratchpad('repair', check.reason)
-        context.add_turn('System', repair_msg, turn_type='system')
+        nudged = False
+        errors = 0
+        last_call = None
+        for round_idx in range(_MAX_ROUNDS):
+            response = self.engineer._call_claude(system_prompt, context.messages,
+                                                  model_id, tools=tools, max_tokens=4096)
+            self._track_usage(response)
+            text_parts = [block.text for block in response.content if block.type == 'text']
+            tool_uses = [block for block in response.content if block.type == 'tool_use']
+            text = '\n'.join(part for part in text_parts if part).strip()
 
-        policy = self._policies[flow.intent]
-        retry_frame = policy.execute(
-            self.world.current_state(), context, self._dispatch_tool,
-        )
-        retry_check = self._validate_artifact(retry_frame, flow)
-        if retry_check.passed:
-            log.info('recover: tier-1 retry succeeded')
-            return retry_frame, False
-        log.warning('recover: tier-1 failed: %s', retry_check.reason)
+            if not tool_uses:
+                if text:
+                    context.append_message({'role': 'assistant', 'content': text})
+                    return text
+                if nudged:  # thinking-only twice → canned fallback
+                    context.append_message({'role': 'assistant', 'content': _FALLBACK_MESSAGE})
+                    return _FALLBACK_MESSAGE
+                nudged = True
+                context.append_message({'role': 'user', 'content': _NUDGE_MESSAGE})
+                continue
 
-        # ── Tier 4: Escalate to user (ambiguity) ────────────────────
-        log.info('recover: escalating to user')
-        observation = (
-            f'I had trouble completing this — {check.reason}. '
-            f'Could you provide more details or try a different approach?'
-        )
-        self.ambiguity.declare('partial', metadata={'missing': 'query'}, observation=observation)
-        artifact = TaskArtifact(flow.name())
-        return artifact, True
+            blocks = [{'type': 'text', 'text': part} for part in text_parts if part]
+            blocks += [{'type': 'tool_use', 'id': tu.id, 'name': tu.name,
+                        'input': dict(tu.input or {})} for tu in tool_uses]
+            context.append_message({'role': 'assistant', 'content': blocks})
+
+            results = []
+            for tool_use in tool_uses:
+                # Pairing invariant: every appended tool_use MUST get a tool_result in the next
+                # message, even if the dispatch path itself crashes — a dangling tool_use poisons
+                # messages.jsonl for every later turn of the session.
+                try:
+                    result, last_call = self._guarded_call(tool_use, valid, last_call)
+                except Exception as ecp:  # noqa: BLE001 — convert to a corrective tool error
+                    log.exception('tool dispatch crashed: %s', ecp)
+                    result = {'_success': False, '_error': 'server_error',
+                              '_message': f'{type(ecp).__name__}: {ecp}'}
+                    last_call = None
+                errors = errors + 1 if not result['_success'] else 0
+                log.info('  orch round=%d tool=%s ok=%s', round_idx + 1, tool_use.name,
+                         result['_success'])
+                results.append({'type': 'tool_result', 'tool_use_id': tool_use.id,
+                                'content': json.dumps(result, default=str)})
+            context.append_message({'role': 'user', 'content': results})
+            if errors >= _MAX_CORRECTIVE:
+                break  # the model keeps failing tool calls — stop burning rounds
+        return self._final_emit(system_prompt, model_id)
+
+    def _final_emit(self, system_prompt:str, model_id:str) -> str:
+        """Round budget or corrective cap exhausted: one last no-tools call forces a plain-text
+        wrap-up (the terminal emit), so completed work still gets a real reply instead of the
+        canned fallback. Falls back only if even that produces nothing."""
+        context = self.world.context
+        context.append_message({'role': 'user', 'content': _WRAP_UP_MESSAGE})
+        response = self.engineer._call_claude(system_prompt, context.messages,
+                                              model_id, max_tokens=1024)
+        self._track_usage(response)
+        text_parts = [block.text for block in response.content if block.type == 'text']
+        utterance = '\n'.join(part for part in text_parts if part).strip() or _FALLBACK_MESSAGE
+        context.append_message({'role': 'assistant', 'content': utterance})
+        return utterance
+
+    def _guarded_call(self, tool_use, valid:set, last_call) -> tuple[dict, tuple]:
+        """Guardrails around one tool call: hallucinated names and identical consecutive calls
+        return corrective errors instead of dispatching. Everything else routes through
+        `_dispatch_tool`, which already converts bad args into corrective tool errors the model
+        can retry on. These guards are the legitimate exception to the no-defensive-code rule —
+        LLM output is genuinely unpredictable input.
+
+        `last_call` is (name+args key, succeeded). Dedupe only fires when the previous identical
+        call SUCCEEDED — retrying the same call after a transient tool error (server_error from
+        an overloaded LLM, a flaky channel API) is legitimate recovery, not a loop."""
+        call = (tool_use.name, json.dumps(dict(tool_use.input or {}), sort_keys=True, default=str))
+        if tool_use.name not in valid:
+            result = {'_success': False, '_error': 'invalid_input',
+                      '_message': f'Unknown tool: {tool_use.name!r}. Use a tool from your tool list.'}
+        elif last_call and call == last_call[0] and last_call[1]:
+            result = {'_success': False, '_error': 'duplicate_call',
+                      '_message': 'Identical consecutive tool call skipped — change the '
+                                  'arguments or respond to the user.'}
+        else:
+            result = self._dispatch_tool(tool_use.name, dict(tool_use.input or {}))
+            if '_success' not in result:  # manage_memory keeps its old {'status': ...} contract
+                result['_success'] = result.get('status') == 'success'
+        return result, (call, result['_success'])
+
+    def _track_usage(self, response):
+        """Record real prompt-token usage off an acting-loop API response (Agent's compression
+        trigger reads it, never estimates). Cache reads/writes count toward the window."""
+        usage = response.usage
+        if usage:
+            self.last_prompt_tokens = (usage.input_tokens
+                                       + (usage.cache_creation_input_tokens or 0)
+                                       + (usage.cache_read_input_tokens or 0))
 
     # -- Tool dispatch ----------------------------------------------------
 
@@ -321,14 +439,13 @@ class PEX:
             elif tool_name == 'coordinate_context':
                 return self._dispatch_context_tool(tool_input)
             elif tool_name == 'manage_memory':
-                return self.memory.dispatch_tool(
-                    tool_input.get('action', ''),
-                    tool_input,
-                )
+                return self._dispatch_manage_memory(tool_input)
             elif tool_name == 'call_flow_stack':
                 return self._dispatch_flow_stack_tool(tool_input)
             elif tool_name == 'save_findings':
                 return self._dispatch_save_findings_tool(tool_input)
+            elif tool_name in self._orchestrator_dispatch:
+                return self._orchestrator_dispatch[tool_name](tool_input)
             else:
                 return {
                     '_success': False, '_error': 'invalid_input',
@@ -411,13 +528,13 @@ class PEX:
         Tool-call-shaped replacement for skills that would otherwise emit a JSON blob as their
         terminal text response. The policy reads the findings out of tool_log via
         `extract_tool_result`; downstream flows read them via
-        `memory.read_scratchpad(<flow_name>)`."""
+        `scratchpad.read(<flow_name>)`."""
         findings = params.get('findings', [])
         summary = params.get('summary', '')
         references_used = params.get('references_used', [])
         flow = self.flow_stack.get_flow()
         key = flow.name() if flow else 'findings'
-        self.memory.write_scratchpad(key, {
+        self.scratchpad.write(key, {
             'version': '1',
             'turn_number': self.world.context.turn_id,
             'used_count': 0,
@@ -431,6 +548,132 @@ class PEX:
             'summary': summary,
             'references_used': references_used,
         }
+
+    # -- Orchestrator hot-path dispatch -----------------------------------
+    # Thin wiring onto the state, memory, and NLU surfaces. Errors raised below (bad
+    # write_state op, unknown flow, grounding violation) are caught by _dispatch_tool's
+    # try/except and returned as corrective tool errors for the orchestrator loop to retry on.
+
+    def _dispatch_read_state(self, params:dict) -> dict:
+        return {'_success': True, 'state': self.world.current_state().read_state()}
+
+    def _dispatch_write_state(self, params:dict) -> dict:
+        state = self.world.current_state()
+        kwargs = dict(params.get('fields', {}))
+        for key in ('flow_name', 'plan_id'):
+            if key in params:
+                kwargs[key] = params[key]
+        if params['op'] == 'update_flow' and 'slots' in kwargs:
+            top = rehydrate_flow(state.flow_stack[-1])
+            unknown = [name for name in kwargs['slots'] if name not in top.slots]
+            if unknown:  # corrective error — fill_slot_values would drop these silently
+                return {'_success': False, '_error': 'invalid_input',
+                        '_message': f'flow {top.name()!r} has no slot(s) {unknown}; '
+                                    f'valid slots: {list(top.slots)}'}
+        document = state.write_state(self.world.state_file(), params['op'], **kwargs)
+        if params['op'] == 'pop_completed':
+            # Mirror the pop onto the live stack: activate_flow's epilogue re-syncs
+            # state.flow_stack from it, so a stale live entry would resurrect popped flows.
+            self.flow_stack.pop_completed()
+        return {'_success': True, 'state': document}
+
+    def activate_flow(self, params:dict) -> dict:
+        """Run the named flow's policy inline — the delegate_task analogue. Grounding comes
+        from the state file's grounding block; _security_check and _validate_artifact re-attach
+        around the policy run. On completion the flow's completion record is written to the
+        session scratchpad and returned as the tool result. State-file persistence stays with
+        write_state (the orchestrator epilogue)."""
+        state = self.world.current_state()
+        flow = self._stage_flow(state, params['flow_name'])
+
+        approval = self._security_check(flow)
+        if approval:
+            return {'_success': False, '_error': 'approval_required',
+                    '_message': approval.blocks[0].data['prompt']}
+
+        if state.grounding['post']:
+            state.active_post = state.grounding['post']
+        policy = self._policies[flow.intent]
+        artifact = policy.execute(state, self.world.context, self._dispatch_tool)
+        record = policy.pop_completion()  # set when the policy completed via complete_flow
+        self.world.insert_artifact(artifact)
+        if state.active_post:  # the grounding block stays authoritative
+            state.grounding['post'] = state.active_post
+
+        check = self._validate_artifact(artifact, flow)
+        if not check.passed:
+            if check.is_error_frame:
+                return {'_success': False, '_error': 'execution_error',
+                        '_message': artifact.data['violation'], 'thoughts': artifact.thoughts}
+            return {'_success': False, '_error': 'validation', '_message': check.reason}
+
+        state.flow_stack = self.flow_stack.to_list()
+        blocks = _block_summaries(artifact)
+        if flow.status != 'Completed':
+            question = self.ambiguity.ask(flow.name()) if self.ambiguity.present() else ''
+            return {'_success': True, 'status': flow.status, 'thoughts': artifact.thoughts,
+                    'question': question, 'blocks': blocks}
+        self._completed_this_turn.append(flow.name())  # for the end-of-turn checkpoint
+        if record is None:  # policy completed without calling complete_flow — synthesize a record
+            summary = artifact.thoughts or f'{flow.name()} completed'
+            record = self.scratchpad.write_completion(flow.name(), summary, metadata=artifact.data)
+        return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
+
+    def _stage_flow(self, state, flow_name:str):
+        """Make the named flow the live top-of-stack for the policy run, rehydrating it
+        from the state file's flow_stack block when an entry exists.
+        A live flow staged on an earlier turn gets the entry's slot fills layered on —
+        write_state slot fills land in the state file, so the entry is authoritative for
+        slots while the live flow keeps policy-side attributes the file does not carry."""
+        live = self.flow_stack.find_by_name(flow_name)
+        if live and live.status in ('Completed', 'Invalid'):
+            # A finished run of this flow is history, never a staging target: refilling it
+            # would APPEND this turn's entity onto last turn's SourceSlot values and the
+            # policy would ground on the stale first entry (the grounding-switch bug).
+            live = None
+        entry = next((item for item in reversed(state.flow_stack)
+                      if item['flow_name'] == flow_name
+                      and item['status'] not in ('Completed', 'Invalid')), None)
+        if live:
+            if entry:
+                live.fill_slot_values(entry['slots'])
+                live.is_filled()
+            return live
+        if entry is None:
+            return self.flow_stack.stackon(flow_name)
+        flow = rehydrate_flow(entry)
+        flow.status = 'Active'
+        self.flow_stack._stack.append(flow)
+        return flow
+
+    def _dispatch_append_scratchpad(self, params:dict) -> dict:
+        self.scratchpad.write(params['entry'])  # `writer` stamped by code
+        return {'_success': True, 'size': self.scratchpad.size}
+
+    def _dispatch_read_scratchpad(self, params:dict) -> dict:
+        entries = self.scratchpad.read(writer=params.get('writer'), keys=params.get('keys'))
+        return {'_success': True, 'entries': entries}
+
+    def _dispatch_store_preference(self, params:dict) -> dict:
+        """Persist a durable user preference to L2."""
+        self.memory.preferences.store_preference(params['key'], params['value'])
+        return {'_success': True, 'key': params['key']}
+
+    def _dispatch_manage_memory(self, params:dict) -> dict:
+        """The combined memory tool: scratchpad read/write + preference read. Keeps the legacy
+        {'status': ...} result contract."""
+        action = params.get('action', '')
+        if action == 'read_scratchpad':
+            return {'status': 'success', 'result': self.scratchpad.read(params.get('key'))}
+        if action == 'write_scratchpad':
+            key = params.get('key', '')
+            if not key:
+                return {'status': 'error', 'message': 'key is required'}
+            self.scratchpad.write(key, params.get('value', ''))
+            return {'status': 'success', 'result': 'written'}
+        if action == 'read_preferences':
+            return {'status': 'success', 'result': self.memory.preferences.read()}
+        return {'status': 'error', 'message': f'Unknown action: {action}'}
 
     # -- Tool definitions -------------------------------------------------
 
@@ -564,7 +807,7 @@ class PEX:
                 'description': (
                     "Signal a systemic error from inside a skill. The policy "
                     "consumes this from the tool log and routes the resulting artifact "
-                    "to RES with metadata['violation'] set.\n\n"
+                    "to the error path with metadata['violation'] set.\n\n"
                     "Pick `violation` from the 8-item vocabulary:\n"
                     "- failed_to_save: a persistence tool didn't run or had no effect\n"
                     "- scope_mismatch: the flow ran at the wrong granularity\n"
@@ -601,7 +844,7 @@ class PEX:
                     "(audit, future web_search, etc.). Call this instead of emitting JSON "
                     "in your text response — the policy reads the findings from this tool "
                     "call directly. Writes the payload to the scratchpad under the active "
-                    "flow's name so downstream flows (e.g. polish-informed reading audit) "
+                    "flow's name so downstream flows (e.g. an audit-informed write) "
                     "can consume it."
                 ),
                 'input_schema': {
@@ -627,11 +870,132 @@ class PEX:
             },
         ]
 
-    # -- Post-hook --------------------------------------------------------
+    def get_tools_for_orchestrator(self) -> list[dict]:
+        """The orchestrator's tool list: hot-path dedicated tools, the three long-tail
+        component dispatch tools, and the read-only domain allowlist. call_flow_stack is
+        deliberately absent — its job lives in read_state/write_state."""
+        tools = self._orchestrator_tool_definitions()
+        component = {tool['name']: tool for tool in self._component_tool_definitions()}
+        tools += [component[name] for name in ('handle_ambiguity', 'coordinate_context',
+                                               'manage_memory')]
+        for tool_name in READ_ONLY_DOMAIN_TOOLS:
+            tool_def = self._get_tool_def(tool_name)
+            if tool_def:
+                tools.append(tool_def)
+        return tools
 
-    def _verify(self, active_flow):
-        state = self.world.current_state()
-        if active_flow.intent not in ['Converse', 'Internal'] and not state.has_issues:
-            self._verify_active_post(active_flow)
-        return state.keep_going
+    def _orchestrator_tool_definitions(self) -> list[dict]:
+        return [
+            {
+                'name': 'read_state',
+                'description': (
+                    "Read the session's DialogueState file: user beliefs (intent, goal, "
+                    "confirmed/rejected, workflow_step), the grounding block (the active "
+                    "post/sec/snip/chl entity), the flow stack, and flags. Cheap read — call it "
+                    "whenever you need current state rather than guessing."
+                ),
+                'input_schema': {'type': 'object', 'properties': {}, 'required': []},
+            },
+            {
+                'name': 'write_state',
+                'description': (
+                    "Mutate the DialogueState file — the ONLY writer of state.json. Ops:\n"
+                    "- `update`        — set user-belief / grounding / flag fields. Pass them in "
+                    "`fields`, e.g. {goal: ..., workflow_step: 3, grounding: {post: ...}}.\n"
+                    "- `update_flow`   — mutate the top stack flow. `fields` may carry `slots` "
+                    "(slot-name → value, in the exact shapes belief's `pred_slots` carries: "
+                    "strings for single-value slots, lists for multi-value slots), `stage`, and "
+                    "`status`. An entity-grounded flow cannot reach status=Completed while "
+                    "grounding.post is empty.\n"
+                    "- `stackon`       — push `flow_name` (optional `plan_id`) as a prerequisite "
+                    "flow on top of the stack.\n"
+                    "- `fallback`      — replace the top flow with `flow_name`, transferring "
+                    "matching slot values.\n"
+                    "- `pop_completed` — remove Completed/Invalid flows, activating the next "
+                    "Pending one.\n"
+                    "Returns the full state document after the write."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {
+                        'op': {'type': 'string', 'enum': ['update', 'update_flow', 'stackon',
+                                                          'fallback', 'pop_completed']},
+                        'fields': {'type': 'object',
+                                   'description': 'for update / update_flow — the fields to set'},
+                        'flow_name': {'type': 'string',
+                                      'description': 'for stackon / fallback — the target flow'},
+                        'plan_id': {'type': 'string', 'description': 'for stackon under a Plan'},
+                    },
+                    'required': ['op'],
+                },
+            },
+            {
+                'name': 'activate_flow',
+                'description': (
+                    "Run the named flow's policy inline as a sub-agent (skill prompt + domain "
+                    "tools). Slots come from the flow's stack entry; grounding from the state "
+                    "file. On completion you get the completion record {flow, summary, metadata} "
+                    "— also appended to the scratchpad. A non-completed run returns the flow "
+                    "status plus any pending clarification question. `blocks` summarizes the UI "
+                    "artifact (cards, selection options) the frontend renders alongside your "
+                    "reply — reference it briefly, never restate its contents. ALL domain "
+                    "writes go through this tool, never through domain tools directly."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {
+                        'flow_name': {'type': 'string',
+                                      'description': 'catalog name of the flow to run'},
+                    },
+                    'required': ['flow_name'],
+                },
+            },
+            {
+                'name': 'append_to_scratchpad',
+                'description': (
+                    "Append one agent-belief entry to the session scratchpad (JSONL). `entry` is "
+                    "a schema-free JSON object — intermediate findings, tool results worth "
+                    "keeping, working notes. The `writer` stamp is added by code; do not include "
+                    "a writer key yourself."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {'entry': {'type': 'object'}},
+                    'required': ['entry'],
+                },
+            },
+            {
+                'name': 'store_preference',
+                'description': (
+                    "Persist a durable user preference to L2 memory — preferred tone, default "
+                    "post length, heading style, Oxford-comma usage, channel defaults. Survives "
+                    "the session. Pass the preference `key` and its `value`."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {
+                        'key': {'type': 'string'},
+                        'value': {'type': 'string'},
+                    },
+                    'required': ['key', 'value'],
+                },
+            },
+            {
+                'name': 'read_scratchpad',
+                'description': (
+                    "Read session scratchpad entries, newest last. Optional filters: `writer` "
+                    "('orchestrator' or a flow name) and `keys` (only entries carrying every "
+                    "named key — e.g. ['flow', 'summary'] selects completion records)."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {
+                        'writer': {'type': 'string'},
+                        'keys': {'type': 'array', 'items': {'type': 'string'}},
+                    },
+                    'required': [],
+                },
+            },
+        ]
+
 

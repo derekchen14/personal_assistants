@@ -1,0 +1,186 @@
+{
+  "convo_id": "B01.C11",
+  "persona": "P: casual + plain",
+  "use_case": "U: plan -> find -> summarize -> compare",
+  "topic": "T: Agent Observability",
+  "title": "Your Agent's Token Count Is a Vanity Metric",
+  "available_data": {
+    "posts": [
+      "Your Agent's Token Count Is a Vanity Metric",
+      "Don't Trace Prompts, Trace the Tool Calls"
+    ]
+  },
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-opus-4-8",
+    "spec": "topic=Agent Observability | 7 turns | P casual/frustrated/plain | arc=planning(mix, step_0) w/ embedded ambiguity(specific@t3,reject) | use_case=plan->find->summarize->compare | drift=t3(skeptical) | verify=no | flagged=no",
+    "draws": {
+      "topic": "Agent Observability",
+      "title_source": "banked",
+      "turn_count": 7,
+      "persona": {
+        "formality": "casual",
+        "emotion": "frustrated",
+        "directness": "plain"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "mix",
+        "handling": "step_0"
+      },
+      "ambiguity": {
+        "level": "specific",
+        "tag": "reject",
+        "turn": 3
+      },
+      "use_case": {
+        "phase_lead": "Research",
+        "sequence": [
+          "plan",
+          "find",
+          "summarize",
+          "compare"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": {
+          "turn": 3,
+          "to": "skeptical"
+        }
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-opus-4-8",
+      "length": [
+        1,
+        2,
+        1,
+        1
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "can you figure out why my observability posts keep flopping",
+      "labels": {
+        "intent": "Plan",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          },
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          },
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
+      },
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (find -> summarize -> compare); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
+      "slots": {},
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [],
+      "utterance": "I can pull them, condense the strongest one, then compare styles to spot the drift. Do you want me to look at all your observability posts, or just the two most recent?"
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "the two recent ones. and no, not the drafts, the ones that actually went live",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
+      },
+      "note": "specific ambiguity (reject). Removed clear context: which corpus the search targets. The agent first guesses recent drafts; the user rejects that candidate and names the published set. persona drift to skeptical this turn.",
+      "slots": {
+        "query": "observability",
+        "source": {
+          "ver": true
+        }
+      },
+      "ambiguity": "specific"
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [],
+      "utterance": "Published only, got it. Pulled 'Your Agent's Token Count Is a Vanity Metric' and 'Don't Trace Prompts, Trace the Tool Calls'."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "boil the token-count one down so i remember what it even argued",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Your Agent's Token Count Is a Vanity Metric"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
+      "utterance": "It argues token count tracks spend, not agent quality, and readers should watch tool-call success instead. Aimed at eng leads."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "now put the two side by side, i wanna see where the writing actually differs",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": [
+            "Your Agent's Token Count Is a Vanity Metric",
+            "Don't Trace Prompts, Trace the Tool Calls"
+          ]
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "compare_style"
+      ]
+    }
+  ]
+}

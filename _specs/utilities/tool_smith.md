@@ -138,17 +138,16 @@ class RecipeService:
                exact: bool = False) -> dict:
         """tool_id: recipe_search"""
         rows = self.db.execute(...)
-        return {"status": "success", "result": rows,
+        return {"_success": True, "result": rows,
                 "metadata": {"total_count": len(rows), "source": "recipe_db"}}
 
     def get(self, recipe_id: str) -> dict:
         """tool_id: recipe_get"""
         row = self.db.get(recipe_id)
         if not row:
-            return {"status": "error", "error_category": "not_found",
-                    "message": f"Recipe '{recipe_id}' not found",
-                    "retryable": False}
-        return {"status": "success", "result": row}
+            return {"_success": False, "_error": "not_found",
+                    "_message": f"Recipe '{recipe_id}' not found"}
+        return {"_success": True, "result": row}
 
     def create(self, name: str, ingredients: list[str],
                instructions: str) -> dict:
@@ -180,7 +179,7 @@ class PEX:
 
 ### Tool Dispatch
 
-The `_dispatch_tool` method handles all tool calls. Domain tools are dispatched via `_tools` using `getattr`; component tools (context_coordinator, memory_manager, flow_stack) are dispatched via internal methods.
+The `_dispatch_tool` method handles all tool calls. Domain tools are dispatched via `_tools` using `getattr`; component tools (the MEM skills `recap`/`recall`/`retrieve`/`store_preference`, the scratchpad tools, `understand`, and `handle_ambiguity`) are dispatched via internal methods.
 
 ```python
 def _dispatch_tool(self, tool_name: str, tool_input: dict) -> dict:
@@ -189,33 +188,33 @@ def _dispatch_tool(self, tool_name: str, tool_input: dict) -> dict:
             service, method_name = self._tools[tool_name]
             method = getattr(service, method_name)
             return method(**tool_input)
-        elif tool_name == 'context_coordinator':
-            return self._dispatch_context_tool(tool_input)
-        elif tool_name == 'memory_manager':
-            return self.memory.dispatch_tool(tool_input.get('action', ''), tool_input)
-        elif tool_name == 'flow_stack':
-            return self._dispatch_flow_stack_tool(tool_input)
+        elif tool_name in ('recap', 'recall', 'retrieve', 'store_preference'):
+            return self.memory.dispatch_skill(tool_name, tool_input)
+        elif tool_name in ('append_to_scratchpad', 'read_from_scratchpad'):
+            return self._dispatch_scratchpad_tool(tool_name, tool_input)
+        elif tool_name == 'understand':
+            return self._dispatch_state_read(tool_input)
+        elif tool_name == 'handle_ambiguity':
+            return self._dispatch_ambiguity_tool(tool_input)
         else:
             return {
-                'status': 'error',
-                'error_category': 'invalid_input',
-                'message': f'Unknown tool: {tool_name}',
-                'retryable': False,
+                '_success': False,
+                '_error': 'unknown_tool',
+                '_message': f'Unknown tool: {tool_name}',
             }
     except Exception as e:
         return {
-            'status': 'error',
-            'error_category': 'server_error',
-            'message': f'{type(e).__name__}: {e}',
-            'retryable': False,
+            '_success': False,
+            '_error': 'server_error',
+            '_message': f'{type(e).__name__}: {e}',
         }
 ```
 
-Component tools (context_coordinator, memory_manager, flow_stack) are NOT in the `_tools` dict. They are handled by dedicated `_dispatch_*_tool` methods inside PEX, since they access internal component state rather than external services.
+Component tools (the MEM skills, the scratchpad tools, `understand`, `handle_ambiguity`) are NOT in the `_tools` dict. They are handled by dedicated `_dispatch_*` methods inside PEX, since they access internal component state rather than external services.
 
 ### Tool Definitions for Skills
 
-`get_tools_for_flow(flow)` assembles the tool list for a skill invocation. It combines the component tool definitions (always available) with the flow's declared tools (looked up from the config manifest).
+`get_tools_for_flow(flow)` assembles the tool list for a skill invocation. It combines the universal-scope component tools (always available) with the flow's declared tools — both resolved from the one manifest.
 
 ```python
 def get_tools_for_flow(self, flow) -> list[dict]:
@@ -231,7 +230,7 @@ def get_tools_for_flow(self, flow) -> list[dict]:
 
 - **One class per system**: `RecipeService`, `GitHubService`, `SQLService`, `NutritionService`, etc.
 - **Methods follow naming**: `service.verb(params)` — mirrors the `verb_entity` tool naming convention. `recipe_service.search(query, filter)` corresponds to tool_id `search_recipes`.
-- **All methods return envelopes**: Success envelope (`status`, `result`, `metadata`) or error envelope (see [Error Contract](#error-contract)). No raw returns.
+- **All methods return a result dict**: success (`_success: True`, `result`, `metadata`) or failure (see [Error Contract](#error-contract)). No raw returns.
 - **Instantiated at startup**: Service classes are created once during domain initialization. Policies receive them via dependency injection — they never construct services themselves.
 - **Connection state lives on the class**: Database connections, API clients, auth tokens — all held as instance attributes. Methods are stateless beyond `self`.
 
@@ -241,12 +240,14 @@ Each flow has a corresponding skill template — a Markdown file that gets assem
 
 When assembled into the final prompt, skill templates follow the [standard 8-slot prompt format](../style_guide.md#standard-prompt-format) from the Style Guide. The skill template provides slots 2-6 (persona/task, detailed instructions, keywords/options, output shape, exemplars). The Prompt Engineer injects slot 1 (grounding data) and slot 8 (final request) at assembly time, and appends slot 7 (closing reminder) after the template's exemplars.
 
+**Note — these are sub-agent prompts, not module skills.** A per-flow "skill template" here is a **sub-agent prompt** (it drives a flow that returns a JSON result), so it follows the 8-slot format. It is distinct from a **module skill** — the orchestrator how-to guides (the Workflow Planner, `explain`, `recap`/`recall`/`retrieve`) that **return nothing**. Only sub-agent/tool prompts use this format.
+
 ### Template Contents
 
 1. **Flow description** — What this flow accomplishes, one paragraph
 2. **Slot-to-parameter mapping guidance** — Strongly-worded default mapping from flow slots to tool parameters. The LLM tries this mapping first but can adjust if a tool call fails
 3. **Expected tool call sequence** — Ordered list of tools the skill should call, with conditions for branching
-4. **Output format instructions** — What shape the result should take for the Display Frame
+4. **Output format instructions** — What shape the result should take for the Task Artifact
 
 ### Slot Mapping Is Guidance, Not Deterministic
 
@@ -286,7 +287,7 @@ If both slots are empty, call recipe_search with no query to return featured rec
 
 ## Output Format
 
-Return results as an array of recipe summary objects. The Display Frame will
+Return results as an array of recipe summary objects. The Task Artifact will
 render these as a card list. Include recipe_id, name, cuisine, and prep_time_min
 for each result.
 ```
@@ -298,7 +299,7 @@ The policy class method assembles the skill prompt by:
 1. Reading the skill template from `<domain>/skills/<dact>.md`
 2. Injecting the current slot values from the flow stack
 3. Appending tool schemas for the tools referenced in the template
-4. Appending component tool schemas (context_coordinator, memory_manager, flow_stack) — provided by PEX, not from the manifest
+4. Appending the universal-scope component tool schemas (the MEM skills, scratchpad tools, `understand`, `handle_ambiguity`) — the portion of the manifest every skill gets, regardless of what the flow declared
 
 The assembled prompt is passed to the LLM for skill invocation.
 
@@ -317,9 +318,9 @@ JSON Schema derived from the flow slots that use this tool. For shared tools, ta
 
 ### Output Schema
 
-JSON Schema matching what the [Display Frame](../components/task_artifact.md) needs. Design rules:
+JSON Schema matching what the [Task Artifact](../components/task_artifact.md) needs. Design rules:
 
-- Always include a top-level `status` field (success/error)
+- Always include a top-level `_success` boolean field
 - Data goes in a `result` field (object or array)
 - Include `metadata` for pagination, timestamps, source attribution
 - Output shape should match the block type (table data → array of rows, card data → single object)
@@ -361,9 +362,8 @@ JSON Schema matching what the [Display Frame](../components/task_artifact.md) ne
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
-    "status": {
-      "type": "string",
-      "enum": ["success", "error"]
+    "_success": {
+      "type": "boolean"
     },
     "result": {
       "type": "array",
@@ -390,7 +390,7 @@ JSON Schema matching what the [Display Frame](../components/task_artifact.md) ne
       }
     }
   },
-  "required": ["status", "result"]
+  "required": ["_success", "result"]
 }
 ```
 
@@ -405,10 +405,15 @@ shared/
     python_execute.json
     shell_run.json
     http_request.json
-    components/
-      context_coordinator.json  # component tool schemas (NOT in manifest)
-      memory_manager.json
-      flow_stack.json
+    components/                 # universal-scope tools — the shared half of the manifest
+      recap.json
+      recall.json
+      retrieve.json
+      store_preference.json
+      append_to_scratchpad.json
+      read_from_scratchpad.json
+      understand.json
+      handle_ambiguity.json
 
 <domain>/
   schemas/
@@ -423,7 +428,7 @@ shared/
 - **`shared/schemas/`** — Canonical tool schemas that appear across many domains (sql_execute, python_execute, shell_run, http_request). These define the baseline shape; domains register them with domain-specific permissions and config.
 - **`<domain>/schemas/`** — Domain-specific tool schemas. One file per tool, named `<tool_id>.json`.
 - **Domain overrides shared** — A domain can override a shared schema by placing a file with the same tool_id in `<domain>/schemas/`. The domain version wins. This lets a domain tighten permissions, add fields, or restrict enums on a canonical tool.
-- **`shared/schemas/components/`** — Component tool schemas for context_coordinator, memory_manager, and flow_stack. These are NOT in the tool manifest. PEX provides them directly to skills alongside flow-specific tools (see [Skill Templates](#skill-templates) § Assembly).
+- **`shared/schemas/components/`** — Component tool schemas for the MEM skills (`recap`/`recall`/`retrieve`/`store_preference`), the scratchpad tools, `understand`, and `handle_ambiguity`. These are the **universal-scope** half of the manifest: composed in at load and given to every skill, so domain authors never re-declare them (see [Skill Templates](#skill-templates) § Assembly).
 
 ## Naming Conventions
 
@@ -458,7 +463,10 @@ A tool serving 10+ flows or using a broad `action` enum (`["outline", "expand", 
 Before creating a dedicated tool, check whether adding a parameter to an existing tool covers the same need. A boolean or enum parameter can replace an entire tool.
 
 - `modify_row` with `is_header=true` replaced the dedicated `modify_headers` tool
-- `manage_memory` with `level: L1|L2|L3` handles recap, recall, store, and retrieve — four flows, one tool
+
+The reverse also holds — **don't** subsume when the variants are semantically distinct. MEM keeps `recap` /
+`recall` / `retrieve` / `store_preference` as four separate tools (not one `manage_memory` with a `level` enum):
+the model routes better among intention-revealing names. Subsume mechanical variants; split semantic ones.
 
 ### Shared Access Patterns Per Intent
 
@@ -474,7 +482,7 @@ All flows in an intent should share cross-cutting tools that aren't the primary 
 
 ### Component Tool Scoping
 
-Not all flows need all 3 component tools. Internal flows (recap, recall, retrieve, store) use only `coordinate_context` + `manage_memory` — no `read_flow_stack`, because Internal flows don't inspect the flow stack.
+Not all flows need every component tool. A flow doing pure memory retrieval (e.g. answering an FAQ through `retrieve`) needs the MEM skills but no flow-stack access; a chit-chat flow needs neither. Scope each flow's component tools to what it actually uses.
 
 ### Orchestrator Flows Have No Unique Tools
 
@@ -482,7 +490,7 @@ Plan flows that chain other intents' flows (insight, pipeline, outline, blueprin
 
 ### Dedicated Tools Are Cheap
 
-If a flow has a unique operation that no other flow needs, give it a dedicated 1:1 tool. Don't try to shoehorn it into a shared tool — shared tools are for genuine overlap, not for consolidation. Tools are cheap to add and remove.
+If a flow has a unique operation that no other flow needs, give it a dedicated 1:1 tool. Don't try to shoehorn it into a shared tool — shared tools are for real overlap, not for consolidation. Tools are cheap to add and remove.
 
 ### Entity Granularity
 
@@ -500,9 +508,10 @@ Each tool in the manifest declares these properties. PEX loads the manifest at s
 | `name` | string | Human-readable display name |
 | `description` | string | What the tool does — for logging/debugging and skill prompt context |
 | `input_schema` | string | Path to input JSON Schema file |
-| `output_schema` | string | Path to output JSON Schema file |
 | `idempotent` | bool | Safe to auto-retry without side effects (drives PEX retry policy) |
 | `timeout_ms` | int | Max execution time in milliseconds |
+
+> **Hugo divergence (decided 2026-06-21):** `scope`, `dispatch`, and `output_schema` are **not** in Hugo's manifest — they live in code (provisioning via each flow's `self.tools`; routing via the code-side dispatch table). One source is enough; the manifest doesn't duplicate them.
 
 ### Capability Tags
 
@@ -535,7 +544,6 @@ recipe_search:
   name: "Search recipes"
   description: "Search recipe database by ingredients, cuisine, or dietary restriction"
   input_schema: schemas/recipe_search_input.json
-  output_schema: schemas/recipe_search_output.json
   idempotent: true
   timeout_ms: 10000
   accesses_private_data: false
@@ -581,31 +589,67 @@ nutrition_lookup:
 
 ## Error Contract
 
-Structured error responses that [PEX `recover()`](../modules/pex.md) can act on. Every tool failure returns a structured envelope with `error_category` so the policy can branch to the appropriate recovery strategy.
+Structured failure responses that [PEX's recovery](../modules/pex.md) can act on. Every tool failure returns
+the flat `_success: False` dict — a short `_error` tag plus a human-readable `_message`. There is **no**
+tool-level `error_category`/`retryable` taxonomy. When `_success=False`, the **policy** classifies the failure
+into the closed 8-code **violation** vocabulary and branches to the appropriate recovery strategy; the tool
+only reports that it failed and why.
 
-| Error category | HTTP analog | Retryable | PEX recovery strategy |
-|---|---|---|---|
-| validation_error | 400 | no | Slot correction |
-| auth_error | 401/403 | no | Credential refresh → retry |
-| not_found | 404 | no | Slot correction (entity doesn't exist) |
-| rate_limit | 429 | yes | Retry with backoff |
-| timeout | 408 | depends on idempotency | Retry if idempotent |
-| server_error | 500 | yes | Retry, then graceful degradation |
-
-Error envelope structure (returned by all tools on failure):
+Failure dict structure (returned by all tools on failure):
 
 ```json
 {
-  "status": "error",
-  "error_category": "not_found",
-  "message": "Recipe 'chicken marsala' not found in database",
-  "retryable": false,
+  "_success": false,
+  "_error": "not_found",
+  "_message": "Recipe 'chicken marsala' not found in database",
   "metadata": {
     "tool_id": "recipe_search",
     "attempt": 1
   }
 }
 ```
+
+## Guardrails, Retries & Verification
+
+The [Error Contract](#error-contract) says how a failed tool reports itself; this section says what the policy
+does to *prevent* and *recover from* failures before surfacing them. Both patterns are **opt-in per domain**.
+
+### Code-Generation Robustness  *(code-execution tools only)*
+
+Tools in the **Code execution** category (`sql_execute`, `python_execute`, `shell_run`) run model-written code,
+which fails in characteristic ways. A policy backing such a tool should run a **cheap→expensive repair loop**
+(bounded, default ≤3 attempts) before declaring a violation:
+
+1. **Truncation detection → token-bump.** If the generated code looks cut off (unbalanced parens/brackets, a
+   dangling `=`, a trailing method call), the cause is almost always a hit token limit — **double `max_tokens`
+   and retry** rather than treating it as a logic error.
+2. **AST validation.** For a tool that expects a single function (e.g. a generated transform), parse the code
+   and require exactly one definition and no stray imports before executing. A structural reject is cheaper and
+   safer than a runtime crash.
+3. **Deterministic pre-repairs.** Try the obvious mechanical fixes *before* spending an LLM repair call — e.g.
+   case-normalize a string literal that didn't match, decrement an off-by-one year, quote an unquoted
+   identifier. These are domain-specific and live in the policy.
+4. **LLM repair.** Only after the above fail, feed the neutral error message back to the model for a corrected
+   attempt.
+
+Domains without code-execution tools (e.g. a pure content domain like Charlie) **skip this section entirely** —
+it is not a universal requirement.
+
+### Cheap-Detect → Confirm
+
+A deterministic check is far cheaper than an LLM call but prone to false positives on borderline cases. The
+pattern: **a cheap test flags candidates, then a *targeted* LLM call confirms or suppresses only the borderline
+ones** — never re-checking the clear cases. Examples: a length/regex rule flags a possibly-truncated value and
+the model is asked only "is this actually a problem?"; a detector flags outliers and the model confirms only the
+ambiguous middle band. Two rules keep it cheap, which is where the idea lives or dies:
+
+- **Gate on borderline only.** Clear passes and clear failures skip the LLM; the confirm pass runs **only** on
+  the uncertain band, so it never becomes a per-turn tax.
+- **Confirm suppresses, doesn't re-detect.** The LLM's job is to *veto* a cheap flag, not to redo the detection
+  — keeping the second pass small and well-scoped.
+
+This is the verification analogue of the NLU [repair ladder](../modules/nlu.md) (cheap rungs first, model last),
+applied to tool results and issue flagging rather than entity grounding.
 
 ## Canonical vs Domain-Specific Tools
 
@@ -628,25 +672,27 @@ Unique to one domain, wrapping a specific platform API:
 
 ### Component Tools (Skill Access)
 
-Some components are exposed as tools to skills during [PEX § Skill Invocation](../modules/pex.md). These are NOT registered in the tool manifest — PEX provides them directly to the skill alongside flow-specific tools.
+Some components are exposed as tools to skills during [PEX § Skill Invocation](../modules/pex.md). They are **universal-scope** entries in the manifest — composed from `shared/schemas/components/` and given to every skill, alongside the per-flow-declared domain tools.
 
-| Component tool | Operations | In manifest? |
+| Component tool | Operations | Scope · dispatch |
 |---|---|---|
-| context_coordinator | Read conversation history | No — provided by PEX |
-| memory_manager | Read/write scratchpad, read preferences | No — provided by PEX |
-| flow_stack | Read slot values, read flow metadata | No — provided by PEX |
+| `recap` / `recall` / `retrieve` / `store_preference` | MEM L1 / L2 / L3 reads (`store_preference` writes L2) | universal · internal (MEM) |
+| `append_to_scratchpad` / `read_from_scratchpad` | append findings (triggers NLU) / read | universal · internal (scratchpad) |
+| `understand` | read the serialized Dialogue State belief | universal · internal (Dialogue State) |
+| `handle_ambiguity` | declare / present / ask / resolve | universal · internal (Ambiguity Handler) |
+| `flow_stack` | read slot values, prior flow results | universal · internal (FlowStack) |
 
-These component tools + 1–3 flow-specific tools = 5–7 total tools per skill invocation.
+A skill receives the universal-scope tools it needs plus its 1–3 flow-specific (per-flow-declared) tools — all from the one manifest.
 
 ### Not Tools
 
 Handled by components and never exposed to skills or the manifest:
 
-- Dialogue State → relevant info accessible through flow_stack
+- Dialogue State → read via `understand` (slot values also via flow_stack)
 - LLM calls → the skill IS the LLM; [Prompt Engineer](../components/prompt_engineer.md) is not needed as a tool
-- Ambiguity declaration → policy responsibility, not skill; skill returns `uncertain` outcome instead
-- Display Frame → policy responsibility; skill returns data, policy creates the Frame
-- Conversation management → NLU/RES
+- Ambiguity → reached via `handle_ambiguity`; a skill that cannot proceed returns the `uncertain` outcome, on which the policy either declares ambiguity (`handle_ambiguity`) or emits a violation
+- Task Artifact → policy responsibility; the skill returns data, the policy/sub-agent builds the artifact
+- Conversation management → NLU (belief) / MEM (event stream)
 
 ## Worked Examples
 

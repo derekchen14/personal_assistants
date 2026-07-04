@@ -15,8 +15,8 @@ HUGO_ROOT = Path(__file__).resolve().parents[1]
 CONTENT_DIR = HUGO_ROOT / 'database' / 'content'
 METADATA_FILE = CONTENT_DIR / 'metadata.json'
 
-PROD_POSTS = Path(os.path.expanduser('~/Documents/morethanoneturn/_posts'))
-PROD_DRAFTS = Path(os.path.expanduser('~/Documents/morethanoneturn/_drafts'))
+PROD_POSTS = Path(os.path.expanduser('~/Documents/repos/morethanoneturn/_posts'))
+PROD_DRAFTS = Path(os.path.expanduser('~/Documents/repos/morethanoneturn/_drafts'))
 
 DEV_POSTS = CONTENT_DIR / 'posts'
 DEV_DRAFTS = CONTENT_DIR / 'drafts'

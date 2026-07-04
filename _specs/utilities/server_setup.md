@@ -46,9 +46,9 @@ Spec the pattern, not specific providers — each domain connects to providers a
 
 ### Lazy Token Refresh
 
-For OAuth tokens, check expiry before PEX tool calls. If the token is expired, attempt the OAuth `refresh_token` flow automatically. If the refresh fails, let the tool call fail — PEX `recover()` handles it as a normal tool failure.
+For OAuth tokens, check expiry before PEX tool calls. If the token is expired, attempt the OAuth `refresh_token` flow automatically. If the refresh fails, let the tool call fail — PEX's recovery handles it as a normal tool failure.
 
-API keys have no auto-rotation. If an API key is revoked, the next tool call using it will fail, and PEX `recover()` handles that too.
+API keys have no auto-rotation. If an API key is revoked, the next tool call using it will fail, and PEX's recovery handles that too.
 
 No background timer, no eager refresh. Fits the turn-based pipeline: credentials are only checked when they're about to be used.
 
@@ -105,16 +105,18 @@ Useful for dev tooling and container orchestration. No deep dependency checks �
 
 ### Server → Client Messages
 
-Streamed as multiple typed messages per turn. The WebSocket envelope wraps the RES response output structure:
+Streamed as multiple typed messages per turn. PEX produces the response and the [Task Artifact](../components/task_artifact.md); the main Agent delivers them over the WebSocket, which wraps the output structure:
 
 | Type | Source | Content |
 |---|---|---|
-| `text` | `generate()` | `{message, raw_utterance, code_snippet}` |
-| `options` | `generate()` or `clarify()` | `{actions, interaction}` — reply pills, confirmation modals, option selectors |
-| `block` | `display()` | `{frame, properties}` — visual building blocks (table, chart, card, etc.) |
+| `text` | PEX `respond` | `{message, raw_utterance, code_snippet}` |
+| `options` | PEX (ambiguity) | `{actions, interaction}` — reply pills, confirmation modals, option selectors |
+| `block` | PEX (Task Artifact) | `{block, properties}` — visual building blocks (table, chart, card, etc.) |
 | `error` | Any | `{message, code}` — error information |
 
-`text` and `options` have fixed display structure (content changes, structure doesn't). `block` messages are visual building blocks composed by RES `display()`. A single turn may produce multiple messages of different types.
+`text` and `options` have fixed display structure (content changes, structure doesn't). `block` messages are the visual building blocks carried on the Task Artifact. A single turn may produce multiple messages of different types.
+
+**Timing.** A **sub-agent returning** emits live `toast` / update messages during the turn, but **PEX owns ending the turn**. The curated `block` set delivers **once, when PEX ends the turn** (after it merges the N sub-agent artifacts into one) — the frontend never reconciles mid-turn blocks; only `text` and lightweight feedback (`toast` / progress) stream live.
 
 ### Client-Side Guard Rails
 
@@ -139,7 +141,7 @@ Postgres from day one. One Postgres server, one database per domain (e.g., `crea
 | `Intent` | Integer | level (String 8), intent_name (String 32) | → DialogueActs |
 | `DialogueAct` | Integer | dact (String 64), dax (String 4), description | → Utterances, Intent |
 | `DialogueState` | UUID | utterance_id (FK), intent, dax, flow_stack (JSONB), source (enum nlu/pex) | → Utterance |
-| `Frame` | UUID | utterance_id (FK), display_type (enum), columns (ARRAY), status, source (enum), code (Text) | → Utterance |
+| `Artifact` | UUID | utterance_id (FK), origin (flow name), block_type (enum), data (JSONB), status, code (Text) | → Utterance |
 | `Credential` | Integer | user_id (FK), access_token (unique, indexed), refresh_token, token_expiry, vendor, vendor_id, scope, status | — |
 | `UserDataSource` | UUID | user_id (FK, indexed), source_type (enum upload/api), provider, name, size_kb, content (JSONB) | — |
 | `ConversationDataSource` | UUID | conversation_id (FK, CASCADE), data_source_id (FK, CASCADE) | → Conversation, UserDataSource |
@@ -161,6 +163,6 @@ Reference seed data for a new domain (update intent names to canonical set):
 
 - Test users for development
 - Agent persona with domain-specific name and use_case
-- 7 intents: [4 domain-specific] + Converse, Plan, Internal
+- 7 intents: [4 domain-specific] + Converse, Plan, Clarify
 - Dialogue act entries with hex DAX codes (from flow_selection)
 - Flow definitions (32 for v1, up to 48)

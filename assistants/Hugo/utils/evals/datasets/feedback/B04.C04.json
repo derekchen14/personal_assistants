@@ -1,0 +1,5 @@
+{
+  "id": "B04.C04",
+  "verdict": "needs",
+  "comment": "The agent's voice should stay the same, just because the user has changed their persona doesn't mean the agent should follow."
+}

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seed Scenario Review</title>
+<style>
+  :root { --bg:#f5f5f4; --surface:#fff; --border:#e7e5e4; --text:#1c1917; --muted:#78716c;
+          --user:#e0f2fe; --accent:#0369a1; --ok:#16a34a; --warn:#d97706; --bad:#dc2626; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+         color:var(--text); background:var(--bg); }
+  .app { display:flex; height:100vh; }
+  .sidebar { width:300px; flex:none; border-right:1px solid var(--border); overflow-y:auto;
+             background:var(--surface); }
+  .sidebar h1 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+                padding:14px 16px 4px; margin:0; }
+  .progress { padding:0 16px 10px; color:var(--muted); font-size:12px; }
+  .item { padding:9px 16px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .item:hover { background:var(--bg); }
+  .item.active { background:#e0f2fe; }
+  .item .id { font-weight:600; }
+  .item .sub { color:var(--muted); font-size:12px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:7px;
+         background:var(--border); vertical-align:middle; }
+  .dot.approve { background:var(--ok); }
+  .dot.minor { background:var(--warn); }
+  .dot.needs { background:var(--bad); }
+  .main { flex:1; overflow-y:auto; padding:24px 32px 80px; }
+  .meta { font-size:13px; margin-bottom:2px; }
+  .meta .tag { display:inline-block; margin-right:14px; color:var(--text); }
+  .meta .tag b { color:var(--muted); font-weight:600; }
+  h2 { margin:3px 0 0; font-size:18px; }
+  .seed { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 12px;
+          margin:12px 0; font-size:12px; color:var(--muted); }
+  .gen { margin:12px 0; border:1px solid var(--border); border-radius:8px; background:var(--surface); }
+  .gen summary { cursor:pointer; padding:8px 12px; font-size:12px; color:var(--muted); }
+  .gen summary::-webkit-details-marker { color:var(--accent); }
+  .gen-json { margin:0; padding:10px 12px; border-top:1px solid var(--border); overflow-x:auto;
+              white-space:pre; background:#fafaf9; color:var(--text);
+              font:11px/1.5 ui-monospace,Menlo,Monaco,monospace; }
+  .turn { display:flex; margin:10px 0; }
+  .turn.user { justify-content:flex-end; }
+  .bubble { max-width:72%; padding:10px 14px; border-radius:12px; border:1px solid var(--border);
+            background:var(--surface); }
+  .user .bubble { background:var(--user); }
+  .who { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+         margin-bottom:3px; }
+  .labels { margin-top:7px; }
+  .chip { display:inline-block; font-size:11px; padding:1px 7px; border-radius:10px; margin:2px 4px 0 0;
+          background:#f1f5f9; border:1px solid var(--border); color:#334155; }
+  .chip.flow { background:#dbeafe; border-color:#bfdbfe; color:#1e40af; font-weight:600; }
+  .chip.clarify { background:#fef3c7; border-color:#fde68a; color:#92400e; }
+  .chip.intent { background:#f8fafc; border-color:var(--border); color:#94a3b8; }
+  .chip.plan { background:#ede9fe; border-color:#ddd6fe; color:#6d28d9; }
+  .note { font-size:12px; color:var(--warn); margin-top:6px; font-style:italic; }
+  .feedback { position:sticky; bottom:0; background:var(--surface); border:1px solid var(--border);
+              border-radius:8px; padding:14px; margin-top:24px; }
+  .feedback textarea { width:100%; min-height:58px; border:1px solid var(--border); border-radius:6px;
+                       padding:8px; font:inherit; resize:vertical; margin-top:10px; }
+  button { font:inherit; padding:6px 14px; border-radius:6px; border:1px solid var(--border);
+           background:var(--surface); cursor:pointer; }
+  button.approve.sel { background:var(--ok); border-color:var(--ok); color:#fff; }
+  button.minor.sel { background:var(--warn); border-color:var(--warn); color:#fff; }
+  button.needs.sel { background:var(--bad); border-color:var(--bad); color:#fff; }
+  button.save { background:var(--accent); border-color:var(--accent); color:#fff; float:right; }
+  .empty { color:var(--muted); padding:48px; text-align:center; }
+  .search { padding:8px 16px 4px; border-bottom:1px solid var(--border); }
+  .search input { width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px;
+                  font:inherit; }
+  .search-hint { color:var(--muted); font-size:11px; padding:4px 16px 8px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="search">
+      <input id="searchBox" type="search" placeholder="Search all conversations (keyword or ID)…">
+    </div>
+    <div class="search-hint" id="searchHint"></div>
+    <h1 id="listHeading">Flagged for Review</h1>
+    <div class="progress" id="progress"></div>
+    <div id="list"></div>
+  </div>
+  <div class="main" id="main"><div class="empty">Select a scenario to review.</div></div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

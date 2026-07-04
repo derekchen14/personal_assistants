@@ -45,8 +45,8 @@ For each of the 16 Batch 2 flows, update the policy file to wire the flow throug
 | Provide | teach, revise |
 | Design | revise_flow, suggest_flow, refine |
 | Deliver | confirm_export, preview, ontology |
-| Plan | research, expand |
-| Internal | read_spec |
+
+(Plan and Clarify contribute no flows — Plan is a Workflow-Planner skill; Clarify is an NLU label.)
 
 ### Step 3 — Expand NLU Exemplars
 
@@ -65,15 +65,15 @@ Test each newly enabled flow through the full pipeline:
 - Send a representative utterance via the frontend
 - Verify NLU classifies to the correct flow
 - Verify PEX calls the correct tools
-- Verify RES produces a natural response with appropriate block type
-- Check that the display frame renders correctly in the frontend
+- Verify PEX produces a natural response with appropriate block type
+- Check that the Task Artifact renders correctly in the frontend
 
 ### Step 5 — Evaluate Batch 3 Promotions
 
 Review the 16 Batch 3 (unsupported) flows and decide which, if any, should be promoted:
 
 - Flows that users frequently attempt → promote to Batch 2 (template + stub)
-- Flows that are genuinely unnecessary → keep unsupported or remove from ontology
+- Flows that are unnecessary → keep unsupported or remove from ontology
 - Flows that overlap with existing flows → merge into the covering flow
 
 ### Step 6 — Prompt Tuning
@@ -82,15 +82,15 @@ Based on evaluation results from Phase 9:
 
 - Identify flows with low NLU accuracy → add exemplars targeting failing cases
 - Identify flows with poor trajectory scores → refine skill templates
-- Identify flows with low Final Output scores → adjust RES templates or naturalization prompts
+- Identify flows with low Final Output scores → refine skill templates or the PEX voice Skill
 - Version all prompt changes: `{template_id}.v{N+1}`
 
 ### Step 7 — Establish Evaluation Baselines
 
 With all 32 flows working:
 
-- Run the full offline evaluation suite
-- Record baseline scores for all three pillars (flow detection, trajectory, final output)
+- Run the full offline evaluation suite across the L1a–L3b ladder
+- Record baseline scores at each level (flow detection L1b, trajectory L2a, parity L3a, output rubric L3b)
 - Set regression thresholds based on baselines
 - Create test cases for each flow (JSON conversation format)
 
@@ -127,7 +127,6 @@ Identify flow pairs that the NLU frequently confuses:
 | Modify | `<domain>/backend/prompts/skills/*.md` | Refine skill templates based on evaluation |
 | Modify | `<domain>/backend/prompts/for_experts.py` | Expand NLU exemplars to ~32 per classification |
 | Modify | `<domain>/backend/prompts/for_contemplate.py` | Add ~16 re-routing exemplars |
-| Modify | `<domain>/backend/prompts/for_res.py` | Tune naturalization prompts |
 | Modify | `<domain>/schemas/ontology.py` | Update edge flows based on confusion analysis |
 | Create | `<domain>/tests/test_flows/{dax}_{flow}.py` | Integration tests for Batch 2 flows |
 | Create | `<domain>/tests/eval_cases/*.json` | Offline evaluation test cases |
@@ -141,7 +140,7 @@ Identify flow pairs that the NLU frequently confuses:
 - [ ] NLU exemplars expanded: ~32 for intent prediction, ~32 for flow detection
 - [ ] `for_contemplate.py` has ~16 re-routing exemplars
 - [ ] No two flows have >10% confusion rate
-- [ ] Offline evaluation baseline scores recorded for all three pillars
+- [ ] Offline evaluation baseline scores recorded across the L1a–L3b ladder
 - [ ] Regression thresholds set based on baselines
 - [ ] Prompt versions incremented for all tuned prompts
 - [ ] Batch 3 flows reviewed: promotions, merges, or removals decided

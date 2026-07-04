@@ -1,14 +1,14 @@
 # Phase 8 — Prompt Writing
 
-Assemble the full prompt suite: system prompts, NLU classification prompts, PEX skill prompts, RES naturalization prompts, and the template registry.
+Assemble the full prompt suite: system prompts, NLU classification prompts, and PEX skill prompts. PEX composes the spoken reply directly via a voice Skill in its system prompt — there is no separate naturalization layer or template registry.
 
 ## Context
 
-Prompts are the agent's instructions. Every LLM call follows the standard 8-slot format, every output is JSON, and every classification prompt includes chain-of-thought reasoning. This phase ensures all prompts are written, versioned, and organized.
+Prompts are the agent's instructions. **Sub-agent and tool prompts** follow the standard 8-slot format and return JSON (classification prompts add chain-of-thought); **module skills** (orchestrator how-to guides like the Workflow Planner, `explain`, `recap`/`recall`/`retrieve`) return nothing — they are injected guidance, not assembled into this format. This phase ensures all prompts are written, versioned, and organized.
 
 **Prerequisites**: Phase 7 complete — 32 working flows with policies and skill templates.
 
-**Outputs**: Complete prompt suite across all `for_*.py` files, template registry with base + domain overrides, prompt versioning.
+**Outputs**: Complete prompt suite across all `for_*.py` files, prompt versioning.
 
 **Spec references**: [style_guide.md § Prompt Engineering](../style_guide.md), [prompt_engineer.md](../components/prompt_engineer.md), [tool_smith.md § Skill Templates](../utilities/tool_smith.md)
 
@@ -18,7 +18,7 @@ Prompts are the agent's instructions. Every LLM call follows the standard 8-slot
 
 ### Step 1 — Understand the 8-Slot Format
 
-Every assembled prompt follows this structure, in order:
+Every assembled **sub-agent/tool** prompt follows this structure, in order (module skills are injected guidance and return nothing):
 
 | Slot | Name | Content |
 |---|---|---|
@@ -49,7 +49,6 @@ Organize prompts by consumer:
 | `for_experts.py` | Intent & flow classification | NLU Step 1–2 |
 | `for_nlu.py` | Entity grounding, slot filling | NLU Step 3 |
 | `for_pex.py` | Policy execution, code generation | PEX skills |
-| `for_res.py` | Response generation, naturalization | RES generate() |
 | `for_contemplate.py` | Re-routing prompts | NLU contemplate() |
 | `for_executors.py` | Domain-specific tool prompts | PEX skills (domain-specific) |
 | `for_metadata.py` | Type inference, data quality | PEX skills (domain-specific) |
@@ -70,19 +69,19 @@ The system prompt is injected as slot 2 (role and task) in every prompt assembly
 
 ### Step 4 — NLU Prompts
 
-**Intent prediction** (`for_experts.py`):
+**Intent classification** — `classify_intent` (`for_experts.py`):
 - Slot 1: conversation history (last 5 turns)
-- Slot 4: all 6 user-facing intent names with descriptions
+- Slot 4: all 7 intent names (3 universal + 4 domain) with descriptions
 - Slot 5: `{"thought": "...", "intent": "..."}`
 - Slot 6: ~32 exemplars covering all intents (NLU classification needs the most examples)
 
-**Flow detection** (`for_experts.py`):
+**Flow detection** — `detect_flow` (`for_experts.py`):
 - Slot 1: conversation history + active flow state
 - Slot 4: candidate dacts with descriptions (from predicted intent + edge flows)
 - Slot 5: `{"thought": "...", "flow": "...", "confidence": 0.0}`
 - Slot 6: ~32 exemplars with edge cases, ambiguous utterances
 
-**Slot-filling** (`for_nlu.py`):
+**Slot-filling** — `fill_slots` (`for_nlu.py`):
 - Slot 1: conversation history + flow slot schema
 - Slot 3: instructions for extracting slot values from context
 - Slot 5: `{"slots": {"<name>": "<value>", ...}, "missing": [...]}`
@@ -111,55 +110,17 @@ The system prompt is injected as slot 2 (role and task) in every prompt assembly
 - SQL generation, Python script generation, API call construction
 - Each domain writes these differently
 
-### Step 6 — RES Prompts
+### Step 6 — Response Composition
 
-**Naturalization** (`for_res.py`):
-- Slot 1: filled template string + conversation history (5 turns) + user preferences (verbosity, depth)
-- Slot 3: "Smooth this filled template into natural language. The response will be accompanied by a visual display, so reference it (e.g., 'as shown below') rather than duplicating data."
-- Slot 5: `{"message": "...", "raw_utterance": "..."}`
-- Slot 6: 3–5 exemplars (RES shaped more by instructions than pattern-matching)
+There is no naturalization prompt, template registry, or `respond` tool. PEX composes the spoken reply directly over the turn's artifacts, tool results, and sub-agent results — worded by a **voice Skill** in its system prompt (persona, verbosity, and the convention to reference the visual display, e.g., "as shown below," rather than duplicate data). Clarification wording is owned by the Ambiguity Handler, not a response template.
 
-**Multi-flow merge** (`for_res.py`):
-- For >2 flows or overlapping outputs: LLM call to weave individual naturalized outputs into one coherent response
-- For ≤2 non-overlapping: deterministic concatenation with transition phrases
-
-**Clarification generation** (`for_res.py`):
-- Dispatched by ambiguity level: general_ask, partial_ask, specific_ask, confirmation_ask
-- Three generation modes: lexicalize (template → surface form), naturalize (rewrite to sound natural), compile (summarize metadata into response)
-
-### Step 7 — Template Registry
-
-Set up the template registry consumed by RES.
-
-**Base templates** (`schemas/templates/base/`):
-- One template per intent: `converse.txt`, `read.txt`, `prepare.txt`, `transform.txt`, `schedule.txt`, `plan.txt`, `internal.txt`
-- Each defines the response structure for that intent
-
-**Domain overrides** (`schemas/templates/<domain>/`):
-- Override keyed by dact name, completely replaces the base intent template
-- Example:
-  ```
-  draft_preview:
-    template: "Here's your draft — {title}. Preview it on the right."
-    block_hint: card
-    skip_naturalize: false
-  ```
-
-**Features supported**:
-- `block_hint` — suggested block type for display()
-- `skip_naturalize` — skip LLM naturalization for structured confirmations
-- Conditional sections — `{% if conflict %}Note: overlaps with {conflict_event}.{% endif %}`
-
-**Lookup order**: domain override (by dact) → base template (by intent).
-
-### Step 8 — Exemplar Standards
+### Step 7 — Exemplar Standards
 
 | Prompt type | Count | Rationale |
 |---|---|---|
-| NLU `think()` — intent/flow | ~32 | High-cardinality classification; examples are primary signal |
+| NLU `classify_intent` / `detect_flow` | ~32 | High-cardinality classification; examples are primary signal |
 | NLU `contemplate()` | ~16 | Multi-step reasoning with subtle distinctions |
 | PEX skill/policy | 7–10 | Moderate complexity |
-| RES response generation | 3–5 | Shaped more by instructions and persona |
 
 **Exemplar rules**:
 - Cover success, ambiguous, edge, and error/null cases
@@ -168,14 +129,14 @@ Set up the template registry consumed by RES.
 - Double-brace escaping for f-string compatibility
 - Exemplars are a testing surface — if eval scores drop, add exemplars for failing cases first
 
-### Step 9 — Prompt Versioning
+### Step 8 — Prompt Versioning
 
 - Each prompt template gets a unique ID and version: `{template_id}.v{N}`
 - Evaluation results tie to specific versions
 - Enable A/B testing and rollback of prompt changes
 - Track `prompt_versions_used` in session records
 
-### Step 10 — Variable Naming
+### Step 9 — Variable Naming
 
 - Runtime placeholders: `{snake_case}` in single curly braces
 - Double braces `{{`, `}}` for literal braces in f-string templates
@@ -191,30 +152,23 @@ Set up the template registry consumed by RES.
 | Modify | `<domain>/backend/prompts/for_experts.py` | NLU intent/flow classification with ~32 exemplars each |
 | Create | `<domain>/backend/prompts/for_nlu.py` | Entity grounding, slot filling |
 | Create | `<domain>/backend/prompts/for_pex.py` | Policy execution, code generation |
-| Create | `<domain>/backend/prompts/for_res.py` | Response generation, naturalization |
 | Create | `<domain>/backend/prompts/for_contemplate.py` | Re-routing prompts |
 | Create | `<domain>/backend/prompts/for_executors.py` | Domain-specific tool prompts |
 | Create | `<domain>/backend/prompts/for_metadata.py` | Type inference, data quality |
-| Create | `<domain>/schemas/templates/base/*.txt` | Base intent templates (7 files) |
-| Create | `<domain>/schemas/templates/<domain>/*.txt` | Domain override templates |
 
 ---
 
 ## Verification
 
-- [ ] All 8 prompt files exist in `backend/prompts/`
+- [ ] All 7 prompt files exist in `backend/prompts/`
 - [ ] System prompt composes persona correctly from domain config
-- [ ] Every prompt follows the 8-slot format
-- [ ] All prompts return parseable JSON
+- [ ] Every sub-agent/tool prompt follows the 8-slot format (module skills are guidance, exempt)
+- [ ] All sub-agent/tool prompts return parseable JSON (skills return nothing)
 - [ ] Classification prompts include `"thought"` key for chain-of-thought
 - [ ] NLU intent prediction has ~32 diverse exemplars
 - [ ] NLU flow detection has ~32 exemplars covering edge cases
 - [ ] PEX skill prompts inject slot 1 and slot 8 correctly around skill templates
-- [ ] RES naturalization produces natural-sounding output from filled templates
-- [ ] Template registry has base templates for all 7 intents
-- [ ] Domain overrides load correctly (by dact name)
-- [ ] `block_hint` and `skip_naturalize` work in domain templates
-- [ ] Conditional sections in templates render correctly
+- [ ] PEX voice Skill composes the spoken reply directly from artifacts, tool results, and sub-agent results
 - [ ] Prompt versioning: each template has `{template_id}.v{N}`
 - [ ] Variable placeholders use `{snake_case}` consistently
 - [ ] Exemplars cover success, ambiguous, edge, and error cases

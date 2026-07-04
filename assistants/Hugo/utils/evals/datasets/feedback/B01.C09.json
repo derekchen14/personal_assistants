@@ -1,0 +1,5 @@
+{
+  "id": "B01.C09",
+  "verdict": "minor",
+  "comment": "The agent responses are a bit too pro-active. A few instances is fine, but keep in mind to avoid this type of agent behavior in the future since the agent responses become the ground truth to aim for, and this is unlikely to be how the agent responds."
+}

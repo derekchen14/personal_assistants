@@ -4,7 +4,7 @@ Three layers, each owned by a different file:
 
   - System prompt = persona (`general.build_system`) + intent prompt
     (`pex/sys_prompts.py::PROMPTS[intent]`) + skill body
-    (`pex/skills/<flow>.md`) + execution rules suffix.
+    (`pex/skills/<flow>.md`) + closing reminder suffix.
 
   - User message = filled starter (`pex/starters/<flow>.py::build`) +
     recent conversation + latest utterance.
@@ -17,6 +17,8 @@ here on demand. The helpers are deliberately minimal — most slots
 serialize fine via direct attribute access in the starter template."""
 
 from importlib import import_module
+
+from backend.prompts.general import SLOT_7_REMINDER
 
 
 AMBIGUITY_AND_ERRORS = """## Handling Ambiguity and Errors
@@ -47,11 +49,11 @@ Use the `handle_ambiguity()` or `execution_error()` tools to signal such issues 
 
 
 def build_skill_system(base_system:str, flow, skill_prompt:str|None) -> str:
-    """System prompt = persona + intent prompt + ambiguity block + skill body.
+    """System prompt = persona + intent prompt + ambiguity block + skill body + closing reminder.
 
-    Execution rules have been folded into per-intent prompts and per-flow skills, so there is no
-    shared suffix. The `--- {Flow_name} Skill Instructions ---` divider keeps the handoff from
-    context to skill body visually obvious."""
+    The slot-7 closing reminder is the shared suffix — it restates the agentic output contract
+    at the highest-recency position. The `--- {Flow_name} Skill Instructions ---` divider keeps
+    the handoff from context to skill body visually obvious."""
     from backend.prompts.pex.sys_prompts import get_intent_prompt
     intent_prompt = get_intent_prompt(flow.intent)
 
@@ -59,6 +61,7 @@ def build_skill_system(base_system:str, flow, skill_prompt:str|None) -> str:
     if skill_prompt:
         flow_name = flow.name().capitalize()
         parts.append(f'\n\n--- {flow_name} Skill Instructions ---\n\n{skill_prompt}')
+    parts.append(f'\n\n{SLOT_7_REMINDER}')
     return ''.join(parts)
 
 
@@ -107,11 +110,14 @@ def _default_starter(flow, resolved:dict) -> str:
         if not slot.check_if_filled():
             continue
         label = slot_name.replace('_', ' ').capitalize()
-        if slot_name == flow.entity_slot:
+        if slot_name == flow.entity_slot and slot.criteria == 'multiple':
             val = slot.values[0] if slot.values else ''
             details_lines.append(f'{label}: {_summarize_entity(val)}')
-        elif slot.values:
-            details_lines.append(f'{label}: ' + '; '.join(str(v) for v in slot.values))
+        elif slot.criteria == 'multiple':
+            if slot.values:
+                details_lines.append(f'{label}: ' + '; '.join(str(v) for v in slot.values))
+        else:  # single / numeric criteria — to_dict() yields the value / level
+            details_lines.append(f'{label}: {slot.to_dict()}')
     details = '\n'.join(details_lines) if details_lines else '(no parameters filled)'
     return (
         f'<task>\n{task}\n</task>\n\n'

@@ -1,0 +1,169 @@
+{
+  "session": "trace_user_20260612_085014",
+  "turns": [
+    {
+      "user": "What are the metrics on the embedding model post?",
+      "kind": "utterance",
+      "tool_calls": [
+        {
+          "tool": "find_posts",
+          "args": {
+            "query": "embedding model"
+          },
+          "ok": true
+        },
+        {
+          "tool": "detect_and_fill",
+          "args": {
+            "text": "What are the metrics on the embedding model post?",
+            "intent": "Research"
+          },
+          "ok": true
+        },
+        {
+          "tool": "write_state",
+          "args": {
+            "op": "stackon",
+            "flow_name": "inspect"
+          },
+          "ok": true
+        },
+        {
+          "tool": "write_state",
+          "args": {
+            "op": "update_flow",
+            "fields": {
+              "slots": {
+                "source": [
+                  {
+                    "post": "embedding model",
+                    "sec": "",
+                    "snip": "",
+                    "chl": "",
+                    "ver": false
+                  }
+                ]
+              }
+            }
+          },
+          "ok": true
+        },
+        {
+          "tool": "activate_flow",
+          "args": {
+            "flow_name": "inspect"
+          },
+          "ok": true
+        }
+      ],
+      "dispatched_flows": [
+        "inspect"
+      ],
+      "completions": [
+        {
+          "flow": "inspect",
+          "summary": "Inspected metrics for post TraceSwA.",
+          "metadata": {
+            "post_id": "TraceSwA",
+            "metrics": {
+              "post_id": "TraceSwA",
+              "word_count": 91,
+              "section_count": 3,
+              "heading_depth": 2,
+              "image_count": 0,
+              "link_count": 0,
+              "avg_paragraph_length": 30.3,
+              "estimated_read_time": 1,
+              "empty_sections": []
+            }
+          },
+          "writer": "inspect"
+        }
+      ],
+      "notes": [],
+      "utterance": "Here's a quick snapshot of **Choosing an Embedding Model for Search**:\n\n| Metric | Value |\n|---|---|\n| Word count | 91 |\n| Sections | 3 |\n| Heading depth | 2 |\n| Images | 0 |\n| Links | 0 |\n| Avg. paragraph length | 30.3 words |\n| Estimated read time | ~1 min |\n| Empty sections | None |\n\nIt's a fairly lean draft \u2014 no images or links yet, and quite short at 91 words."
+    },
+    {
+      "user": "Now check the rate limiting post instead.",
+      "kind": "utterance",
+      "tool_calls": [
+        {
+          "tool": "find_posts",
+          "args": {
+            "query": "rate limiting"
+          },
+          "ok": true
+        },
+        {
+          "tool": "detect_and_fill",
+          "args": {
+            "text": "Now check the rate limiting post instead.",
+            "intent": "Research"
+          },
+          "ok": true
+        },
+        {
+          "tool": "write_state",
+          "args": {
+            "op": "stackon",
+            "flow_name": "inspect"
+          },
+          "ok": true
+        },
+        {
+          "tool": "write_state",
+          "args": {
+            "op": "update_flow",
+            "fields": {
+              "slots": {
+                "source": [
+                  {
+                    "post": "TraceSwB",
+                    "sec": "",
+                    "snip": "",
+                    "chl": "",
+                    "ver": false
+                  }
+                ]
+              }
+            }
+          },
+          "ok": true
+        },
+        {
+          "tool": "activate_flow",
+          "args": {
+            "flow_name": "inspect"
+          },
+          "ok": true
+        }
+      ],
+      "dispatched_flows": [
+        "inspect"
+      ],
+      "completions": [
+        {
+          "flow": "inspect",
+          "summary": "Inspected metrics for post TraceSwB.",
+          "metadata": {
+            "post_id": "TraceSwB",
+            "metrics": {
+              "post_id": "TraceSwB",
+              "word_count": 88,
+              "section_count": 3,
+              "heading_depth": 2,
+              "image_count": 0,
+              "link_count": 0,
+              "avg_paragraph_length": 29.3,
+              "estimated_read_time": 1,
+              "empty_sections": []
+            }
+          },
+          "writer": "inspect"
+        }
+      ],
+      "notes": [],
+      "utterance": "Here are the metrics for **A Practical Guide to Rate Limiting**:\n\n| Metric | Value |\n|---|---|\n| Word count | 88 |\n| Sections | 3 |\n| Heading depth | 2 |\n| Images | 0 |\n| Links | 0 |\n| Avg. paragraph length | 29.3 words |\n| Estimated read time | ~1 min |\n| Empty sections | None |\n\nVery similar to the embedding model post \u2014 both are short drafts with 3 sections, no images or links, and about the same paragraph density."
+    }
+  ]
+}

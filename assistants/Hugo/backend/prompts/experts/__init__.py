@@ -16,11 +16,11 @@ from __future__ import annotations
 
 from backend.prompts.experts import (
     research_flows, draft_flows, revise_flows, publish_flows,
-    converse_flows, plan_flows,
+    converse_flows,
 )
 
 _MODULES = (research_flows, draft_flows, revise_flows, publish_flows,
-            converse_flows, plan_flows)
+            converse_flows)
 
 PROMPTS: dict[str, dict[str, str]] = {}
 for _mod in _MODULES:

@@ -1,6 +1,6 @@
 ---
 name: "rework"
-description: "major revision of draft content; restructures arguments, replaces weak sections, weaves in itemized suggestions. Operates across more than one section, up to the whole post. For paragraph-level edits use polish."
+description: "major revision of draft content; restructures arguments, replaces weak sections, weaves in itemized suggestions. Operates across more than one section, up to the whole post. For paragraph-level edits use write."
 version: 4
 tools:
   - read_metadata
@@ -22,13 +22,14 @@ This skill describes how to rework a blog post given user-supplied items: a list
   a. When `suggestions` is filled, address each item with a visible reasoning step. A suggestion should change the section's argument or structure, not just swap a word.
   b. When `remove` is filled, excise the named material. A concrete `remove` (a named paragraph, a specific argument) can be cut directly via `revise_content`. A vague `remove` ("anything outdated", "whatever feels off") is handled per the Output rule below — emit JSON with empty `changes`/`done` and explain in `summary`.
   c. When the change is structural across multiple sections (move material, rebuild transitions), choreograph: `read_section` each target → `remove_content` cuts → `insert_section` re-inserts at the new position with smoothed transitions → `revise_content` on adjacent sections to update outgoing transitions.
+  d. When `Type` is filled: whole-entity deletes (`post` / `draft` / `note`) are handled by the policy before this skill runs — you will not be invoked for them. For `Type=section`, delete the whole section with `remove_content(post_id, sec_id)`. For `Type=image` or a filled `Image`, strip that image from its section via `revise_content`.
 
 4. End the turn by emitting one JSON object with the keys below — see Output for the schema.
 
 ## Handling Ambiguity and Errors
 
 - Vague guidance (no concrete spans, no numbered list): emit JSON with empty `changes` and `done`; describe the confusion in `summary`. Do not save anything.
-- Wrong flow: if the request reads as Polish (sentence cleanup inside one paragraph) or Simplify (cutting a few words/sentences), call `call_flow_stack(action='fallback', flow='polish' | 'simplify')`. The policy re-routes through the flow stack — you still emit the JSON with empty arrays and a `summary` line naming the right flow.
+- Wrong flow: if the request reads as a Write edit — sentence cleanup inside one paragraph, or trimming a few words/sentences — call `call_flow_stack(action='fallback', flow='write')`. The policy re-routes through the flow stack — you still emit the JSON with empty arrays and a `summary` line naming the right flow.
 - If `revise_content` fails twice, the policy emits a `failed_to_save` error artifact. Do not attempt a third call from the skill.
 
 ## Tools
@@ -43,7 +44,7 @@ This skill describes how to rework a blog post given user-supplied items: a list
 
 - `execution_error(violation, message)` for hard failures after retries.
 - `manage_memory(action, key, value)` to read the audit scratchpad when prior findings exist for this section.
-- `call_flow_stack(action='read', details='flows')` to see what flow follows rework, which sometimes informs whether to leave breadcrumbs for a subsequent polish.
+- `call_flow_stack(action='read', details='flows')` to see what flow follows rework, which sometimes informs whether to leave breadcrumbs for a subsequent write.
 
 ## Output
 

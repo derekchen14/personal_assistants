@@ -71,7 +71,7 @@ Integrate token refresh into the PEX execution path.
 
 - Before any PEX tool call that requires an OAuth credential, check token freshness
 - If expired or expiring soon, refresh automatically (lazy refresh)
-- If refresh fails, surface error to user via RES rather than failing silently
+- If refresh fails, surface the error to the user (PEX artifact, delivered by the main Agent) rather than failing silently
 
 This keeps the refresh logic out of the tool implementations — they just receive a valid token.
 

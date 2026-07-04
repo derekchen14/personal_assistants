@@ -1,0 +1,233 @@
+{
+  "convo_id": "B01.C15",
+  "persona": "P: formal + neutral + plain",
+  "use_case": "U: outline -> compose -> write -> audit",
+  "topic": "T: Ancient Roman Engineering",
+  "title": "Roman Concrete Heals Itself; Ours Just Crumbles",
+  "available_data": {},
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-sonnet-4-6",
+    "spec": "topic=Ancient Roman Engineering \u00b7 7 turns \u00b7 formal/neutral/plain \u00b7 arc=straight_build \u00b7 use_case=outline->compose->write->audit \u00b7 noise=t1(transcript) \u00b7 verify=yes \u00b7 flagged=no",
+    "draws": {
+      "topic": "Ancient Roman Engineering",
+      "title_source": "coined",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Draft",
+        "sequence": [
+          "outline",
+          "compose",
+          "write",
+          "audit"
+        ]
+      },
+      "sprinkles": {
+        "noise": {
+          "turns": [
+            1
+          ],
+          "type": "transcript"
+        },
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": true,
+      "flagged": false,
+      "writer_model": "claude-sonnet-4-6",
+      "length": [
+        1,
+        2,
+        2,
+        2
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Can you, yeah structure it with four sections, the chemistry of pozzolanic ash, why Roman harbors haven't crumbled, the modern failure comparison, and implications for today's construction.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Roman Concrete Heals Itself; Ours Just Crumbles"
+        },
+        "sections": [
+          "chemistry of pozzolanic ash",
+          "why Roman harbors haven't crumbled",
+          "modern failure comparison",
+          "implications for today's construction"
+        ]
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Does the outline include all four named sections in the requested order?",
+          "dimension": "useful"
+        },
+        {
+          "check": "Does the outline represent a post about Roman concrete specifically, not Roman engineering generally?",
+          "dimension": "trustworthy"
+        },
+        {
+          "check": "Is the post title or topic attached to the outline in saved state?",
+          "dimension": "persisted"
+        }
+      ]
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Here is the structure: 1) The chemistry of pozzolanic ash: seawater reaction and aluminous tobermorite crystals. 2) Roman harbor longevity: case studies from Caesarea and Portus. 3) Modern Portland cement failures: sulfate attack and cracking timelines. 4) What today's engineers can borrow."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "The structure reads correctly. Please turn it into a full draft.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Roman Concrete Heals Itself; Ours Just Crumbles"
+        }
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Does the draft cover all four sections from the outline in prose form?",
+          "dimension": "useful"
+        },
+        {
+          "check": "Does the draft avoid overstating Roman concrete as universally superior to modern materials?",
+          "dimension": "trustworthy"
+        },
+        {
+          "check": "Is the draft saved and associated with the post title?",
+          "dimension": "persisted"
+        }
+      ]
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Draft is complete across all four sections. The harbor longevity section runs long; I may have over-explained the crystalline process."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "The harbor section is too detailed. Strip it back to the two case studies and drop the supplementary mineralogy.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Roman Concrete Heals Itself; Ours Just Crumbles",
+          "sec": "Roman harbor longevity"
+        }
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Does the revised section retain both Caesarea and Portus as case studies?",
+          "dimension": "useful"
+        },
+        {
+          "check": "Has the supplementary mineralogy content been removed rather than just summarized?",
+          "dimension": "trustworthy"
+        },
+        {
+          "check": "Is the updated section saved to the draft?",
+          "dimension": "persisted"
+        }
+      ]
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "Done. Kept Caesarea and Portus, removed the extended mineralogy. The section is now roughly half the length."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Run a voice check on the full draft. Flag anything that does not read as my writing.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Roman Concrete Heals Itself; Ours Just Crumbles"
+        }
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Does the audit identify at least one specific phrase or passage that sounds off-voice?",
+          "dimension": "useful"
+        },
+        {
+          "check": "Does the audit compare against prior posts rather than applying a generic style rule?",
+          "dimension": "trustworthy"
+        },
+        {
+          "check": "Are the flagged items saved or surfaced for follow-up editing?",
+          "dimension": "persisted"
+        }
+      ]
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ]
+    }
+  ]
+}

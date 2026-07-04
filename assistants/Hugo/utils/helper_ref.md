@@ -17,7 +17,7 @@ Modules import `build_*_prompt` helpers directly from `backend/prompts/`.
 Use `raw_output` before parsing, with meaningful name (`parsed`, `pred_slots`, `verdict`, `cleaned`, `repaired`, etc.) after.
 
 Special LLM calls:
-2. `skill_call(flow, convo_history, scratchpad, skill_name=None, skill_prompt=None, resolved=None, max_tokens=1024) -> str`  →  skill execution WITHOUT tools (sibling of tool_call). Loads `prompts/skills/<skill_name or flow.name()>.md`, builds `[system, user]`, returns LLM text. Pass `skill_prompt=` to override the loaded template.
+2. `skill_call(flow, convo_history, scratchpad, skill_name=None, skill_prompt=None, resolved=None, max_tokens=1024) -> str`  →  skill execution WITHOUT tools (sibling of tool_call). Loads `prompts/pex/skills/<skill_name or flow.name()>.md`, builds `[system, user]`, returns LLM text. Pass `skill_prompt=` to override the loaded template.
 3. `tool_call(flow, convo_history, scratchpad, tool_defs, dispatcher, skill_name=None, skill_prompt=None, resolved=None, max_tokens=4096) -> tuple[str, list[dict]]`  →  skill execution WITH tools (sibling of skill_call). Same skill-assembly API; adds `tool_defs` and `dispatcher` for the agentic loop.
 4. `stream(prompt:str, task='skill', model='sonnet', max_tokens=4096)`  →  async token streaming (future scaffolding).
 
@@ -28,17 +28,17 @@ Output parsing (dispatched via `apply_guardrails`):
   * `_parse_markdown(text, shape)`  →  `shape='outline'` extracts `##` sections; `shape='candidates'` parses `### Option N / ## Section`.
 
 File I/O + tool-log helpers:
-6. `load_skill_template(flow_name) -> str | None`  →  reads `backend/prompts/skills/<flow_name>.md`.
+6. `load_skill_template(flow_name) -> str | None`  →  reads `backend/prompts/pex/skills/<flow_name>.md`.
 7. `extract_tool_result(tool_log, tool_name) -> dict`  →  first successful result for a given tool; strips underscore-prefixed keys.
 
 Instance attribute: `persona` (public) — `dict` loaded from `config.persona`. For the persona-based system prompt, call `build_system(engineer.persona)` directly from `prompts/general.py`.
 
-Class constant: `_SKILL_DIR` → `backend/prompts/skills/`. Task suffixes in `_TASK_SUFFIXES` (module-level) map each `task` label to a system-prompt suffix: `classify_intent`, `detect_flow`, `fill_slots`, `contemplate`, `repair_slot`, `skill`, `naturalize`, `quality_check`, `clarify`.
+Class constant: `_SKILL_DIRS` → `(backend/prompts/pex/skills/, backend/prompts/skills/)` — pex/skills primary, skills legacy fallback. Task suffixes in `_TASK_SUFFIXES` (module-level) map each `task` label to a system-prompt suffix: `classify_intent`, `detect_flow`, `fill_slots`, `contemplate`, `repair_slot`, `skill`, `naturalize`, `quality_check`, `clarify`.
 
 **Prompt compilation is NOT a PromptEngineer concern.** The `backend/prompts/` module owns prompt-text compilation; consumer modules import what they need:
 - NLU owns `_detect_flow_prompt`, `_fill_slot_prompt`, `_contemplate_prompt` (all >2 lines of real work). `build_intent_prompt` is called inline at its one use site.
 - BasePolicy owns `_build_skill_prompt`.
-- RES inlines `get_naturalize_prompt` at the naturalize call site.
+- PEX composes the reply directly from blocks/metadata — no RES, no separate naturalize prompt.
 - AmbiguityHandler renders clarification text via `ask()` — level-specific prose lives in the handler itself.
 
 ## 2. DialogueState — beliefs + flags
@@ -63,7 +63,7 @@ Attributes: `pred_intent`, `pred_flow` (dax), `confidence`, `pred_flows`, `turn_
 3. `peek() -> BaseFlow | None`  (:37)
 4. `get_flow(status=None) -> BaseFlow | None`  →  top of stack by default; pass `status='Active'` etc. only when the caller truly distinguishes lifecycle  (:41)
 5. `find_by_name(flow_name) -> BaseFlow | None`  →  skips completed/invalid  (:49)
-6. `pop_completed() -> list[BaseFlow]`  →  pops both Completed and Invalid from top; returns only Completed. Called by `RES.start()` every turn  (:58)
+6. `pop_completed() -> list[BaseFlow]`  →  pops both Completed and Invalid from top; returns only Completed. Driven by the orchestrator via PEX's `write_state` `pop_completed` op  (:58)
 
 Serialization (non-core): `to_list() -> list[dict]`  (:76).
 
@@ -100,13 +100,15 @@ Extended (turn rewriting + search + lifecycle):
 
 `TaskArtifact` shape: **3 stored attributes** (`origin`, `parts: list[Part]`, `blocks`) + **3 helper properties** (`data`, `thoughts`, `code`) that unpack the parts list. The constructor accepts the legacy `parts=dict` shape (wrapped as a single data Part) plus `thoughts`/`code` kwargs (each wrapped as a `text` Part tagged via `Part.metadata.kind`). **Never add new top-level attributes.**
 
-1. `set_artifact(origin='', blocks=[], new_data={})`  →  merges blocks + metadata  (:30)
-2. `add_block(block_data)`  →  auto-routes `form/confirmation/toast` to `top`, others to `bottom`  (:37)
-3. `clear()`  (:51)
-4. `compose(block, data) -> dict`  →  build a frontend-shaped block dict  (:58)
-5. `to_dict() -> dict`  (:65)
+1. `add_part(**kwargs)`  →  append a `Part` (text / data / file) to `parts`  (:95)
+2. `update_data(**kwargs)`  →  merge kwargs into the existing data Part, or create one  (:98)
+3. `set_artifact(origin='', blocks=[], new_data={})`  →  merges blocks + data  (:105)
+4. `add_block(block_data)`  →  auto-routes `form/confirmation/toast` to `top`, others to `bottom`  (:113)
+5. `clear()`  (:116)
+6. `compose(block, data) -> dict`  →  build a frontend-shaped block dict  (:121)
+7. `to_dict() -> dict`  (:124)
 
-`BuildingBlock`: `block_type`, `data`, `location`; `to_dict()`.
+`BuildingBlock`: `block_type`, `data`, `panel`; `to_dict()`.
 
 Valid block types: `card`, `form`, `confirmation`, `toast`, `default`, `selection`, `list`.
 
@@ -125,23 +127,22 @@ Four levels: `general`, `partial`, `specific`, `confirmation` (`schemas/ontology
 
 Properties: `level` (:90), `metadata` (:94), `observation` (:98).
 
-## 7. MemoryManager — 3-tier cache
+## 7. MemoryManager — 3-tier facade
 
-`backend/components/memory_manager.py` contains 9 core methods.
+`backend/components/memory_manager.py` is the synchronous facade over the three tiers. It holds
+references to the tier sub-components (`context`, `preferences`, `business`) and exposes one read
+skill per tier. Tier-specific writes are reached through the sub-component.
 
-- Scratchpad (L1, session-scoped):
-  1. `write_scratchpad(key, value)` (:22)
-  2. `read_scratchpad(key=None)` returns str-or-dict (:29)
-  3. `clear_scratchpad()` (:34), property `scratchpad_size` (:38).
-- Preferences (L2, per-user in-memory):
-  4. `read_preference(key, default='')` (:46)
-  5. `write_preference(key, value)` (:49).
-- Long-term (L3, per-user in DB):
-  6. `read_long_term(key)` (:54),
-  7. `write_long_term(key, value)` (:57).
-- Other:
-  8. `dispatch_tool(action, params)`  →  component-tool interface consumed by PEX `manage_memory`  (:59)
-  9. `should_summarize(turn_count) -> bool`  →  checkpoint trigger from config  (:54)
+- `recap(n_turns=None, filter=None) -> str`  →  L1, recent session events via `context.compile_history`  (:14)
+- `recall(query, flow_name=None) -> dict`  →  L2, user preferences via `preferences.read(query)`  (:18)
+- `retrieve(query, top_k=10, documents=None) -> dict`  →  L3, business knowledge / FAQs  (:23)
+
+Tier sub-components (set in `__init__`):
+- `context` (L1) — the `ContextCoordinator` event stream (see §4).
+- `preferences` (L2) — `UserPreferences`: `store_preference(key, value_or_record)` (:24), `read(query=None)` (:38).
+- `business` (L3) — `BusinessContext`: `search_faqs`, `search_all`, `rerank`.
+
+Session scratchpad is a separate component — `SessionScratchpad` (`backend/components/session_scratchpad.py`), reached via `world.scratchpad`, not MemoryManager.
 
 ## 8. BaseFlow — flow contract + slot filling
 
@@ -151,18 +152,18 @@ Core flow API:
 - Property `intent`  →  `self.parent_type`  (:23)
 - `name(full=False) -> str`  →  `'create'` or `'Draft(create)'`  (:30)
 - `is_complete()` (:46), `is_filled()` (:49)
-- `fill_slots_by_label(labels: dict) -> bool`  →  System-1 targeted single-slot fill from PEX label extraction. Routes entity values through `validate_entity`  (:58)
+- `fill_slots_by_label(labels: dict) -> bool`  →  System-1 targeted single-slot fill from PEX label extraction. Routes entity values through `extract_entity`  (:58)
 - `fill_slot_values(values: dict)`  →  transfer prediction values onto slot objects; aliases `title→target`, `post/post_id→source`  (:74)
 - `slot_values_dict() -> dict`  →  only filled / non-empty slots  (:136)
 - `to_dict() -> dict`  (:144)
-- `validate_entity(entity)`  →  add entity to the primary grounding slot; override in domain parents for validation  (:152)
+- `extract_entity(entity)`  →  add entity to the primary grounding slot; override in domain parents for validation  (:90)
 - `entity_values(size=False)`  →  values of `self.slots[self.entity_slot]`  (:157)
 - `needs_to_think() -> bool`  (:161)
 - `match_action(action_name) -> bool`  →  starts-with `self.parent_type.upper()`  (:166)
 
-Attributes every flow has: `slots`, `tools`, `interjected`, `is_newborn`, `is_uncertain`, `fall_back`, `stage`, `entity_slot` (default `'source'`), `flow_id`, `plan_id`, `turn_ids`, `status` ∈ `Pending / Active / Completed / Invalid`.
+Attributes every flow has: `slots`, `tools`, `is_newborn`, `is_uncertain`, `stage`, `entity_slot` (default `'source'`), `flow_id`, `plan_id`, `turn_ids`, `status` ∈ `Pending / Active / Completed / Invalid`.
 
-Parent classes (each sets `parent_type` only): `InternalParentFlow` (also sets `interjected=True`), `ResearchParentFlow`, `DraftParentFlow`, `ReviseParentFlow`, `PublishParentFlow`, `ConverseParentFlow`, `PlanParentFlow`.
+Parent classes (each sets `parent_type` only): `ResearchParentFlow`, `DraftParentFlow`, `ReviseParentFlow`, `PublishParentFlow`, `ConverseParentFlow`.
 
 ## 9. Slot hierarchy — by type
 
@@ -206,21 +207,25 @@ Hugo entity parts inside SourceSlot entities: `{post, sec, snip, chl, ver}`.
 
 Class constant: `_STATUS_SUFFIXES = (' draft', ' post', ' note', ' published')`.
 
-## 11. PEX tool registry — 34 domain tools + 4 component tools
+## 11. PEX tool registry — 33 domain tools + component/orchestrator tools
 
-`backend/modules/pex.py:55–94` (domain), `:425–478` (component tool definitions).
+`backend/modules/pex.py:106–144` (domain dispatch table), `:888–998` (orchestrator tool definitions).
 
 Before proposing a new tool, grep for the capability here first.
 
 **PostService** (9): `find_posts`, `search_notes`, `read_metadata`, `read_section`, `create_post`, `update_post`, `delete_post`, `summarize_text`, `rollback_post`.
 
-**ContentService** (12): `generate_outline`, `convert_to_prose`, `insert_section`, `insert_content`, `revise_content`, `write_text`, `find_and_replace`, `remove_content`, `cut_and_paste`, `diff_section`, `insert_media`, `web_search`.
+**ContentService** (10): `generate_outline`, `convert_to_prose`, `insert_section`, `revise_content`, `write_text`, `remove_content`, `cut_and_paste`, `diff_section`, `insert_media`, `web_search`.
 
 **AnalysisService** (8): `brainstorm_ideas`, `inspect_post`, `check_readability`, `check_links`, `compare_style`, `editor_review`, `explain_action`, `analyze_seo`.
 
 **PlatformService** (5): `release_post`, `promote_post`, `cancel_release`, `list_channels`, `channel_status`.
 
-**Component tools** (4): `handle_ambiguity`, `coordinate_context`, `manage_memory`, `read_flow_stack`.
+**BusinessContext** (1): `search_faqs`.
+
+**Orchestrator hot-path tools** (6, `_orchestrator_dispatch`): `read_state`, `write_state`, `activate_flow`, `append_to_scratchpad`, `store_preference`, `read_scratchpad`. Writes still route through a flow via `activate_flow`; flow-stack ops are `write_state` ops. `read_flow_stack` / `call_flow_stack` is retired — its job lives in `read_state` / `write_state`.
+
+**Component tools** (3): `handle_ambiguity`, `coordinate_context`, `manage_memory`.
 
 ## 12. DAX / flow lookups
 

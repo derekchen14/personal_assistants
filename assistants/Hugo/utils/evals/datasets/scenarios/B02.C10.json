@@ -1,0 +1,254 @@
+{
+  "convo_id": "B02.C10",
+  "persona": "P: neutral + blunt",
+  "use_case": "U: find -> outline -> compose -> rework -> rework",
+  "topic": "T: Ancient Roman Engineering",
+  "title": "Roman Concrete Heals Itself; Ours Just Crumbles",
+  "available_data": {},
+  "flagged": false,
+  "batch": "B02",
+  "generation": {
+    "batch": "B02",
+    "seed": 20260701,
+    "writer_model": "claude-sonnet-4-6",
+    "spec": "topic=Ancient Roman Engineering \u00b7 9 turns \u00b7 neutral/blunt \u00b7 arc=iteration_loop \u00b7 use_case=find->outline->compose->rework->rework \u00b7 noise=none \u00b7 verify=yes \u00b7 flagged=no",
+    "draws": {
+      "topic": "Ancient Roman Engineering",
+      "title_source": "banked",
+      "turn_count": 9,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "iteration_loop",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Research",
+        "sequence": [
+          "find",
+          "outline",
+          "compose",
+          "rework",
+          "rework"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": true,
+      "flagged": false,
+      "writer_model": "claude-sonnet-4-6",
+      "length": [
+        2,
+        2,
+        1,
+        2,
+        2
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "What do I have saved on Roman concrete? Want to see what's already there before starting.",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Roman Concrete Heals Itself; Ours Just Crumbles"
+        },
+        "query": "Roman concrete"
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Agent returns matching post titles or notes referencing Roman concrete",
+          "dimension": "useful"
+        },
+        {
+          "check": "Agent does not fabricate content that was not in stored posts",
+          "dimension": "trustworthy"
+        }
+      ]
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
+      "utterance": "Found two notes: one on volcanic ash chemistry and one comparing ancient mortar to Portland cement. No full drafts on this topic yet."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Good base. Sketch the structure for the concrete post using those.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Roman Concrete Heals Itself; Ours Just Crumbles"
+        },
+        "sections": [
+          "intro",
+          "the chemistry",
+          "why ours fails",
+          "implications"
+        ]
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Outline references content from the two found notes",
+          "dimension": "useful"
+        },
+        {
+          "check": "Outline sections follow a logical forward progression, not backwards",
+          "dimension": "trustworthy"
+        }
+      ]
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Outline ready: 1) What makes Roman concrete different 2) The volcanic ash reaction 3) Why Portland cement deteriorates faster 4) What engineers are learning from it. Four tight sections."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Turn it into a full draft.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Roman Concrete Heals Itself; Ours Just Crumbles"
+        }
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Agent produces prose covering all four outlined sections",
+          "dimension": "useful"
+        },
+        {
+          "check": "Draft is saved under the correct post title",
+          "dimension": "persisted"
+        }
+      ]
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Full draft is there. The Portland cement section runs long and the concluding paragraph reads like a press release."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The whole back half feels off. Trim the cement section and redo the ending.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Roman Concrete Heals Itself; Ours Just Crumbles",
+          "sec": "Why Portland cement deteriorates faster"
+        }
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Revised cement section is shorter than the original",
+          "dimension": "useful"
+        },
+        {
+          "check": "Ending no longer contains promotional or press-release phrasing",
+          "dimension": "trustworthy"
+        }
+      ]
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
+      "utterance": "Tightened the cement section by a third and rewrote the ending to close on the engineering lesson rather than a call to action. Still a bit stiff in the transition between sections two and three."
+    },
+    {
+      "turn_count": 9,
+      "role": "user",
+      "utterance": "That transition is the problem, yeah. Smooth it out and recheck the intro too.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Roman Concrete Heals Itself; Ours Just Crumbles",
+          "sec": "The volcanic ash reaction"
+        }
+      },
+      "ambiguity": null,
+      "verify": [
+        {
+          "check": "Transition between sections two and three is rewritten",
+          "dimension": "useful"
+        },
+        {
+          "check": "Intro is reviewed and any stiff phrasing is addressed",
+          "dimension": "useful"
+        }
+      ]
+    },
+    {
+      "turn_count": 10,
+      "role": "agent",
+      "actions": [
+        "revise_content"
+      ]
+    }
+  ]
+}

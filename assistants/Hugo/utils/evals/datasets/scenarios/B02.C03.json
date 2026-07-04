@@ -1,0 +1,167 @@
+{
+  "convo_id": "B02.C03",
+  "persona": "neutral/neutral/plain",
+  "use_case": "browse\u2192find\u2192summarize\u2192compare",
+  "topic": "RAG on a Company Wiki",
+  "title": "Vector DBs Are Not Needed for RAG",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "I've got notes on database choices scattered around. What do we actually have?",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "browse",
+            "dax": "{012}"
+          }
+        ]
+      },
+      "slots": {},
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "search_notes"
+      ],
+      "utterance": "Found three tagged topics: embedding strategies, RAG performance benchmarks, and alternatives to vector stores."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Pull up what I wrote on postgres for RAG before.",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "postgres RAG"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
+      "utterance": "Found 'Why Postgres Beats Vector Stores for Most Teams' from last month. Here's the excerpt."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "give me the gist of that one, what's the core take.",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Why Postgres Beats Vector Stores for Most Teams"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
+      "utterance": "The piece argues that standard SQL queries on embedded vectors outperform dedicated vector DBs for most company wikis. No specialized infrastructure needed."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "how's that compare to what I said about chunking strategies back then.",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Why Postgres Beats Vector Stores for Most Teams"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "compare_style"
+      ]
+    }
+  ],
+  "batch": "B02",
+  "flagged": false,
+  "generation": {
+    "batch": "B02",
+    "seed": 20260701,
+    "writer_model": "claude-haiku-4-5",
+    "spec": "topic=RAG on a Company Wiki \u00b7 7 turns \u00b7 P6 neutral/neutral/plain \u00b7 arc=options_select \u00b7 use_case=browse\u2192find\u2192summarize\u2192compare \u00b7 noise=typo+distractor \u00b7 verify=no \u00b7 flagged=no",
+    "draws": {
+      "topic": "RAG on a Company Wiki",
+      "title_source": "banked",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "options_select",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Research",
+        "sequence": [
+          "browse",
+          "find",
+          "summarize",
+          "compare"
+        ]
+      },
+      "sprinkles": {
+        "noise": {
+          "turns": [
+            3
+          ],
+          "type": "typo"
+        },
+        "distractor": {
+          "turn": 3,
+          "trigger": "adjacent_worry"
+        },
+        "persona_drift": null
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-haiku-4-5",
+      "length": [
+        2,
+        1,
+        1,
+        1
+      ]
+    }
+  }
+}

@@ -1,90 +1,84 @@
-import os
-import sys
-from pathlib import Path
-from unittest.mock import MagicMock
+"""Shared fixtures for the deterministic module test files (nlu_unit_tests / pex_unit_tests /
+mem_unit_tests). Home for fixtures used by more than one file: the minimal config, a PromptEngineer,
+the tmp sessions root, the tmp database, and the scripted acting-loop agent. Per-file fixtures stay
+in their own file. (utils/conftest.py above adds mock_agent / agent / config / sys.path.)
+"""
+import json
+from types import MappingProxyType
 
 import pytest
-from dotenv import load_dotenv
 
-# Ensure the Hugo assistant root is on sys.path so bare imports work
-_HUGO_ROOT = Path(__file__).resolve().parents[2]
-if str(_HUGO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_HUGO_ROOT))
-
-load_dotenv(_HUGO_ROOT / '.env')
-
-# Marker for downstream services (e.g. MT1TPublisher) to tag artifacts
-# produced during evals so they are trivially cleanable with `rm _eval_*`.
-os.environ['HUGO_EVAL_MODE'] = '1'
-
-
-def pytest_configure(config):
-    config.addinivalue_line('markers', 'llm: requires real LLM API calls (slow, costs money)')
-
+from backend.components.prompt_engineer import PromptEngineer
 from schemas.config import load_config
 from backend.agent import Agent
 
 
 @pytest.fixture
-def config():
-    return load_config(overrides={'debug': True})
+def minimal_config():
+    return MappingProxyType({
+        'models': {
+            'default': {
+                'provider': 'anthropic',
+                'model_id': 'claude-sonnet-4-5-20250929',
+                'temperature': 0.0,
+            },
+            'overrides': {},
+        },
+        'resilience': {},
+    })
+
+
 
 
 @pytest.fixture
-def agent(monkeypatch):
-    """Create an Agent with debug=True so RES skips naturalize."""
-    monkeypatch.setattr(
-        'backend.agent.load_config',
-        lambda: load_config(overrides={'debug': True}),
-    )
-    a = Agent(username='test_user')
-    yield a
-    a.close()
+def engineer(minimal_config):
+    return PromptEngineer(minimal_config)
 
 
-def _stub_tool_call(messages, tools, tool_dispatcher, *,
-                    system=None, task='skill', max_rounds=10, max_tokens=4096):
-    """Return a stub text response with no tool calls."""
-    return '[stub] LLM response for testing.', []
-
-
-def _stub_call_claude(system, messages, model_id, *, tools=None, max_tokens=4096):
-    """Return a stub anthropic-like Message."""
-    text_block = MagicMock()
-    text_block.type = 'text'
-    text_block.text = '[stub] LLM response for testing.'
-    msg = MagicMock()
-    msg.content = [text_block]
-    msg.stop_reason = 'end_turn'
-    return msg
 
 
 @pytest.fixture
-def mock_agent(monkeypatch):
-    """Agent with LLM calls stubbed out — tests routing without API keys."""
-    monkeypatch.setattr(
-        'backend.agent.load_config',
-        lambda: load_config(overrides={'debug': True}),
-    )
-    a = Agent(username='test_user')
-    a.engineer.tool_call = _stub_tool_call
-    a.engineer._call_claude = _stub_call_claude
-    yield a
-    a.close()
+def sessions_dir(tmp_path, monkeypatch):
+    """Redirect the module-level sessions root to a tmp dir (same pattern as tmp_db)."""
+    from backend.components import world as world_mod
+    path = tmp_path / 'sessions'
+    monkeypatch.setattr(world_mod, '_SESSIONS_DIR', path)
+    return path
 
 
-from backend.utilities.post_service import PostService
-
-_SYNTH_TITLE = 'Synthetic Data Generation for Classification'
 
 
-@pytest.fixture(scope='module')
-def cleanup_synth_post():
-    """Teardown-only fixture: deletes the synthetic data post after the eval module."""
-    yield
-    svc = PostService()
-    result = svc.find_posts(query='synthetic data generation')
-    if result.get('_success'):
-        for item in result.get('items', []):
-            if item.get('title') == _SYNTH_TITLE:
-                svc.delete_post(item['post_id'])
+@pytest.fixture
+def orch_agent(sessions_dir, monkeypatch):
+    """Agent with a tmp sessions root and scripted LLM calls. NLU.understand is stubbed to a
+    no-op so the Flow gate stays hermetic — these tests exercise PEX.execute (the acting loop),
+    not ensemble detection; the belief stays at its session defaults."""
+    monkeypatch.setattr('backend.agent.load_config', lambda: load_config(
+        overrides={'debug': True}))
+    agent = Agent(username='test_user')
+    agent.nlu.understand = lambda *args, **kwargs: None
+    yield agent
+    agent.close()
+
+
+@pytest.fixture
+def tmp_db(tmp_path, monkeypatch):
+    """Set up a temporary database directory for service tests."""
+    db = tmp_path / 'database'
+    content = db / 'content'
+    (content / 'drafts').mkdir(parents=True)
+    (content / 'notes').mkdir(parents=True)
+    (content / 'posts').mkdir(parents=True)
+    snapshots = db / '.snapshots'
+    snapshots.mkdir(parents=True)
+    guides = db / 'guides'
+    guides.mkdir(parents=True)
+    # Write a minimal metadata.json
+    meta = content / 'metadata.json'
+    meta.write_text(json.dumps({'entries': []}))
+    # Monkeypatch the module-level _DB_DIR; ToolService.__init__ derives the rest
+    import backend.utilities.services as svc
+    monkeypatch.setattr(svc, '_DB_DIR', db)
+    return db
+
+

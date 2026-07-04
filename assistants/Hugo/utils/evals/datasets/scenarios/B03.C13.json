@@ -1,0 +1,184 @@
+{
+  "convo_id": "B03.C13",
+  "persona": "P: neutral + plain",
+  "use_case": "U: plan -> find -> summarize -> compare",
+  "topic": "T: LLM Evals (compare frameworks)",
+  "title": "Choosing an LLM Eval Framework",
+  "available_data": {
+    "posts": [
+      "Getting Started with LLM Evals"
+    ],
+    "notes": [
+      "DeepEval first impressions",
+      "Promptfoo setup notes"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "On eval frameworks: pull together what we have, walk me through one, then weigh the top contenders.",
+      "labels": {
+        "intent": "Plan",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          },
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          },
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
+      },
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (find -> summarize -> compare); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [],
+      "utterance": "Sounds good. Plan: I'll find everything we have on eval frameworks, summarize one to get you grounded, then compare the top two. Want me to go ahead?"
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Yes, go ahead. What have I got on file?",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "LLM eval frameworks"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
+      "utterance": "Found 3: a post 'Getting Started with LLM Evals' plus two notes, 'DeepEval first impressions' and 'Promptfoo setup notes'."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Just the gist of the DeepEval note, and did that Promptfoo post ever ship?",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "summarize",
+            "dax": "{19A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "note": "DeepEval first impressions"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "summarize_text"
+      ],
+      "utterance": "That Promptfoo one is still a draft. In short, DeepEval is a pytest-style harness. Metrics like faithfulness and relevancy run as assertions, CI hookup is easy, and it's lighter on dataset management."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "So where do DeepEval and Promptfoo differ?",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "compare",
+            "dax": "{18A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": [
+          {
+            "note": "DeepEval first impressions"
+          },
+          {
+            "note": "Promptfoo setup notes"
+          }
+        ]
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "compare_style"
+      ]
+    }
+  ],
+  "batch": "B03",
+  "flagged": false,
+  "generation": {
+    "batch": "B03",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=LLM Evals (compare frameworks) | 7 turns | neutral + plain | arc=planning | use_case=plan -> find -> summarize -> compare | converted from P1.U7.T1",
+    "draws": {
+      "topic": "LLM Evals (compare frameworks)",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "heterogeneous",
+        "handling": "straightforward"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "plan",
+          "find",
+          "summarize",
+          "compare"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": {
+          "turn": 5,
+          "trigger": "adjacent_worry"
+        },
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "session": "trace_user_20260612_082406",
+  "turns": [
+    {
+      "user": "The Approach section of the prompt caching post is too wordy. Cut it down by a sentence or two.",
+      "kind": "utterance",
+      "tool_calls": [
+        {
+          "tool": "detect_and_fill",
+          "args": {
+            "text": "The Approach section of the prompt caching post is too wordy. Cut it down by a sentence or two.",
+            "intent": "Revise"
+          },
+          "ok": true
+        },
+        {
+          "tool": "find_posts",
+          "args": {
+            "query": "prompt caching"
+          },
+          "ok": true
+        },
+        {
+          "tool": "write_state",
+          "args": {
+            "op": "update",
+            "fields": {
+              "grounding": {
+                "post": "TraceRv1",
+                "sec": "Approach",
+                "snip": "",
+                "chl": ""
+              }
+            }
+          },
+          "ok": true
+        },
+        {
+          "tool": "write_state",
+          "args": {
+            "op": "stackon",
+            "flow_name": "simplify"
+          },
+          "ok": true
+        },
+        {
+          "tool": "write_state",
+          "args": {
+            "op": "update_flow",
+            "fields": {
+              "slots": {
+                "source": [
+                  {
+                    "post": "prompt caching",
+                    "sec": "Approach",
+                    "snip": "",
+                    "chl": "",
+                    "ver": false
+                  }
+                ],
+                "guidance": [
+                  "cut it down by a sentence or two"
+                ]
+              }
+            }
+          },
+          "ok": true
+        },
+        {
+          "tool": "activate_flow",
+          "args": {
+            "flow_name": "simplify"
+          },
+          "ok": true
+        }
+      ],
+      "dispatched_flows": [
+        "simplify"
+      ],
+      "completions": [
+        {
+          "flow": "simplify",
+          "summary": "```json\n{\n  \"target\": \"Approach\",\n  \"before\": \"We started by auditing every call site and measuring how many input to...",
+          "metadata": {
+            "post_id": "TraceRv1",
+            "sec_id": "approach"
+          },
+          "writer": "simplify"
+        }
+      ],
+      "notes": [],
+      "utterance": "Done \u2014 I trimmed two sentences from the Approach section of **Prompt Caching Strategies for LLM Apps**, cutting the audit walkthrough and a redundant restatement of the goal (as shown on the right). The section now moves directly to the structural changes without the extra wind-up."
+    }
+  ]
+}

@@ -27,7 +27,7 @@ PROMPTS:dict[str, str] = {
         '## Background\n\n'
         'You are running a system housekeeping flow — memory recall, scratchpad '
         'recap, or business-context retrieval. Findings go to the scratchpad with '
-        'the structured envelope; the user-facing flow consumes them on the next '
+        'the structured fields; the user-facing flow consumes them on the next '
         'turn.'
     ),
     # Domain-specific: add per-intent Background blocks for the four

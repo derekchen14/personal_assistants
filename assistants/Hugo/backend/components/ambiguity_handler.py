@@ -4,15 +4,10 @@ log = logging.getLogger(__name__)
 
 
 _PARTIAL_FRAMING = {
-    'polish':   "Which {entity} should I polish?",
-    'simplify': "Which {entity} should I simplify?",
-    'tone':     "Which post's tone should I adjust?",
+    'write':    "Which {entity} should I edit?",
     'audit':    "Which post should I audit?",
-    'tidy':     "Which post should I tidy up?",
     'rework':   "Which {entity} should I rework?",
     'compare':  "Which posts should I compare?",
-    'diff':     "Which post should I diff?",
-    'remove':   "Which {entity} should I remove?",
 }
 
 

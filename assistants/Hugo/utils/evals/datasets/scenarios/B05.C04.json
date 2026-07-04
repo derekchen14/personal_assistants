@@ -1,0 +1,176 @@
+{
+  "convo_id": "B05.C04",
+  "persona": "P: neutral + hedged",
+  "use_case": "U: compose -> rework -> audit -> propose",
+  "topic": "T: The Lightbulb",
+  "title": "Who Really Invented the Lightbulb?",
+  "available_data": {
+    "posts": [
+      {
+        "post_id": "SeedBulb03",
+        "title": "Who Really Invented the Lightbulb?",
+        "status": "draft"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "The lightbulb skeleton, maybe ready to flesh into a draft.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "I drafted all four sections from the outline. One note: the 'Edison vs Swan' section came out a bit jumbled."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "If Swan led that Edison vs Swan part, it might flow better, don't you think?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?",
+          "sec": "Edison vs Swan"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
+      "utterance": "Reworked it: Swan's earlier bulbs first, then Edison's improvements. Much clearer now."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Nothing jumps out at me, so a full read for what needs fixing?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
+      "utterance": "Went through all of it. The big one: the conclusion just trails off without really ending."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Two versions of the ending would help, then I'll lean one way.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "propose",
+            "dax": "{39B}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?",
+          "sec": "Conclusion"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "read_section",
+        "revise_content"
+      ]
+    }
+  ],
+  "batch": "B05",
+  "flagged": false,
+  "generation": {
+    "batch": "B05",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=The Lightbulb | 7 turns | neutral + hedged | arc=straight_build | use_case=compose -> rework -> audit -> propose | converted from P3.U2.T2",
+    "draws": {
+      "topic": "The Lightbulb",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "compose",
+          "rework",
+          "audit",
+          "propose"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

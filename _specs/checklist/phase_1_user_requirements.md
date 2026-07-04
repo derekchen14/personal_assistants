@@ -62,9 +62,10 @@ Pick 3 grounding objects that make the domain concrete. These are the things you
 Choose 7 intents: 3 universal + 4 domain-specific.
 
 **Universal intents** (fixed for all domains):
-- **Plan** — decomposes a request into sub-flows
+- **Plan** — decomposes a request into sub-flows (no policy file; the Workflow Planner decomposes it)
 - **Converse** — open-ended conversation, FAQs, chitchat
-- **Internal** — system housekeeping (never user-triggered)
+- **Clarify** — the request is too ambiguous to act on yet (no policy file; an NLU-only label that routes
+  to the Ambiguity Handler)
 
 **4 domain-specific intents** map to abstract slots describing the semantic role:
 
@@ -155,7 +156,7 @@ class Intent(str, Enum):
     """7 intents: 3 universal + 4 domain-specific."""
     PLAN = 'Plan'
     CONVERSE = 'Converse'
-    INTERNAL = 'Internal'
+    CLARIFY = 'Clarify'
     # Domain-specific (rename for your domain):
     READ = 'Read'
     PREPARE = 'Prepare'
@@ -219,7 +220,7 @@ guardrails:
 key_entities: []               # e.g., [dataset, column, chart]
 
 # Tools section populated in Phase 3 (Tool Design)
-# Template registry populated in Phase 7 (Prompt Writing)
+# Prompts and the voice Skill built in the prompt phases (no template registry)
 ```
 
 Also verify that `shared/shared_defaults.yaml` exists with baseline config for all 16 sections. If not, create it using the annotated reference in [configuration.md § shared_defaults.yaml](../utilities/configuration.md).

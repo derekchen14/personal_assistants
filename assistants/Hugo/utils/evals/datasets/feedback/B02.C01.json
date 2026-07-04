@@ -1,0 +1,5 @@
+{
+  "id": "B02.C01",
+  "verdict": "needs",
+  "comment": "The main issue to catch is not 'too generic', it's sounding like AI. \n\nThis is 3 parts, when it could easily be 2: \"We should probably back up the stat about July garden failures. Could you find something?\"\n\nThis is 3 parts, could easily be 1: \"That works.\"\n\nOnce again the agent is too pro-active. \"Want me to add it inline after the stat?\" This does NOT happen often."
+}

@@ -1,0 +1,36 @@
+{
+  "session": "trace_user_20260612_083457",
+  "turns": [
+    {
+      "user": "Make the intro of my marketplaces post punchier.",
+      "kind": "utterance",
+      "tool_calls": [
+        {
+          "tool": "read_state",
+          "args": {},
+          "ok": true
+        },
+        {
+          "tool": "find_posts",
+          "args": {
+            "query": "marketplaces"
+          },
+          "ok": true
+        }
+      ],
+      "dispatched_flows": [],
+      "completions": [],
+      "notes": [],
+      "utterance": "Two marketplace posts came up \u2014 \"Migrating Marketplaces to Event Sourcing\" and \"Migrating Marketplaces to GraphQL.\" Which one did you have in mind?"
+    },
+    {
+      "user": "The marketplace migration one, I just told you.",
+      "kind": "utterance",
+      "tool_calls": [],
+      "dispatched_flows": [],
+      "completions": [],
+      "notes": [],
+      "utterance": "Both posts have \"marketplace migration\" in the title \u2014 one is about **Event Sourcing** and the other about **GraphQL**. Which of those two did you mean?"
+    }
+  ]
+}

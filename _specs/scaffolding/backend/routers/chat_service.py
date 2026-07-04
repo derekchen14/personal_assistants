@@ -83,7 +83,7 @@ def _build_list_frame(e1s: list, e2s: list, e3s: list) -> dict:
 
 def _silent(frame: dict | None) -> dict:
     """
-    Wrap a frame in the full response envelope with an empty message.
+    Wrap a frame in the full response payload with an empty message.
 
     Empty message → no chat bubble in the conversation panel.  The user sees
     only the panel update.  Use for ALL panel CRUD responses.  The agent turn

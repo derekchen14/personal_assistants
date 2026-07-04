@@ -1,0 +1,172 @@
+{
+  "convo_id": "B04.C02",
+  "persona": "P: formal + blunt",
+  "use_case": "U: outline -> compose -> write -> audit",
+  "topic": "T: Edison",
+  "title": "Thomas Edison: The Wizard of Menlo Park",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "An Edison piece. Open with an intro of course, then his early years, the big inventions, and close on his legacy.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Thomas Edison: The Wizard of Menlo Park"
+        },
+        "sections": [
+          "intro",
+          "early years",
+          "the big inventions",
+          "legacy"
+        ]
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Here's the Edison outline, four sections: 1) The man who lit up the world 2) From newsboy to inventor 3) The big inventions 4) Edison's lasting legacy."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Full prose, and soon, please.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Thomas Edison: The Wizard of Menlo Park"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "I drafted all four sections. The inventions one is a bit list-heavy."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "The lightbulb story, worked into the big inventions section.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Thomas Edison: The Wizard of Menlo Park",
+          "sec": "The big inventions"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "I expanded it with the lightbulb story and the filament experiments."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "It needs a once-over, today if there is time.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Thomas Edison: The Wizard of Menlo Park"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ]
+    }
+  ],
+  "batch": "B04",
+  "flagged": false,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Edison | 7 turns | formal + blunt | arc=straight_build | use_case=outline -> compose -> write -> audit | converted from P2.U1.T2",
+    "draws": {
+      "topic": "Edison",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "outline",
+          "compose",
+          "write",
+          "audit"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        2,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

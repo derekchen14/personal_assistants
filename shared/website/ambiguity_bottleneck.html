@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Assistant Factory — Ambiguity Is the Bottleneck</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper:    #f5f7fa;
+    --surface:  #ffffff;
+    --band:     #eaeef5;
+    --ink:      #0b1220;
+    --mute:     #5b6572;
+    --line:     #d8dee8;
+    --accent:   #2f5fff;
+    --accent-2: #1e3fc9;
+    --tint:     #e6edff;
+    --warn:     #b8442b;
+    --warn-bg:  #fff1ec;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'ss01', 'cv11';
+    -webkit-font-smoothing: antialiased;
+  }
+  .serif   { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
+  .mono    { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .accent  { color: var(--accent); }
+  .warn    { color: var(--warn); }
+  .bg-accent { background: var(--accent); color: #fff; }
+  .bg-band   { background: var(--band); }
+  .bg-surface{ background: var(--surface); }
+  .bg-tint   { background: var(--tint); }
+  .bg-warn   { background: var(--warn-bg); }
+  .ring-line { box-shadow: inset 0 0 0 1px var(--line); }
+  .border-line { border-color: var(--line); }
+  .border-ink  { border-color: var(--ink); }
+
+  .kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .mark {
+    background-image: linear-gradient(120deg, rgba(184,68,43,.18) 0%, rgba(184,68,43,.18) 100%);
+    background-size: 100% 42%;
+    background-repeat: no-repeat;
+    background-position: 0 86%;
+    padding: 0 2px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; background: var(--surface); color: var(--ink);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); display:inline-block; }
+  .dot-warn { background: var(--warn); }
+
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: var(--ink); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: -0.02em;
+  }
+  .brand-mark::after {
+    content: ""; width: 5px; height: 5px; border-radius: 999px; background: var(--warn);
+    margin-left: 3px; align-self: flex-end; margin-bottom: 4px;
+  }
+
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+
+  .slash  { color: var(--accent); }
+  .ghost  { color: var(--mute); }
+
+  /* Three flavors -- editorial framing */
+  .flavor {
+    border-left: 3px solid var(--ink);
+    padding: 1.2rem 1.4rem;
+    background: var(--surface);
+  }
+  .flavor.warn-bar { border-left-color: var(--warn); }
+  .pull {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400; font-style: italic; letter-spacing: -0.015em;
+  }
+
+  .stat {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400; font-style: italic;
+    font-size: 56px; line-height: 1; letter-spacing: -0.02em;
+    color: var(--warn);
+  }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- Masthead ------------------------------------------------------------- -->
+<header class="border-b border-line bg-paper">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+    <a href="#top" class="flex items-center gap-3">
+      <span class="brand-mark">AF</span>
+      <span class="font-extrabold tracking-tight text-lg">Assistant&nbsp;Factory</span>
+    </a>
+    <nav class="hidden md:flex gap-6 text-sm font-medium">
+      <a href="#why"      class="hover:text-[color:var(--warn)]">Why care</a>
+      <a href="#flavors"  class="hover:text-[color:var(--warn)]">Three flavors</a>
+      <a href="#answer"   class="hover:text-[color:var(--warn)]">Our answer</a>
+      <a href="#line"     class="hover:text-[color:var(--warn)]">The line</a>
+      <a href="#turn"     class="hover:text-[color:var(--warn)]">One turn</a>
+    </nav>
+  </div>
+</header>
+
+<!-- Hero ----------------------------------------------------------------- -->
+<section id="top" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 pt-20 pb-24 md:pt-28 md:pb-32 grid md:grid-cols-12 gap-10 items-end">
+    <div class="md:col-span-8">
+      <div class="kicker mb-5 flex items-center gap-3">
+        <span class="dot dot-warn"></span> Assistant Factory &middot; the bottleneck
+      </div>
+      <h1 class="font-extrabold tracking-tight leading-[0.98] text-5xl md:text-7xl">
+        Code either runs
+        <br/>
+        or it <span class="serif warn">doesn't.</span>
+        <br/>
+        Real work doesn't.
+      </h1>
+      <p class="mt-8 text-xl md:text-2xl max-w-2xl leading-snug">
+        That gap is why your agent demos beautifully and falls apart in
+        production. The bottleneck isn't model intelligence. It's
+        <span class="mark">ambiguity</span> — and almost no one is building for it.
+      </p>
+      <p class="mt-5 text-lg max-w-2xl leading-relaxed text-[color:var(--mute)]">
+        Assistant Factory is a framework that takes ambiguity seriously: as a
+        signal to recognize, classify, and act on. Hugo writes blog posts, Dana
+        analyzes data, Rowan recruits, Kalli onboards new assistants — they all
+        share the same belief: when in doubt, ask.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href="#flavors" class="px-5 py-2.5 rounded-full text-sm font-semibold text-white" style="background:var(--warn)">See the three flavors &rarr;</a>
+        <a href="#turn"    class="px-5 py-2.5 rounded-full text-sm font-semibold border border-ink hover:bg-ink hover:text-white transition">Watch one turn</a>
+      </div>
+    </div>
+    <div class="md:col-span-4 text-sm leading-relaxed bg-warn ring-line rounded-lg p-6" style="border-left:3px solid var(--warn)">
+      <div class="kicker" style="color:var(--warn)">The thesis, unhedged</div>
+      <p class="pull text-[18px] mt-2">
+        "AGI has arrived for problems with verifiable rewards. Most useful work
+        doesn't have those — and that's the hard part."
+      </p>
+      <p class="mt-4 text-[color:var(--mute)]">
+        Read the long form on
+        <a href="https://morethanoneturn.com/2025/08/07/ambiguity-is-the-bottleneck.html"
+           class="underline underline-offset-2 warn">morethanoneturn.com</a>.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Why care ------------------------------------------------------------- -->
+<section id="why" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 01</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          Where every agent <span class="serif warn">quietly</span> fails
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot dot-warn"></span> Why care</div>
+    </div>
+
+    <div class="grid md:grid-cols-12 gap-10">
+      <div class="md:col-span-7">
+        <p class="text-lg leading-relaxed">
+          Math is checkable. Code either compiles or it doesn't. Benchmarks
+          tell you when you're winning. That's why agents look so impressive
+          on coding tasks — and why they
+          <span class="mark">stop looking impressive</span> the moment a real
+          user gets involved.
+        </p>
+        <p class="text-lg leading-relaxed mt-5">
+          Real users say <span class="mono text-sm bg-band px-1.5 py-0.5 rounded">"make it pop"</span>,
+          <span class="mono text-sm bg-band px-1.5 py-0.5 rounded">"clean this up"</span>,
+          <span class="mono text-sm bg-band px-1.5 py-0.5 rounded">"end of day"</span>. Those phrases mean different things at different
+          companies, in different rooms, in different weeks. There's no
+          verifiable reward to optimize against. There's just whether the
+          person on the other end feels understood.
+        </p>
+        <p class="text-lg leading-relaxed mt-5">
+          The honest gap between an agent that benchmarks well and an agent
+          you'd actually deploy is filled almost entirely with
+          <span class="serif">ambiguity</span>. And almost no agent SDK
+          treats that as a first-order problem.
+        </p>
+      </div>
+
+      <div class="md:col-span-5 grid grid-cols-2 gap-4 self-start">
+        <div class="bg-surface ring-line rounded-lg p-5">
+          <div class="stat">~95%</div>
+          <div class="kicker mt-2">of demos</div>
+          <p class="text-[13px] mt-2 leading-relaxed">use clean, well-formed prompts that real users would never write.</p>
+        </div>
+        <div class="bg-surface ring-line rounded-lg p-5">
+          <div class="stat">3×</div>
+          <div class="kicker mt-2">undo cost</div>
+          <p class="text-[13px] mt-2 leading-relaxed">when an agent confidently does the wrong thing — vs. a 5-second clarifying question.</p>
+        </div>
+        <div class="bg-warn ring-line rounded-lg p-5 col-span-2">
+          <div class="kicker" style="color:var(--warn)">A user, frustrated</div>
+          <p class="pull text-[18px] mt-1">
+            "I asked for a polish, not a rewrite. I meant the discipline
+            one, not the race report. Why are you so confident?"
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Three flavors -------------------------------------------------------- -->
+<section id="flavors" class="border-b border-line bg-band">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 02</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          Three <span class="serif">flavors</span> of unclear
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot dot-warn"></span> The taxonomy</div>
+    </div>
+
+    <p class="text-lg max-w-3xl leading-relaxed">
+      Ambiguity isn't one thing. Treating it as one thing is why every agent
+      handles it badly. Three distinct flavors — each requires a different
+      response.
+    </p>
+
+    <div class="mt-12 grid md:grid-cols-3 gap-5">
+
+      <div class="flavor warn-bar">
+        <div class="kicker">A</div>
+        <h3 class="font-extrabold text-2xl tracking-tight mt-1">Contextual</h3>
+        <p class="text-[15px] leading-relaxed mt-3">
+          The water you swim in. <em>"End of day"</em> is 5pm at a law firm
+          and midnight at a startup. The unwritten rules of your team aren't in
+          training data. They're in heads.
+        </p>
+        <div class="mt-5 mono text-xs bg-band rounded p-3 leading-relaxed">
+          <div class="ghost">Examples</div>
+          <div>"the usual tone"</div>
+          <div>"keep it short"</div>
+          <div>"don't be too aggressive"</div>
+        </div>
+      </div>
+
+      <div class="flavor warn-bar">
+        <div class="kicker">B</div>
+        <h3 class="font-extrabold text-2xl tracking-tight mt-1">Temporal</h3>
+        <p class="text-[15px] leading-relaxed mt-3">
+          Ground truth shifts as the agent acts. The post you publish changes
+          which "marathon post" means tomorrow. Yesterday's right answer is
+          today's mistake.
+        </p>
+        <div class="mt-5 mono text-xs bg-band rounded p-3 leading-relaxed">
+          <div class="ghost">Examples</div>
+          <div>"latest version"</div>
+          <div>"the current schedule"</div>
+          <div>"that one I started yesterday"</div>
+        </div>
+      </div>
+
+      <div class="flavor warn-bar">
+        <div class="kicker">C</div>
+        <h3 class="font-extrabold text-2xl tracking-tight mt-1">Communication</h3>
+        <p class="text-[15px] leading-relaxed mt-3">
+          Natural language is lossy compression. Users don't know which
+          details matter. <em>"Rework the marathon post"</em> contains an
+          ambiguous noun, an ambiguous verb, and a missing slot.
+        </p>
+        <div class="mt-5 mono text-xs bg-band rounded p-3 leading-relaxed">
+          <div class="ghost">Examples</div>
+          <div>"rework the marathon post"</div>
+          <div>"polish that"</div>
+          <div>"make it pop"</div>
+        </div>
+      </div>
+
+    </div>
+
+    <p class="mt-12 max-w-3xl text-lg leading-relaxed">
+      A typical agent collapses all three into the same response: a confident
+      guess. We collapse them into three different responses: a clarifying
+      question, a re-grounding check, or a confirmation —
+      <span class="mark">whichever fits the actual flavor.</span>
+    </p>
+  </div>
+</section>
+
+<!-- Our answer ---------------------------------------------------------- -->
+<section id="answer" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 03</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          Our <span class="serif">answer</span>
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot dot-warn"></span> What we built</div>
+    </div>
+
+    <div class="grid md:grid-cols-12 gap-10">
+      <div class="md:col-span-7">
+        <p class="text-lg leading-relaxed">
+          Ambiguity isn't a failure mode — it's a sensor reading. Every turn,
+          the agent rates how certain it is about each part of the request,
+          and that rating decides whether to ask, confirm, or proceed.
+        </p>
+        <p class="text-lg leading-relaxed mt-5">
+          That single design choice cascades. It forces an explicit
+          representation of <span class="serif">what we believe right now</span>.
+          It forces real memory across turns and sessions, because you can
+          only ask intelligent questions if you remember the answers. It
+          forces a model of your domain, because confidence about
+          <span class="mono text-sm bg-band px-1.5 py-0.5 rounded">"the marathon post"</span>
+          requires knowing what posts exist.
+        </p>
+        <p class="text-lg leading-relaxed mt-5">
+          The architecture follows from the goal: <span class="mark">recognize
+          unsure, then act on it</span>. Everything else is in service of
+          that.
+        </p>
+      </div>
+
+      <div class="md:col-span-5">
+        <div class="bg-surface ring-line rounded-lg p-7">
+          <div class="kicker">In one sentence</div>
+          <p class="pull text-[19px] mt-2 leading-snug">
+            "Our assistants run a small <em>understanding</em> module that
+            tracks the degree of ambiguity in a dedicated dialogue state, so
+            the agent always knows when it should stop and ask."
+          </p>
+          <p class="text-[14px] mt-4 text-[color:var(--mute)]">
+            The understanding module is the part most other SDKs skip. We
+            think it's the part that matters most.
+          </p>
+        </div>
+        <div class="bg-warn ring-line rounded-lg p-6 mt-4">
+          <div class="kicker" style="color:var(--warn)">Anti-pattern we refuse</div>
+          <p class="text-[14px] mt-2 leading-relaxed">
+            Stuffing the entire transcript back into the prompt every turn,
+            hoping the model remembers. That's not memory. That's a
+            <em>recap</em>, performed by the LLM, every single time.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- The line ------------------------------------------------------------- -->
+<section id="line" class="border-b border-line bg-band">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 04</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          Built on the <span class="serif">same bet</span>
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot dot-warn"></span> Four assistants</div>
+    </div>
+
+    <p class="text-lg max-w-3xl leading-relaxed">
+      Same architecture, different domains. All four assume their users will
+      be ambiguous, and design for it.
+    </p>
+
+    <div class="mt-10 grid md:grid-cols-4 gap-5">
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 01</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Hugo</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">
+          Writes blog posts. Asks before he polishes the wrong one.
+        </p>
+        <div class="mt-5 chip" style="color:var(--warn);border-color:var(--warn)"><span class="dot dot-warn"></span> shipped</div>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 02</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Dana</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">
+          Analyzes your data. Knows when "active users" needs a definition.
+        </p>
+        <div class="mt-5 chip"><span class="dot dot-warn"></span> in build</div>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 03</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Rowan</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">
+          Recruits. Confirms before sending an email a candidate will read.
+        </p>
+        <div class="mt-5 chip"><span class="dot dot-warn"></span> queued</div>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 04</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Kalli</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">
+          Onboards new assistants. Asks the questions that produce the
+          domain.
+        </p>
+        <div class="mt-5 chip"><span class="dot dot-warn"></span> in design</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- One turn ------------------------------------------------------------- -->
+<section id="turn" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 05</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          The same prompt, <span class="serif">two responses.</span>
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot dot-warn"></span> Optional reading</div>
+    </div>
+
+    <p class="text-lg max-w-3xl leading-relaxed">
+      A user request that contains all three flavors at once: contextual
+      (which marathon post), temporal (latest version), and communication
+      ("rework"). Watch what each agent does with it.
+    </p>
+
+    <details class="mt-8 bg-surface ring-line rounded-lg p-7">
+      <summary class="flex items-center justify-between">
+        <span class="font-semibold text-lg">Open the side-by-side</span>
+        <span class="mono text-xs ghost">~30 seconds</span>
+      </summary>
+
+      <div class="mt-6 grid md:grid-cols-2 gap-5">
+        <div class="ring-line rounded-lg p-5">
+          <div class="flex items-center justify-between">
+            <div class="kicker">Typical agent</div>
+            <span class="mono text-xs ghost">guesses confidently</span>
+          </div>
+          <div class="mt-4 mono text-sm leading-relaxed">
+            <div><span class="slash">user&nbsp;›</span> rework the marathon post</div>
+            <div class="mt-3 ghost">// agent picks a tool, guesses, commits</div>
+            <div class="mt-1"><span class="slash">agent&nbsp;›</span> edit_post(id="three-hour-marathon", mode="polish")</div>
+            <div class="mt-3"><span class="slash">agent&nbsp;›</span> Here is a polished version…</div>
+          </div>
+          <div class="mt-4 text-sm ghost serif">
+            Wrong post. Wrong kind of rework. Confidence ≠ correctness.
+          </div>
+        </div>
+        <div class="bg-warn ring-line rounded-lg p-5">
+          <div class="flex items-center justify-between">
+            <div class="kicker" style="color:var(--warn)">Hugo</div>
+            <span class="mono text-xs" style="color:var(--warn)">declares ambiguity</span>
+          </div>
+          <div class="mt-4 mono text-sm leading-relaxed">
+            <div><span class="slash">user&nbsp;›</span> rework the marathon post</div>
+            <div class="mt-3 ghost">// flavor B: two posts match. flavor C: "rework" has three meanings.</div>
+            <div class="mt-3"><span class="slash">hugo&nbsp;›</span> Two posts about marathons — <em class="serif">How I finally broke three hours</em> or <em class="serif">What marathon training taught me about discipline</em>? And rework how — re-outline, re-voice, or polish a section?</div>
+          </div>
+          <div class="mt-4 text-sm serif" style="color:var(--warn)">
+            One question. Two clarifications. Plan held until you answer.
+          </div>
+        </div>
+      </div>
+
+      <p class="mt-6 text-sm leading-relaxed text-[color:var(--mute)]">
+        The first agent is faster. The second is correct. We've optimized for
+        the second one.
+      </p>
+    </details>
+  </div>
+</section>
+
+<!-- Closing -------------------------------------------------------------- -->
+<footer class="text-white" style="background:var(--warn)">
+  <div class="max-w-6xl mx-auto px-6 py-20 grid md:grid-cols-12 gap-10 items-end">
+    <div class="md:col-span-8">
+      <div class="kicker" style="color:#ffd9cb">The hard part:</div>
+      <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-2 leading-[1.02]">
+        The last mile of agents
+        <br/>
+        is <span class="serif">ambiguity.</span>
+      </h2>
+      <p class="mt-6 text-sm opacity-90 max-w-xl">
+        It's where every demo dies. It's where every product lives. It's the
+        bottleneck — and the most valuable layer to get right.
+      </p>
+      <p class="mt-4 text-md opacity-90">
+        Long-form discussion lives at
+        <a href="https://morethanoneturn.com" class="underline underline-offset-4">morethanoneturn.com</a>.
+      </p>
+    </div>
+    <div class="md:col-span-4 text-sm leading-relaxed">
+      <p class="opacity-90">© Soleda Inc · 2026</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

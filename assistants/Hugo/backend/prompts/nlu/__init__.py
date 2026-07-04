@@ -15,17 +15,20 @@ The `## Background` section is shared across all flows (see
 
 from __future__ import annotations
 
+from backend.components.flow_stack import flow_classes
 from backend.prompts.nlu import (
-    research_slots, draft_slots, revise_slots, publish_slots,
-    converse_slots, plan_slots, internal_slots,
+    research_slots, draft_slots, revise_slots, publish_slots, converse_slots,
 )
 
-_MODULES = (research_slots, draft_slots, revise_slots, publish_slots,
-            converse_slots, plan_slots, internal_slots)
+_MODULES = (research_slots, draft_slots, revise_slots, publish_slots, converse_slots)
 
 PROMPTS: dict[str, dict[str, str]] = {}
 for _mod in _MODULES:
     PROMPTS.update(_mod.PROMPTS)
+
+# The registry tracks live flows only: drop any authored entry for a flow cut in the 48 → 16
+# refactor (the source modules still carry the stale entries until they are pruned).
+PROMPTS = {name: prompt for name, prompt in PROMPTS.items() if name in flow_classes}
 
 
 def get_prompt(flow_name:str) -> dict[str, str]:

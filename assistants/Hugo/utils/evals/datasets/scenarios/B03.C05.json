@@ -1,0 +1,176 @@
+{
+  "convo_id": "B03.C05",
+  "persona": "P: neutral + plain",
+  "use_case": "U: find -> outline -> write -> release",
+  "topic": "T: LLM Evals",
+  "title": "A Practical Guide to LLM Evals",
+  "available_data": {
+    "posts": [
+      "Why Benchmarks Lie",
+      "Notes on Eval Harnesses"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "I've got an LLM evals post in mind. Did I jot down anything on it?",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "LLM evals"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
+      "utterance": "Found 2 related posts: 'Why Benchmarks Lie' and 'Notes on Eval Harnesses'."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "New post, 'A Practical Guide to LLM Evals', with these parts: why benchmarks fall short, building a golden set, automated graders, human review.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "A Practical Guide to LLM Evals"
+        },
+        "sections": [
+          "why benchmarks fall short",
+          "building a golden set",
+          "automated graders",
+          "human review"
+        ]
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Outline ready: 1) Why benchmarks fall short 2) Building a golden set 3) Automated graders 4) Human review in the loop."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "One concrete curation example in the building a golden set section.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "A Practical Guide to LLM Evals",
+          "sec": "Building a golden set"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "Wrote it. Walked through curating a 50-case golden set with labeled expected outputs."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "That's the one. Let's get it live on the engineering blog today.",
+      "labels": {
+        "intent": "Publish",
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "A Practical Guide to LLM Evals"
+        },
+        "channel": "engineering blog"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "release_post"
+      ]
+    }
+  ],
+  "batch": "B03",
+  "flagged": false,
+  "generation": {
+    "batch": "B03",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=LLM Evals | 7 turns | neutral + plain | arc=straight_build | use_case=find -> outline -> write -> release | converted from P1.U3.T1",
+    "draws": {
+      "topic": "LLM Evals",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "find",
+          "outline",
+          "write",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        2,
+        1,
+        1,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

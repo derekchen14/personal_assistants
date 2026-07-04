@@ -1,0 +1,183 @@
+{
+  "convo_id": "B01.C06",
+  "persona": "P: casual + positive + hedged",
+  "use_case": "U: outline -> compose -> audit -> write",
+  "topic": "T: Strength Training",
+  "title": "Soreness Is Not Progress",
+  "available_data": {},
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-sonnet-4-6",
+    "spec": "topic=Strength Training \u00b7 7 turns \u00b7 P6 casual/positive/hedged \u00b7 arc=straight_build \u00b7 use_case=outline->compose->audit->write \u00b7 noise=transcript(t3,t5) \u00b7 distractor=t5(environment) \u00b7 verify=no \u00b7 flagged=no",
+    "draws": {
+      "topic": "Strength Training",
+      "title_source": "coined",
+      "turn_count": 7,
+      "persona": {
+        "formality": "casual",
+        "emotion": "positive",
+        "directness": "hedged"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "outline",
+          "compose",
+          "audit",
+          "write"
+        ]
+      },
+      "sprinkles": {
+        "noise": {
+          "turns": [
+            3,
+            5
+          ],
+          "type": "transcript"
+        },
+        "distractor": {
+          "turn": 5,
+          "trigger": "environment"
+        },
+        "persona_drift": null
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-sonnet-4-6",
+      "length": [
+        2,
+        1,
+        2,
+        1
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Soreness-is-progress thing is a myth, and I think there's a post in there. Maybe five sections to give it some room?",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Soreness Is Not Progress"
+        },
+        "sections": [
+          "intro",
+          "the myth",
+          "what progress actually looks like",
+          "training implications",
+          "takeaways"
+        ]
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Here's a five-section outline: (1) The soreness-as-signal myth, (2) What DOMS actually is, (3) Real markers of training progress, (4) How to train without chasing soreness, (5) Practical takeaways."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "yeah that looks good, um, can you put it into prose, I think sections two and three carry most of the argument",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Soreness Is Not Progress"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Draft is done. Sections two and three came out strong. The DOMS explanation is tight and the 'real markers' section has enough specifics to back it up. The intro and takeaways are a little thin though."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "hold on, phone's ringing, one sec. [pause] um does this sound like me, or too textbook-y?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Soreness Is Not Progress"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
+      "utterance": "Mostly you, but the second half of section three slips into textbook. Phrases like 'progressive overload is the primary stimulus for hypertrophy' read like a textbook excerpt. The intro and sections one and four feel like your voice."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "That textbook bit in section three, could we swap in something that sounds a bit more conversational maybe?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Soreness Is Not Progress",
+          "sec": "Real markers of training progress"
+        },
+        "tone": "conversational"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ]
+    }
+  ]
+}

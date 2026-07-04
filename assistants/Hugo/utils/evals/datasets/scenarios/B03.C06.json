@@ -1,0 +1,176 @@
+{
+  "convo_id": "B03.C06",
+  "persona": "P: neutral + plain",
+  "use_case": "U: find -> outline -> write -> release",
+  "topic": "T: Bringing Electricity to Homes",
+  "title": "How Electricity Reached the American Home",
+  "available_data": {
+    "notes": [
+      "The first central power stations",
+      "Wiring the early household"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "A post on how electricity first reached homes. What's in my files on that?",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "electricity in homes"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
+      "utterance": "Yes, two notes: 'The first central power stations' and 'Wiring the early household'."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Fresh post, 'How Electricity Reached the American Home', built from the gaslight era, Edison's first grids, wiring the house, and what changed for families.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "How Electricity Reached the American Home"
+        },
+        "sections": [
+          "the gaslight era",
+          "Edison's first grids",
+          "wiring the house",
+          "what changed for families"
+        ]
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Outline ready: 1) Life under gaslight 2) Edison's first grids 3) Wiring the house 4) What changed for families."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Two facts for Edison's first grids: Pearl Street Station and the year 1882.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "How Electricity Reached the American Home",
+          "sec": "Edison's first grids"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "Wrote it. Opened with Pearl Street Station lighting lower Manhattan in 1882 and how the grid spread from there."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Beautiful. Send it up to the history blog.",
+      "labels": {
+        "intent": "Publish",
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "How Electricity Reached the American Home"
+        },
+        "channel": "history blog"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "release_post"
+      ]
+    }
+  ],
+  "batch": "B03",
+  "flagged": false,
+  "generation": {
+    "batch": "B03",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Bringing Electricity to Homes | 7 turns | neutral + plain | arc=straight_build | use_case=find -> outline -> write -> release | converted from P1.U3.T2",
+    "draws": {
+      "topic": "Bringing Electricity to Homes",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "find",
+          "outline",
+          "write",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        2,
+        1,
+        2,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

@@ -7,7 +7,7 @@ from backend.prompts.for_pex import render_freetext, render_checklist
 
 
 TEMPLATE = """<task>
-Refine the outline of "{post_title}". Apply the changes from the user's final utterance to the outline below. Use `revise_content` to rewrite an existing section's body, `insert_section` (then `revise_content` for the body) to add a new H2 at a position, `update_post` with `rename_section` to rename an existing heading, or `remove_content` to delete a section. End once you have successfully saved all your refinements.
+Refine the outline of "{post_title}". Apply the changes from the user's final utterance to the outline below. Use `revise_content` to rewrite an existing section's body, `insert_section` (then `revise_content` for the body) to add a new H2 at a position, `update_post` with `rename_section` to rename an existing heading, or `remove_content` to delete a section. To insert an image, call `insert_media` at the position named in `Image`/`Position`. To normalize formatting per `Formatting settings`, rewrite the affected sections via `revise_content`/`update_post`. End once you have successfully saved all your refinements.
 </task>
 
 <post_content>
@@ -38,4 +38,13 @@ def _format_parameters(flow) -> str:
         lines.append(f'Feedback: {render_freetext(feedback)}')
     if steps.check_if_filled():
         lines.append(f'Specific changes: {render_checklist(steps)}')
+    image = flow.slots['image']
+    position = flow.slots['position']
+    settings = flow.slots['settings']
+    if image.check_if_filled():
+        lines.append(f'Image: {image.to_dict()}')
+    if position.check_if_filled():
+        lines.append(f'Position: {position.to_dict()}')
+    if settings.check_if_filled():
+        lines.append(f'Formatting settings: {settings.to_dict()}')
     return '\n'.join(lines) if lines else '(no parameters filled — interpret the latest utterance directly)'

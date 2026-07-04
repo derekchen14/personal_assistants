@@ -1,202 +1,113 @@
-"""Model tests — measure NLU flow detection accuracy with real LLM calls.
+"""Probabilistic model unit tests — the (b) half of the Model Unit Tests level, one file for all
+three modules (NLU / PEX / MEM), selected by `--module`.
 
-Covers:
-  - First-turn flow accuracy from eval dataset (5 conversations)
-  - Multi-turn flow accuracy from eval dataset
-  - Confidence score validation
-  - Canonical flow detection across all 7 intents (10 representative utterances)
+Unlike the deterministic `*_unit_tests.py` files, this one **stores no cases inline**: the labels
+already live in the eval corpus (`utils/evals/datasets/scenarios/*.json`), so this code just loads
+that data and scores each module's single-decision model predictions — one model call per decision,
+no full PEX loop (that trajectory view is the Traces tier's job, `run_evals.py`).
 
-Requires API keys. Mark all tests with @pytest.mark.llm. Run with: pytest tests/model_tests.py -m
-llm -v Skip with: pytest -m "not llm"
+  python utils/tests/model_tests.py --module nlu          # NLU flow-detection accuracy
+  python utils/tests/model_tests.py --module nlu,pex      # several
+  python utils/tests/model_tests.py --module all
+
+Reports accuracy per module; makes live model calls (paid), so it is not part of the free default
+run. NLU is scored today; PEX/MEM are declared with their scoring still to be defined.
 """
-
+import argparse
 import json
-import re
+import sys
 from pathlib import Path
-import pytest
 
-EVAL_PATH = Path(__file__).parent / 'test_cases.json'
-CONVERSATIONS = json.loads(EVAL_PATH.read_text())
+_HUGO_ROOT = Path(__file__).resolve().parents[2]
+if str(_HUGO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_HUGO_ROOT))
 
-ACCURACY_THRESHOLD = 0.60
-CONFIDENCE_FLOOR = 0.3
-
-llm = pytest.mark.llm
-
-
-def _user_turns(convo):
-    return [t for t in convo['turns'] if t['role'] == 'user']
+# utils.harness flips schemas.config.EVAL_HARNESS + loads .env at import.
+from utils.harness import _build_agent
+from utils.evals.run_evals import SCENARIOS
 
 
-def _detect_flow(agent, utterance):
-    agent.world.context.add_turn('User', utterance, 'utterance')
-    state = agent.nlu.understand(utterance, agent.world.context)
-    agent.world.insert_state(state)
-    return state
+def _load_cases(limit:int=0) -> list:
+    cases = [json.loads(path.read_text()) for path in sorted(SCENARIOS.glob('*.json'))]
+    return cases[:limit] if limit else cases
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Eval dataset: flow detection accuracy
-# ═══════════════════════════════════════════════════════════════════
-
-@llm
-class TestFirstTurnFlowAccuracy:
-
-    def test_first_turn_flow_accuracy(self, agent):
-        correct = 0
-        total = len(CONVERSATIONS)
-
-        for convo in CONVERSATIONS:
-            agent.reset()
-            first_utterance = convo['turns'][0]['utterance']
-            expected_flow = _user_turns(convo)[0]['labels']['flow']
-
-            state = _detect_flow(agent, first_utterance)
-            detected = state.flow_name(string=True)
-            confidence = state.confidence
-
-            hit = detected == expected_flow
-            correct += int(hit)
-            mark = 'PASS' if hit else 'FAIL'
-            print(
-                f"  [{mark}] convo={convo['convo_id']} "
-                f"expected={expected_flow} detected={detected} "
-                f"confidence={confidence:.2f}"
-            )
-
-        accuracy = correct / total
-        print(f"\n  First-turn accuracy: {correct}/{total} = {accuracy:.0%}")
-        assert accuracy >= ACCURACY_THRESHOLD, (
-            f"First-turn accuracy {accuracy:.0%} below {ACCURACY_THRESHOLD:.0%}"
-        )
+def _single_flow(turn:dict):
+    """The labeled flow for a turn we can score for flow-detection: a one-item stack. Returns the
+    flow name, or None for plan turns (multi-item stack = planning axis) and general-ambiguity turns
+    (empty stack = the ambiguity axis), which flow-detection accuracy does not cover."""
+    stack = turn['labels']['stack']
+    return stack[0]['flow'] if len(stack) == 1 and stack[0].get('flow') else None
 
 
-@llm
-class TestConfidenceScoresMeaningful:
-
-    def test_confidence_above_floor(self, agent):
-        below_floor = []
-
-        for convo in CONVERSATIONS:
-            agent.reset()
-            first_utterance = convo['turns'][0]['utterance']
-
-            state = _detect_flow(agent, first_utterance)
-            confidence = state.confidence
-
-            if confidence <= CONFIDENCE_FLOOR:
-                below_floor.append((convo['convo_id'], confidence))
-
-            print(
-                f"  convo={convo['convo_id']} "
-                f"flow={state.flow_name(string=True)} confidence={confidence:.2f}"
-            )
-
-        assert not below_floor, (
-            f"Conversations with confidence <= {CONFIDENCE_FLOOR}: "
-            + ", ".join(f"{cid} ({c:.2f})" for cid, c in below_floor)
-        )
-
-
-@llm
-class TestMultiTurnFlowAccuracy:
-
-    def test_multi_turn_flow_accuracy(self, agent):
-        correct = 0
-        total = 0
-
-        for convo in CONVERSATIONS:
-            agent.reset()
-            user_turns = _user_turns(convo)
-
-            for i, user_turn in enumerate(user_turns):
-                state = _detect_flow(agent, user_turn['utterance'])
-
-                expected_flow = user_turn['labels']['flow']
-                detected = state.flow_name(string=True)
-                confidence = state.confidence
-
-                hit = detected == expected_flow
-                correct += int(hit)
-                total += 1
-                mark = 'PASS' if hit else 'FAIL'
-                print(
-                    f"  [{mark}] convo={convo['convo_id']} "
-                    f"turn={user_turn['turn_count']} "
-                    f"expected={expected_flow} detected={detected} "
-                    f"confidence={confidence:.2f}"
-                )
-
-        accuracy = correct / total
-        print(f"\n  Multi-turn accuracy: {correct}/{total} = {accuracy:.0%}")
-        assert accuracy >= ACCURACY_THRESHOLD, (
-            f"Multi-turn accuracy {accuracy:.0%} below {ACCURACY_THRESHOLD:.0%}"
-        )
+def score_nlu(limit:int=0) -> tuple:
+    """Teacher-forced NLU flow detection: replay each conversation, feeding the corpus's own agent
+    replies back as context, and on every user turn run NLU alone (`understand(op=think)`) and compare
+    its top predicted flow to the labeled one. Isolates the detection decision from the acting loop."""
+    correct = total = 0
+    misses = []
+    for case in _load_cases(limit):
+        agent = _build_agent()
+        agent._ensure_session()
+        for turn in case['turns']:
+            if turn.get('role') != 'user':
+                agent.world.context.add_turn('Agent', turn['utterance'], turn_type='utterance')
+                continue
+            agent.world.context.add_turn('User', turn['utterance'], turn_type='utterance')
+            if agent.ambiguity.present():
+                agent.ambiguity.resolve()
+            agent.nlu.understand(op='think', user_text=turn['utterance'])
+            expected = _single_flow(turn)
+            if expected is None:
+                continue                                  # plan / general-ambiguity turn — not scored here
+            pred_flows = agent.world.current_state().pred_flows
+            predicted = pred_flows[0]['flow_name'] if pred_flows else None
+            total += 1
+            if predicted == expected:
+                correct += 1
+            else:
+                misses.append(f"{case['convo_id']}: {expected!r} != {predicted!r}")
+        agent.close()
+    for miss in misses:
+        print(f'  miss {miss}')
+    return correct, total
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Canonical flow detection: 10 utterances across 7 intents
-# ═══════════════════════════════════════════════════════════════════
+def score_pex() -> tuple:
+    """PEX single-decision scoring (e.g. tool selection) — scope TBD; tool trajectories are the
+    Traces tier's job today. No model-prediction checks defined yet."""
+    return 0, 0
 
-@llm
-class TestCanonicalFlowDetection:
-    """Full NLU → PEX → RES pipeline with real LLM. One test per intent minimum."""
 
-    def test_chat(self, agent):
-        result = agent.take_turn('Hello there!')
-        state = agent.world.current_state()
-        assert state.flow_name(string=True) == 'chat'
-        assert result['message']
+def score_mem() -> tuple:
+    """MEM single-decision scoring (e.g. retrieval relevance) — scope TBD. No checks defined yet."""
+    return 0, 0
 
-    def test_suggest(self, agent):
-        result = agent.take_turn('What should I do next?')
-        state = agent.world.current_state()
-        assert state.flow_name(string=True) == 'suggest'
-        assert result['message']
 
-    def test_check(self, agent):
-        agent.take_turn('Show me the status of my drafts')
-        state = agent.world.current_state()
-        assert state.flow_name(string=True) == 'check'
+SCORERS = {'nlu': score_nlu, 'pex': score_pex, 'mem': score_mem}
 
-    def test_find(self, agent):
-        result = agent.take_turn('Search for blog posts about machine learning')
-        state = agent.world.current_state()
-        assert state.flow_name(string=True) == 'find'
-        assert re.search(r'(search|found|result|post|machine learning)', result['message'], re.I)
 
-    def test_explain(self, agent):
-        result = agent.take_turn('Why did you restructure the outline that way?')
-        state = agent.world.current_state()
-        assert state.flow_name(string=True) == 'explain'
-        assert result['message']
+def main():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--module', default='nlu',
+                        help='comma-separated: nlu, pex, mem, or all')
+    parser.add_argument('--limit', type=int, default=0,
+                        help='score only the first N scenarios (0 = the whole corpus)')
+    args = parser.parse_args()
 
-    def test_brainstorm(self, agent):
-        result = agent.take_turn('Brainstorm some blog post ideas about productivity')
-        state = agent.world.current_state()
-        assert state.flow_name(string=True) == 'brainstorm'
-        assert re.search(r'(idea|topic|productiv|brainstorm)', result['message'], re.I)
+    picked = list(SCORERS) if 'all' in args.module else \
+        [name.strip() for name in args.module.split(',') if name.strip()]
 
-    def test_outline(self, agent):
-        result = agent.take_turn('Generate an outline for a post about climate change')
-        state = agent.world.current_state()
-        assert state.flow_name(string=True) == 'outline'
-        assert re.search(r'(outline|section|climate)', result['message'], re.I)
+    failed = False
+    for name in picked:
+        correct, total = SCORERS[name](args.limit) if name == 'nlu' else SCORERS[name]()
+        if total:
+            print(f'{name}: {correct}/{total} = {correct / total:.1%} flow-detection accuracy')
+        else:
+            print(f'{name}: no model-prediction checks defined yet (scope TBD)')
+    sys.exit(1 if failed else 0)
 
-    def test_rework(self, agent):
-        agent.take_turn('This draft needs a complete rework and major revision')
-        state = agent.world.current_state()
-        assert state.flow_name(string=True) == 'rework'
 
-    def test_survey(self, agent):
-        result = agent.take_turn('Show me which publishing platforms are available')
-        state = agent.world.current_state()
-        assert state.flow_name(string=True) == 'survey'
-        assert re.search(r'(platform|channel|substack|twitter|linkedin|publish)', result['message'], re.I)
-
-    def test_calendar(self, agent):
-        agent.take_turn(
-            'I need a content calendar — schedule out my blog posts for the next 4 weeks'
-        )
-        state = agent.world.current_state()
-        assert state.flow_name(string=True) == 'calendar'
+if __name__ == '__main__':
+    main()

@@ -117,10 +117,10 @@ class ToolService:
 
     def _save_metadata(self, entries:list[dict]):
         self._content_dir.mkdir(parents=True, exist_ok=True)
-        self._metadata_file.write_text(
-            json.dumps({'entries': entries}, indent=2, default=str),
-            encoding='utf-8',
-        )
+        # Atomic write (temp + rename): a reader can never observe a half-written file.
+        tmp = self._metadata_file.with_suffix('.json.tmp')
+        tmp.write_text(json.dumps({'entries': entries}, indent=2, default=str), encoding='utf-8')
+        tmp.replace(self._metadata_file)
 
     @staticmethod
     def _find_entry(entries:list[dict], post_id:str) -> dict | None:

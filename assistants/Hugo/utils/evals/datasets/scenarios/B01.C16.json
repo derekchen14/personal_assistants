@@ -1,0 +1,147 @@
+{
+  "convo_id": "B01.C16",
+  "persona": "neutral/positive/plain",
+  "use_case": "U: general -> brainstorm -> outline -> compose",
+  "topic": "Amateur Astronomy",
+  "title": "A Dark Sky Beats a Bigger Telescope",
+  "available_data": {},
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-haiku-4-5",
+    "spec": "topic=Amateur Astronomy \u00b7 7 turns \u00b7 neutral/positive/plain \u00b7 arc=ambiguity(general) \u00b7 use_case=general -> brainstorm -> outline -> compose ",
+    "draws": {
+      "topic": "Amateur Astronomy",
+      "title_source": "banked",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "positive",
+        "directness": "plain"
+      },
+      "arc": "ambiguity",
+      "planning": null,
+      "ambiguity": {
+        "level": "general",
+        "tag": "none",
+        "turn": 1
+      },
+      "use_case": {
+        "phase_lead": "Draft",
+        "sequence": [
+          "general",
+          "brainstorm",
+          "outline",
+          "compose"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-haiku-4-5",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "I've been wanting to cover stargazing but I'm not sure where to start",
+      "labels": {
+        "intent": null,
+        "stack": []
+      },
+      "slots": {},
+      "ambiguity": "general",
+      "note": "General ambiguity: the task itself is open, so neither flow nor intent is committed (empty stack); the agent asks what the task is. The next user turn names the real flow."
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [],
+      "utterance": "Are you aiming to help beginners choose gear, or do you want to challenge what they think they need?"
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "riff on some angles for that second one, I like the contrarian take",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
+      },
+      "slots": {},
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
+      "utterance": "Five angles: expensive gear isn't necessary, location beats equipment, dark skies over a telescope, go binoculars first, or debunk the myths people believe."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "the dark skies angle resonates, sketch a structure with that focus",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {},
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Outlined five sections: the lore around telescopes, what light pollution actually does, why location matters more, how to find dark skies, and the payoff."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "turn it into prose for me",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {},
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ]
+    }
+  ]
+}

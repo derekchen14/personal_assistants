@@ -32,6 +32,25 @@ This skill describes how to generate a fresh outline for a post. You operate in 
   b. Depth 2 is flat bullets. Depth 3 adds `### Sub-section` headings with bullets under each. Depth 4 goes further to `### Sub-section` + `- bullet` + `  * sub-bullet`.
 4. Call `generate_outline(post_id, content=<markdown outline>)` to save. End the turn.
 
+### Outline depth scheme
+
+| Level | Markdown |
+|---|---|
+| 0 | `# Post Title` (not editable) |
+| 1 | `## Section Subtitle` |
+| 2 | `### Sub-section` |
+| 3 | `- bullet point` |
+| 4 | `  * sub-bullet` |
+
+Outlines start out with Level 1 + Level 3. As we develop further, then Level 2 is added when a section needs explicit sub-structure; Level 4 appears when a bullet needs supporting detail or supporting examples. There are typically 3 to 5
+Level 1 sections per post. Only certain sections have Level 2 sub-sections. Sub-sections are for breaking down long
+sections into more digestable parts, so they occur sparingly. If sub-sections are needed, then there are typically just
+2-3 that appear in the entire post and all within the same section.
+
+Most sections will have 3 to 5 bulletpoints, 
+when it extends beyond this, we will break down into sub-sections. Each Level 3 bulletpoint ends up as a paragraph. Each
+Level 4 sub-bullet is typically converted to a full sentence.
+
 ## Handling Ambiguity and Errors
 
 If in propose mode you find yourself wanting to call `generate_outline`, stop: the user has not yet chosen an option. Re-emit the three options as text instead.

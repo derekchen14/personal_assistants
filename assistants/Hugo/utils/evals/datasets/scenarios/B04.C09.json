@@ -1,0 +1,167 @@
+{
+  "convo_id": "B04.C09",
+  "persona": "P: formal + blunt",
+  "use_case": "U: browse -> outline -> outline -> compose",
+  "topic": "T: Red-teaming",
+  "title": "A Red-Team Playbook for LLM Apps",
+  "available_data": {
+    "notes": [
+      "Prompt injection basics",
+      "Red-team playbook"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Red-teaming, anything in my files on it?",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "browse",
+            "dax": "{012}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "red-teaming"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "search_notes"
+      ],
+      "utterance": "I found two: Prompt injection basics and Red-team playbook."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Could we get something drafted off these?",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "note": "Underlying flow is outline {002}; the agent infers the specific post and asks the user to confirm rather than guess. Ambiguity is a tag on the real flow, resolved at the next turn \u2014 clarify is not a separate flow.",
+      "ambiguity": "confirmation"
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [],
+      "utterance": "Which post? Red-teaming specifically, titled 'A Red-Team Playbook for LLM Apps'?"
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Yes, that one. Rough out its sections.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "note": "resolves the turn-3 ambiguity.",
+      "slots": {
+        "source": {
+          "post": "A Red-Team Playbook for LLM Apps"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Here's the red-team outline: 1) Threat model 2) Attack catalog 3) Running a red-team 4) Fixing what you find."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The red-team post into prose, today if you can.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "A Red-Team Playbook for LLM Apps"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ]
+    }
+  ],
+  "batch": "B04",
+  "flagged": true,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Red-teaming | 7 turns | formal + blunt | arc=ambiguity | use_case=browse -> outline -> outline -> compose | converted from P2.U5.T1",
+    "draws": {
+      "topic": "Red-teaming",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "ambiguity",
+      "planning": null,
+      "ambiguity": {
+        "level": "confirmation",
+        "tag": "none",
+        "turn": 3
+      },
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "browse",
+          "outline",
+          "outline",
+          "compose"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "flagged": true
+    }
+  }
+}

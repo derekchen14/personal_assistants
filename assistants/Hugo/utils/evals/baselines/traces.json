@@ -1,0 +1,26 @@
+{
+  "completion_rate": {
+    "target": 0.9,
+    "direction": "higher",
+    "expected_fail": true,
+    "value": null,
+    "commit": null,
+    "date": null
+  },
+  "tool_match_rate": {
+    "target": 0.9,
+    "direction": "higher",
+    "expected_fail": true,
+    "value": null,
+    "commit": null,
+    "date": null
+  },
+  "mean_turn_seconds": {
+    "direction": "lower",
+    "max_drop_pct": 0.2,
+    "expected_fail": true,
+    "value": null,
+    "commit": null,
+    "date": null
+  }
+}

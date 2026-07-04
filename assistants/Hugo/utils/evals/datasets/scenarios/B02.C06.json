@@ -1,0 +1,218 @@
+{
+  "convo_id": "B02.C06",
+  "persona": "formal/skeptical/plain",
+  "use_case": "compose\u2192write\u2192audit\u2192rework\u2192write\u2192audit",
+  "topic": "Strength Training",
+  "title": "Soreness Is Not Progress",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "I've sketched the argument out. Let me turn it to prose.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "topic": "soreness and training adaptation"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Draft generated. You've structured it as: why soreness is a poor proxy, what actually signals adaptation, and when to ignore the pain."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "the transition between the second and third sections reads choppy. smooth it out.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "topic": "soreness and training adaptation",
+        "section": "transitions"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "Fixed the paragraph flow. The connection between adaptation markers and pain tolerance now reads more naturally."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "does this sound like me, or is it still too technical?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "topic": "soreness and training adaptation"
+      },
+      "ambiguity": "partial",
+      "note": "Ambiguity: partial. User asks about voice but doesn't specify which section or tone to target. Agent must ask which parts feel off or what tone they prefer."
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [],
+      "utterance": "I'd say the opening feels formal. Which tone do you want, more conversational or keep it precise?"
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "conversational, like I'm talking to someone who lifts.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "topic": "soreness and training adaptation"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
+      "utterance": "Reworked the intro to sound less academic. Now it reads like you're advising a training partner."
+    },
+    {
+      "turn_count": 9,
+      "role": "user",
+      "utterance": "better. the middle part still feels stiff though, rebuild that section.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
+      },
+      "slots": {
+        "topic": "soreness and training adaptation",
+        "section": "adaptation markers"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 10,
+      "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
+      "utterance": "Restructured the section. It now moves from your direct experience into the physiology, rather than leading with jargon."
+    },
+    {
+      "turn_count": 11,
+      "role": "user",
+      "utterance": "one more pass. keep the conversational tone throughout and it's done.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "topic": "soreness and training adaptation"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 12,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ]
+    }
+  ],
+  "batch": "B02",
+  "flagged": false,
+  "generation": {
+    "batch": "B02",
+    "seed": 20260701,
+    "writer_model": "claude-haiku-4-5",
+    "spec": "topic=Strength Training \u00b7 11 turns \u00b7 P24 formal/skeptical/plain \u00b7 arc=ambiguity \u00b7 use_case=compose\u2192write\u2192audit\u2192rework\u2192write\u2192audit \u00b7 noise=no \u00b7 verify=no \u00b7 flagged=no",
+    "draws": {
+      "topic": "Strength Training",
+      "title_source": "banked",
+      "turn_count": 11,
+      "persona": {
+        "formality": "formal",
+        "emotion": "skeptical",
+        "directness": "plain"
+      },
+      "arc": "ambiguity",
+      "planning": null,
+      "ambiguity": {
+        "level": "partial",
+        "tag": "none",
+        "turn": 7
+      },
+      "use_case": {
+        "phase_lead": "Revise",
+        "sequence": [
+          "compose",
+          "write",
+          "audit",
+          "audit",
+          "rework",
+          "write"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-haiku-4-5",
+      "length": [
+        2,
+        2,
+        1,
+        1,
+        2,
+        2
+      ]
+    }
+  }
+}

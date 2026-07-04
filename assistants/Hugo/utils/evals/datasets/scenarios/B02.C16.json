@@ -1,0 +1,176 @@
+{
+  "convo_id": "B02.C16",
+  "persona": "P: neutral + neutral + hedged",
+  "use_case": "U: rework -> write -> rework -> audit",
+  "topic": "T: Clean Energy",
+  "title": "Grid Batteries Do What Rooftop Solar Can't",
+  "available_data": {
+    "post": "Grid Batteries Do What Rooftop Solar Can't",
+    "status": "draft"
+  },
+  "flagged": true,
+  "batch": "B02",
+  "generation": {
+    "batch": "B02",
+    "seed": 20260701,
+    "writer_model": "claude-sonnet-4-6",
+    "spec": "topic=Clean Energy \u00b7 7 turns \u00b7 neutral/neutral/hedged \u00b7 arc=redirect \u00b7 use_case=rework->write->rework->audit \u00b7 noise=t5(word_order) \u00b7 verify=no \u00b7 flagged=no",
+    "draws": {
+      "topic": "Clean Energy",
+      "title_source": "coined",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "redirect",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Revise",
+        "sequence": [
+          "rework",
+          "write",
+          "rework",
+          "audit"
+        ]
+      },
+      "sprinkles": {
+        "noise": {
+          "turns": [
+            5
+          ],
+          "type": "word_order"
+        },
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "flagged": true,
+      "writer_model": "claude-sonnet-4-6",
+      "length": [
+        2,
+        1,
+        2,
+        1
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "The opening section of the grid batteries draft feels like it's burying the main claim. Maybe worth reorganizing it?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Grid Batteries Do What Rooftop Solar Can't",
+          "sec": "intro"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
+      "utterance": "Moved the main claim to the first paragraph and pushed the background to follow it. The intro now leads with what grid batteries can do before explaining why rooftop solar can't."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "That transition into the cost section is a bit clunky, could you smooth it out?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Grid Batteries Do What Rooftop Solar Can't",
+          "sec": "cost section"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "Smoothed the transition. Bridged from the intro's capacity argument into the cost numbers so the jump doesn't feel abrupt."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "actually the cost section, it's the real problem. the argument there I'd restructure completely.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Grid Batteries Do What Rooftop Solar Can't",
+          "sec": "cost section"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
+      "utterance": "Restructured the cost section. Reordered it to go from the per-kWh comparison first, then the amortization logic, then the policy implication. The section is cleaner now."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Before we call it done, a quick check to make sure the tone is consistent throughout?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Grid Batteries Do What Rooftop Solar Can't"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ]
+    }
+  ]
+}

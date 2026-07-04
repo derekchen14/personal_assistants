@@ -1,67 +1,30 @@
-from collections import OrderedDict
-
-
 class MemoryManager:
+    """MEM, the Head — the synchronous facade over the three memory tiers. Holds references to the
+    tiers and exposes one read skill per tier (`recap` / `recall` / `retrieve`). Tier-specific
+    operations are reached through the sub-component, e.g. `memory.preferences.store_preference`
+    or `memory.business.search_faqs`.
 
-    def __init__(self, config):
-        self.config = config
-        memory_cfg = config.get('memory', {})
-        scratchpad_cfg = memory_cfg.get('scratchpad', {})
-        self._max_snippets: int = scratchpad_cfg.get('max_snippets', 64)
-        self._scratchpad = OrderedDict()
-        self._preferences: dict[str, str] = {}
+    The continuous background MEM loop (auto-promotion, proactive push) is designed-not-built."""
 
-        summarization = memory_cfg.get('summarization', {})
-        self._summarize_turn_count: int = summarization.get('trigger_turn_count', 20)
+    def __init__(self, context_coordinator, user_preferences, business_context):
+        self.context = context_coordinator       # L1 — append-only event stream
+        self.preferences = user_preferences      # L2 — per-account defaults
+        self.business = business_context         # L3 — business knowledge / FAQs
 
-    # ── Scratchpad (session-scoped, L1) ──────────────────────────────
+    def recap(self, n_turns:int|None=None, filter:str|None=None) -> str:
+        """L1 — recent session events as formatted history."""
+        return self.context.compile_history(look_back=n_turns or 10, keep_system=True)
 
-    def write_scratchpad(self, key:str, value:str|dict):
-        if key in self._scratchpad:
-            self._scratchpad.move_to_end(key)
-        self._scratchpad[key] = value
-        while len(self._scratchpad) > self._max_snippets:
-            self._scratchpad.popitem(last=False)
+    def recall(self, query:str, flow_name:str|None=None) -> dict:
+        """L2 — the user preferences matching `query`. Semantic lookup is deferred (no vector
+        store yet); `flow_name` is accepted but unused."""
+        return self.preferences.read(query)
 
-    def read_scratchpad(self, key:str|None=None) -> str | dict:
-        if key:
-            return self._scratchpad.get(key, '')
-        return dict(self._scratchpad)
-
-    def clear_scratchpad(self):
-        self._scratchpad.clear()
-
-    @property
-    def scratchpad_size(self) -> int:
-        return len(self._scratchpad)
-
-    # ── User Preferences (persistent, RAM) ───────────────────────────
-
-    def read_preferences(self) -> dict:
-        return dict(self._preferences)
-
-    def read_preference(self, key:str, default:str='') -> str:
-        return self._preferences.get(key, default)
-
-    def write_preference(self, key:str, value:str):
-        self._preferences[key] = value
-
-    def should_summarize(self, turn_count:int) -> bool:
-        return turn_count >= self._summarize_turn_count
-
-    def dispatch_tool(self, action:str, params:dict|None=None) -> dict:
-        params = params or {}
-        if action == 'read_scratchpad':
-            key = params.get('key')
-            data = self.read_scratchpad(key)
-            return {'status': 'success', 'result': data}
-        elif action == 'write_scratchpad':
-            key = params.get('key', '')
-            value = params.get('value', '')
-            if key:
-                self.write_scratchpad(key, value)
-                return {'status': 'success', 'result': 'written'}
-            return {'status': 'error', 'message': 'key is required'}
-        elif action == 'read_preferences':
-            return {'status': 'success', 'result': self.read_preferences()}
-        return {'status': 'error', 'message': f'Unknown action: {action}'}
+    def retrieve(self, query:str, top_k:int=10, documents:list|None=None) -> dict:
+        """L3 — business-knowledge retrieval. `documents=['faq']` takes the FAQ shortcut; otherwise
+        rank the supplied documents, or the corpus candidates, down to top_k."""
+        documents = documents or []
+        if documents and documents[0] == 'faq':
+            return self.business.search_faqs(query, top_k=top_k)
+        candidates = documents if documents else self.business.search_all(query, top_k=1000)
+        return self.business.rerank(query, candidates, top_k=top_k)

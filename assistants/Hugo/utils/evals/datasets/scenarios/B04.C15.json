@@ -1,0 +1,168 @@
+{
+  "convo_id": "B04.C15",
+  "persona": "P: formal + blunt",
+  "use_case": "U: compose -> general -> rework -> audit",
+  "topic": "T: Observability dashboards",
+  "title": "Building Observability Dashboards for LLM Apps",
+  "available_data": {
+    "posts": [
+      {
+        "post_id": "Seed-U8-T1",
+        "title": "Building Observability Dashboards for LLM Apps",
+        "status": "draft"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "The dashboards outline reads done, so the full prose now?",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Building Observability Dashboards for LLM Apps"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Drafted every section of the dashboards post from the outline. Ready to review."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Something's off here for me, and I can't place where.",
+      "labels": {
+        "intent": null,
+        "stack": []
+      },
+      "note": "General ambiguity: the task itself is open, so neither flow nor intent is committed (empty stack); the agent asks what the task is. The next user turn names the real flow.",
+      "ambiguity": "general"
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [],
+      "utterance": "Which section of the dashboards post, and what's wrong: clarity, tone, or depth?"
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Does the Choosing metrics part land for a reader new to evals?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
+      },
+      "note": "resolves the Clarify: names the section and the concrete change.",
+      "slots": {
+        "source": {
+          "post": "Building Observability Dashboards for LLM Apps",
+          "sec": "Choosing metrics"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
+      "utterance": "Reworked 'Choosing metrics' around latency, cost, and error rate with concrete examples."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The dashboards post, worth a final editor pass?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Building Observability Dashboards for LLM Apps"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ]
+    }
+  ],
+  "batch": "B04",
+  "flagged": false,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Observability dashboards | 7 turns | formal + blunt | arc=ambiguity | use_case=compose -> general -> rework -> audit | converted from P2.U8.T1",
+    "draws": {
+      "topic": "Observability dashboards",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "ambiguity",
+      "planning": null,
+      "ambiguity": {
+        "level": "general",
+        "tag": "none",
+        "turn": 3
+      },
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "compose",
+          "general",
+          "rework",
+          "audit"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

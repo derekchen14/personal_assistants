@@ -6,7 +6,7 @@ class MemoryManager:
     """Three-tier memory: scratchpad (L1), preferences (L2), business context (L3).
 
     Scratchpad entries are structured dicts keyed by `flow.name()`. Each entry
-    carries a required envelope `{version, turn_number, used_count}` plus
+    carries required fields `{version, turn_number, used_count}` plus
     flow-specific payload keys. Producers write at policy entry; consumers
     read by key and increment `used_count` on entries they reference."""
 
@@ -25,7 +25,7 @@ class MemoryManager:
 
     def write_scratchpad(self, name:str, payload:dict):
         """Write/update a structured entry. `name` is `flow.name()`. `payload`
-        must include envelope keys (version, turn_number, used_count) plus
+        must include the required keys (version, turn_number, used_count) plus
         flow-specific data."""
         if name in self._scratchpad:
             self._scratchpad.move_to_end(name)

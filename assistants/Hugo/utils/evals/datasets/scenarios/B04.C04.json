@@ -1,0 +1,176 @@
+{
+  "convo_id": "B04.C04",
+  "persona": "P: formal + blunt",
+  "use_case": "U: compose -> rework -> audit -> propose",
+  "topic": "T: The Lightbulb",
+  "title": "Who Really Invented the Lightbulb?",
+  "available_data": {
+    "posts": [
+      {
+        "post_id": "SeedBulb02",
+        "title": "Who Really Invented the Lightbulb?",
+        "status": "draft"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "The lightbulb outline into prose, and I need it done today.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "I've drafted it into prose. The 'Edison vs Swan' section came out muddled."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Two beats for the rebuild: Swan's work first, then Edison's build on top.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?",
+          "sec": "Edison vs Swan"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
+      "utterance": "I restructured it: Swan's experiments first, then Edison's filament."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Put it under an editor pass, today if there's time.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ],
+      "utterance": "I ran the editor pass. The 'Filament breakthrough' section repeats the bamboo detail, and the conclusion ends flat."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Two or three endings for the conclusion.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "propose",
+            "dax": "{39B}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Who Really Invented the Lightbulb?",
+          "sec": "Conclusion"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "read_section",
+        "revise_content"
+      ]
+    }
+  ],
+  "batch": "B04",
+  "flagged": false,
+  "generation": {
+    "batch": "B04",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=The Lightbulb | 7 turns | formal + blunt | arc=straight_build | use_case=compose -> rework -> audit -> propose | converted from P2.U2.T2",
+    "draws": {
+      "topic": "The Lightbulb",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "formal",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "compose",
+          "rework",
+          "audit",
+          "propose"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        2,
+        1,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

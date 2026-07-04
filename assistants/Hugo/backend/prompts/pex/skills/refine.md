@@ -11,6 +11,7 @@ tools:
   - revise_content
   - remove_content
   - write_text
+  - insert_media
 ---
 
 This skill describes how to refine outlines. The current outline is provided in the user message inside the `<post_content>` block. Use it directly as your starting point rather than creating a new one from scratch.
@@ -28,11 +29,13 @@ This skill describes how to refine outlines. The current outline is provided in 
    b. When the user asks only to rename / reorder / shuffle sections, leave the bullet meaning intact and touch only what they asked for.
    c. If the user gave a topic but no verbatim bullets, call `write_text` to brainstorm candidates before saving.
    d. Avoid using em-dashes or short, punchy fragments which are signs of AI slop. Write like a human expert.
-4. Save your changes. The four operations map to four tools:
+4. Save your changes. The operations map to tools:
    a. **Edit an existing section's body** (rewrite bullets, restructure sub-bullets, edit H3s): `revise_content(post_id, sec_id, content)`. Pass the full rebuilt section body — H3 subsections + bullets, no `## Heading` line. The body replaces the section's content wholesale, so include every line you want kept.
    b. **Rename one or more section headings** (and only the headings): `update_post(post_id, updates={'sections': [<title 0>, <title 1>, ...]})`. The list must have one entry per existing section, in order — pass the current title for sections you don't want to change. Position-based, no slugs needed. Body content is untouched.
    c. **Insert a new H2 at a specific position**: `insert_section(post_id, sec_id=<anchor>, section_title='New Heading', content=<bullet body>)`. The new section is inserted *immediately after* the anchor `sec_id`. For "before X", anchor on the section that precedes X in `section_ids`. For "after X", anchor on X itself.
    d. **Remove a section**: `remove_content(post_id, sec_id)` deletes that H2 outright. One call per section removed.
+   e. **Insert an image**: `insert_media(post_id, sec_id, image_type, description, position)` — when `Image`/`Position` are in `<resolved_details>`, place the image at the named position; default to append when none is given.
+   f. **Normalize formatting**: when `Formatting settings` are in `<resolved_details>`, apply them (heading levels, list/indent style, spacing) by rewriting the affected sections via `revise_content` (or `update_post` for renames). Change structure and whitespace only — never the wording.
 5. When done, simply close the loop. No summary needed.
 
 ## Error Handling
@@ -51,6 +54,7 @@ If the user's request does not make sense given the actual outline content, call
 - `remove_content(post_id, sec_id)` — delete an entire H2 section.
 - `read_section(post_id, sec_id)` — read the prose of a specific section. Rare in refine; only when the preloaded outline truncated the content you need.
 - `write_text(prompt)` — brainstorm candidate bullets or descriptions via an LLM. Use sparingly, only when the user asked for new content without specifying verbatim.
+- `insert_media(post_id, sec_id, image_type, description, position)` — add an image at a position. Default to append when no position is named.
 
 ### General tools
 

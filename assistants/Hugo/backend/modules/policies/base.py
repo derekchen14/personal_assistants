@@ -1,8 +1,29 @@
 import re
 import difflib
+import logging
+from dataclasses import dataclass
 
 from backend.components.task_artifact import TaskArtifact
 from backend.utilities.services import ToolService
+
+log = logging.getLogger(__name__)
+
+# The six sub-agent hook points (pex.md). A policy runs a sub-agent that can take destructive
+# action, so each point is an interception seam for an NLU signal (read from belief) or a user
+# interrupt. Three already have bodies elsewhere: pre_tool ← PEX._security_check,
+# verification ← PEX._validate_artifact, tool_retry ← retry_tool. pre_llm/post_llm are wired
+# live in llm_execute; post_tool's body lives in the engineer.tool_call loop (integration seam).
+HOOK_POINTS = ('pre_llm', 'pre_tool', 'post_tool', 'tool_retry', 'post_llm', 'verification')
+
+
+@dataclass
+class HookDecision:
+    """A hook's verdict: severity of any pending signal + whether to keep going."""
+    point: str
+    severity: str = 'low'   # 'high' (user interrupt — TODO) | 'medium' (signal diverges) | 'low'
+    proceed: bool = True
+    reason: str = ''
+
 
 class BasePolicy:
     """Toolkit of reusable utility methods for per-flow policy methods. No lifecycle
@@ -13,9 +34,30 @@ class BasePolicy:
     def __init__(self, components):
         self.engineer = components['engineer']
         self.memory = components['memory']
+        self.scratchpad = components['scratchpad']
         self.config = components['config']
         self.ambiguity = components['ambiguity']
         self._get_tools_fn = components['get_tools']
+        self.flow_stack = components['flow_stack']
+        self._state_file = components['state_file']  # callable → path of the session state.json
+        self._completion = None  # record written by complete_flow, handed off via pop_completion
+
+    # -- Sub-agent hook framework ------------------------------------------
+
+    def run_hook(self, point:str, flow, state) -> HookDecision:
+        """Evaluate one of the six hook points (HOOK_POINTS) against the live belief signal.
+
+        Signal channel = the belief itself (no side channel): NLU writes `pred_intent`, and a
+        hook compares it to the active flow's intent — they DIVERGE (medium) or ALIGN (low). A
+        user interrupt would be high, but its channel is a TODO, so high never fires in 2a.
+        Bespoke stop/go-on: high → stop (mid-task); low/medium → go on (medium also logs so a
+        diverging signal is visible for the Batch 2b reconsider rule)."""
+        severity = 'low' if state.pred_intent == flow.intent else 'medium'
+        decision = HookDecision(point=point, severity=severity, proceed=severity != 'high')
+        if severity != 'low':
+            decision.reason = f'belief intent {state.pred_intent!r} diverges from {flow.intent!r}'
+            log.info('[hook] %s severity=%s flow=%s %s', point, severity, flow.name(), decision.reason)
+        return decision
 
     def llm_execute(self, flow, state, context, tools, include_preview:bool=False,
                     extra_resolved:dict|None=None, exclude_tools:tuple=(),
@@ -30,6 +72,7 @@ class BasePolicy:
         will error on the model side if it tries anyway. Pass `model='high'` to swap the skill
         onto a stronger tier; pass `schema=<json-schema dict>` to force a schema-constrained
         terminal emit when the tool loop would otherwise return empty text."""
+        self.run_hook('pre_llm', flow, state)  # ① intercept any pending signal before the loop
         resolved = self._build_resolved_context(flow, state, tools, include_preview=include_preview)
         if extra_resolved:
             resolved = {**(resolved or {}), **extra_resolved}
@@ -37,12 +80,14 @@ class BasePolicy:
         tool_defs = self._get_tools_fn(flow)
         if exclude_tools:
             tool_defs = [td for td in tool_defs if td['name'] not in exclude_tools]
-        return self.engineer.tool_call(
-            flow, convo_history, self.memory.read_scratchpad(),
+        result = self.engineer.tool_call(
+            flow, convo_history, self.scratchpad.read(),
             tool_defs, tools, resolved=resolved,
             user_text=context.last_user_text,
             model=model, schema=schema,
         )
+        self.run_hook('post_llm', flow, state)  # ⑤ intercept after the sub-agent completes
+        return result
 
     # -- Content readback ---------------------------------------------------
 
@@ -110,34 +155,41 @@ class BasePolicy:
     # -- Persistence helpers ------------------------------------------------
 
     def resolve_source_ids(self, flow, state, tools):
-        """Extract (post_id, sec_id, error) from entity slot. Picks the first entity
-        that satisfies the slot's entity_part criteria. Syncs state.active_post and
-        returns both ids come back canonical form.
-        The third return is a missing-reference error artifact when the slot was filled
-        with a title/id that doesn't resolve to a real post; callers early-return via
-        `post_id, _, error = self.resolve_source_ids(...); if error: return error`."""
-        grounding = flow.slots[flow.entity_slot]
-        if not grounding.values:
+        """Extract (post_id, sec_id, error) from the state file's grounding block — the single source
+        of truth for the active entity. A user-typed reference in the entity slot (this turn's
+        utterance) still resolves through the fuzzy _resolve_post_id; resolved ids are written back to
+        the grounding block (state.active_post mirrors it). The third return is a missing-reference
+        error artifact when the slot was filled with a title/id that doesn't resolve to a real post;
+        callers early-return via `post_id, _, error = self.resolve_source_ids(...); if error: return error`."""
+        slot = flow.slots[flow.entity_slot]
+        part = slot.entity_part
+        vals = None
+        if slot.values:
+            vals = next((ent for ent in slot.values if ent['post'] and (not part or ent[part])),
+                        slot.values[0])
+        reference = vals['post'] if vals and vals['post'] else state.grounding['post']
+        if not reference:
             return None, None, None
-        part = grounding.entity_part
-        vals = next((e for e in grounding.values if e['post'] and (not part or e[part])),
-                    grounding.values[0])
-        post_id = self._resolve_post_id(vals['post'], tools)
+        post_id = self._resolve_post_id(reference, tools)
         if not post_id:
             error = self.error_artifact(flow, 'missing_reference',
                 thoughts='Could not find the specified post.', missing_entity='post')
             return None, None, error
-        else:
-            state.active_post = post_id
-
-        sec_id = self._resolve_sec_id(vals['sec'], tools, post_id)
+        sec_ref = vals['sec'] if vals else state.grounding['sec']
+        sec_id = self._resolve_sec_id(sec_ref, tools, post_id)
+        state.grounding['post'] = post_id
+        state.grounding['sec'] = sec_id or ''
+        state.active_post = post_id
         return post_id, sec_id, None
 
     def _build_resolved_context(self, flow, state, tools, include_preview:bool=False) -> dict|None:
         """Pre-resolve post/section IDs so the LLM gets deterministic entities.
 
         When include_preview=True, also fetches a per-section preview (title +
-        first 3 lines) so skills don't need a follow-up read_metadata call."""
+        first 3 lines) so skills don't need a follow-up read_metadata call.
+        Substrate-aware through resolve_source_ids: under the orchestrator the ids come
+        from the grounding block (state.active_post mirrors it, so the fallback below
+        serves both substrates)."""
         post_id, sec_id, _ = self.resolve_source_ids(flow, state, tools)
         if not post_id and state.active_post:
             post_id = state.active_post
@@ -166,6 +218,28 @@ class BasePolicy:
             self.ambiguity.declare('partial', metadata={'missing': ent_slot, 'entity': 'post'})
             return TaskArtifact(flow.name())
         return None
+
+    # -- Flow completion ------------------------------------------------------
+
+    def complete_flow(self, flow, state, summary:str, metadata:dict|None=None) -> dict|None:
+        """The single call a policy makes at the moment its flow finishes. The status change goes
+        through write_state op='update_flow' (so the grounding validation fires and state.json is
+        rewritten) and the completion record {flow, summary, metadata} is appended to the session
+        scratchpad; activate_flow collects it via pop_completion and returns it as the tool result.
+        Call it before stacking any follow-up flow — the completing flow must be top of stack."""
+        state.flow_stack = self.flow_stack.to_list()  # live stack → block so write_state sees it
+        if state.flow_stack[-1]['flow_id'] != flow.flow_id:
+            raise ValueError(f'complete_flow: {flow.name()!r} is not top of stack — finish or '
+                             f'pop the flows above it first')
+        state.write_state(self._state_file(), 'update_flow', status='Completed')
+        flow.status = 'Completed'  # mirror onto the live flow object
+        self._completion = self.scratchpad.write_completion(flow.name(), summary, metadata=metadata)
+        return self._completion
+
+    def pop_completion(self) -> dict|None:
+        """Hand the record written by complete_flow to activate_flow exactly once."""
+        record, self._completion = self._completion, None
+        return record
 
     # -- Helper Functions --------------------------------------
 

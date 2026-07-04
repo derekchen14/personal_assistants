@@ -71,7 +71,7 @@ PRIORITIES_DOC = (
 )
 
 SLOT_TYPE_GUIDES = {
-    'SourceSlot': (
+    'source': (
         '#### SourceSlot\n'
         'References existing entities. Returns a dict (or list of dicts for multiple entities) with keys: '
         '`post`, `sec`, `snip`, `chl`.\n'
@@ -92,22 +92,22 @@ SLOT_TYPE_GUIDES = {
         'the Active post as your output. Only emit a different value when the user explicitly '
         'references changing to a new post in their utterance.'
     ),
-    'TargetSlot': (
+    'target': (
         '#### TargetSlot\n'
         'A new entity being created. Same dict shape as SourceSlot: `{post, sec, snip, chl}`. Populate only '
         'the keys relevant to the new entity (e.g. a new post title fills `post`; a new section fills `sec`).'
     ),
-    'RemovalSlot': (
+    'removal': (
         '#### RemovalSlot\n'
         'Content to remove from the document. Describe what to remove as a short string (e.g. "the second '
         'paragraph", "the anecdote about Slack"). Same dict shape as SourceSlot for structured references.'
     ),
-    'FreeTextSlot': (
+    'freetext': (
         '#### FreeTextSlot\n'
         'Open-ended prose. Returns a list of one or more free-form strings extracted from the utterance. Use '
         'when the user gives interpretive feedback or multi-sentence guidance that should be carried verbatim.'
     ),
-    'ChecklistSlot': (
+    'checklist': (
         '#### ChecklistSlot\n'
         'An ordered list of discrete, actionable items. Returns a list where each item is either a short '
         'string or a dict `{"name": ..., "description": ..., "checked": false}`.\n'
@@ -115,53 +115,53 @@ SLOT_TYPE_GUIDES = {
         'steps. Do not fold enumerated items into prose slots in the same flow — ChecklistSlot is '
         'structured, prose slots are interpretive.'
     ),
-    'ProposalSlot': (
+    'proposal': (
         '#### ProposalSlot\n'
         'Selectable options for the user to choose from. Typically populated by the agent, not by NLU. '
         'Leave `null` unless the utterance clearly picks among agent-offered options.'
     ),
-    'LevelSlot': (
+    'level': (
         '#### LevelSlot\n'
         'A numeric threshold or count. Extract the integer or float directly.'
     ),
-    'PositionSlot': (
+    'position': (
         '#### PositionSlot\n'
         'A non-negative integer indicating a position in a sequence (e.g. "the 3rd section"). Zero and '
         'positive integers only.'
     ),
-    'ProbabilitySlot': (
+    'probability': (
         '#### ProbabilitySlot\n'
         'A numeric value in the range [0, 1]. Convert percentages and inequalities: "40%" → 0.4, '
         '"above 0.3" → 0.3, "at least 95%" → 0.95.'
     ),
-    'ScoreSlot': (
+    'score': (
         '#### ScoreSlot\n'
         'A numeric value for ranking, filtering, or comparison. Fill only when the utterance expresses a '
         'threshold ("over X", "at least X", "under X"). Raw counts or descriptive numbers without '
         'comparison do not fill a ScoreSlot.'
     ),
-    'CategorySlot': (
+    'category': (
         '#### CategorySlot\n'
         'Choose one from a predefined list. Map synonyms to the closest valid option (e.g. "laid back" → '
         '"casual", "professional" → "formal"). Emit `null` when no option is a reasonable match.'
     ),
-    'ExactSlot': (
+    'exact': (
         '#### ExactSlot\n'
         'A specific term or phrase. For title slots, distill the subject into a short Proper Case title '
         '(e.g. "write about how transformers work" → "How Transformers Work"). For non-title ExactSlots, '
         "preserve the user's phrasing verbatim (the exact words they typed)."
     ),
-    'DictionarySlot': (
+    'dictionary': (
         '#### DictionarySlot\n'
         'Key-value pairs. Parse paired directives into a structured dict (e.g. "normalize headings, use '
         'h2" → `{"headings": "h2", "spacing": "normalize"}`).'
     ),
-    'RangeSlot': (
+    'range': (
         '#### RangeSlot\n'
         'A time or value range. Return the raw date/time expression as a string (e.g. "Friday 8am EST", '
         '"next Monday morning", "March 20th"). Do not attempt to parse or reformat.'
     ),
-    'ChannelSlot': (
+    'channel': (
         '#### ChannelSlot\n'
         'A publishing destination. Always returns a list of channel name strings: `["Substack", ...]`. '
         'A single channel returns a one-item list (`["Substack"]`); multiple channels return multiple '
@@ -169,14 +169,14 @@ SLOT_TYPE_GUIDES = {
         "Twitter/X, LinkedIn, blog (the user's primary, MoreThanOneTurn). Map misspellings and "
         'implied references to the canonical channel name.'
     ),
-    'ImageSlot': (
+    'image': (
         '#### ImageSlot\n'
         'An image reference. Returns a dict with `img_type` (one of `hero`, `diagram`, `photo`) and a '
         'short description of the image.'
     ),
 }
 
-def _build_type_guides(slot_types:set) -> str:
+def _build_type_guides(slot_types:list) -> str:
     guides = [SLOT_TYPE_GUIDES[st] for st in slot_types if st in SLOT_TYPE_GUIDES]
     return '\n\n'.join(guides)
 
@@ -252,7 +252,9 @@ def build_slot_filling_prompt(flow, convo_block:str, active_post:dict) -> str:
     slots_md = prompt_fields['slots'].strip()
     examples = prompt_fields['examples'].strip()
 
-    slot_types = {type(slot).__name__ for slot in flow.slots.values()}
+    # Dedup in slot-declaration order — set iteration order varies per process, and prompts
+    # must be deterministic (identical input → identical prompt) for caching and evals.
+    slot_types = list(dict.fromkeys(slot.slot_type for slot in flow.slots.values()))
     type_guides = _build_type_guides(slot_types)
 
     # Already-filled slots are final — Phase 1a (FE payload) and Phase 2 (active_post grounding)

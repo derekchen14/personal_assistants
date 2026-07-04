@@ -276,7 +276,7 @@ class PEX:
             {
                 'name': 'memory_manager',
                 'description': ('Read/write structured session scratchpad and user preferences. '
-                                'Scratchpad keys are flow names; payloads are dicts with envelope '
+                                'Scratchpad keys are flow names; payloads are dicts with the required keys '
                                 '{version, turn_number, used_count}. Actions: read_scratchpad, '
                                 'write_scratchpad, read_preferences'),
                 'input_schema': {

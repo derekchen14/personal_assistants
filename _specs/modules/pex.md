@@ -1,288 +1,288 @@
-# PEX — Policy Executor
+# PEX — Policy Execution Orchestrator (the Hands)
 
-The execution engine of the agent. Holds all policies associated with each flow — this is where the agent's actions happen. Each policy is a deterministic class method that may delegate tool calling to a skill (an LLM with access to tools). The class method handles slot review, ambiguity declaration, frame construction, and flow lifecycle. The skill, when used, handles tool selection, tool execution, and result gathering.
+PEX takes the **actions** that interact with the outside world. Its goal is to complete tasks in an
+**efficient and reliable** manner — even when the request is long or complex. PEX produces the user-facing
+response and the progress messages; its triggered outputs form the **telemetry logs**.
 
-**Module principle**: PEX processes information through policies, but does not store the information itself. It mutates the State objects passed to it, and always returns a `TaskArtifact`. PEX does not write user-facing prose — message generation is RES's responsibility (with one exception: flows whose output IS the LLM's prose, such as `brainstorm`, place that prose in `artifact.thoughts`).
+PEX sits at the **middle level** of three:
 
-- **Execute function**: primary path for running the active flow's policy
-- **Recover function**: failure escalation when a policy declares ambiguity or returns an error artifact
+- **Level 0 — the main Agent** (deterministic code): governs the turn lifecycle and delivers outputs. See
+  [architecture](../architecture.md).
+- **Level 1 — PEX** (this module): a continuous LLM-loop that runs the central tool-calling loop, consulting
+  [NLU](nlu.md) (understand) and [MEM](mem.md) (remember) **in parallel**.
+- **Level 2 — sub-agents**: the per-flow policies PEX activates. They cannot nest deeper; a sub-agent that
+  needs more work **stacks on** a flow, which re-surfaces at the PEX layer rather than spawning a fourth level.
 
-**Policy file organization**: PEX imports from one policy file per intent. Each domain has 7 intent files — three universal (`plan`, `converse`, `internal`) plus four domain-specific intents whose names the domain chooses.
-
-| Universal | Universal | Universal | Domain-specific × 4 |
-|---|---|---|---|
-| `plan` | `converse` | `internal` | (e.g., Hugo: `research`, `draft`, `revise`, `publish`; Dana: `clean`, `transform`, `analyze`, `report`) |
-
-The flows within each file are domain-specific even when structurally similar across domains.
-
----
-
-## Policies and Tools
-
-### Policy Structure — Deterministic vs. Agentic Dispatch
-
-The deterministic-vs-agentic split is **implied by the policy code** — never declared on the flow class. There is no `flow.deterministic` flag.
-
-**Heuristic.** Deterministic when `len(flow.tools) == 1` AND the tool's args are fully derivable from `flow.slots` + `state.active_post` without LLM reasoning. Agentic when `len(flow.tools) >= 2` OR any arg is prose/content the LLM must compose.
-
-**Deterministic flow:**
-- No skill file, no starter.
-- Policy builds `params` from slots, calls `tools('<tool_name>', params)` directly, flips `flow.status = 'Completed'`, returns a `TaskArtifact`.
-- On tool failure: `TaskArtifact(flow.name(), metadata={'violation': 'tool_error'}, code=result['_message'])`.
-
-**Agentic flow:**
-- Skill file at `backend/prompts/pex/skills/<flow>.md`.
-- Starter at `backend/prompts/pex/starters/<flow>.py` exporting `build(flow, resolved, user_text)`.
-- Policy calls `BasePolicy.llm_execute(...)` which loads the skill, builds the prompt, runs the tool loop, and returns `(text, tool_log)`.
-- Policy reads `tool_log` via `engineer.tool_succeeded(tool_log, '<tool>')` and `engineer.extract_tool_result(...)` to verify persistence and pull results.
-- On no save: `TaskArtifact(flow.name(), metadata={'violation': 'failed_to_save'}, thoughts=...)`.
-
-Reference: [Flow Stack](../components/flow_stack.md), [Configuration](../utilities/configuration.md), [Tool Smith](../utilities/tool_smith.md)
-
-### Skill Output Contract
-
-Skills return `(text, tool_log)`. The policy is responsible for interpreting the trajectory and constructing the frame; skills do not return outcome enums.
-
-The policy classifies the result by inspecting `tool_log`:
-
-| Policy detection | Frame produced |
-|---|---|
-| `tool_succeeded(tool_log, '<tool>')` returns True | Success frame: `TaskArtifact(flow.name(), thoughts=text)` + appropriate block |
-| Persistence tool ran but produced no effect | `metadata={'violation': 'failed_to_save'}` |
-| Skill output couldn't be parsed | `metadata={'violation': 'parse_failure'}, code=text` |
-| Tool returned `_success=False` | `metadata={'violation': 'tool_error', 'failed_tool': '<name>'}, code=msg` |
-
-**Closed violation vocabulary (8 codes).** Cite by name; never extend without explicit approval.
-
-| Code | Fires when |
-|---|---|
-| `failed_to_save` | A persistence tool ran but produced no effect |
-| `scope_mismatch` | The flow ran at the wrong granularity |
-| `missing_reference` | An entity in a slot doesn't exist on the post |
-| `parse_failure` | Skill output couldn't be parsed into the expected shape |
-| `empty_output` | Skill returned nothing when prose was expected |
-| `invalid_input` | A tool rejected (or would reject) the arguments given |
-| `conflict` | Two slot values contradict |
-| `tool_error` | A deterministic tool returned `_success=False` |
-
-Specifics go in `thoughts` (natural language) or `code` (raw payload), never in nested-underscore metadata keys.
-
-### Component Tools
-
-Skills receive a tool manifest filtered to `flow.tools` plus a small set of component tools for context access.
-
-**Exposed to skills:**
-
-| Tool | Component | Operations |
-|---|---|---|
-| `context_coordinator` | [Context Coordinator](../components/context_coordinator.md) | Read recent conversation turns |
-| `memory_manager` | [Memory Manager](../components/memory_manager.md) | Read/write session scratchpad, read user preferences |
-| `flow_stack` | [Flow Stack](../components/flow_stack.md) | Read slot values and prior flow results |
-
-**Not exposed to skills:** Dialogue State (slot/flag access goes through flow_stack), Prompt Engineer (the LLM running the skill IS the reasoning engine), Ambiguity Handler (policy responsibility), Display Frame (policy responsibility).
-
-### Tool Manifest
-
-Every tool is registered in a manifest in domain config. See [Tool Smith](../utilities/tool_smith.md) for naming conventions, schema design, error contracts, and worked examples. Each entry specifies:
-
-| Field | Description |
-|---|---|
-| `tool_id` | Unique identifier |
-| `name` | Human-readable name |
-| `input_schema` | JSON Schema for inputs |
-| `output_schema` | JSON Schema for outputs |
-| `idempotent` | Boolean (see Idempotency Annotations) |
-| `timeout_ms` | Configurable timeout in milliseconds |
-
-Validation: inputs validated against `input_schema` before execution, outputs against `output_schema` before consumption.
-
-### Idempotency Annotations
-
-| Annotation | Retry policy | Example |
-|---|---|---|
-| `idempotent: true` | Skill may auto-retry within its execution loop | SQL SELECT, API GET, file read |
-| `idempotent: false` | Skill should not retry without explicit confirmation | SQL INSERT, file write, calendar create |
-
-Persistent ownership rule: agentic flows persist via the skill; deterministic flows persist via the policy. **Never let both layers write** — double-persistence causes silent overwrites.
+PEX owns the acting loop, **[Workflow Planning / Sub-agent Routing](#workflow-planning--sub-agent-routing)**,
+the **[Policies](#policies-run-via-activate_flow)**, the **[Tools and MCP](#tools-and-mcp)** it calls, and the
+two surfaces it produces with — the **[Task Artifact](../components/task_artifact.md)** and the
+**[Prompt Engineer](../components/prompt_engineer.md)**.
 
 ---
 
-## Execute Function
+## The acting loop
 
-Called by the Agent after NLU has routed and the flow is Active on the stack.
+`PEX.execute()` is PEX's tool-calling engine — the acting loop the **Assistant** calls *after* it has gated
+NLU at turn entry (see [NLU § when the Assistant gates NLU](nlu.md)). By then NLU has written its prediction
+(intent, ranked flows, confidence, slots) into the Dialogue State belief, so `execute()` **reads the belief
+and decides by intent** — it does not re-detect:
 
-- **Input**: [Dialogue State](../components/dialogue_state.md), World, memory manager, ambiguity handler, prompt engineer, domain config
-- **Output**: `tuple[`[TaskArtifact](../components/task_artifact.md)`, bool]` — frame (always returned; never `None`) and `keep_going` flag
+- **Click** → the Assistant already ran `understand(op=react)`; `execute()` finds the resolved flow in
+  belief and activates it.
+- **Utterance, no active entity** → the Assistant awaited `understand(op=think)`; the detection is in belief
+  before `execute()` runs.
+- **Utterance, active entity** → `understand(op=think)` runs on a **parallel thread** while `execute()`
+  proceeds on the standing belief; the thread joins at the turn boundary.
 
-### Pre-Hook: `check()`
+Inside the loop (`_run_loop`, bounded to `_MAX_ROUNDS`), PEX calls the model with a frozen three-tier system
+prompt, the message list, and the tool catalog. Each round:
 
-Cheap validation before spending tokens. On failure, set `has_issues` and return.
+- Tool calls are validated against the catalog; identical consecutive calls are de-duplicated; a
+  consecutive-failure cap (`_MAX_CORRECTIVE`) stops runaway error loops.
+- A thinking-only response is nudged once, then falls back.
+- **PEX decides `keep_going` each round.** Each round it emits a model response — **any number of tool calls
+  and/or the turn's [TaskArtifact](../components/task_artifact.md)** (the main response) streamed over the
+  WebSocket — then loops again until it chooses to stop. The moves in a round: **activate a flow**
+  (`activate_flow` — promote top-of-stack pending flow(s) to active and run their sub-agents), **shape the
+  stack** (`stackon` / `fallback` / `pop_completed`), **consult or gather** (`understand`, MEM
+  `recall`/`recap`/`retrieve`, the scratchpad, `handle_ambiguity`, the read-only domain allowlist), and
+  **respond to the user**. `complete_flow` is **not** a PEX move — each flow's policy completes itself.
+  `keep_going` isn't a menu choice — it's just whether PEX runs another round.
+- Exhausting the round budget or the corrective cap triggers a single no-tools `_final_emit` wrap-up, so
+  completed work is never buried behind a canned fallback.
 
-1. **Active flow exists** on the top of the flow stack
-2. **Policy registered** for the active flow's name
-3. **Required slots filled**
-4. **Elective slots satisfied** (≥1 in each elective group)
-5. **Tool manifest valid** — `flow.tools` resolves in the manifest
-6. **Lethal Trifecta gate**: if a tool has all three capability tags (`accesses_private_data`, `receives_untrusted_input`, `communicates_externally`), force `requires_approval: true`. Reference: [Tool Smith § Capability Tags](../utilities/tool_smith.md)
+When the turn ends, the main Agent's post-hook records the agent turn, persists state, runs
+the compaction check, and delivers the [Task Artifact](#task-artifact--rendering) (below).
 
-Converse and Plan flows may have minimal slots; their readiness is primarily checks 1, 2, 5, 6.
+### Owns vs. delegates
+PEX owns **control** — the ask-vs-proceed decision, sequencing flows (via the Workflow Planner Skill over the
+FlowStack), and the spoken close. **Coarse intent is NLU's authoritative write** — PEX's own intent sense is
+internal reasoning, biased to Plan/Clarify under uncertainty, and is never committed to belief. It delegates
+**work** — understanding and belief writes ([NLU](nlu.md)), memory ([MEM](mem.md)), and per-flow execution to
+its sub-agents. **All domain mutations go through an activated flow's sub-agent** (`activate_flow`) — never a
+domain tool directly. The **[TaskArtifact](../components/task_artifact.md) is the main response to the user**;
+PEX words it **directly** via a **voice Skill** in its system prompt over the turn's artifacts, tool results,
+and sub-agent results. There is no separate naturalization step.
 
-### Method-Shape Contract
+### Tool catalog (by call frequency)
 
-Every policy method follows the same skeleton. Sections expand or contract per flow.
+| Tier | Tools | Surface |
+|---|---|---|
+| Read | `read_state` | reads the Dialogue State belief NLU wrote (intent, ranked flows, confidence, slots, grounding). NLU's `classify_intent`/`detect_flow`/`fill_slots` are **NLU-internal** — not PEX tools; `understand` is the Assistant→NLU entry, not a PEX tool |
+| Hot-path | `stackon`, `fallback`, `pop_completed` | PEX — Workflow Planner stack ops |
+| Hot-path | `activate_flow` | PEX — promote top-of-stack pending flow(s) to active, run their sub-agents |
+| Policy | `complete_flow` | the flow's **policy** marks itself done (grounding-gated) — not a PEX move |
+| Hot-path | `append_to_scratchpad`, `read_from_scratchpad` | [Session Scratchpad](../components/session_scratchpad.md) (`update_scratchpad` is NLU-only) |
+| Long-tail | `handle_ambiguity` (NLU), `recap` / `recall` / `retrieve` + `store_preference` (MEM) | component skills |
+| Domain (read-only) | `find_posts`, `read_metadata`, `read_section`, `search_notes`, `list_channels`, `channel_status` | safe to call directly |
+
+Every **mutating** domain action is reached only through `activate_flow`. The read-only allowlist lets PEX
+gather context cheaply without a flow.
+
+### Loop guardrails (Hermes tool-call hygiene)
+Catalog validation, consecutive-call de-dup, the corrective cap, the thinking nudge, no-tool-text-ends-turn,
+and `_final_emit` are the loop-level guardrails. Component/tool errors surface **as corrective tool results**
+(`{_success: False, _error, _message}`), not exceptions — PEX reads them and retries.
+
+### The system prompt
+Built once per session and frozen:
+- **Tier 1 — stable:** persona, the 7-intent taxonomy, tool policy, loop discipline.
+- **Tier 2 — context:** the workflow recipe, the flow catalog grouped by intent, the outline levels.
+- **Tier 3 — volatile:** the L2 user-preferences snapshot and the session line.
+
+---
+
+## Workflow Planning / Sub-agent Routing
+
+Workflow Planning (equivalently, Sub-agent Routing) is the **activity PEX's LLM performs** to decide which
+sub-agents to run, handle **fallbacks** and **stack-ons** (including contemplation and re-routing), and track
+how far through a complex request the agent is. The flows themselves are stored in the **FlowStack** data
+structure (code: `flow_stack.py`) — see [Workflow Planner](../components/workflow_planner.md) for the storage
+model, the depth-16 bound, and the contiguous-active-flows rule.
+
+**Multiple active flows can run in parallel** when their branches are independent; the stack is bounded to
+prevent unbounded branching. Each activated sub-agent gets an **isolated context**, distinct from the central
+PEX loop.
+
+---
+
+## Policies (run via `activate_flow`)
+
+`activate_flow(flow_name)` promotes the top-of-stack pending flow to active and runs its policy as a
+**sub-agent**. It stages the flow (live-stack
+hit, else reload from the state file, else `stackon`), re-attaches the security and artifact checks, runs
+the per-intent policy, and on completion writes a `{flow, summary, metadata}` **completion record** to the
+scratchpad and returns it. A non-completed run returns the flow status plus any pending clarification.
+Grounding comes from the state file's grounding block; **all domain writes happen here**.
+
+Each policy is defined by three things:
+
+- **Instructions** — the per-flow skill prompt + starter.
+- **Guardrails** — the pre-hook `check()` and post-hook `verify()` invariants below.
+- **Verification criteria** — per-flow success checks beyond the closed violation set; deliberately a place to
+  grow much more robust.
+
+### Policy organization
+**Net five policy files per domain.** Converse is **one** sub-agent — a single `converse` policy handles all
+its flows, not one per flow. The four domain intents (e.g., Hugo: `research`, `draft`, `revise`, `publish`)
+keep **per-flow** sub-agents, one policy file each. **Plan has no policy** — the Workflow Planner decomposes
+and sequences it directly (see [Plan policy](#plan-policy) below). **Clarify has no policy** — it is an
+NLU-only label, never a flow or sub-agent. Flows within a file are domain-specific even when structurally
+similar across domains.
+
+### Flows are agentic; deterministic operations are tools
+Every flow is an **agentic sub-agent** — it reasons over a skill prompt and selects from its tools. There is
+no deterministic-flow path: a purely deterministic operation (a calculator, a formatter, a single derivable
+API call) is a **tool**, not a flow. A flow's skill lives at `backend/prompts/pex/skills/<flow>.md` with a
+starter at `.../starters/<flow>.py`; the policy calls `llm_execute`, which runs the skill's tool loop and
+returns `(text, tool_log)`, then reads the trajectory to verify persistence and build the artifact. The skill
+owns persistence — the policy never double-writes behind it.
+
+### Sub-agent toolset
+An activated sub-agent gets `flow.tools` (its domain tools) plus a fixed set of cross-module tools. It
+**cannot activate another flow** — there is no fourth level; it stacks on instead, which re-surfaces at the
+PEX layer. A stacked-on flow is **re-activated from scratch** on a later round — there is no suspended
+coroutine; all cross-invocation state travels through the [scratchpad](../components/session_scratchpad.md).
+
+**Talk to [NLU](nlu.md) (the Heart):**
+- `append_to_scratchpad` — append a finding; this **triggers NLU to pay attention**, and is also how
+  sub-agents and the PEX orchestrator communicate (paired with `read_from_scratchpad`).
+- `understand` — read the Dialogue State; returns a serialized dict (flow name, intent, confidence, slots,
+  grounding, and other relevant fields).
+- `handle_ambiguity` — operate the Ambiguity Handler via its four methods: `declare` (record an ambiguity,
+  level + observation + metadata), `present` (is there an unresolved ambiguity?), `ask` (generate the
+  clarification text), `resolve` (clear it once answered).
+
+**Talk to [MEM](mem.md) (the Head):**
+- `recap` — trigger the Context Coordinator skill (L1 session events).
+- `recall` — trigger the User Preferences skill (L2 account defaults).
+- `retrieve` — trigger the Business Context skill (L3), including KB + vector-DB retrieval.
+- `store_preference(content, key=None)` — write a user preference to L2 (explicit "remember X" or onboarding/config).
+
+A sub-agent never writes the belief file and never assembles the final turn artifact alone.
+
+### Method-shape contract
+Every policy follows one skeleton with a single exit:
 
 ```python
 def <flow>_policy(self, flow, state, context, tools):
-    # 1. Guard the entity slot — partial / general use early return.
-    post_id, sec_id = self._resolve_source_ids(flow, state, tools)
-    if not flow.slots[flow.entity_slot].check_if_filled() or not post_id:
-        self.ambiguity.declare('partial', metadata={'missing_entity': 'post'})
-        return TaskArtifact(flow.name())
-
-    # 2. Branch on slot state. Most flows spend their lines here.
-    if <specific ambiguity condition>:
-        self.ambiguity.declare('specific', metadata={'missing_slot': '<name>'})
-        artifact = TaskArtifact(flow.name())
-    elif <prerequisite missing>:
-        self.flow_stack.stackon('<prereq>')
-        state.keep_going = True
-        artifact = TaskArtifact(flow.name(), thoughts='<reason>')
-    else:
-        # 3. Dispatch.
-        text, tool_log = self.llm_execute(flow, state, context, tools)
-        saved, _ = self.engineer.tool_succeeded(tool_log, '<tool_name>')
-
-        if not saved:
-            artifact = TaskArtifact(flow.name(),
-                                 metadata={'violation': 'failed_to_save'},
-                                 thoughts='<what the skill did wrong>')
-        else:
-            flow.status = 'Completed'
-            artifact = TaskArtifact(flow.name(), thoughts=text)
-            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-
-    return artifact  # single exit
+    # 1. Guard the entity slot — partial/general ambiguity returns early.
+    # 2. Branch on slot state (most lines live here): specific ambiguity,
+    #    a prerequisite stackon, or activate.
+    # 3. Dispatch via llm_execute; classify tool_log; build the artifact.
+    # 4. complete_flow(...) on success; leave Active on violation/ambiguity.
+    return artifact
 ```
 
-**Key rules:**
+Completion goes through `complete_flow(flow, state, summary, metadata)` — the single call where a policy marks
+a flow done. It sets the flow's `Completed` status (grounding-gated — an entity-grounded flow cannot complete
+while `grounding` is empty, so the check fires here) and writes the completion record.
 
-- **Single return at end.** Early returns only for `partial` / `general` ambiguity (top-level grounding failures).
-- **Slots route the flow.** First branch decision is "which slot state are we in?" — `flow.is_filled()` answers most of it.
-- **Hand-write the guard per flow.** No universal `guard_slot` helper — slot semantics vary across flows.
+### Closed violation vocabulary (8 codes)
+Cite by name; never extend without explicit approval. Specifics go in `thoughts` (prose) or `code` (raw
+payload) — never in nested-underscore metadata keys.
 
-### Failure Channels
+| Code | Fires when |
+|---|---|
+| `failed_to_save` | a persistence tool ran but produced no effect |
+| `scope_mismatch` | the flow ran at the wrong granularity |
+| `missing_reference` | a slot entity doesn't exist on the post |
+| `parse_failure` | skill output couldn't be parsed |
+| `empty_output` | skill returned nothing when prose was expected |
+| `invalid_input` | a tool rejected (or would reject) the arguments |
+| `conflict` | two slot values contradict |
+| `tool_error` | a deterministic tool returned `_success=False` |
 
-Three distinct failure modes, three distinct channels:
+### Pre-hook `check()` and post-hook `verify()`
+`check()` validates cheaply before spending tokens: active flow on top, policy registered, required slots
+filled, elective groups satisfied, tool manifest resolves, and the **Lethal Trifecta** gate (any tool with
+all three of `accesses_private_data` + `receives_untrusted_input` + `communicates_externally` forces
+`requires_approval`). `verify()` confirms the artifact is non-null, slots intact, no duplicate flows, flags
+coherent.
 
-| Failure | Channel | Frame |
-|---|---|---|
-| Tool-call failure (network, API down, deterministic tool returned `_success=False`) | Error frame | `metadata={'violation': 'tool_error', 'failed_tool': '<name>'}, code=msg` |
-| Ambiguous user intent (missing slot, unresolved entity) | `ambiguity.declare(level, observation=, metadata=)` | Empty frame; RES asks the question |
-| Skill produced malformed output | Error frame | `metadata={'violation': 'parse_failure'}, code=text` |
+### Policy hook points — the 6-hook sub-agent framework
+`check()` and `verify()` are two of **six hook points** around a policy's sub-agent run. **Only PEX needs
+the full set** — flows take **destructive** action; the NLU and MEM orchestrators get just two hooks (a
+quick check before and after their LLM loop). The six: ① **pre-LLM** (≈ `check()`), ② **pre-tool-call**,
+③ **post-tool-call**, ④ **tool-retry** (a pre-tool-call hook for retries only — ≈ `retry_tool`),
+⑤ **post-LLM**, ⑥ **verification** (≈ `verify()`). Each is an interception point for an **NLU signal** or a
+**user interrupt**.
 
-**Retry rule.** If a tool error is transient (timeout, lock), retry once via `BasePolicy.retry_tool(tools, name, params, max_attempts=2)`. Non-retryable or retry-failed → return the error artifact.
+**Signal = read from belief** (no separate channel — the Dialogue State is the single source of truth):
+each hook reads `pred_intent` (NLU writes it on the branch-3 parallel `think()`) and compares it to the
+**active flow's intent** — **differs ⇒ medium** severity, **aligns ⇒ low**. A **user interrupt** is
+**high** (its channel is **TODO**). Severity → **stop** (mid-task; high) | **go on** (low) | reconsider
+(medium — bespoke per situation).
 
-**Never declare ambiguity for tool failures.** Tool-down is not a question for the user. Conflating channels hides root cause.
-
-### Step 1 — Slot Review
-
-NLU has already grounded entity, slot, and intent before the policy runs. The policy does NOT call `read_metadata` or `find_posts` to re-ground — it uses what's in `flow.slots` and the resolved-context dict.
-
-If a required slot is missing after NLU's slot-filling phase, declare `specific` ambiguity and return — do not invoke the skill.
-
-For optional slots with a defensible default, commit the default at policy entry and proceed:
-
-```python
-if not flow.slots['<optional>'].check_if_filled():
-    flow.fill_slot_values({'<optional>': <default>})
+```
+PEX picks a domain intent → its 1:1 default flow → activate → policy spins up a sub-agent
+   ├─① pre-LLM hook ............ before the sub-agent starts
+   │      ▼  sub-agent LLM loop:
+   │      ├─② pre-tool-call hook ...... before a tool call   (④ tool-retry = pre-tool-call, retries only)
+   │      ├─ [tool executes]
+   │      └─③ post-tool-call hook ..... after a tool call
+   │      ▼
+   ├─⑤ post-LLM hook ........... after the sub-agent completes
+   └─⑥ verification hook ....... end of policy, after verification
+        each hook ↯ NLU signal (read pred_intent vs active flow) / user interrupt →  STOP | GO ON
 ```
 
-### Step 2 — Tool Invocations (Agentic Flows Only)
+### Plan policy
+There is **no Plan policy** — Plan decomposition and sequencing are the **Workflow Planner's** job, not a
+sub-agent's. PEX's Workflow Planner decomposes a complex task into sub-flows rather than calling a tool. It
+generates a freeform plan (shared with the user) and a structured plan (stored on the state, not the
+scratchpad — the structure must survive); on approval it `stackon`s each sub-flow under a `plan_id`. The loop
+drives sub-flow sequencing and mid-plan replanning, reading sub-flow results from their completion records in
+the scratchpad. See [Workflow Planner § Plan Flow Lifecycle](../components/workflow_planner.md).
 
-Once required slots are filled, an agentic policy invokes the flow's skill via `llm_execute`. The skill runs in a tool-call loop (8-iteration cap) and terminates by returning `(text, tool_log)`.
+### Failure channels & recovery
+Three distinct channels — never conflated:
 
-**The skill does NOT:**
-- Modify dialogue state or flow stack directly
-- Construct the Display Frame
-- Declare ambiguity through the Ambiguity Handler
-- Call other flows or trigger re-routing
+| Failure | Channel |
+|---|---|
+| Tool-call failure (network, API, `_success=False`) | error artifact (`tool_error`); retry once if transient |
+| Ambiguous intent (missing slot, unresolved entity) | `handle_ambiguity` — PEX asks |
+| Malformed skill output | error artifact (`parse_failure`) |
 
-### Step 3 — Result Processing
+Tools return a `{_success: bool}` dict (with `_error` / `_message` on failure) — there is no
+`status` / `error_category` / `retryable` taxonomy. A tool that returns `_success=False` is **classified by
+the policy** into the closed 8-code violation vocabulary on the artifact (`tool_error`, etc.); the result
+itself carries no severity field.
 
-The policy reads `tool_log` and constructs the frame. Single exit at the bottom of the policy. Three branches:
+A **self-check / `verify()` failure** fans out across three surfaces so each consumer learns of it: (1) a
+`TaskArtifact` carrying the `violation` in its classification dict, (2) an appended **Session-Scratchpad**
+violation entry, which notifies [NLU](nlu.md), and (3) a **Context Coordinator** system-action event, which
+notifies [MEM](mem.md). This is the error channel that replaces the removed `has_issues` flag.
 
-**Success** — persistence tool succeeded:
-- Build success frame with `thoughts=text` + appropriate block (`card`, `selection`, `list`, `compare`, `toast`, etc.)
-- Set `flow.status = 'Completed'`
-- Route by intent: domain-specific intents typically attach a `card` block; Converse flows usually attach no block; Plan and Internal flows write findings to the scratchpad
-
-**Violation** — skill ran but produced an unusable result:
-- Build error artifact with the appropriate `violation` code
-- Specifics go in `thoughts` (natural language) or `code` (raw payload)
-
-**Ambiguity** — slot state requires user input:
-- `self.ambiguity.declare(level, observation=, metadata=)`
-- Return empty frame; RES asks the clarification question
-
-### Step 4 — Flow Completion
-
-After processing results:
-
-1. **Mark Completed** on success; leave Active on violation/ambiguity.
-2. **Set flags**: `keep_going` if the Agent should continue without user input (only valid inside an active Plan); `has_issues` if results are degraded.
-3. **Session scratchpad update** via `MemoryManager.write_scratchpad(flow.name(), payload)` when the flow produced findings consumers may need.
-
-### Post-Hook: `verify()`
-
-1. **Frame returned** (never `None`)
-2. **Slot values intact** — no slots inadvertently cleared
-3. **No duplicate flows** for same name in Active/Pending
-4. **Flags coherent** — `keep_going` only when an active Plan owns the next flow
+When a failure looks like *wrong flow detection*, PEX re-consults [NLU `contemplate`](nlu.md) with a narrowed
+search space; a true sibling mismatch uses the Workflow Planner's `fallback`. **Tool-down is never an ambiguity
+question for the user.**
 
 ---
 
-## Plan Policy
+## Tools and MCP
 
-The Plan policy decomposes a complex task into sub-flows rather than executing a tool directly. Each Plan flow is restricted to a specific set of related flows, narrowing scope and increasing precision.
-
-The process:
-
-1. The policy receives context history and a list of candidate flows with slots and tools.
-2. The policy generates two versions of the plan:
-   - **Freeform plan**: describes goal, steps, open questions, verification ideas — shared with the user for feedback.
-   - **Structured plan**: JSON with `description`, `sub_flows` (each with `flow_name`, `slots`, `tools`, `rationale`, `status`), `ambiguities`, `tool_calls` (lookups the plan can resolve without bothering the user), `verification` points.
-3. The freeform plan goes to the user; the structured plan is stored on the Dialogue State (NOT in the scratchpad — the structure must survive).
-4. On approval, push each sub-flow onto the stack; set `has_plan` and `keep_going`. On rejection, regenerate from step 2.
-5. On each subsequent turn, the policy checks structured plan against verification points:
-   - Sub-flow failed → set `keep_going=False`, let RES report and ask the user.
-   - Sub-flow incomplete → mark `in_progress`, store partial results in scratchpad, attempt re-planning.
-   - Sub-flow completed → write final results to scratchpad / frame, update status, keep `keep_going=True`.
-6. When all sub-flows complete, run verification one final time. If all pass, mark Completed.
-7. RES pops the plan flow and returns the final response, clearing `has_plan`.
-
-Reference: [Flow Stack § Plan Flow Lifecycle](../components/flow_stack.md), [Dialogue State](../components/dialogue_state.md), [Memory Manager § Session Scratchpad](../components/memory_manager.md), [RES § Pre-Hook](res.md)
+Tools are the deterministic action surface PEX calls — a Python function or a single-prompt LLM call, and
+sometimes just a call to an **MCP server**. This surface is where general capability lives: the read-only and
+component tools in the catalog above, called directly when no domain mutation is involved. Access is
+**two-tier**: the orchestrator loop reaches the cross-module/component tools and the read-only domain
+allowlist directly, while **mutating domain tools are flow-scoped** — callable only inside the sub-agent whose
+policy declares them. Component skills (`understand`, scratchpad, MEM) sit in both tiers. Tool design (the
+compositional dact grammar, tight schemas) lives in [Tool Smith](../utilities/tool_smith.md).
 
 ---
 
-## Recover Function
+## Task Artifact & rendering
 
-Called when a policy returns an error artifact or when post-hook detects issues.
-
-- **Input**: dialogue state, last frame, ambiguity handler, domain config
-- **Output**: recovery action for the Agent
-
-### Recovery Strategies
-
-The Agent picks one based on the situation:
-
-1. **Retry once** — for transient tool errors (`tool_error` violations classified as transient). Use `BasePolicy.retry_tool` inside the policy when feasible; the recover-level retry is a backstop.
-2. **Re-route via contemplate** — send to [NLU `contemplate()`](nlu.md) when the policy declared `partial` or `specific` ambiguity that may be the wrong flow detection. Mark current flow Invalid; best-effort slot mapping transfers compatible values to the new flow.
-3. **Escalate to user** — go to RES to ask the user for clarification. This is the terminal recovery action.
-
-### Yield-When-Stacked
-
-When a Converse intent (`endorse`, `dismiss`) pushes onto an already-active flow during a confirmation resolution turn, the Converse policy yields with an empty frame and `state.keep_going=True` rather than running its own chit-chat skill. The underlying flow's resolution turn consumes the user's accept/decline. PEX `_validate_artifact` allows empty frames when `keep_going=True` — the empty frame here is intentional, not a bug for retry to chase.
-
-### Hard-Coded Fallbacks
-
-Rare. Some policies redirect to a sibling flow when the user's intent maps elsewhere than NLU detected. Process: `flow_stack.fallback('<sibling>')` + `state.keep_going=True` + `thoughts='<why we re-routed>'`. Use only when the intent genuinely belongs elsewhere — never for skill errors (use error artifacts) or tool failures (use error artifacts).
+Each activated **sub-agent** builds its own **[Task Artifact](../components/task_artifact.md)** — origin,
+parts, blocks, thoughts. When several flows are active in one turn, PEX **curates** the sibling artifacts into
+a **single** TaskArtifact (stack order, dedup identical blocks; see
+[Task Artifact § Lifecycle](../components/task_artifact.md#artifact-lifecycle)) and hands it up to the main
+Agent. The sub-agents **propose** the blocks; curation defaults to passing them through (ordered, deduped)
+with minimal change — PEX authors blocks from scratch only as an optional summarization step for a clearer,
+more concise turn. The main Agent then sends a processed version to the user (through the webserver) and a copy to
+[MEM](mem.md) for long-term storage (through the World object). PEX composes the spoken reply directly from
+these artifacts plus the tool and sub-agent results via a **voice Skill** in its system prompt — there is no
+naturalization tool. Every model call PEX or its sub-agents make routes through the
+**[Prompt Engineer](../components/prompt_engineer.md)** (tier abstraction, caching, retry, structured-output
+parsing).

@@ -1,0 +1,167 @@
+{
+  "convo_id": "B01.C02",
+  "persona": "P: neutral + blunt",
+  "use_case": "U: brainstorm -> outline -> compose -> audit",
+  "topic": "T: Burnout & Mindfulness",
+  "title": "Burnout Looks Like Cynicism, Not Exhaustion",
+  "available_data": {},
+  "flagged": false,
+  "batch": "B01",
+  "generation": {
+    "batch": "B01",
+    "seed": 20260701,
+    "writer_model": "claude-sonnet-4-6",
+    "spec": "topic=Burnout & Mindfulness \u00b7 7 turns \u00b7 P2 neutral/blunt \u00b7 arc=straight_build \u00b7 use_case=brainstorm->outline->compose->audit \u00b7 distractor=t3(environment) \u00b7 verify=no \u00b7 flagged=no",
+    "draws": {
+      "topic": "Burnout & Mindfulness",
+      "title_source": "banked",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "blunt"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Draft",
+        "sequence": [
+          "brainstorm",
+          "outline",
+          "compose",
+          "audit"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": {
+          "turn": 3,
+          "trigger": "environment"
+        },
+        "persona_drift": null
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-sonnet-4-6",
+      "length": [
+        2,
+        2,
+        2,
+        2
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Need some angles for a burnout piece. The usual 'self-care' framing is overused.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "burnout angles"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
+      "utterance": "Here are five angles that sidestep the self-care lane: (1) cynicism as the real marker, not exhaustion, (2) how high performers hide burnout behind productivity, (3) the meeting-to-think-time ratio as a leading indicator, (4) why 'recovery' weeks don't work structurally, (5) the cost difference between preventing and recovering from burnout."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Hold on, someone walked in, one sec. [pause] The cynicism angle's the one, lay out the sections.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "cynicism as burnout marker"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Outline for 'Burnout Looks Like Cynicism, Not Exhaustion': (1) The diagnostic error: why we watch for tiredness and miss the attitude shift, (2) What cynicism actually looks like on a team, (3) The inflection point: when detachment crosses into damage, (4) Two practical signals managers can track, (5) One structural fix, not a wellness fix."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Good structure. Put it into prose.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Burnout Looks Like Cynicism, Not Exhaustion",
+          "sec": ""
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Draft is up, about 900 words. The diagnostic-error section leads with a hospital analogy that fits, and the structural-fix close avoids the usual 'take a vacation' advice."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "The middle two sections sound like a corporate memo. Run a voice pass.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Burnout Looks Like Cynicism, Not Exhaustion",
+          "sec": ""
+        },
+        "tone": "natural"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ]
+    }
+  ]
+}

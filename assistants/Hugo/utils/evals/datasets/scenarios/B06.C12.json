@@ -1,0 +1,176 @@
+{
+  "convo_id": "B06.C12",
+  "persona": "P: neutral + plain",
+  "use_case": "U: plan -> outline -> compose -> refine",
+  "topic": "T: Edison's workshop",
+  "title": "Inside Menlo Park: How Edison Ran His Invention Factory",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Need this one the whole way to a finished draft, ideally today.",
+      "labels": {
+        "intent": "Plan",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          },
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          },
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
+      },
+      "note": "Plan turn: intent Plan. The label stack IS the decomposition (outline -> compose -> refine); the agent proposes it, shares the key steps, waits for the user's go-ahead, then runs it over the next turns. Same label structure as any turn \u2014 a plan is just a turn whose stack holds more than one flow.",
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [],
+      "utterance": "Got it. I'll outline the structure, compose a full draft, then refine it. Shall I start?"
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Go ahead. Map the sections out, and let's not dawdle.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Okay, outline's done: 1) Building the invention factory 2) The team of muckers 3) A system for inventing 4) The legacy of Menlo Park."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Good call on the rest. The whole thing as a full draft now, muckers section aside.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "note": "absent-minded direction change mid-turn: user starts toward expanding a single section, then redirects to composing the whole draft; the compose flow still completes.",
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Drafted all four sections. The handoffs between them are a little choppy."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Clean up the rough seams in the draft.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "refine",
+            "dax": "{02B}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Inside Menlo Park: How Edison Ran His Invention Factory"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ]
+    }
+  ],
+  "batch": "B06",
+  "flagged": false,
+  "generation": {
+    "batch": "B06",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Edison's workshop | 7 turns | neutral + plain | arc=planning | use_case=plan -> outline -> compose -> refine | converted from P4.U6.T2",
+    "draws": {
+      "topic": "Edison's workshop",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "planning",
+      "planning": {
+        "shape": "heterogeneous",
+        "handling": "straightforward"
+      },
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "plan",
+          "outline",
+          "compose",
+          "refine"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        2,
+        1
+      ],
+      "flagged": false
+    }
+  }
+}

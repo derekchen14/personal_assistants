@@ -1,0 +1,175 @@
+{
+  "convo_id": "B02.C12",
+  "persona": "P: casual + frustrated + hedged",
+  "use_case": "U: outline -> compose -> rework -> audit",
+  "topic": "T: Adult Language Learning",
+  "title": "Why Speaking Beats Studying at Every Stage",
+  "available_data": {},
+  "flagged": false,
+  "batch": "B02",
+  "generation": {
+    "batch": "B02",
+    "seed": 20260701,
+    "writer_model": "claude-sonnet-4-6",
+    "spec": "topic=Adult Language Learning \u00b7 7 turns \u00b7 casual/frustrated/hedged \u00b7 arc=redirect \u00b7 use_case=outline->compose->rework->audit \u00b7 noise=none \u00b7 distractor=none \u00b7 persona_drift=t5(skeptical) \u00b7 verify=no \u00b7 flagged=no",
+    "draws": {
+      "topic": "Adult Language Learning",
+      "title_source": "coined",
+      "turn_count": 7,
+      "persona": {
+        "formality": "casual",
+        "emotion": "frustrated",
+        "directness": "hedged"
+      },
+      "arc": "redirect",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "Draft",
+        "sequence": [
+          "outline",
+          "compose",
+          "rework",
+          "audit"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": {
+          "turn": 5,
+          "to": "skeptical"
+        }
+      },
+      "verify": false,
+      "flagged": false,
+      "writer_model": "claude-sonnet-4-6",
+      "length": [
+        2,
+        1,
+        3,
+        1
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "ok so the speaking-beats-studying post, maybe sketch out the sections? not sure where to start tbh",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Why Speaking Beats Studying at Every Stage"
+        },
+        "sections": [
+          "intro",
+          "the input myth",
+          "why output works",
+          "what to do instead"
+        ]
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Here's a draft outline: 1) Why people keep studying instead of speaking 2) The input myth 3) What output practice actually does 4) A simple starting routine."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "yeah that looks ok, go ahead and draft it",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Why Speaking Beats Studying at Every Stage"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Draft's done. The input myth section landed well but the closing routine feels prescriptive, like a listicle rather than advice."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "actually wait, the structure's the real issue here. the myth section should come first, before you even explain why studying doesn't work. can we rearrange that?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "rework",
+            "dax": "{006}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Why Speaking Beats Studying at Every Stage",
+          "sec": "The input myth"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "revise_content"
+      ],
+      "utterance": "Restructured it, myth section now opens the piece and the why-studying-fails argument builds from there. The routine at the end reads less listicle-y now too."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "does this even sound like me or does it still feel kind of generic",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Why Speaking Beats Studying at Every Stage"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ]
+    }
+  ]
+}

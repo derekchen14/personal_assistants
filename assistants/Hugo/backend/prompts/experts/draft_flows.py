@@ -1,8 +1,7 @@
 INSTRUCTIONS = (
     'Pick the flow within the Draft intent set (and its edge flows into adjacent intents) that '
     'most specifically matches the user\'s goal. Draft covers brainstorming topic ideas, generating '
-    'outlines, creating new posts, writing or expanding sections, adding structured elements, '
-    'citing sources, and refining in-progress drafts.'
+    'outlines, composing prose from an outline, and refining an in-progress outline or its sections.'
 )
 
 RULES = ''
@@ -32,33 +31,22 @@ User: "create an outline for a post about remote work"
 <positive_example>
 ## Conversation History
 
-User: "start a new post called 10 Tips for Better Sleep"
+User: "turn this outline into a full draft"
 ## Output
 
 ```json
-{"reasoning": "Creating a new post.", "flow_name": "create", "confidence": 0.95}
+{"reasoning": "Composing prose from the outline.", "flow_name": "compose", "confidence": 0.90}
 ```
 </positive_example>
 
 <positive_example>
 ## Conversation History
 
-User: "expand the introduction section"
+User: "reorder the sections and tweak the headings"
 ## Output
 
 ```json
-{"reasoning": "Expanding content from outline.", "flow_name": "expand", "confidence": 0.85}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "write the conclusion"
-## Output
-
-```json
-{"reasoning": "Writing a specific section.", "flow_name": "write", "confidence": 0.90}
+{"reasoning": "Refining the outline structure.", "flow_name": "refine", "confidence": 0.90}
 ```
 </positive_example>'''
 

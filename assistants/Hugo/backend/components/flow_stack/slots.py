@@ -497,6 +497,11 @@ class RangeSlot(BaseSlot):
     self.filled = has_duration or has_range
     return self.filled
 
+  def to_dict(self):
+    """Serialize as the same kwargs shape add_one consumes, so the value round-trips
+    through the state file (the inherited string form dropped the range entirely)."""
+    return self.get_details()
+
   def get_details(self):
     return {
       'start': self.range['start'], 'stop': self.range['stop'],
@@ -562,6 +567,12 @@ class ImageSlot(BaseSlot):
     if position >= 0:
       self.position = position
     self.check_if_filled()
+
+  def to_dict(self):
+    """Serialize as the same kwargs shape assign_one consumes, so the value round-trips
+    through the state file (the inherited form kept only the src string)."""
+    return {'img_type': self.image_type, 'src': self.value,
+            'alt': self.image_desc, 'position': self.position}
 
   def json_schema(self):
     return {

@@ -4,12 +4,10 @@ class BaseFlow(object):
   def __init__(self):
     self.slots = {}
     self.tools = []
-    self.interjected = False
     self.is_newborn = True
     self.is_uncertain = False
 
-    self.fall_back = None
-    self.stage = 'default'    # default, discovery, direct, dispatch, delegation, done
+    self.stage = 'default'    # default, discovery, direct, delegation
     self.entity_slot = 'source'
 
     self.flow_id: str = ''
@@ -43,7 +41,7 @@ class BaseFlow(object):
     return ' '.join(parts)
 
   def is_complete(self):
-    return self.status == 'completed'
+    return self.status == 'Completed'
 
   def is_filled(self):
     for slot in self.slots.values():
@@ -85,7 +83,7 @@ class BaseFlow(object):
     return {
       'flow_id': self.flow_id, 'flow_name': self.flow_type,
       'dax': self.dax, 'intent': self.parent_type,
-      'status': self.status, 'slots': self.slot_values_dict(),
+      'status': self.status, 'stage': self.stage, 'slots': self.slot_values_dict(),
       'plan_id': self.plan_id, 'turn_ids': self.turn_ids,
     }
 
@@ -107,15 +105,6 @@ class BaseFlow(object):
 
   def match_action(self, action_name):
     return action_name.startswith(self.parent_type.upper())
-
-
-class InternalParentFlow(BaseFlow):
-  def __init__(self):
-    super().__init__()
-    self.parent_type = 'Internal'
-    self.interjected = True
-    self.origin = ''
-    self.entity_slot = None
 
 
 # ── Domain Parents ───────────────────────────────────────────────────────
@@ -149,11 +138,3 @@ class ConverseParentFlow(BaseFlow):
     super().__init__()
     self.parent_type = 'Converse'
     self.entity_slot = 'topic'
-
-
-class PlanParentFlow(BaseFlow):
-  def __init__(self):
-    super().__init__()
-    self.parent_type = 'Plan'
-    self.entity_slot = 'topic'
-    self.structured_plan: dict = {}

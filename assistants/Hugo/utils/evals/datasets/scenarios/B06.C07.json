@@ -1,0 +1,152 @@
+{
+  "convo_id": "B06.C07",
+  "persona": "P: neutral + plain",
+  "use_case": "U: chat -> brainstorm -> outline -> chat",
+  "topic": "T: Traces",
+  "title": "Sampling Strategies for Distributed Tracing",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Distributed tracing, does it still have legs or is it played out?",
+      "labels": {
+        "intent": "Converse",
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
+      },
+      "slots": {},
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [],
+      "utterance": "The basics are well-covered, but there's room for a sharper take."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Toss me a handful of angles.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "brainstorm",
+            "dax": "{39D}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "distributed tracing, fresh angles beyond the basics"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "brainstorm_ideas"
+      ],
+      "utterance": "Four angles: 1) What tracing buys you over logs 2) Context propagation across services 3) Sampling: keeping the signal, cutting the cost 4) Tracing serverless functions."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Not sold on context propagation here, sampling feels like the stronger angle.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "note": "P4 changes direction mid-turn (context propagation -> sampling); the outline flow still completes on the final choice.",
+      "slots": {
+        "source": {
+          "post": "Sampling Strategies for Distributed Tracing"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Outline for the sampling post: 1) Why you can't keep every trace 2) Head vs tail sampling 3) Rules that preserve the interesting traces 4) Tuning your sample rate."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "That's the one. I'm good from here.",
+      "labels": {
+        "intent": "Converse",
+        "stack": [
+          {
+            "flow": "chat",
+            "dax": "{000}"
+          }
+        ]
+      },
+      "slots": {},
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": []
+    }
+  ],
+  "batch": "B06",
+  "flagged": false,
+  "generation": {
+    "batch": "B06",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Traces | 7 turns | neutral + plain | arc=redirect | use_case=chat -> brainstorm -> outline -> chat | converted from P4.U4.T1",
+    "draws": {
+      "topic": "Traces",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "redirect",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "chat",
+          "brainstorm",
+          "outline",
+          "chat"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

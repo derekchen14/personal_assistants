@@ -1,0 +1,177 @@
+{
+  "convo_id": "B06.C06",
+  "persona": "P: neutral + plain",
+  "use_case": "U: find -> outline -> write -> release",
+  "topic": "T: Bringing Electricity to Homes",
+  "title": "From Power Plant to Living Room",
+  "available_data": {
+    "notes": [
+      "The first central power stations",
+      "Wiring the early household"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "Anything in my early home-electricity notes worth starting from?",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "early home electricity"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
+      "utterance": "Found 'The first central power stations' and 'Wiring the early household'."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Map out 'How Edison Built His First Power Station'. Actually, too narrow. Go broader with 'From Power Plant to Living Room': generation, the grid, wiring the house, the first appliances.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "note": "direction change. User starts on a narrow Edison/power-station title, then redirects mid-utterance to the broader end-to-end story; the outline flow still completes on the final title.",
+      "slots": {
+        "source": {
+          "post": "From Power Plant to Living Room"
+        },
+        "sections": [
+          "generating the power",
+          "the grid",
+          "wiring the house",
+          "the first appliances"
+        ]
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Outline for 'From Power Plant to Living Room': 1) Generating the power 2) Carrying it on the grid 3) Wiring the house 4) The first home appliances."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Two things for the grid section: the substations and the lines that carried power across town.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "From Power Plant to Living Room",
+          "sec": "Carrying it on the grid"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "Wrote it. Walked through transmission lines, substations, and stepping voltage down for neighborhoods."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Good to go. Onto the history blog now.",
+      "labels": {
+        "intent": "Publish",
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "From Power Plant to Living Room"
+        },
+        "channel": "history blog"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "release_post"
+      ]
+    }
+  ],
+  "batch": "B06",
+  "flagged": false,
+  "generation": {
+    "batch": "B06",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Bringing Electricity to Homes | 7 turns | neutral + plain | arc=redirect | use_case=find -> outline -> write -> release | converted from P4.U3.T2",
+    "draws": {
+      "topic": "Bringing Electricity to Homes",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "redirect",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "find",
+          "outline",
+          "write",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        3,
+        2,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

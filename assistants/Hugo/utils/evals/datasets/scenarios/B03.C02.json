@@ -1,0 +1,172 @@
+{
+  "convo_id": "B03.C02",
+  "persona": "P: neutral + plain",
+  "use_case": "U: outline -> compose -> write -> audit",
+  "topic": "T: Edison",
+  "title": "Thomas Edison: The Wizard of Menlo Park",
+  "available_data": {},
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "New Edison post, an intro then his early years, his big inventions, his legacy.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Thomas Edison: The Wizard of Menlo Park"
+        },
+        "sections": [
+          "intro",
+          "early years",
+          "the big inventions",
+          "legacy"
+        ]
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Outline ready: 1) The man who lit up the world 2) From newsboy to inventor 3) The big inventions: phonograph, lightbulb, and more 4) Edison's lasting legacy."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Looks right. Roll those sections into full prose.",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "compose",
+            "dax": "{3AD}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Thomas Edison: The Wizard of Menlo Park"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "convert_to_prose"
+      ],
+      "utterance": "Drafted all four sections. The inventions one is a little list-heavy and could use more story."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "One addition for the big inventions section: how he perfected the lightbulb.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Thomas Edison: The Wizard of Menlo Park",
+          "sec": "The big inventions"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "Expanded it with the lightbulb story: the thousands of filament experiments and the breakthrough."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Reads well. Does it flow start to finish?",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "audit",
+            "dax": "{13A}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "Thomas Edison: The Wizard of Menlo Park"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "editor_review"
+      ]
+    }
+  ],
+  "batch": "B03",
+  "flagged": false,
+  "generation": {
+    "batch": "B03",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Edison | 7 turns | neutral + plain | arc=straight_build | use_case=outline -> compose -> write -> audit | converted from P1.U1.T2",
+    "draws": {
+      "topic": "Edison",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "plain"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "outline",
+          "compose",
+          "write",
+          "audit"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        2,
+        2,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

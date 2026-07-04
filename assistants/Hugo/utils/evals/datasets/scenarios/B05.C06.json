@@ -1,0 +1,170 @@
+{
+  "convo_id": "B05.C06",
+  "persona": "P: neutral + hedged",
+  "use_case": "U: find -> outline -> write -> release",
+  "topic": "T: Bringing Electricity to Homes",
+  "title": "When the Lights Came On at Home",
+  "available_data": {
+    "notes": [
+      "The first central power stations",
+      "Wiring the early household"
+    ]
+  },
+  "turns": [
+    {
+      "turn_count": 1,
+      "role": "user",
+      "utterance": "A post on when houses first got electricity, maybe one to pull from my notes and line up next.",
+      "labels": {
+        "intent": "Research",
+        "stack": [
+          {
+            "flow": "find",
+            "dax": "{001}"
+          }
+        ]
+      },
+      "slots": {
+        "query": "houses getting electricity"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 2,
+      "role": "agent",
+      "actions": [
+        "find_posts"
+      ],
+      "utterance": "I found 2 notes: 'The first central power stations' and 'Wiring the early household'. A story about everyday homes getting wired could pull those together."
+    },
+    {
+      "turn_count": 3,
+      "role": "user",
+      "utterance": "Three or four sections, but would a curious newcomer follow them?",
+      "labels": {
+        "intent": "Draft",
+        "stack": [
+          {
+            "flow": "outline",
+            "dax": "{002}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "When the Lights Came On at Home"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 4,
+      "role": "agent",
+      "actions": [
+        "generate_outline"
+      ],
+      "utterance": "Here's a draft outline for 'When the Lights Came On at Home': 1) Living by candle and gas 2) The first neighborhood grids 3) Getting your house connected 4) How daily life changed."
+    },
+    {
+      "turn_count": 5,
+      "role": "user",
+      "utterance": "Whichever section you'd open with, that one fleshed out.",
+      "labels": {
+        "intent": "Revise",
+        "stack": [
+          {
+            "flow": "write",
+            "dax": "{003}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "When the Lights Came On at Home",
+          "sec": "Living by candle and gas"
+        }
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 6,
+      "role": "agent",
+      "actions": [
+        "write_text"
+      ],
+      "utterance": "I wrote 'Living by candle and gas'. It sets the scene of a home before electricity, with the smells and hazards of gaslight."
+    },
+    {
+      "turn_count": 7,
+      "role": "user",
+      "utterance": "Really pleased with it. Out to the history blog, yes?",
+      "labels": {
+        "intent": "Publish",
+        "stack": [
+          {
+            "flow": "release",
+            "dax": "{004}"
+          }
+        ]
+      },
+      "slots": {
+        "source": {
+          "post": "When the Lights Came On at Home"
+        },
+        "channel": "history blog"
+      },
+      "ambiguity": null
+    },
+    {
+      "turn_count": 8,
+      "role": "agent",
+      "actions": [
+        "release_post"
+      ]
+    }
+  ],
+  "batch": "B05",
+  "flagged": false,
+  "generation": {
+    "batch": "B05",
+    "seed": null,
+    "writer_model": "seed-grid",
+    "spec": "topic=Bringing Electricity to Homes | 7 turns | neutral + hedged | arc=straight_build | use_case=find -> outline -> write -> release | converted from P3.U3.T2",
+    "draws": {
+      "topic": "Bringing Electricity to Homes",
+      "title_source": "grid",
+      "turn_count": 7,
+      "persona": {
+        "formality": "neutral",
+        "emotion": "neutral",
+        "directness": "hedged"
+      },
+      "arc": "straight_build",
+      "planning": null,
+      "ambiguity": null,
+      "use_case": {
+        "phase_lead": "mixed",
+        "sequence": [
+          "find",
+          "outline",
+          "write",
+          "release"
+        ]
+      },
+      "sprinkles": {
+        "noise": null,
+        "distractor": null,
+        "persona_drift": null
+      },
+      "verify": false,
+      "writer_model": "seed-grid",
+      "length": [
+        1,
+        1,
+        1,
+        2
+      ],
+      "flagged": false
+    }
+  }
+}

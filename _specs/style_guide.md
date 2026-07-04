@@ -102,6 +102,18 @@ Order: `stdlib` → `third-party` → `local`, alphabetized within each group.
 - No inheritance deeper than **3 levels**
 - Global state is acceptable if **read-only**, but should be avoided when possible
 
+## Choosing Quantities
+
+When deciding **"how many"** of something — exemplars, eval cases per flow, anchor cases, ensemble voters,
+retries, slot options, batch sizes, depth limits, flows per intent — **default to a power of 2**
+(2, 4, 8, 16, 32, 64). Pick the smallest power of 2 that meets the need; when it doesn't, step up by doubling.
+
+- Powers of 2 keep quantities comparable across the system and make "halve it / double it" the natural
+  adjustment when tuning.
+- This is a default, not a law — override it when a hard external constraint dictates otherwise, but say so.
+- Existing examples: exemplar counts (~32 for high-cardinality detection, ~16 for contemplation),
+  CategorySlot max options (8), plan/flow-stack depth (8 → 16), DACT primitives (16).
+
 ## Logging
 
 Use Python's `logging` module with levels (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`). No bare `print()` statements in production code.
@@ -129,10 +141,12 @@ Grounding data goes first because Anthropic measured a 30% quality improvement w
 
 Skill templates (see `tool_smith.md`) provide slots 2-6. The Prompt Engineer injects slot 1 (grounding data) and slot 8 (final request) at assembly time. Slot 7 (closing reminder) is appended by the Prompt Engineer after the template's exemplars.
 
+**Applies to sub-agent and tool prompts, not to module skills.** This 8-slot format + JSON return is for single-shot **sub-agent and tool prompts** — the calls that return a JSON result. **Module skills** (the how-to guides the NLU / PEX / MEM orchestrators follow — e.g. the Workflow Planner, `explain`, `recap`/`recall`/`retrieve`) are different: a skill **returns nothing**; it is guidance injected into the orchestrator's context, not assembled into this format.
+
 ### Output Rules
 
-- All prompts return a parseable JSON object — no plain text, no markdown, no exceptions
-- This includes RES response generation: even user-facing responses are wrapped in a JSON envelope
+- **Sub-agent and tool prompts** return a parseable JSON object — no plain text, no markdown. **Module skills** return nothing (guidance only)
+- PEX composes the user-facing reply directly via a voice skill in its system prompt — not via a JSON-returning prompt
 - Classification and decision prompts must include a `"thought"` key before the answer key for chain-of-thought reasoning
 - After the JSON output, no further text or explanations
 

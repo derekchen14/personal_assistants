@@ -1,46 +1,13 @@
 INSTRUCTIONS = (
     'Pick the flow within the Research intent set (and its edge flows into adjacent intents) that '
     'most specifically matches the user\'s goal. Research covers browsing topics and saved ideas, '
-    'searching past posts, checking post metadata and channel status, inspecting numeric content '
-    'metrics, explaining writing concepts, finding related content, and comparing/diffing posts.'
+    'finding and listing posts, summarizing a draft\'s content, and comparing posts (including '
+    'version-to-version comparisons of a single post).'
 )
 
 RULES = ''
 
 EXAMPLES = '''<positive_example>
-## Conversation History
-
-User: "show me my current drafts"
-## Output
-
-```json
-{"reasoning": "Checking draft status.", "flow_name": "check", "confidence": 0.95}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "search for posts about machine learning"
-## Output
-
-```json
-{"reasoning": "Searching posts by keyword.", "flow_name": "search", "confidence": 0.95}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "what channels do I have?"
-## Output
-
-```json
-{"reasoning": "Viewing configured channels.", "flow_name": "survey", "confidence": 0.90}
-```
-</positive_example>
-
-<positive_example>
 ## Conversation History
 
 User: "browse topic ideas"
@@ -54,22 +21,33 @@ User: "browse topic ideas"
 <positive_example>
 ## Conversation History
 
-User: "how do I write a good hook?"
+User: "find my posts about machine learning"
 ## Output
 
 ```json
-{"reasoning": "Asking about a writing concept.", "flow_name": "explain", "confidence": 0.90}
+{"reasoning": "Finding and listing posts by keyword.", "flow_name": "find", "confidence": 0.95}
 ```
 </positive_example>
 
 <positive_example>
 ## Conversation History
 
-User: "find content related to productivity"
+User: "give me a quick summary of my remote-work draft"
 ## Output
 
 ```json
-{"reasoning": "Finding related content.", "flow_name": "find", "confidence": 0.85}
+{"reasoning": "Summarizing a draft's content.", "flow_name": "summarize", "confidence": 0.90}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "how do these two posts compare structurally?"
+## Output
+
+```json
+{"reasoning": "Comparing structure across posts.", "flow_name": "compare", "confidence": 0.90}
 ```
 </positive_example>'''
 

@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Assistant Factory — Theory of Mind</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper:    #f5f7fa;
+    --surface:  #ffffff;
+    --band:     #eaeef5;
+    --ink:      #0b1220;
+    --mute:     #5b6572;
+    --line:     #d8dee8;
+    --accent:   #2f5fff;
+    --accent-2: #1e3fc9;
+    --tint:     #e6edff;
+    --warm:     #fff7ed;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'ss01', 'cv11';
+    -webkit-font-smoothing: antialiased;
+  }
+  .serif   { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
+  .mono    { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .accent  { color: var(--accent); }
+  .bg-accent { background: var(--accent); color: #fff; }
+  .bg-band   { background: var(--band); }
+  .bg-surface{ background: var(--surface); }
+  .bg-tint   { background: var(--tint); }
+  .ring-line { box-shadow: inset 0 0 0 1px var(--line); }
+  .border-line { border-color: var(--line); }
+  .border-ink  { border-color: var(--ink); }
+
+  .kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--mute);
+  }
+  .mark {
+    background-image: linear-gradient(120deg, rgba(47,95,255,.14) 0%, rgba(47,95,255,.14) 100%);
+    background-size: 100% 42%;
+    background-repeat: no-repeat;
+    background-position: 0 86%;
+    padding: 0 2px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; background: var(--surface); color: var(--ink);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); display:inline-block; }
+
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: var(--ink); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: 'Inter', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: -0.02em;
+  }
+  .brand-mark::after {
+    content: ""; width: 5px; height: 5px; border-radius: 999px; background: var(--accent);
+    margin-left: 3px; align-self: flex-end; margin-bottom: 4px;
+  }
+
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+
+  .slash  { color: var(--accent); }
+  .ghost  { color: var(--mute); }
+
+  /* Three-models card */
+  .model-card { position: relative; overflow: hidden; }
+  .model-card::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(120% 120% at 0% 0%, rgba(47,95,255,.08), transparent 60%);
+    pointer-events: none;
+  }
+  .pull {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400; font-style: italic; letter-spacing: -0.015em;
+  }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- Masthead ------------------------------------------------------------- -->
+<header class="border-b border-line bg-paper">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+    <a href="#top" class="flex items-center gap-3">
+      <span class="brand-mark">AF</span>
+      <span class="font-extrabold tracking-tight text-lg">Assistant&nbsp;Factory</span>
+    </a>
+    <nav class="hidden md:flex gap-6 text-sm font-medium">
+      <a href="#why"     class="hover:text-[color:var(--accent)]">Why this</a>
+      <a href="#models"  class="hover:text-[color:var(--accent)]">The three models</a>
+      <a href="#unlock"  class="hover:text-[color:var(--accent)]">What it unlocks</a>
+      <a href="#line"    class="hover:text-[color:var(--accent)]">The line</a>
+      <a href="#turn"    class="hover:text-[color:var(--accent)]">One turn</a>
+    </nav>
+  </div>
+</header>
+
+<!-- Hero ----------------------------------------------------------------- -->
+<section id="top" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 pt-20 pb-24 md:pt-28 md:pb-32 grid md:grid-cols-12 gap-10 items-end">
+    <div class="md:col-span-8">
+      <div class="kicker mb-5 flex items-center gap-3">
+        <span class="dot"></span> Assistant Factory &middot; The Thesis
+      </div>
+      <h1 class="font-extrabold tracking-tight leading-[0.98] text-5xl md:text-7xl">
+        Most agents read your message.
+        <br/>
+        Ours <span class="serif accent">read the room.</span>
+      </h1>
+      <p class="mt-8 text-xl md:text-2xl max-w-2xl leading-snug">
+        Every other agent SDK treats your prompt as a function input. We build assistants
+        with a <span class="mark">theory of mind</span> — a model of who you are,
+        what you really asked for, and how you actually work.
+      </p>
+      <p class="mt-5 text-lg max-w-2xl leading-relaxed text-[color:var(--mute)]">
+        That sounds philosophical. It isn't. It's the difference between an agent
+        that quietly resets every turn, and one that picks up where you left off
+        five minutes ago, three sessions ago, or last week.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href="#models" class="bg-accent px-5 py-2.5 rounded-full text-sm font-semibold hover:opacity-90">See the three models &rarr;</a>
+        <a href="#turn"   class="px-5 py-2.5 rounded-full text-sm font-semibold border border-ink hover:bg-ink hover:text-white transition">Watch one turn</a>
+      </div>
+    </div>
+    <div class="md:col-span-4 text-sm leading-relaxed bg-surface ring-line rounded-lg p-6">
+      <div class="kicker mb-2">In one sentence</div>
+      <p class="pull text-[17px]">
+        "Our assistants have a World Model which enables Theory of Mind, tracked
+        through a dedicated dialogue state and explicitly declared ambiguity."
+      </p>
+      <p class="mt-4 text-[color:var(--mute)]">
+        Scroll down below to see more details of what that means.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Why this --------------------------------------------------------------- -->
+<section id="why" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-8">
+      <div>
+        <div class="kicker">§ 01</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          Why <span class="serif">another</span> agent framework?
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot"></span> Motivation</div>
+    </div>
+
+    <div class="grid md:grid-cols-12 gap-10">
+      <div class="md:col-span-7">
+        <p class="text-lg leading-relaxed">
+          Twenty SDKs are competing on the same axis: faster tool calls, longer
+          context, fancier reflection loops. They are all variations of the same
+          loop. <span class="serif">Read input. Pick a tool. Run. Repeat.</span>
+        </p>
+        <p class="text-lg leading-relaxed mt-5">
+          That loop has a ceiling. It can't tell when it's wrong, because it has
+          no model of what "right" would look like. Every turn is a guess in a
+          vacuum. Once the user says something even slightly ambiguous, the
+          ceiling gets very low, very fast.
+        </p>
+        <p class="text-lg leading-relaxed mt-5">
+          We took a different bet. The thing missing from "agents" isn't more
+          tools or smarter prompts — it's a <span class="mark">model of the
+          person they're talking to</span>, the conversation they're in, and the
+          domain they're working in. That's the unlock. We call it Theory of
+          Mind. Most other frameworks don't have it because they didn't think
+          they needed it.
+        </p>
+      </div>
+      <div class="md:col-span-5">
+        <div class="bg-surface ring-line rounded-lg p-6">
+          <div class="kicker mb-3">What "theory of mind" means here</div>
+          <p class="text-[15px] leading-relaxed">
+            In cognitive science, theory of mind is your ability to model what
+            <em>another</em> mind knows, wants, and is paying attention to. It's
+            why you don't repeat the same joke to the same person twice.
+          </p>
+          <p class="text-[15px] leading-relaxed mt-3">
+            For an agent, it's the same idea, made structural: an explicit model
+            of you that survives between turns, between sessions, and across
+            tasks. Not a context window. A model.
+          </p>
+        </div>
+        <div class="bg-tint ring-line rounded-lg p-6 mt-4">
+          <div class="kicker accent">If you remember one thing</div>
+          <p class="pull text-[19px] mt-2 leading-snug">
+            Most agents have working memory.<br/>Ours have a <span class="not-italic font-extrabold accent">model of you.</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Three models -------------------------------------------------------- -->
+<section id="models" class="border-b border-line bg-band">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 02</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          Three models. <span class="serif">One mind.</span>
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot"></span> The pillars</div>
+    </div>
+
+    <p class="text-lg max-w-3xl leading-relaxed">
+      A theory of mind is a triangulation. Lose any of the three corners and the
+      assistant becomes a chatbot again.
+    </p>
+
+    <div class="mt-12 grid md:grid-cols-3 gap-5">
+
+      <div class="bg-surface ring-line rounded-lg p-7 model-card">
+        <div class="font-extrabold text-6xl accent leading-none tracking-tight">A</div>
+        <div class="kicker mt-4">A model of you</div>
+        <h3 class="font-extrabold text-2xl tracking-tight mt-1">Who you are. What you've shipped. How you write.</h3>
+        <p class="mt-3 text-[15px] leading-relaxed">
+          Preferences, prior work, the way you phrase things. Stored across
+          sessions, retrieved when relevant. So when you say "the usual tone,"
+          it knows what you mean.
+        </p>
+        <p class="mt-3 text-[13px] leading-relaxed text-[color:var(--mute)]">
+          Internally: a layered memory — session scratchpad, account-level
+          preferences, and slow-moving context about your team and your work.
+        </p>
+      </div>
+
+      <div class="bg-surface ring-line rounded-lg p-7 model-card">
+        <div class="font-extrabold text-6xl accent leading-none tracking-tight">B</div>
+        <div class="kicker mt-4">A model of the conversation</div>
+        <h3 class="font-extrabold text-2xl tracking-tight mt-1">What we agreed on. What's still unresolved.</h3>
+        <p class="mt-3 text-[15px] leading-relaxed">
+          A live, structured representation of the current goal, the entities in
+          play, and the questions still open. The agent doesn't reread the
+          transcript every turn — it <span class="serif">resumes</span> from
+          where the model says it is.
+        </p>
+        <p class="mt-3 text-[13px] leading-relaxed text-[color:var(--mute)]">
+          Internally: an explicit dialogue state and a coordinator that turns
+          messy chat history into structure.
+        </p>
+      </div>
+
+      <div class="bg-surface ring-line rounded-lg p-7 model-card">
+        <div class="font-extrabold text-6xl accent leading-none tracking-tight">C</div>
+        <div class="kicker mt-4">A model of your domain</div>
+        <h3 class="font-extrabold text-2xl tracking-tight mt-1">A post, a section, a channel are real things — not strings.</h3>
+        <p class="mt-3 text-[15px] leading-relaxed">
+          The agent knows the entities of your work and the actions that act on
+          them. "Polish the intro" isn't keyword-matched against tool
+          descriptions; it's grounded against a typed, addressable thing.
+        </p>
+        <p class="mt-3 text-[13px] leading-relaxed text-[color:var(--mute)]">
+          Internally: a per-domain World Model — Hugo's is posts and sections,
+          Dana's is tables and metrics, Rowan's is candidates and listings.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Holds them together: ambiguity ------------------------------------ -->
+    <div class="mt-10 bg-surface ring-line rounded-lg p-7">
+      <div class="grid md:grid-cols-12 gap-8 items-start">
+        <div class="md:col-span-4">
+          <div class="kicker">The glue</div>
+          <h3 class="font-extrabold text-2xl tracking-tight mt-1">Calibrated ambiguity.</h3>
+        </div>
+        <div class="md:col-span-8">
+          <p class="text-[15px] leading-relaxed">
+            A theory of mind is only useful if the agent knows what it
+            <em>doesn't</em> know. Every turn, the agent rates how certain it is
+            about each part of the model — and that rating decides whether to
+            ask, confirm, or proceed. <span class="mark">"Asking one good
+            question"</span> isn't a fallback. It's the feature.
+          </p>
+          <p class="text-[15px] leading-relaxed mt-3 text-[color:var(--mute)]">
+            This is the hidden third axis behind the three models. Belief +
+            uncertainty. The same idea your friend uses when they say "wait,
+            you mean X or Y?"
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- What it unlocks ----------------------------------------------------- -->
+<section id="unlock" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 03</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          What this <span class="serif">unlocks</span>
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot"></span> Why it matters</div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-5">
+      <div class="bg-surface ring-line rounded-lg p-7">
+        <div class="kicker">01</div>
+        <h3 class="font-extrabold text-xl tracking-tight mt-2">Conversations that survive turn 7.</h3>
+        <p class="mt-3 text-[15px] leading-relaxed">
+          You can drop a thread, come back ten minutes later, and the agent
+          knows where it was. No re-explaining. No "as I mentioned earlier."
+        </p>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-7">
+        <div class="kicker">02</div>
+        <h3 class="font-extrabold text-xl tracking-tight mt-2">Ambiguity becomes a sensor reading.</h3>
+        <p class="mt-3 text-[15px] leading-relaxed">
+          The agent stops guessing. It asks one targeted question, holds the
+          plan, resumes when you answer. You spend less time
+          <span class="serif">undoing</span> what it got wrong.
+        </p>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-7">
+        <div class="kicker">03</div>
+        <h3 class="font-extrabold text-xl tracking-tight mt-2">A new domain in days.</h3>
+        <p class="mt-3 text-[15px] leading-relaxed">
+          The three models are domain-agnostic. Swap the World Model and you've
+          got a new assistant. That's why it's a factory, not a product.
+        </p>
+      </div>
+    </div>
+
+    <div class="mt-10 bg-tint ring-line rounded-lg p-7">
+      <div class="grid md:grid-cols-12 gap-6 items-center">
+        <div class="md:col-span-8">
+          <div class="kicker accent">The honest version</div>
+          <p class="pull text-[20px] mt-2 leading-snug">
+            We aren't building a smarter chatbot. We're building the layer
+            <em>under</em> the chatbot — the part that knows you, knows the
+            conversation, and knows the work.
+          </p>
+        </div>
+        <div class="md:col-span-4 text-sm leading-relaxed">
+          <p class="text-[color:var(--mute)]">
+            If you've ever shipped an agent and watched users hit the same
+            five failure modes — this is the layer that fixes them.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- The line ------------------------------------------------------------- -->
+<section id="line" class="border-b border-line bg-band">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 04</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          Meet your <span class="serif">new best buddies</span>.
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot"></span> Four assistants</div>
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-5">
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 01</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Hugo</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">
+          Writes blog posts with you. Topic to publication, with your voice
+          intact across the archive.
+        </p>
+        <div class="mt-5 chip" style="color:var(--accent);border-color:var(--accent)"><span class="dot"></span> shipped</div>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 02</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Dana</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">
+          Lives in your data. Cleans, transforms, analyzes, reports — and
+          remembers what's been answered.
+        </p>
+        <div class="mt-5 chip"><span class="dot"></span> in build</div>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 03</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Rowan</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">
+          A recruiting partner. Listings, applications, candidates — patient
+          with a long pipeline.
+        </p>
+        <div class="mt-5 chip"><span class="dot"></span> queued</div>
+      </div>
+      <div class="bg-surface ring-line rounded-lg p-6">
+        <div class="kicker">No. 04</div>
+        <h3 class="font-extrabold text-3xl tracking-tight mt-1">Kalli</h3>
+        <p class="mt-3 text-[14px] leading-relaxed">
+          The onboarder. Asks a few questions and produces the next assistant
+          for your domain.
+        </p>
+        <div class="mt-5 chip"><span class="dot"></span> in design</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- One turn ------------------------------------------------------------- -->
+<section id="turn" class="border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="flex items-baseline justify-between mb-10">
+      <div>
+        <div class="kicker">§ 05</div>
+        <h2 class="font-extrabold tracking-tight text-4xl md:text-5xl mt-1">
+          One turn, <span class="serif">on display.</span>
+        </h2>
+      </div>
+      <div class="hidden md:inline-flex chip"><span class="dot"></span> Optional reading</div>
+    </div>
+
+    <p class="text-lg max-w-3xl leading-relaxed">
+      The same prompt, given to a typical agent and to Hugo. Same words from the
+      user. Different response — because one of them has a model of the room.
+    </p>
+
+    <details class="mt-8 bg-surface ring-line rounded-lg p-7">
+      <summary class="flex items-center justify-between">
+        <span class="font-semibold text-lg">Open the side-by-side</span>
+        <span class="mono text-xs ghost">~30 seconds</span>
+      </summary>
+
+      <div class="mt-6 grid md:grid-cols-2 gap-5">
+        <div class="ring-line rounded-lg p-5">
+          <div class="flex items-center justify-between">
+            <div class="kicker">Typical agent</div>
+            <span class="mono text-xs ghost">tool loop</span>
+          </div>
+          <div class="mt-4 mono text-sm leading-relaxed">
+            <div><span class="slash">user&nbsp;›</span> rework the marathon post</div>
+            <div class="mt-3 ghost">// agent picks a tool, guesses, commits</div>
+            <div class="mt-1"><span class="slash">agent&nbsp;›</span> edit_post(id="three-hour-marathon", mode="polish")</div>
+            <div class="mt-3"><span class="slash">agent&nbsp;›</span> Here is a polished version…</div>
+          </div>
+          <div class="mt-4 text-sm ghost serif">
+            Wrong post. Wrong kind of rework. No way to notice.
+          </div>
+        </div>
+        <div class="bg-tint ring-line rounded-lg p-5">
+          <div class="flex items-center justify-between">
+            <div class="kicker" style="color:var(--accent-2)">Hugo</div>
+            <span class="mono text-xs" style="color:var(--accent-2)">theory of mind</span>
+          </div>
+          <div class="mt-4 mono text-sm leading-relaxed">
+            <div><span class="slash">user&nbsp;›</span> rework the marathon post</div>
+            <div class="mt-3 ghost">// model says: two posts about marathons; "rework" has three meanings</div>
+            <div class="mt-3"><span class="slash">hugo&nbsp;›</span> Two posts about marathons — <em class="serif">How I finally broke three hours</em> or <em class="serif">What marathon training taught me about discipline</em>? And rework how — re-outline, re-voice, or polish a section?</div>
+          </div>
+          <div class="mt-4 text-sm serif" style="color:var(--accent-2)">
+            One question. Two clarifications. Plan held in place.
+          </div>
+        </div>
+      </div>
+
+      <p class="mt-6 text-sm leading-relaxed text-[color:var(--mute)]">
+        That's the entire pitch in 30 seconds. The first agent had a context
+        window. The second had a model.
+      </p>
+    </details>
+  </div>
+</section>
+
+<!-- Closing -------------------------------------------------------------- -->
+<footer class="bg-accent">
+  <div class="max-w-6xl mx-auto px-6 py-20 grid md:grid-cols-12 gap-10 items-end text-white">
+    <div class="md:col-span-8">
+      <div class="kicker" style="color:#c9d6ff">Ask Yourself:</div>
+      <h2 class="font-bold tracking-tight text-3xl md:text-4xl mt-2 leading-[1.02]">
+        If your agent doesn't have <span class="serif">a model of you,</span>
+        <br/>
+        who does it think it's helping?
+      </h2>
+      <p class="mt-6 text-md opacity-90 max-w-xl">
+        Long-form discussion lives at
+        <a href="https://morethanoneturn.com" class="underline underline-offset-4">morethanoneturn.com</a>.
+      </p>
+    </div>
+    <div class="md:col-span-4 text-sm leading-relaxed">
+      <p class="opacity-90">© Soleda Inc · 2026</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
