@@ -148,6 +148,7 @@ class PEX:
         # Flows that reached Completed during the current turn — reset per execute(), read by the
         # end-of-turn checkpoint.
         self._completed_this_turn = []
+        self._nlu_thread = None  # this turn's parallel NLU think thread; joined+cleared by _settle_nlu
         # Orchestrator hot-path tools — wiring only; the implementations live in
         # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
         self._orchestrator_dispatch = {
@@ -211,6 +212,18 @@ class PEX:
 
         return None
 
+    def _settle_nlu(self, wait:bool=True):
+        # Join this turn's parallel NLU think thread so belief reads see THIS turn's detection,
+        # then clear it — later calls are no-ops. Plan/Clarify turns are REQUIRED to wait (their
+        # read_state blocks); flow execution passes wait=False and continues if NLU is still
+        # running — it only reaps a finished thread so belief reads pick up a landed detection.
+        if self._nlu_thread is None:
+            return
+        if not wait and self._nlu_thread.is_alive():
+            return
+        self._nlu_thread.join()
+        self._nlu_thread = None
+
     # -- Validation -------------------------------------------------------
 
     def _validate_artifact(self, artifact, flow):
@@ -266,11 +279,12 @@ class PEX:
 
     # -- Acting loop (the Assistant's single PEX entry) -------------------
 
-    def execute(self, state, context, system_prompt, *, dax=None, payload=None, text='') -> str:
+    def execute(self, state, context, system_prompt, *, dax=None, payload=None, text='', nlu_thread=None) -> str:
         """The acting loop the Assistant calls once per turn, after NLU has written belief. A
         pure click (dax, no text) is resolved deterministically — no LLM. Otherwise the bounded
         orchestrator loop reads belief (read_state) and decides by intent per the system prompt,
         dispatching tool calls through `_dispatch_tool`. Returns the spoken utterance."""
+        self._nlu_thread = nlu_thread
         self._completed_this_turn = []
         if dax and not text.strip():
             utterance = self._execute_click(state, context, dax, payload or {})
@@ -363,6 +377,7 @@ class PEX:
                     result = {'_success': False, '_error': 'server_error',
                               '_message': f'{type(ecp).__name__}: {ecp}'}
                     last_call = None
+                # hook: post-tool
                 errors = errors + 1 if not result['_success'] else 0
                 log.info('  orch round=%d tool=%s ok=%s', round_idx + 1, tool_use.name,
                          result['_success'])
@@ -397,6 +412,7 @@ class PEX:
         `last_call` is (name+args key, succeeded). Dedupe only fires when the previous identical
         call SUCCEEDED — retrying the same call after a transient tool error (server_error from
         an overloaded LLM, a flaky channel API) is legitimate recovery, not a loop."""
+        # hook: pre-tool
         call = (tool_use.name, json.dumps(dict(tool_use.input or {}), sort_keys=True, default=str))
         if tool_use.name not in valid:
             result = {'_success': False, '_error': 'invalid_input',
@@ -553,6 +569,7 @@ class PEX:
     # try/except and returned as corrective tool errors for the orchestrator loop to retry on.
 
     def _dispatch_read_state(self, params:dict) -> dict:
+        self._settle_nlu()
         return {'_success': True, 'state': self.world.current_state().read_state()}
 
     def _dispatch_write_state(self, params:dict) -> dict:
@@ -576,6 +593,7 @@ class PEX:
         if params['op'] == 'stackon' and params.get('active'):
             # Single-call staging (Derek 2026-07-03): stackon handed over matching slots; fold
             # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
+            self._settle_nlu(wait=False)  # reap a landed detection so the fold reads fresh belief
             self._apply_belief_slots(state, params['flow_name'])
             return self.activate_flow({'flow_name': params['flow_name']})
         return {'_success': True, 'state': document}
@@ -612,9 +630,11 @@ class PEX:
         around the policy run. On completion the flow's completion record is written to the
         session scratchpad and returned as the tool result. State-file persistence stays with
         write_state (the orchestrator epilogue)."""
+        self._settle_nlu(wait=False)  # flow execution never blocks on NLU — only Plan/Clarify wait
         state = self.world.current_state()
         flow = self._stage_flow(state, params['flow_name'])
 
+        # hook: pre-flow
         approval = self._security_check(flow)
         if approval:
             return {'_success': False, '_error': 'approval_required',
@@ -629,6 +649,7 @@ class PEX:
         if state.active_post:  # the grounding block stays authoritative
             state.grounding['post'] = state.active_post
 
+        # hook: post-flow
         check = self._validate_artifact(artifact, flow)
         if not check.passed:
             if check.is_error_frame:

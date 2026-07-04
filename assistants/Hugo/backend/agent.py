@@ -80,7 +80,7 @@ class Agent:
             self.pex.prestage(state)     # fix 1 B: belief is fresh only on this awaited path
 
         utterance = self.pex.execute(state, self.world.context, self.system_prompt,
-                                     dax=dax, payload=payload, text=text)
+                                     dax=dax, payload=payload, text=text, nlu_thread=thread)
         if thread:
             thread.join()                # settle the parallel detection at the turn boundary
         return self._epilogue(utterance)

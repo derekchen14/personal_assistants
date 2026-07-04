@@ -1,10 +1,16 @@
 # Round 5.0 — PEX hook points + Plan awaits NLU
 
-Status: PROPOSED 2026-07-03, awaiting Derek sign-off. Opens Master Plan Step 5 (`step_5_plan.md`);
-the Workflow Planner skill itself is the NEXT round (5.1). Derek's directive (2026-07-03): PEX gets
-explicit hook points — pre-flow, post-flow, pre-tool, post-tool, plus PEX start and end — and when
-the orchestrator picks the Plan intent on the parallel-NLU path, the pre-flow or pre-tool hook
-waits on NLU before proceeding.
+**AMENDMENT (Derek 2026-07-03, post-build):** only Plan and Clarify are REQUIRED to wait on NLU
+(their `read_state` blocks). The other five intents never block: flow execution's settle is
+non-blocking (`_settle_nlu(wait=False)`) — it picks up a landed detection and otherwise proceeds
+on standing belief. When the predicted flow matches the active flow nothing changes; that is the
+speed-up. The DoE's third join site (the stackon-active fold) stays, but non-blocking.
+
+Status: IN BUILD 2026-07-03. Opens Master Plan Step 5 (`step_5_plan.md`); the Workflow Planner
+skill itself is the NEXT round (5.1). Derek's directive (2026-07-03): PEX follows the existing
+6-hook framework (`_specs/modules/pex.md` § hook points — pre-flow, pre-tool, post-tool,
+tool-retry, post-flow, verification; no new hooks), and when the orchestrator picks the Plan
+intent on the parallel-NLU path, the pre-flow or pre-tool hook waits on NLU before proceeding.
 
 ## The problem this solves
 
@@ -13,20 +19,20 @@ so this turn's detection is invisible to the acting loop — the documented rema
 (stale/misdetected flow origins; fix_1 ticket). Full serialization would fix it but give up the
 two-speed design. The hooks let ONLY the turns that need detection pay the wait.
 
-## The six hook points (mapped to today's code)
+## The hook points (the 6-hook framework, mapped to today's code)
 
-Four of the six already exist as inline code; this round names them as hooks and adds the join
-behavior. No hook registry — each hook is a named method called at its fixed point (one consumer
-per hook; a registration mechanism would be an abstraction with one implementation).
+The framework is already specified in `_specs/modules/pex.md` § hook points; this round follows
+it — no new hooks, no hook registry. The four hooks this round touches, and where they live:
 
-| Hook | Where it fires | Exists today as |
+| Hook (spec name) | Where it fires | Exists today as |
 | --- | --- | --- |
-| PEX start | `execute()` entry (`pex.py:269`) | per-turn reset + message seed |
-| pre-tool | before each orchestrator tool dispatch (`_guarded_call`, `pex.py:390`) | name/dedupe guards — **gains the NLU join** |
-| post-tool | after each dispatch (`pex.py:366-371`) | error counter + log line |
-| pre-flow | inside `activate_flow`, before `policy.execute` (`pex.py:618`) | `_security_check` + `_stage_flow` — **gains the NLU join** |
-| post-flow | after the policy returns (`pex.py:626-649`) | `_validate_artifact` + completion record + stack sync |
-| PEX end | `_record_checkpoint` (`pex.py:289`) | end-of-turn checkpoint |
+| pre-tool (②/④) | before each tool dispatch (`_guarded_call`, `pex.py:390`) | name/dedupe guards — **gains the NLU join** |
+| post-tool (③) | after each dispatch (`pex.py:366-371`) | error counter + log line |
+| pre-flow (①) | inside `activate_flow`, before `policy.execute` (`pex.py:618`) | `_security_check` + `_stage_flow` — **gains the NLU join** |
+| post-flow (⑤+⑥) | after the policy returns (`pex.py:626-649`) | `_validate_artifact` + completion record + stack sync |
+
+The work at `execute()` entry and the end-of-turn checkpoint is ordinary turn lifecycle, not a
+hook (Derek 2026-07-03).
 
 ## The Plan-awaits-NLU mechanism
 
@@ -47,7 +53,7 @@ Turn shape after the change (active-post turn):
 Agent._orchestrate
   ├── NLU.think ─────────── thread ───────────────────────┐
   └── PEX.execute(nlu_thread=thread)                      │
-        [start] reset, seed message                       │
+        reset, seed message                               │
         loop:                                             │
           LLM round → commits to an intent                │
             Plan  → read_state ── pre-tool: join ─────────┤  fresh belief lands here
@@ -55,7 +61,7 @@ Agent._orchestrate
           write_state stackon active:true                 │
             └─ pre-flow: join (no-op if settled) ─────────┘
                security check → policy.execute → post-flow validate
-        [end] checkpoint
+        end-of-turn checkpoint
   └── thread.join()   ← turn-boundary settle stays; usually a no-op now
 ```
 
@@ -67,8 +73,8 @@ activation).
 
 One: **the NLU thread handle passed into PEX** (`nlu_thread` parameter + `_settle_nlu()`).
 Example: `self.pex.execute(state, ..., nlu_thread=thread)`; inside PEX,
-`if self._nlu_thread: self._nlu_thread.join(); self._nlu_thread = None`. The six hooks are names
-for existing pre/post hooks, not new machinery.
+`if self._nlu_thread: self._nlu_thread.join(); self._nlu_thread = None`. The hooks themselves are
+the spec's existing 6-hook framework, not new machinery.
 
 ## Big decisions
 
@@ -100,7 +106,8 @@ for existing pre/post hooks, not new machinery.
 
 1. `agent.py`: pass `nlu_thread=thread` into `pex.execute`; keep the boundary join.
 2. `pex.py`: store the handle per turn; `_settle_nlu()`; call it from pre-tool (`read_state`) and
-   pre-flow (`activate_flow`); name the six hook points where they aren't already named.
+   pre-flow (`activate_flow`). No renaming beyond that — the 6-hook framework names the existing
+   pre/post hooks; do not add PEX start/end hooks.
 3. `for_orchestrator.py`: one line under the Plan bullet — "`read_state` always reflects this
    turn's detection; read it before staging when you picked Plan."
 4. Unit tests: a fake slow thread proves `read_state` returns post-join belief; a no-thread turn
