@@ -1,6 +1,6 @@
 ---
 name: "release"
-description: "publish the post to the primary blog; makes the post live immediately on the main channel. Use syndicate to cross-post, promote to amplify reach after publishing"
+description: "publish the post to the primary blog and optionally cross-post to secondary channels; makes the post live immediately on each target channel"
 version: 4
 tools:
   - read_metadata
@@ -44,7 +44,7 @@ An empty channel list is never ambiguous — it defaults to `['mt1t']`, the prim
 - `execution_error(violation, message)` when a tool fails in a way that should surface as a policy-layer error artifact rather than a per-channel failure row.
 - `handle_ambiguity(level, metadata)` when the user named a channel that does not match any known one. Never for an empty channel list — that defaults to `mt1t`.
 - `manage_memory(action, key, value)` to read a per-channel token when the user has stored authentication preferences there.
-- `call_flow_stack(action='read', details='flows')` to check whether a `syndicate` or `promote` flow is already queued behind this release. When one is, trim the release output to the primary channel so the downstream flow handles amplification.
+- `call_flow_stack(action='read', details='flows')` to check whether another Publish flow (`schedule`, `cite`) is already queued behind this release, so the output notes what runs next.
 
 ## Output Shape
 
@@ -145,14 +145,14 @@ Trajectory:
 1. `Mastodon` matches none of the known channels (`mt1t`, `substack`, `linkedin`, `twitter`).
 2. `handle_ambiguity(level='specific', metadata={'missing': 'channel'})`. Name the channels you can publish to, then end turn.
 
-### Example 5: A syndicate flow is queued behind the release
+### Example 5: A schedule flow is queued behind the release
 
 Resolved Details:
 - post_id: 4b90c1a2, title: "Migrating a Monolith to Services"
 - channel: ['Substack']
 
 Trajectory:
-1. `call_flow_stack(action='read', details='flows')` → a `promote` flow is queued behind this release, so keep the output to the primary channel and let promote handle amplification.
+1. `call_flow_stack(action='read', details='flows')` → a `schedule` flow is queued behind this release for the LinkedIn cross-post, so release only the named channel now.
 2. `channel_status(post_id='4b90c1a2', platform='substack')` → ok.
 3. `release_post(post_id='4b90c1a2', platform='substack')` → `{_success: True, url: 'https://substack.com/p/migrating-a-monolith-to-services'}`.
 
@@ -162,7 +162,7 @@ Final reply:
   "post_id": "4b90c1a2",
   "title": "Migrating a Monolith to Services",
   "releases": [
-    {"channel": "Substack", "status": "published", "url": "https://substack.com/p/migrating-a-monolith-to-services", "notes": "Live; promote flow will amplify next."}
+    {"channel": "Substack", "status": "published", "url": "https://substack.com/p/migrating-a-monolith-to-services", "notes": "Live; the queued schedule flow handles the LinkedIn cross-post."}
   ]
 }
 ```

@@ -133,9 +133,8 @@ class PEX:
             'editor_review':     (self._analysis_service, 'editor_review'),
             'explain_action':    (self._analysis_service, 'explain_action'),
             'analyze_seo':       (self._analysis_service, 'analyze_seo'),
-            # PlatformService (5)
+            # PlatformService (4)
             'release_post':      (self._platform_service, 'release_post'),
-            'promote_post':      (self._platform_service, 'promote_post'),
             'cancel_release':    (self._platform_service, 'cancel_release'),
             'list_channels':     (self._platform_service, 'list_channels'),
             'channel_status':    (self._platform_service, 'channel_status'),
@@ -144,7 +143,7 @@ class PEX:
         }
 
         # Real prompt-token usage off the last acting-loop API response — Agent's compression
-        # check reads it in the post-hook epilogue.
+        # check reads it in the end-of-turn work (Agent._epilogue).
         self.last_prompt_tokens = 0
         # Flows that reached Completed during the current turn — reset per execute(), read by the
         # end-of-turn checkpoint.
@@ -611,10 +610,11 @@ class PEX:
                         '_message': f'flow {top.name()!r} has no slot(s) {unknown}; '
                                     f'valid slots: {list(top.slots)}'}
         document = state.write_state(self.world.state_file(), params['op'], **kwargs)
-        # Mirror every stack op onto the live stack: complete_flow and activate_flow's epilogue
-        # re-sync state.flow_stack FROM the live stack, so a file-only entry is wiped on the next
-        # completion — losing a plan's Pending flows (code review 2026-07-04). pop_completed's
-        # mirror predates this; stackon/fallback gained theirs from the same root cause.
+        # Mirror every stack op onto the FlowStack component: complete_flow and the last lines of
+        # activate_flow copy the component's stack back into state.flow_stack, so an entry that
+        # exists only in state.json is wiped on the next completion — losing a plan's Pending
+        # flows (code review 2026-07-04). pop_completed's mirror predates this; stackon/fallback
+        # gained theirs from the same root cause.
         if params['op'] == 'pop_completed':
             self.flow_stack.pop_completed()
         elif params['op'] == 'stackon':
@@ -692,7 +692,7 @@ class PEX:
         from the state file's grounding block; _security_check and _validate_artifact re-attach
         around the policy run. On completion the flow's completion record is written to the
         session scratchpad and returned as the tool result. State-file persistence stays with
-        write_state (the orchestrator epilogue)."""
+        write_state."""
         self._check_nlu(wait=False)  # flow execution never blocks on NLU — only Plan/Clarify wait
         state = self.world.current_state()
         flow = self._stack_flow(state, params['flow_name'])

@@ -25,7 +25,7 @@ against `schemas/tools.yaml` / the PEX tool table.)
 | post outline | `generate_outline` | `read_metadata(include_outline=True)` | `generate_outline` | `delete_post` |
 | section | `insert_section` (shell) + `revise_content` (body) | `read_section` | `revise_content` | `remove_content` |
 | snippet | `revise_content(snip_id=<int>)` | `read_section(snip_id=…)` | `revise_content(snip_id=(start,end))` | `remove_content(snip_id=…)` |
-| channel | N/A (app setup) | `channel_status` / `list_channels` | `release_post` / `promote_post` / `cancel_release` | N/A |
+| channel | N/A (app setup) | `channel_status` / `list_channels` | `release_post` / `cancel_release` | N/A |
 
 **Transient helpers** (wrapped by a canonical tool, never standalone persistence):
 `write_text(prompt)` → short fragment, persist with `revise_content`; `brainstorm_ideas(topic)` → angles,

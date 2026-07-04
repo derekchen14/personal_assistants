@@ -469,18 +469,18 @@ class TestOrchestratorLoop:
         assert second['_error'] != 'duplicate_call'  # re-dispatched, not skipped
 
     def test_read_only_calls_capped_per_turn(self, orch_agent):
-        """AC-3 (round 4.3): the 4th successful read-only lookup in one turn returns read_cap
-        (limits.max_reads = 3) without dispatching; varied args do not evade the cap."""
-        _script(orch_agent, [_response(_tool_block('find_posts', {'query': 'bees'}, block_id='t1')),
-                             _response(_tool_block('find_posts', {'query': 'jazz'}, block_id='t2')),
-                             _response(_tool_block('find_posts', {'query': 'tea'}, block_id='t3')),
-                             _response(_tool_block('find_posts', {'query': 'vans'}, block_id='t4')),
-                             _response(_text_block('capped'))])
+        """AC-3 (round 4.3): the first read-only lookup past limits.max_reads in one turn returns
+        read_cap without dispatching; varied args do not evade the cap."""
+        cap = orch_agent.pex.max_reads
+        queries = ['bees', 'jazz', 'tea', 'vans', 'oak', 'silk'][:cap + 1]
+        calls = [_response(_tool_block('find_posts', {'query': query}, block_id=f't{idx}'))
+                 for idx, query in enumerate(queries, start=1)]
+        _script(orch_agent, calls + [_response(_text_block('capped'))])
         orch_agent.take_turn('survey everything')
         results = [json.loads(orch_agent.world.context.messages[idx]['content'][0]['content'])
-                   for idx in (2, 4, 6, 8)]
-        assert [result['_success'] for result in results[:3]] == [True, True, True]
-        assert results[3]['_error'] == 'read_cap'
+                   for idx in range(2, 2 * (cap + 1) + 1, 2)]
+        assert [result['_success'] for result in results[:cap]] == [True] * cap
+        assert results[cap]['_error'] == 'read_cap'
 
     def test_thinking_only_gets_one_nudge_then_text(self, orch_agent):
         _script(orch_agent, [_response(), _response(_text_block('after the nudge'))])
@@ -1660,7 +1660,7 @@ from backend.prompts.for_pex import build_skill_system
 
 _SKILL_DIR = _Path(__file__).resolve().parents[3] / 'backend' / 'prompts' / 'pex' / 'skills'
 _TOOLS_YAML = _Path(__file__).resolve().parents[3] / 'schemas' / 'tools.yaml'
-_PEX_AGENT_SKILLS = {'promote', 'plan'}  # plan = Workflow Planner (orchestrator skill)
+_PEX_AGENT_SKILLS = {'plan'}  # plan = Workflow Planner (orchestrator skill)
 _COMPONENT_TOOLS = {'handle_ambiguity', 'coordinate_context', 'manage_memory',
                     'call_flow_stack', 'execution_error', 'save_findings'}
 

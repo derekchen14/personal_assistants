@@ -546,22 +546,6 @@ tools:
     timeout_ms: 10000
     capabilities: {accesses_private_data: true, receives_untrusted_input: false, communicates_externally: true}
 
-  promote_post:
-    tool_id: promote_post
-    name: "Promote post"
-    description: "Make a published post more prominent by pinning, featuring, or announcing"
-    input_schema:
-      type: object
-      properties:
-        post_id: {type: string, description: "The post ID to promote"}
-        platform: {type: string, description: "Target platform (e.g., facebook, twitter, linkedin)"}
-        action: {type: string, enum: [promote, feature, pin], default: promote, description: "Promotion action to take"}
-      required: [post_id, platform]
-      additionalProperties: false
-    idempotent: false
-    timeout_ms: 15000
-    capabilities: {accesses_private_data: true, receives_untrusted_input: false, communicates_externally: true}
-
   cancel_release:
     tool_id: cancel_release
     name: "Cancel release"

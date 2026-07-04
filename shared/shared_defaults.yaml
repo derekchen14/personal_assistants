@@ -91,7 +91,7 @@ limits:
   max_recovery_attempts: 2          # max times Agent tries re-route before escalate
   max_rounds: 8                     # orchestrator acting-loop rounds per turn
   max_corrective: 3                 # consecutive failed tool calls before wrap-up
-  max_reads: 3                      # per-turn cap on direct read-only domain-tool calls
+  max_reads: 4                      # per-turn cap on direct read-only domain-tool calls
   max_tool_calls: 8                 # per-flow tool-call cap in tool_call
   extended_tool_calls: 16           # cap for the heavy flows below
   extended_call_flows: [audit, refine, rework, compose]   # Hugo-specific flow names

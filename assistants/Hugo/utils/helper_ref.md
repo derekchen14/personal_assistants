@@ -219,7 +219,7 @@ Before proposing a new tool, grep for the capability here first.
 
 **AnalysisService** (8): `brainstorm_ideas`, `inspect_post`, `check_readability`, `check_links`, `compare_style`, `editor_review`, `explain_action`, `analyze_seo`.
 
-**PlatformService** (5): `release_post`, `promote_post`, `cancel_release`, `list_channels`, `channel_status`.
+**PlatformService** (4): `release_post`, `cancel_release`, `list_channels`, `channel_status`.
 
 **BusinessContext** (1): `search_faqs`.
 

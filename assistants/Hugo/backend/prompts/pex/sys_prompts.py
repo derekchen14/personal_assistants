@@ -53,10 +53,9 @@ A post may target one or more publishing channels (e.g., Substack, Medium, Linke
 Treat channel status as authoritative: if `channel_status` reports a channel as unavailable, do NOT attempt to release to it.
 
 Use `list_channels` to enumerate configured channels and `channel_status(channel)` before each release to confirm the channel is available.
-The three primary actions are: 
-  1. `release_post` (publish),
-  2. `promote_post` (amplify an already-released post), and 
-  3. `cancel_release` (unwind a scheduled or mistaken release)
+The two primary actions are:
+  1. `release_post` (publish), and
+  2. `cancel_release` (unwind a scheduled or mistaken release)
 Each returns `_success=False` when a channel rejects the call — surface that as an error rather than retry in place.
 
 Publish flows return short status summaries, not prose bodies. Let the saved post + channel receipts speak through card blocks. In your final text reply, name exactly what changed (which post, which channel, which status) and nothing more.

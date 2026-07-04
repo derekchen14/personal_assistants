@@ -53,21 +53,6 @@ class PlatformService(ToolService):
             return pub.schedule(post, scheduled_at)
         return pub.publish(post)
 
-    def promote_post(self, post_id:str, platform:str, action:str='promote') -> dict:
-        pub = self._publishers.get(platform)
-        if not pub:
-            available = ', '.join(self._publishers.keys())
-            return self._error('invalid_input',
-                f'Unknown platform: {platform}. Available: {available}')
-        if not pub.is_connected():
-            return self._error('auth_error',
-                f'{pub.display_name} is not connected.')
-
-        if hasattr(pub, 'promote'):
-            return pub.promote(post_id, action)
-        return self._error('platform_error',
-            f'{pub.display_name} does not support promotion actions.')
-
     def cancel_release(self, post_id:str, platform:str) -> dict:
         pub = self._publishers.get(platform)
         if not pub:
