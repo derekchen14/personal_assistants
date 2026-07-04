@@ -1,8 +1,14 @@
 # Engineering Team — Pipeline
 
 A five-role sub-agent team that takes **one [Master Plan](../_review/master_plan.md) step at a time**
-from spec to merged PR. Each role runs as an isolated sub-agent; the only thing that crosses between
-them is a named **handoff artifact**, so every boundary is inspectable and context stays compressed.
+from spec to a commit on master. Each role runs as an isolated sub-agent; the only thing that crosses
+between them is a named **handoff artifact**, so every boundary is inspectable and context stays
+compressed.
+
+**Git workflow (Derek 2026-07-04 — no PRs):** (1) develop the plan with the PM, (2) SWEs/DoE/QA write
+the code, (3) make a commit, (4) after a few commits, push to master. Derek reviews in the loop after
+steps 1, 2, and 3 — the review happens live, not on a pull request, so PRs are not part of the
+workflow (too much overhead for a one-person team; may change later).
 
 Roles: [PM](./pm.md) · [SWE1](./swe1.md) · [SWE2](./swe2.md) · [DoE](./doe.md) · [QA](./qa.md)
 
@@ -15,7 +21,7 @@ Roles: [PM](./pm.md) · [SWE1](./swe1.md) · [SWE2](./swe2.md) · [DoE](./doe.md
 | **Implementation plan** | each SWE | DoE | Detailed plan of action, for pre-approval before any code |
 | **Change set** | each SWE | DoE, QA | The diff plus a self-review (what changed, why, scope adherence, tests satisfied) |
 | **Verdict** | QA | DoE | Pass/fail per acceptance criterion, with cited evidence |
-| **Commit + PR** | DoE | human | Final commit and PR for review |
+| **Commit** | DoE | human | Final commit (reviewed live by Derek; pushed to master after a few accumulate) |
 
 Artifacts pass agent-to-agent — the orchestrator hands each as the next role's input. Every round,
 persist all of them under `plans/round_<id>_artifacts/` (the SWE plans, the DoE approval and
@@ -48,7 +54,8 @@ the answer is one line ("no new concepts; no big decisions"), and that line is t
 4. **Adjudicate** — DoE compares the two Change sets and picks or merges via the divergence ladder below.
 5. **Verify** — QA checks the chosen Change set against the Spec's test plan → a **Verdict**. Any fail
    returns to the SWEs to repeat steps 2 to 4; all-pass continues.
-6. **Ship** — DoE turns the passing Change set into a **Commit + PR** for human review.
+6. **Ship** — DoE turns the passing Change set into a **Commit**; Derek reviews it live. After a few
+   commits accumulate, push to master — no branches or PRs.
 
 ## Two SWEs, divergent mandates
 
