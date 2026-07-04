@@ -6,7 +6,13 @@ non-blocking (`_settle_nlu(wait=False)`) — it picks up a landed detection and 
 on standing belief. When the predicted flow matches the active flow nothing changes; that is the
 speed-up. The DoE's third join site (the stackon-active fold) stays, but non-blocking.
 
-Status: IN BUILD 2026-07-03. Opens Master Plan Step 5 (`step_5_plan.md`); the Workflow Planner
+Status: SHIPPED 2026-07-03 (branch round/5.0-pex-hooks). Free suite 132+86/0 skips. Live gate
+(standard 8): completion 0.52 -> 0.5455, tool_match 0.0613, mean turn 14.0s, wall 465s. Dominant
+remaining failure: the loop CONTINUES last turn's still-Active flow instead of reacting to a
+mismatching fresh detection (11 of 15 failed turns show a stale origin like find/compose/outline
+carried across turns). That reaction — pred vs active differs => reconsider (fallback/stackon) —
+is the spec's hook severity model, not yet built; candidate for round 5.1 alongside the Workflow
+Planner. Opens Master Plan Step 5 (`step_5_plan.md`); the Workflow Planner
 skill itself is the NEXT round (5.1). Derek's directive (2026-07-03): PEX follows the existing
 6-hook framework (`_specs/modules/pex.md` § hook points — pre-flow, pre-tool, post-tool,
 tool-retry, post-flow, verification; no new hooks), and when the orchestrator picks the Plan
