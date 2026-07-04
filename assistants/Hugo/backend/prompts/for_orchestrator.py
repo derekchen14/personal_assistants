@@ -54,7 +54,7 @@ TOOL_POLICY = (
     '(`pred_slots`). Call `read_state` to read it — do not re-derive the flow yourself.\n'
     '**Decide by intent.** Every turn you MUST commit to exactly one intent before acting — '
     'that pick is what triggers a flow. Act on the intent NLU wrote:\n'
-    "- **Research / Draft / Revise / Publish** → stage and run that intent's default flow, at "
+    "- **Research / Draft / Revise / Publish** → stack on and run that intent's default flow, at "
     'its universal dax: {001} `find`, {002} `outline`, {003} `write`, {004} `release` (resolve a '
     'dax through the flow catalog).\n'
     '- **Converse** → run the `chat` flow.\n'
@@ -65,26 +65,34 @@ TOOL_POLICY = (
     'PREFER Plan whenever in doubt: picking Plan means you wait on NLU\'s flow detection '
     '(`read_state` for belief) before deciding next steps, instead of guessing a flow or '
     'wandering through lookups. `read_state` always reflects THIS turn\'s detection — read it '
-    'before staging when you picked Plan. Then decide the order and stage and run the flows one '
-    'by one. '
-    'You own whether the plan is done: after each flow completes, judge whether '
-    "the user's goal has been met — stage the next flow until it is, then conclude and report what "
-    'was accomplished.\n'
+    'before stacking flows when you picked Plan. Follow the Workflow Planner guidance in '
+    '`<workflow_planner>` to map the request to existing flows, then stack on ALL of them AT '
+    'ONCE, in reverse execution order — the first flow to run is pushed LAST, with `active: true` '
+    'so it runs now. The stack holds the plan: it is observable by every agent and survives even '
+    'if you lose track later. '
+    'You own whether the plan is done: after each flow completes, `pop_completed` surfaces the '
+    "next flow — judge whether the user's goal has been met; run it with `activate_flow` if not, "
+    'and conclude and report what was accomplished when it is.\n'
+    '**Belief notes.** A `[belief]` note carries THIS turn\'s NLU detection (intent, flow, slots). '
+    'When it names a DIFFERENT flow than the one you are on, defer to NLU\'s detection unless you '
+    'have a concrete reason to stay — defer in 80%+ of cases. If the note says an intent change '
+    'was already forced (old flow dropped as Invalid, NLU\'s flow swapped in as Active), run '
+    'that flow with `activate_flow`.\n'
     '**The commit rule.** For any Research / Draft / Revise / Publish turn, the turn is not done '
     'until you have called `activate_flow` (or declared ambiguity with `handle_ambiguity`). A '
     'plain-text reply with no `activate_flow` and no declared ambiguity is a failed turn. Reading '
     'metadata is not doing the task — `activate_flow` is.\n'
     '**Ask vs. proceed (clarification gate).** When the detection is confident, proceed with the '
-    'staging recipe below. When confidence is low, the top candidates are close, or a required '
+    'stack-on recipe below. When confidence is low, the top candidates are close, or a required '
     'slot is missing or contradictory, do not guess — use `handle_ambiguity` to declare the '
     'ambiguity and ask the user. AmbiguityHandler owns levels and escalation bookkeeping; you '
     'own the ask-vs-proceed decision. An explicit imperative ("Publish the post", "Delete that '
     'section") IS the authorization — dispatch it; never ask for re-confirmation, and never '
     'block a new command on unrelated pending flows or earlier suggestions the user left '
     'unanswered.\n'
-    '**Staging and dispatching flows.** A confident detection is often PRE-STAGED by code '
+    '**Stacking and dispatching flows.** A confident detection is often PRE-STACKED by code '
     'before your loop starts — `read_state` shows it on the flow stack; a single '
-    '`activate_flow` call runs it. To stage and run any other flow, ONE call does everything: '
+    '`activate_flow` call runs it. To stack on and run any other flow, ONE call does everything: '
     '`write_state` op=stackon with the flow_name and `active: true`. Stacking hands over '
     "matching slot values from the prior flow and belief's `pred_slots` automatically, then "
     'runs the policy — no separate update_flow step, no separate activate_flow call '
@@ -94,7 +102,7 @@ TOOL_POLICY = (
     'result. A non-completed dispatch may return a `question` — relay that clarification to '
     'the user verbatim instead of inventing your own.\n'
     '**Action turns.** When a turn arrives with a resolved flow (an [action] note in context), '
-    'skip re-deciding: read belief for the filled `pred_slots`, then run the staging recipe on '
+    'skip re-deciding: read belief for the filled `pred_slots`, then run the stack-on recipe on '
     'the resolved flow.\n'
     '**Completion records.** A flow that completes returns `{flow, summary, metadata}` — its '
     'completion record, also appended to the scratchpad. Before chaining a dependent flow, read '
@@ -103,10 +111,10 @@ TOOL_POLICY = (
     'write a `writer` key yourself.\n'
     '**Read-only domain tools (an exception, not a menu).** `find_posts`, `read_metadata`, '
     '`read_section`, `search_notes`, `list_channels`, `channel_status` may be called directly, '
-    'without a flow — but only when belief lacks an entity you need before staging, and at most '
+    'without a flow — but only when belief lacks an entity you need before stacking, and at most '
     'ONE such lookup per turn. Never call `read_metadata` or `read_section` more than once in a '
-    'turn: if you have read once, stage and activate. Otherwise skip the lookup and go straight '
-    'to the staging recipe. Every other domain operation goes through `activate_flow`.\n'
+    'turn: if you have read once, stack on and activate. Otherwise skip the lookup and go straight '
+    'to the stack-on recipe. Every other domain operation goes through `activate_flow`.\n'
     '**Publishing.** "Publish X" with no channel named means the primary blog — dispatch '
     '`release` directly; the flow owns channel defaults and availability checks. Never pre-ask '
     'which channel(s) and never run your own channel_status sweep before dispatching.\n'
@@ -220,6 +228,7 @@ def build_orchestrator_prompt(engineer, memory, conversation_id:str, username:st
         f'<workflow>\n{WORKFLOW}\n</workflow>',
         f'<flow_catalog>\n{_render_flow_catalog()}\n</flow_catalog>',
         f'<outline_levels>\n{_render_outline_levels()}\n</outline_levels>',
+        f'<workflow_planner>\n{engineer.load_skill_template("plan")}\n</workflow_planner>',
         f'<preferences>\n{_render_preferences(memory)}\n</preferences>',
         f'<session>\n{session_line}\n</session>',
     ]

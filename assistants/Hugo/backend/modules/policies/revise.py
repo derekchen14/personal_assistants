@@ -64,10 +64,6 @@ class RevisePolicy(BasePolicy):
             for step_name in parsed['done']:
                 flow.slots['suggestions'].mark_as_complete(step_name)
 
-            if state.has_plan:
-                scratch = {'version': '1', 'turn_number': context.turn_id, 'used_count': 0, 'summary': text[:200]}
-                self.scratchpad.write(flow.name(), scratch, writer=flow.name())
-
             self.complete_flow(flow, state, text[:200], metadata={'post_id': post_id})
             artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         else:
@@ -224,11 +220,6 @@ class RevisePolicy(BasePolicy):
         self.complete_flow(flow, state, text[:200], metadata={'post_id': post_id})
         artifact = TaskArtifact(flow.name(), thoughts=text)
         artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-        if state.has_plan:
-            self.scratchpad.write(flow.name(), {
-                'version': '1', 'turn_number': context.turn_id,
-                'used_count': 0, 'summary': text[:200],
-            }, writer=flow.name())
         return artifact
 
     def audit_policy(self, flow, state, context, tools):

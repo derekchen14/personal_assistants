@@ -11,7 +11,6 @@ class BaseFlow(object):
     self.entity_slot = 'source'
 
     self.flow_id: str = ''
-    self.plan_id: str | None = None
     self.turn_ids: list[str] = []
     # Plan flows might create a Flow and keep it pending
     self.status = 'Pending'  # Pending, Active, Completed, Invalid
@@ -84,7 +83,7 @@ class BaseFlow(object):
       'flow_id': self.flow_id, 'flow_name': self.flow_type,
       'dax': self.dax, 'intent': self.parent_type,
       'status': self.status, 'stage': self.stage, 'slots': self.slot_values_dict(),
-      'plan_id': self.plan_id, 'turn_ids': self.turn_ids,
+      'turn_ids': self.turn_ids,
     }
 
   def extract_entity(self, entity):

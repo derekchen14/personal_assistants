@@ -128,7 +128,7 @@ PEX loop.
 ## Policies (run via `activate_flow`)
 
 `activate_flow(flow_name)` promotes the top-of-stack pending flow to active and runs its policy as a
-**sub-agent**. It stages the flow (live-stack
+**sub-agent**. It puts the flow on top of the live stack (live-stack
 hit, else reload from the state file, else `stackon`), re-attaches the security and artifact checks, runs
 the per-intent policy, and on completion writes a `{flow, summary, metadata}` **completion record** to the
 scratchpad and returns it. A non-completed run returns the flow status plus any pending clarification.
@@ -241,6 +241,19 @@ detection that has already landed (NLU still running → the flow proceeds on st
 predicted flow already matches the active flow, nothing needs to change — that is the speed-up. The
 turn-boundary join settles whatever remains.
 
+**Belief state injection (2026-07-03):** once per turn, the landed detection (intent, top flows +
+confidence, slots) is injected into the orchestrator's context — mismatch or not. Injection is attempted
+at hooks ② pre-tool-call, ③ post-tool-call, ④ tool-retry, and ⑤ post-LLM until it succeeds once; ①
+pre-LLM is too early (NLU has usually not answered yet) and ⑥ verification is too late (the work is
+already done). None of these hook points force an NLU response — each checks briefly whether NLU has
+completed, incorporates what NLU has to say if so, and otherwise continues. This is in contrast to the
+injection points caused by Plan and Clarify, which require awaiting NLU. After injection: the predicted
+flow differs but the intent matches → the ORCHESTRATOR decides whether to continue the original flow or
+go with NLU's proposal, deferring to NLU in most cases (80%+); the predicted INTENT differs → code
+forces a FALLBACK — the active flow is marked Invalid (never returned to) and NLU's detection takes
+over as Active. Any other issue during policy execution
+re-consults `nlu.contemplate()` (the narrowed failed-flow re-route), never `think()`.
+
 **Signal = read from belief** (no separate channel — the Dialogue State is the single source of truth):
 each hook reads `pred_intent` (NLU writes it on the branch-3 parallel `think()`) and compares it to the
 **active flow's intent** — **differs ⇒ medium** severity, **aligns ⇒ low**. A **user interrupt** is
@@ -264,7 +277,7 @@ PEX picks a domain intent → its 1:1 default flow → activate → policy spins
 There is **no Plan policy** — Plan decomposition and sequencing are the **Workflow Planner's** job, not a
 sub-agent's. PEX's Workflow Planner decomposes a complex task into sub-flows rather than calling a tool. It
 generates a freeform plan (shared with the user) and a structured plan (stored on the state, not the
-scratchpad — the structure must survive); on approval it `stackon`s each sub-flow under a `plan_id`. The loop
+scratchpad — the structure must survive); on approval it `stackon`s ALL sub-flows at once — reverse execution order, first-to-run pushed last as the one Active flow, the rest waiting as Pending — so the stack itself holds the plan (observable by any agent; survives orchestrator mistakes and compaction). The loop
 drives sub-flow sequencing and mid-plan replanning, reading sub-flow results from their completion records in
 the scratchpad. See [Workflow Planner § Plan Flow Lifecycle](../components/workflow_planner.md).
 
