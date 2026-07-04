@@ -215,8 +215,8 @@ column is the sub-plan file number, not the build-order position above.)
 
 ## Deferred register — "designed, not yet built"
 
-Parked by scope. Each gets a stub + a `# designed-not-built` marker where the seam lives, so the spec stops
-reading present-tense and a future implementer finds the hook.
+Parked by scope. Each gets a stub + a `# designed-not-built` marker at the exact spot in code, so the spec
+stops reading present-tense and a future implementer finds the hook.
 
 - Real parallel **continuous** loops (NLU/PEX/MEM as event-triggered background loops). Today: synchronous
   at the turn points.
@@ -227,6 +227,26 @@ reading present-tense and a future implementer finds the hook.
   (`faq_service.py`).
 - `Turn.form` multimodal (speech/image); tool-approval / lethal-trifecta HITL gate; telemetry endpoint;
   responsive block hints.
+
+**From the 2026-07-04 code review (rounds E2-5.1)** — applied immediately: live-stack mirrors for every
+`write_state` stack op (the plan-wipe Critical), blocking `_check_nlu` before `contemplate` (belief-writer
+ordering), landed-only guard on the stackon-active slot fold (torn-read), `append_to_scratchpad` prompt
+name, plan-lifecycle regression test. Parked here as potential plans:
+
+- **One source of truth for the flow stack.** The live `FlowStack` and the file `flow_stack` block have
+  different writers reconciled by wholesale overwrites in both directions; the mirror fixes treat the
+  symptom. Durable design: route every stack mutation through `write_state` and rehydrate the live stack
+  at fixed points, or make the live stack canonical with `write_state` delegating to it.
+- **`read_state` blocking scope needs a ruling.** The prompt sends every intent to `read_state` first,
+  and its unconditional blocking join serializes most parallel-think turns — the two-speed design only
+  pays off if domain turns skip the belief read or the join becomes conditional. Keep-as-is is defensible
+  (belief-first correctness) but should be an explicit decision.
+- **Smaller parked items:** `execute()` carries 7 params (bundle dax/payload/text as one turn input);
+  dead `_llm_quality_check` + placeholder lines in `_validate_artifact`; dead `keep_going` writes in
+  draft/revise policies (Batch-2b scope); a test asserting the carrier-A message shape (belief note rides
+  the tool-results user message); a forced fallback landing on the loop's final round is not executed
+  until next turn; `SessionScratchpad.write_completion` crashes in in-memory mode (unreachable today);
+  live eval runs mutate the checked-in content database seeds (sandbox the content DB for eval runs).
 
 ---
 

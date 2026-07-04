@@ -387,6 +387,9 @@ class PEX:
                 # hook: post-tool — a policy execution failure re-consults NLU with narrowed
                 # candidates (contemplate, never think), then re-arms belief for the fresh detection.
                 if tool_use.name == 'activate_flow' and result.get('_error') == 'execution_error':
+                    # Order the two belief writers: a still-running think would overwrite
+                    # contemplate's narrowed detection with the original failed one.
+                    self._check_nlu()
                     self.nlu.understand(op='contemplate', user_text=self.world.context.last_user_text)
                     self._injected = False
                 errors = errors + 1 if not result['_success'] else 0
@@ -599,15 +602,22 @@ class PEX:
                         '_message': f'flow {top.name()!r} has no slot(s) {unknown}; '
                                     f'valid slots: {list(top.slots)}'}
         document = state.write_state(self.world.state_file(), params['op'], **kwargs)
+        # Mirror every stack op onto the live stack: complete_flow and activate_flow's epilogue
+        # re-sync state.flow_stack FROM the live stack, so a file-only entry is wiped on the next
+        # completion — losing a plan's Pending flows (code review 2026-07-04). pop_completed's
+        # mirror predates this; stackon/fallback gained theirs from the same root cause.
         if params['op'] == 'pop_completed':
-            # Mirror the pop onto the live stack: activate_flow's epilogue re-syncs
-            # state.flow_stack from it, so a stale live entry would resurrect popped flows.
             self.flow_stack.pop_completed()
+        elif params['op'] == 'stackon':
+            self.flow_stack.stackon(kwargs['flow_name'])
+        elif params['op'] == 'fallback':
+            self.flow_stack.fallback(kwargs['flow_name'])
         if params['op'] == 'stackon' and params.get('active'):
             # Single-call stack-on (the user 2026-07-03): stackon handed over matching slots; fold
             # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
-            self._check_nlu(wait=False)  # reap a landed detection so the fold reads fresh belief
-            self._apply_belief_slots(state, params['flow_name'])
+            self._check_nlu(wait=False)
+            if self._nlu_thread is None:  # fold only a landed detection — never a mid-write belief
+                self._apply_belief_slots(state, params['flow_name'])
             return self.activate_flow({'flow_name': params['flow_name']})
         return {'_success': True, 'state': document}
 
@@ -664,6 +674,7 @@ class PEX:
             return False
         flow_name = state.pred_flows[0]['flow_name']
         state.write_state(self.world.state_file(), 'stackon', flow_name=flow_name)
+        self.flow_stack.stackon(flow_name)  # live-stack mirror — same wipe risk as write_state
         self._apply_belief_slots(state, flow_name)
         return True
 

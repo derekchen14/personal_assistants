@@ -58,9 +58,6 @@ def _commands(args) -> list:
     if args.traces:
         cmds.append(('traces', [_PY, f'{_TRACES}/run_traces.py']))
     if args.evals:
-        # The corpus-driven Evals runner (_evals/run_evals.py) is not built yet — see
-        # _specs/_review/fix_4_traces_evals_cleanup.md. Report cleanly instead of crashing on a
-        # missing path so --all still runs the tiers that DO exist.
         cmds.append(('evals', [_PY, f'{_EVALS}/run_evals.py']))
     return cmds
 

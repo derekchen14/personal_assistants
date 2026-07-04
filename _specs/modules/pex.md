@@ -91,7 +91,7 @@ and sub-agent results. There is no separate naturalization step.
 | Hot-path | `stackon`, `fallback`, `pop_completed` | PEX — Workflow Planner stack ops |
 | Hot-path | `activate_flow` | PEX — promote top-of-stack pending flow(s) to active, run their sub-agents |
 | Policy | `complete_flow` | the flow's **policy** marks itself done (grounding-gated) — not a PEX move |
-| Hot-path | `append_to_scratchpad`, `read_from_scratchpad` | [Session Scratchpad](../components/session_scratchpad.md) (`update_scratchpad` is NLU-only) |
+| Hot-path | `append_to_scratchpad`, `read_scratchpad` | [Session Scratchpad](../components/session_scratchpad.md) (`update_scratchpad` is NLU-only) |
 | Long-tail | `handle_ambiguity` (NLU), `recap` / `recall` / `retrieve` + `store_preference` (MEM) | component skills |
 | Domain (read-only) | `find_posts`, `read_metadata`, `read_section`, `search_notes`, `list_channels`, `channel_status` | safe to call directly |
 
@@ -165,7 +165,7 @@ coroutine; all cross-invocation state travels through the [scratchpad](../compon
 
 **Talk to [NLU](nlu.md) (the Heart):**
 - `append_to_scratchpad` — append a finding; this **triggers NLU to pay attention**, and is also how
-  sub-agents and the PEX orchestrator communicate (paired with `read_from_scratchpad`).
+  sub-agents and the PEX orchestrator communicate (paired with `read_scratchpad`).
 - `understand` — read the Dialogue State; returns a serialized dict (flow name, intent, confidence, slots,
   grounding, and other relevant fields).
 - `handle_ambiguity` — operate the Ambiguity Handler via its four methods: `declare` (record an ambiguity,

@@ -109,8 +109,8 @@ Each rule block names the sidecar it constrains. N/A classes are omitted.
 - counted: each dispatched flow ×1 per turn; a clarification round inside the sub-flow
   (rework asking for direction) is a legitimate extra dispatch of the SAME flow once the
   answer arrives.
-- NOTE for review: the recorded run stages the sub-flow without `plan_id` linkage; whether
-  plan-linked stackon (`write_state op=stackon, plan_id=...`) should be required is an
+- NOTE for review: `plan_id` was removed in round 5.1 — the stack itself holds the plan
+  (all sub-flows stacked at once); whether stronger plan-linkage evidence is needed is an
   approval decision.
 
 ### 08_click_bypass

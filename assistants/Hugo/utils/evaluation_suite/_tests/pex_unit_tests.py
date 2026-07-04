@@ -1717,9 +1717,9 @@ def test_reminder_is_agentic():
 
 
 
-class TestSingleCallStaging:
-    """`write_state op=stackon active=true` stages, folds belief slots, and runs the policy in
-    one call; `prestack` is the code-side staging for the awaited-NLU path (fix 1 Option B)."""
+class TestSingleCallStackon:
+    """`write_state op=stackon active=true` stacks on, folds belief slots, and runs the policy in
+    one call; `prestack` is the code-side stack-on for the awaited-NLU path (fix 1 Option B)."""
 
     def _believe(self, state, flow_name, intent='Draft'):
         state.pred_intent = intent
@@ -1741,7 +1741,7 @@ class TestSingleCallStaging:
         top = rehydrate_flow(state.flow_stack[-1])
         assert top.slots['source'].values[0]['post'] == 'p1'   # belief slots folded in
 
-    def test_stackon_without_active_only_stages(self, sessions_dir, mock_agent, monkeypatch):
+    def test_stackon_without_active_only_stacks(self, sessions_dir, mock_agent, monkeypatch):
         mock_agent.world.open_session('wire-test')
         state = mock_agent.world.current_state()
         self._believe(state, 'outline')
@@ -1751,7 +1751,7 @@ class TestSingleCallStaging:
                                                {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True and not called
 
-    def test_prestack_stages_confident_detection(self, sessions_dir, mock_agent):
+    def test_prestack_stacks_confident_detection(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
         state = mock_agent.world.current_state()
         self._believe(state, 'outline')
@@ -1870,3 +1870,36 @@ class TestBeliefInjection:
         note = pex.inject_belief_state()
         assert 'refine' in note and 'Intent changed' not in note
         assert live.status == 'Active'                # the orchestrator decides, not code
+
+
+class TestPlanLifecycle:
+    """A stacked multi-flow plan survives completions: write_state stack ops mirror onto the
+    live stack, so the complete_flow / activate_flow re-syncs no longer wipe Pending flows
+    (code review 2026-07-04, Critical 1)."""
+
+    def test_plan_flows_survive_completion(self, sessions_dir, mock_agent, monkeypatch):
+        from schemas.ontology import Intent
+        mock_agent.world.open_session('wire-test')
+        pex = mock_agent.pex
+        state = mock_agent.world.current_state()
+        for flow_name in ('release', 'compose'):    # reverse execution order: first-to-run last
+            result = pex._dispatch_tool('write_state', {'op': 'stackon', 'flow_name': flow_name})
+            assert result['_success'] is True
+
+        class _CompletingPolicy:
+            def execute(self, state, context, dispatch):
+                pex.flow_stack.get_flow(status='Active').status = 'Completed'
+                return TaskArtifact('outline', thoughts='outline done')
+            def pop_completion(self):
+                return {'flow': 'outline', 'summary': 'done', 'metadata': {}}
+        monkeypatch.setitem(pex._policies, Intent.DRAFT, _CompletingPolicy())
+
+        result = pex._dispatch_tool('write_state',
+                                    {'op': 'stackon', 'flow_name': 'outline', 'active': True})
+        assert result['_success'] is True and result['status'] == 'Completed'
+        entries = [(entry['flow_name'], entry['status']) for entry in state.flow_stack]
+        assert ('compose', 'Pending') in entries    # the plan survived the completion
+        assert ('release', 'Pending') in entries
+        pex._dispatch_tool('write_state', {'op': 'pop_completed'})
+        top = state.flow_stack[-1]
+        assert top['flow_name'] == 'compose' and top['status'] == 'Active'   # next flow surfaces

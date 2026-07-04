@@ -107,7 +107,7 @@ TOOL_POLICY = (
     '**Completion records.** A flow that completes returns `{flow, summary, metadata}` — its '
     'completion record, also appended to the scratchpad. Before chaining a dependent flow, read '
     'earlier records with `read_scratchpad` (keys=["flow", "summary"]). Persist your own '
-    'findings worth keeping with `append_scratchpad`; authorship is stamped by code — never '
+    'findings worth keeping with `append_to_scratchpad`; authorship is stamped by code — never '
     'write a `writer` key yourself.\n'
     '**Read-only domain tools (an exception, not a menu).** `find_posts`, `read_metadata`, '
     '`read_section`, `search_notes`, `list_channels`, `channel_status` may be called directly, '
