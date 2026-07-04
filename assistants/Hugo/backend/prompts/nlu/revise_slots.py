@@ -818,8 +818,99 @@ source slot: {"post": "d1e2f3a4", "sec": "", "snip": "", "chl": ""}
 }
 
 
+PROPOSE_PROMPT = {
+    'instructions': (
+        "The Propose Flow fills a specific placeholder gap in existing content — a `<fill in here>`, a "
+        "TODO, or a blank slot inside a section — by generating 2-3 targeted alternatives for the user to "
+        "pick. It is like Brainstorm, but scoped to ONE spot in a draft rather than the whole post.\n\n"
+        "Extract `source` (the section that contains the gap; usually inherits the post from active_post) "
+        "and, when the user gives direction on what the gap should contain, `context` (their guidance, "
+        "captured verbatim). When the user only points at the gap with no direction, leave `context` null."
+    ),
+    'rules': (
+        "1. `source` names the SECTION holding the gap. Fill `sec` when the user names a section ('the "
+        "intro', 'the methods section'); `post` inherits from active_post unless the user names a "
+        "different post. A bare 'fill in the blank here' with a grounded active post fills source from "
+        "grounding and leaves `sec` for the policy to resolve.\n"
+        "2. `context` (optional) captures the user's direction for the gap verbatim — 'something about "
+        "cost savings', 'a concrete example'. Vague pointers with no direction ('finish this', 'fill it "
+        "in') leave `context` null so the flow proposes from the surrounding content alone.\n"
+        "3. Treat propose directives as current-turn-only; prior-turn direction is assumed applied. "
+        "`source` is the exception — it carries forward from `state.active_post`."
+    ),
+    'slots': '',
+    'examples': '''<positive_example>
+## Conversation History
+
+User: "Fill in the placeholder in my sleeper-trains post's comfort section — lead with the overnight time saved."
+
+## Input
+Active post: None
+
+## Output
+
+```json
+{
+  "reasoning": "User points at a gap in a named section (comfort) and gives direction (overnight time saved). source fills post+sec; context captures the direction verbatim.",
+  "slots": {
+    "source": [{"post": "sleeper-trains", "sec": "comfort"}],
+    "context": ["lead with the overnight time saved"]
+  }
+}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "There's a TODO in the intro — give me a couple options for it."
+
+## Input
+
+Active post: **The Case for Sleepers Over Hotels** (id: `9f8e7d6c`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "9f8e7d6c", "sec": "", "snip": "", "chl": ""}
+
+## Output
+
+```json
+{
+  "reasoning": "Active post is grounded — copy post_id verbatim from the source slot. Section named (intro). No direction on what the TODO should say, so context stays null.",
+  "slots": {
+    "source": [{"post": "9f8e7d6c", "sec": "intro"}],
+    "context": null
+  }
+}
+```
+</positive_example>
+
+<edge_case>
+## Conversation History
+
+User: "Fill in the blank."
+
+## Input
+Active post: My RL Primer
+
+## Output
+
+```json
+{
+  "reasoning": "Bare gap pointer with a grounded active post and no section or direction. source inherits the post; sec stays for the policy to resolve from the placeholder location; context null.",
+  "slots": {
+    "source": [{"post": "My RL Primer"}],
+    "context": null
+  }
+}
+```
+</edge_case>''',
+}
+
+
 PROMPTS = {
     'rework': REWORK_PROMPT,
     'write': WRITE_PROMPT,
     'audit': AUDIT_PROMPT,
+    'propose': PROPOSE_PROMPT,
 }
