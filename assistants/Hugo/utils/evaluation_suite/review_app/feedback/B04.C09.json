@@ -1,0 +1,5 @@
+{
+  "id": "B04.C09",
+  "verdict": "needs",
+  "comment": "Turn 3 is actually outline {002}, with an additional clarification. There doesn't need to be a clarify flow, that's largely why we don't really consider {09F} a flow. The 16 official flows are still the only viable options. The 'clarify' flow does not need to be labeled as such. What's actually missing is a different type of tag when planning or uncertainty occurs. For uncertainty, there should also be a sense of which level. For planning, we should store which flows are on the stack.\n\n5th turn can be more straightforward. something like \"Yes, that one\""
+}

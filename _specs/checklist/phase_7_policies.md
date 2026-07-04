@@ -10,7 +10,7 @@ Each flow has a policy (deterministic skeleton) and a skill template (LLM prompt
 
 **Outputs**: 32 working flows with unit tests, 16 stubbed flows, complete skill templates.
 
-**Spec references**: [pex.md § Policies and Tools](../modules/pex.md), [workflow_planner.md](../components/workflow_planner.md), [tool_smith.md § Skill Templates](../utilities/tool_smith.md)
+**Spec references**: [flow_authoring.md](./flow_authoring.md) (the policy method-shape, conventions, and failure channels — the how-to for this phase), [pex.md § Policies and Tools](../modules/pex.md), [workflow_planner.md](../components/workflow_planner.md), [tool_smith.md § Skill Templates](../utilities/tool_smith.md)
 
 ---
 

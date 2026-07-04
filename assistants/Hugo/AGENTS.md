@@ -2,7 +2,7 @@
 
 Hugo lives in the `personal_assistants` monorepo. It helps a user write, revise, and publish blog posts across channels (Substack, LinkedIn, Twitter, etc.). Turn pipeline: `Agent → NLU → PEX` — PEX composes the reply directly (RES was removed).
 
-This file is an index for coding agents starting a fresh session. Read it once, then use it to decide **where** to read deeper. Further reference lives in `utils/helper_ref.md` (component inventory) and `utils/flow_recipe.md` (how to author a flow).
+This file is an index for coding agents starting a fresh session. Read it once, then use it to decide **where** to read deeper. Further reference lives in `utils/helper_ref.md` (component inventory), `_specs/checklist/flow_authoring.md` (how to author a flow — cross-assistant), and `schemas/flow_reference.md` (Hugo's domain tables).
 
 ## Core principle — 80% / 20%
 
@@ -101,7 +101,7 @@ Every flow touches five files:
 4. `backend/modules/templates/<intent>.py` — entry in `TEMPLATES` + branch in `fill_<intent>_template`. Spoken text goes here, NOT in `artifact.thoughts`.
 5. `backend/prompts/nlu/<intent>_slots.py` — slot-extraction prompt for NLU `_fill_slots` phase 2.
 
-Full walkthrough with `CreateFlow` as the running example: `utils/flow_recipe.md`.
+Full authoring walkthrough (the four files, conventions): `_specs/checklist/flow_authoring.md`; Hugo's tool/scope/ID tables: `schemas/flow_reference.md`.
 
 ## Planning rule
 
@@ -115,7 +115,7 @@ Any non-trivial task begins with a plan. While designing the plan, default to **
 - `flow.intent` is a property (no parens); `state.pred_intent` is NLU's guess — past NLU, trust `flow.intent`.
 - Recompute slot fill at policy entry with `slot.check_if_filled()`; `.filled` is stale after earlier turns.
 - Sub-flows pushed via `flow_stack.stackon()` or `fallback()` exit to the user for review unless `state.has_plan` is set — no silent chaining outside a plan.
-- Converse intents that consume accept/decline (`endorse`, `dismiss`) yield to the underlying flow when `flow_stack.stack_size() > 1` — they set `state.keep_going=True` and return an empty frame instead of running their chit-chat skill. See `LESSONS.md` Part II.4 "Yield-when-stacked".
+- A Converse turn that consumes accept/decline yields to the underlying flow when `flow_stack.stack_size() > 1` — it sets `state.keep_going=True` and returns an empty frame instead of running its chit-chat skill. See `_specs/checklist/flow_authoring.md § Transitions` (yield-when-stacked).
 - One `SourceSlot` per flow maximum. Hugo entity parts: `post`, `sec`, `snip`, `chl`, `ver`.
 - 48 flows across Research(7) / Draft(7) / Revise(7) / Publish(7) / Converse(7) / Plan(6) / Internal(7). Catalog: `flow_stack/flows.py`.
 
@@ -145,10 +145,10 @@ assistants/Hugo/
 │   ├── utilities/services.py       PostService, ContentService, AnalysisService, PlatformService
 │   └── routers/                    chat_service.py, health_service.py
 ├── database/                       hugo.db, content/, tables.py, seed_data.json
-├── schemas/                        ontology.py, config.py, tools.yaml
-├── utils/                          helper.py, harness.py, conftest.py, helper_ref.md, flow_recipe.md,
-│                                   prod_replica.py, rebuild_metadata.py,
-│                                   tests/ (unit), traces/ (parity+gold), evals/ (e2e+harness)
+├── schemas/                        ontology.py, config.py, tools.yaml, flow_reference.md (Hugo tool/scope/ID tables)
+├── utils/                          helper.py, helper_ref.md, prod_replica.py, rebuild_metadata.py,
+│                                   evaluation_suite/ (run_suite.py; _tests/ _traces/ _evals/;
+│                                   datasets/{train,dev,test}.jsonl; harness.py scoring.py; review_app/)
 └── README.md                       10-step workflow + CRUD matrix
 ```
 
@@ -157,6 +157,6 @@ assistants/Hugo/
 - `CLAUDE.md` (repo root) — authoritative code style, Bash rules, defensive-coding rules.
 - `_specs/architecture.md` — POMDP framing, cross-assistant module/component split.
 - `_specs/components/flow_stack.md` — full flow/slot architecture: class hierarchy, 12+4 slot types, grounding rules, lifecycle states, fallback, failure recovery.
-- `utils/flow_recipe.md` — authoring a Hugo flow end-to-end; **canonical definition of slot priorities** (`required` / `elective` / `optional`) in § 1.
+- `_specs/checklist/flow_authoring.md` — authoring a flow end-to-end (cross-assistant); **canonical slot priorities** (`required` / `elective` / `optional`) under "Designing the flow". Hugo's domain tables: `schemas/flow_reference.md`.
 - `utils/helper_ref.md` — component method inventory. Read before adding a helper so you don't reinvent an existing one.
 - `~/.claude/projects/-Users-derekchen-Documents-repos-personal-assistants/memory/MEMORY.md` — persistent cross-session feedback.

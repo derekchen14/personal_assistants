@@ -24,3 +24,7 @@ the [pipeline](./README.md).
   - The plan is approved by DoE before any code is written.
   - All PM test cases pass locally; the self-review notes scope adherence and which tests each change
     satisfies.
+
+## Preferred Model
+
+Latest version of Opus.

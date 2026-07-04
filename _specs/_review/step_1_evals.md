@@ -55,14 +55,22 @@ All decisions, open or closed, live here (items 1–8 locked 2026-06-21; 9–13 
    deterministic end-state facts match the oracle (**HARD gate**) **and** an LLM-judge rubric passes (**soft**).
 4. **Run cadence = tiered.** Contract tests + lints gate every commit; accuracy + trace evals run nightly and on
    relevant prompt/ontology/policy changes; full E2E is manual / pre-release.
+   - **Default to a fresh dev sample of 8.** Every paid tier (model / traces / evals) defaults to a **random
+     ~8 conversations drawn from `train.jsonl` per build** (`harness.sample`) — not a fixed set, never the
+     full corpus (we almost never run all 96). Pass `--ids` for a chosen set, or `--all` for the whole train
+     split (a pre-release gate). All runners share `harness.sample`/`load_cases`, so a "model" run and a
+     "traces" run draw from the same split the same way. (Supersedes the earlier fixed `DEFAULT_SCENARIOS`
+     idea — see [[fix_1_orchestrator_activation.md]] "Shared prerequisite".)
 5. **Trace determinism = cached-vote replay.** Record each ensemble voter once at temp-0; replay feeds cached
    votes back so flow detection is deterministic and the gate never re-rolls the model.
 6. **Adversarial robustness = part of Observability Traces, designed now** (built in the final phase), not
    deferred to a separate plan.
 7. **Synthesis trust = manual seed, synthesized bulk.** Hand-generate the **64-conversation seed** together (no
-   exemplar leakage); synthesize the other **192** via augmentation + denoising with human approval on labels +
-   recorded gold. **Dev** is a random 25% slice of the combined Train; the held-out **Test** set is real usage
-   (empty for now). See the Train/Dev/Test split below.
+   exemplar leakage); synthesize the bulk via augmentation + denoising with human approval on labels +
+   recorded gold. On disk the corpus is three JSONL splits under `utils/evaluation_suite/datasets/`:
+   **`train.jsonl`** (the 96 labelled conversations, one JSON per line), **`dev.jsonl`** and **`test.jsonl`**
+   (placeholders for now). **Dev** is a fresh random ~8 drawn from train per build (dynamic, not a stored
+   slice); the held-out **Test** set is real usage (empty for now). See the Train/Dev/Test split below.
 8. **Phasing** (the order we build): **P1** task *completion* (coarse Eval, on seed data) → **P2** Model Unit
    Tests → **P3** Observability Traces (regression net) → **P4** task *success* (rigorous Eval) + adversarial
    robustness.
@@ -143,21 +151,26 @@ The contract tests are the only assets that survive as-is; everything LLM-bearin
 
 The split is by **where the data comes from**, not which tier consumes it:
 
-| Split | Source | Owner | Role |
-|---|---|---|---|
-| **Train** | **64 manual seed + 192 synthetic** (augment + denoise) | seed: you + me · bulk: Opus | the full **256-conversation** working set (the funnel below) |
-| **Dev** | **random 25% slice of Train** | sampled (≈64) | handed to the **SWEs** to start a feature |
-| **Test** | **real Hugo usage** (logged failures, user-reported misses) | captured from production | the true held-out generalization measure — **empty for now**, grows from real feedback |
+On disk the split is three JSONL files under `utils/evaluation_suite/datasets/` (`train.jsonl`, `dev.jsonl`,
+`test.jsonl`). The split is by **where the data comes from**, not which tier consumes it:
 
-**Train is built, not collected:** **64 conversations we hand-generate together** (the seed — including the
-hand-brainstormed E2E ambiguity scenarios) **+ 192 synthesized** via data-augmentation and -denoising cycles
-= **256**. **Dev is a random 25% slice** of that 256 (≈64) — representative, not a separate source. The
-held-out **Test** set is real usage (empty for now). Leakage rule still holds — synthesized Train must not
-reuse a prompt exemplar's topic (e.g. Kitty Hawk).
+| Split | File | Source | Role |
+|---|---|---|---|
+| **Train** | `train.jsonl` | **64 manual seed + synthetic bulk** (augment + denoise) | the working set — **96 today**, growing toward the 256 target |
+| **Dev** | `dev.jsonl` (placeholder) | **a fresh random ~8 drawn from Train per build** (`harness.sample`) | what a build iterates on + judges against — **dynamic, not stored** |
+| **Test** | `test.jsonl` (placeholder) | **real Hugo usage** (logged failures, user-reported misses) | the true held-out generalization measure — **empty for now** |
+
+**Train is built, not collected:** the seed conversations we hand-generate together (including the
+hand-brainstormed E2E ambiguity scenarios) **+** synthesized ones via data-augmentation and -denoising cycles;
+the **256** figure is the target, **96** exist today. **Dev is drawn fresh, not stored:** each build samples
+~8 random conversations from `train.jsonl` — representative and dynamic, so no single slice gets overfit
+(`dev.jsonl` is a placeholder for a frozen slice if we ever want one). The held-out **Test** set is real
+usage (empty for now). Leakage rule still holds — synthesized Train must not reuse a prompt exemplar's topic
+(e.g. Kitty Hawk).
 
 ### Feature-build loop (how the data drives the team)
 
-1. **Hand the Dev slice (25% ≈ 64) to the SWEs** to start building the feature.
+1. **Hand a fresh Dev sample (~8) to the SWEs** to start building the feature.
 2. **You + QA + PM 4× it to the full 256** — that full set is the feature's **correctness threshold**.
 3. Once it lands, the **same 256** guards against **regressions**.
 4. **Each checkpoint runs a random 25% sample of the suite** (≈Dev-sized) to keep cost down; the full set runs
@@ -270,8 +283,9 @@ assistants/Hugo/utils/                 # three tiers map 1:1 to the eval ladder 
 
 ### Case schema (what `synthesize.py` emits)
 
-One shape for all phases — the existing `test_cases.json` / `evaluation.md` format emitted verbatim
-(`model_cases.json` for accuracy, `scenarios/*.json` for multi-turn). Each phase reads a documented subset:
+One shape for all phases — each conversation is one JSON object, stored one-per-line in
+`datasets/train.jsonl` and consumed by every tier (accuracy and multi-turn alike). Each phase reads a
+documented subset:
 
 ```jsonc
 {
@@ -453,10 +467,9 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done. (We are at the **p
 ### Phase 1 — task **completion** (coarse Eval on seed data)  · `[~]`
 - **Goal:** a fast, cheap "does the whole agent run end-to-end and do something" signal on the new 16-flow
   architecture — before investing in granular accuracy or traces.
-- **Spine — BUILT (red→green proven on 1 anchor case):** `utils/evals/scorers/completion.py` (`is_completed`),
-  `utils/evals/gates.py` (folded-baseline gate + `grade`), `utils/evals/baselines/evals.json`
-  (`completion_rate`, `expected_fail: true`), `utils/evals/datasets/scenarios/draft_create.json`,
-  `run_evals.py --level evals --metric completion`, and `test_completion_gate_xfail` in `unit_tests.py`.
+- **Spine — BUILT:** `utils/evaluation_suite/scoring.py` (`is_completed` + the folded-baseline gate `grade`),
+  the per-tier baseline (`_traces/traces.json`, `_evals/evals.json`), the corpus at `datasets/train.jsonl`,
+  the runners `_traces/run_traces.py` and `_evals/run_evals.py`, and the gate tests in `_tests/pex_unit_tests.py`.
   Was red (import error) → green; xfail keeps the commit gate green until the feature clears `target`.
 - **Remaining:** `synthesize.py` (seed scenarios + labels across 7 intents / 16 flows; Train bulk + Dev anchor);
   expand from 1 anchor to per-flow coverage; record the completion baseline and flip `expected_fail` off once

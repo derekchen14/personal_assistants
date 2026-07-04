@@ -59,7 +59,9 @@ class BusinessContext:
 
     def search_all(self, query:str, top_k:int=1000) -> list:
         """Candidate retrieval. Without a vector store this returns the whole corpus (capped at
-        top_k); a real embedding search lands here. # designed-not-built (vector retrieval)"""
+        top_k); a real embedding search lands here, using the shared model in
+        `backend.utilities.embeddings` (the same one the eval response scorer uses — one download,
+        not several). # designed-not-built (vector retrieval)"""
         return self._corpus[:top_k]
 
     def rerank(self, query:str, candidates:list, top_k:int=10) -> dict:

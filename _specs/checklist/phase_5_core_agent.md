@@ -175,7 +175,12 @@ The append-only swarm ledger. **File**: lives on the World, beside the Ambiguity
   **agentic**; deterministic operations are plain tools.
 - **Sub-agent toolset**: `append_to_scratchpad` / `read_from_scratchpad` / `understand` / `handle_ambiguity`
   (NLU); `recap` / `recall` / `retrieve` (MEM); plus `flow.tools`.
-- **`check()` pre-hook** (required slots, manifest, Lethal Trifecta gate) and **`verify()` post-hook**.
+- **`check()` pre-hook** (required slots, manifest, Lethal Trifecta gate) and **`verify()` post-hook** —
+  two of the **six hook points** around a sub-agent run (pre-flow, pre-tool, post-tool, tool-retry,
+  post-flow, verification). On the parallel-think path, Plan and Clarify are required to wait — the
+  pre-tool hook joins the NLU thread on their `read_state` belief read; the other five intents continue,
+  picking up a landed detection at the hook points without blocking. See
+  [pex.md § hook points](../modules/pex.md).
 - **Reply composition**: PEX composes the spoken reply **directly** via a voice Skill — there is no
   naturalization / `respond` step and no template registry.
 - **Self-check / verify failure fan-out**: a failure writes a `TaskArtifact(violation)`, appends a violation

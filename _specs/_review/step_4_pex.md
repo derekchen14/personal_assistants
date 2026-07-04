@@ -124,7 +124,7 @@ prefix).
 targets the **cacheable system prompt**, not the per-turn message — where putting volatile grounding first
 would churn the cache key every turn. A cheap reorder within the starter is optional and not required.
 
-## 4.5 — Config-promote loop bounds + call-caps (E10)  · 1 / 7b
+## 4.5 — Config-promote loop bounds + call-caps (E10)  · 1 / 7b — DONE 2026-07-03 (PR #4; resilience renamed limits per amendment)
 `_MAX_ROUNDS` / `_MAX_CORRECTIVE` are module constants (`pex.py:21-22`); the per-flow call-cap doubling is
 inline (`prompt_engineer.py:215-217`). Two recovery keys exist that nothing reads —
 `resilience.max_recovery_attempts` and `recovery.max_repair_attempts`.

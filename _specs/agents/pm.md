@@ -40,3 +40,7 @@ pick from:
 
 The eval suite is a set of scenarios that the PM defines to test the implementation of the spec. These
 scenarios are already created, so the PM can sample from the pool of existing evals.
+
+## Preferred Model
+
+Latest version of Opus.

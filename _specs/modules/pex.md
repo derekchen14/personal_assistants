@@ -32,7 +32,26 @@ and decides by intent** — it does not re-detect:
 - **Utterance, no active entity** → the Assistant awaited `understand(op=think)`; the detection is in belief
   before `execute()` runs.
 - **Utterance, active entity** → `understand(op=think)` runs on a **parallel thread** while `execute()`
-  proceeds on the standing belief; the thread joins at the turn boundary.
+  proceeds on the standing belief; the pre-tool hook joins the thread on a belief read (the Plan/Clarify
+  wait), flow execution picks up a landed detection without blocking (see
+  [hook points](#policy-hook-points--the-6-hook-sub-agent-framework)), and the turn boundary joins
+  whatever remains.
+
+**Intent dispatch — PEX's first step.** Given a new user turn, PEX's main job begins by committing to one
+of the 7 intents. Each intent sets how the turn treats the (possibly still-running) parallel detection:
+
+- **Plan** — wait on NLU, then kick off the Workflow Planner.
+- **Clarify** — wait for NLU's predicted dialogue state, then send PEX's best guess to the Ambiguity
+  Handler.
+- **Converse** — prepare the params, call any tools as needed, then respond directly.
+- **Research / Draft / Revise / Publish** — go directly to flow execution; the NLU update is optional at
+  the hook points.
+
+All 7 intents keep multiple hook points where NLU can come in. **Plan and Clarify are required to wait**
+for NLU's response; the other five continue if NLU has not returned anything. When NLU has returned and
+the predicted flow already matches the active flow, nothing needs to change — that is the speed-up. Since
+95%+ of turns are Plan turns or some flow activation, NLU flow detection is almost always integrated into
+the turn.
 
 Inside the loop (`_run_loop`, bounded to `_MAX_ROUNDS`), PEX calls the model with a frozen three-tier system
 prompt, the message list, and the tool catalog. Each round:
@@ -207,6 +226,20 @@ quick check before and after their LLM loop). The six: ① **pre-LLM** (≈ `che
 ③ **post-tool-call**, ④ **tool-retry** (a pre-tool-call hook for retries only — ≈ `retry_tool`),
 ⑤ **post-LLM**, ⑥ **verification** (≈ `verify()`). Each is an interception point for an **NLU signal** or a
 **user interrupt**.
+
+**Plain names (2026-07-03):** ① is the **pre-flow** hook, ⑤+⑥ together are the **post-flow** hook, ②
+(with ④ as its retry variant) is **pre-tool**, ③ is **post-tool**. These six are the complete set — the
+work at `execute()` entry and the end-of-turn checkpoint is ordinary turn lifecycle, not a hook. Since both
+the orchestrator loop and every sub-agent route tool calls through the same dispatch, the pre/post-tool
+hooks cover both levels from one place.
+
+**Who waits on NLU (2026-07-03):** on the parallel-think path (utterance + active entity), the hooks are
+where this turn's detection comes in. **Plan and Clarify are required to wait**: their first move is a
+belief read (`read_state`), and the pre-tool hook joins the NLU thread there — the read blocks until
+detection lands. **The other five intents never block**: flow execution's pre-flow hook only picks up a
+detection that has already landed (NLU still running → the flow proceeds on standing belief). When the
+predicted flow already matches the active flow, nothing needs to change — that is the speed-up. The
+turn-boundary join settles whatever remains.
 
 **Signal = read from belief** (no separate channel — the Dialogue State is the single source of truth):
 each hook reads `pred_intent` (NLU writes it on the branch-3 parallel `think()`) and compares it to the

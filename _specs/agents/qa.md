@@ -17,3 +17,7 @@
 - **Done when:**
   - Every PM acceptance criterion has a pass/fail with cited evidence.
   - On any fail, the change set returns to the SWEs; on all-pass, it hands to DoE to ship.
+
+## Preferred Model
+
+Latest version of Sonnet
