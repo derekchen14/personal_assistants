@@ -49,7 +49,29 @@ User: "fill in the placeholder in the intro with a couple of options"
 ```json
 {"reasoning": "Generate alternatives for a placeholder gap.", "flow_name": "propose", "confidence": 0.88}
 ```
-</positive_example>'''
+</positive_example>
+
+<edge_case>
+## Conversation History
+
+User: "The middle three sections keep restating the same idea. Reorganize them so the argument builds instead of repeating."
+## Output
+
+```json
+{"reasoning": "Restructuring the argument across several sections is post-level rework, not a single-section edit.", "flow_name": "rework", "confidence": 0.82}
+```
+</edge_case>
+
+<edge_case>
+## Conversation History
+
+User: "The opening of the pricing section reads flat. Rework just those couple of sentences so the hook lands harder."
+## Output
+
+```json
+{"reasoning": "Despite the word rework, the scope is a few sentences inside one section, so this is a sentence-level edit.", "flow_name": "write", "confidence": 0.80}
+```
+</edge_case>'''
 
 
 PROMPTS: dict[str, dict[str, str]] = {

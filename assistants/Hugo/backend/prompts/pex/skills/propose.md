@@ -54,3 +54,55 @@ Final reply (no write tool — the policy turns these into a selection):
 1. "...but the latency tax compounds: every hop adds milliseconds the user feels."
 2. "...yet the bigger cost is operational — each new service is another pager rotation."
 3. "...though the real friction is for developers, who now debug across three boundaries instead of one."
+
+### Example 2: Loosely-located gap
+
+Resolved Details:
+- Source: post=7c1a4f20
+- User asked: "There's a TODO in the indexing part of the Postgres analytics post, give me a few ways to finish it."
+
+Trajectory:
+1. `read_metadata(post_id=7c1a4f20, include_outline=True)` → the section is `indexing-strategy`.
+2. `read_section(post_id=7c1a4f20, sec_id=indexing-strategy, include_sentence_ids=True)` → the `[TODO]` trails a sentence on partial indexes.
+3. Generate three completions from different angles (write amplification, planner cost, maintenance).
+
+Final reply (no write tool — the policy turns these into a selection):
+1. "...but partial indexes only pay off when the filtered rows stay a small slice of the table."
+2. "...though every added index taxes writes, so measure the insert path before you commit."
+3. "...and the planner ignores an index it thinks is too broad, so check the query plan first."
+
+### Example 3: Section cannot be located
+
+Resolved Details:
+- Source: post=3e9b0d55
+- User asked: "Fill the blank in the deployment checklist section."
+
+Trajectory:
+1. `read_metadata(post_id=3e9b0d55, include_outline=True)` → no section resembles a deployment checklist.
+2. `handle_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'section'})`. End turn.
+
+### Example 4: No gap in the named section
+
+Resolved Details:
+- Source: post=b2d84c10, section=conclusion
+- User asked: "Add some options to the conclusion of the caching post."
+
+Trajectory:
+1. `read_section(post_id=b2d84c10, sec_id=conclusion, include_sentence_ids=True)` → complete prose, no placeholder or blank slot.
+2. `handle_ambiguity(level='specific', metadata={'missing': 'gap', 'reason': 'unclear_value'})`. Say the conclusion reads complete and ask which sentence to open up, then end turn.
+
+### Example 5: Gap that references an earlier turn
+
+Resolved Details:
+- Source: post=5a6f2e31, section=introduction
+- User asked: "Use the angle we landed on earlier to fill the empty bullet in the intro."
+
+Trajectory:
+1. `coordinate_context(lookback)` → the earlier angle was framing rate limits as a fairness problem, not a capacity one.
+2. `read_section(post_id=5a6f2e31, sec_id=introduction, include_sentence_ids=True)` → the empty bullet sits under the opening hook.
+3. Generate three fill options that carry the fairness framing forward.
+
+Final reply (no write tool — the policy turns these into a selection):
+1. "Rate limits are less about protecting servers than about sharing a scarce resource fairly."
+2. "Treat the limit as a fairness contract between tenants, not a capacity ceiling."
+3. "The question is not how much traffic we can take, but whose traffic gets served first."

@@ -78,3 +78,43 @@ Final reply:
 ```
 Scheduled to publish weekly starting May 4, 9:00 UTC, on Substack and LinkedIn.
 ```
+
+### Example 3: Requested time is in the past
+
+Resolved Details:
+- post_id: 71c0a9d4
+- channel: ['Substack']
+- datetime: {start: '2026-06-30T14:00:00Z', recurrence: false}
+
+Trajectory:
+1. `datetime.start` is earlier than the current time, so the schedule cannot be set.
+2. `handle_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation='June 30 at 2:00 PM UTC has already passed; give me a future time')`. End turn.
+
+### Example 4: All channels
+
+Resolved Details:
+- post_id: 71c0a9d4
+- channel: ['all']
+- datetime: {start: '2026-07-15T08:00:00Z', recurrence: false}
+
+Trajectory:
+1. `list_channels()` → ['Substack', 'LinkedIn', 'Twitter'].
+2. `channel_status` + `release_post(scheduled_for='2026-07-15T08:00:00Z')` for each connected channel.
+3. `update_post(post_id=71c0a9d4, updates={'status': 'scheduled', 'scheduled_for': '2026-07-15T08:00:00Z', 'channels': ['Substack', 'LinkedIn', 'Twitter']})` → `_success=True`.
+
+Final reply:
+```
+Scheduled for July 15 at 8:00 UTC across Substack, LinkedIn, and Twitter.
+```
+
+### Example 5: One channel fails to schedule
+
+Resolved Details:
+- post_id: 71c0a9d4
+- channel: ['Substack', 'LinkedIn']
+- datetime: {start: '2026-07-20T09:30:00Z', recurrence: false}
+
+Trajectory:
+1. `channel_status(channel='Substack')` → ok; `release_post(post_id=71c0a9d4, channel='Substack', scheduled_for='2026-07-20T09:30:00Z')` → `_success=True`.
+2. `channel_status(channel='LinkedIn')` → ok; `release_post(...)` → `_success=False`. Retry once → still `_success=False`.
+3. `execution_error(violation='tool_error', message='LinkedIn scheduling failed twice', failed_tool='release_post')`. End turn.

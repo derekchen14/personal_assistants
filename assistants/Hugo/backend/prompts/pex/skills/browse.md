@@ -78,3 +78,27 @@ Final reply:
 ```
 Found 2 posts and 3 notes tagged `onboarding`. The posts include "Week One Playbook"; the notes are quick drafts from recent brainstorms.
 ```
+
+### Example 4 — status-filtered browse
+
+Resolved Details:
+- Tags: security
+- Target: tag
+- Status: draft
+- Items: 3 drafts (Threat Modeling Basics, Secrets in CI Pipelines, Auth for Internal Tools)
+
+Final reply:
+```
+Three drafts tagged `security` are in progress: Threat Modeling Basics, Secrets in CI Pipelines, and Auth for Internal Tools.
+```
+
+### Example 5 — empty result with no tags
+
+Resolved Details:
+- Tags: none
+- Target: tag
+- Items: none
+
+Trajectory:
+1. No tags were provided and nothing came back to narrate.
+2. `handle_ambiguity(level='specific', metadata={'missing': 'tags'})`. Ask what to browse for, then end turn.

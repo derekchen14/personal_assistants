@@ -78,3 +78,39 @@ Final reply:
 ```
 Proposed source: "Predicting Dialogue Termination" (arxiv.org). Primary research paper, directly addresses the closure-marker training pattern. Want me to attach it?
 ```
+
+### Example 3: Multiple URLs attached in order
+
+Resolved Details:
+- Target: post=9d2c7a40, section=scheduling, snippet="the scheduler evicts pods under memory pressure"
+- URL: https://kubernetes.io/docs/concepts/scheduling-eviction/; https://kubernetes.io/docs/tasks/administer-cluster/out-of-resource/
+
+Trajectory:
+1. `read_section(post_id=9d2c7a40, sec_id=scheduling)` → finds the eviction snippet.
+2. `revise_content(post_id=9d2c7a40, sec_id=scheduling, content="…evicts pods under memory pressure [[ref]](https://kubernetes.io/docs/concepts/scheduling-eviction/) [[ref]](https://kubernetes.io/docs/tasks/administer-cluster/out-of-resource/).")` → `_success=True`.
+
+Final reply:
+```
+Attached both Kubernetes docs pages to the eviction sentence in Scheduling.
+```
+
+### Example 4: Neither target nor URL given
+
+Resolved Details:
+- Source: post=4f8e1b60
+- User asked: "Add a citation somewhere in the sharding post."
+
+Trajectory:
+1. Neither `target` nor `url` is filled in the resolved details.
+2. `handle_ambiguity(level='partial', metadata={'missing': 'target'})`. Ask which sentence needs the source, then end turn.
+
+### Example 5: Save fails after retry
+
+Resolved Details:
+- Target: post=c3a90f22, section=backoff, snippet="exponential backoff with jitter avoids thundering herds"
+- URL: https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
+
+Trajectory:
+1. `read_section(post_id=c3a90f22, sec_id=backoff)` → finds the snippet.
+2. `revise_content(...)` → `_success=False`. Retry once → still `_success=False`.
+3. `execution_error(violation='tool_error', message='revise_content failed twice on the backoff citation', failed_tool='revise_content')`. End turn.

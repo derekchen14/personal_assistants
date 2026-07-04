@@ -27,7 +27,51 @@ User: "what's a good way to think about audience engagement on technical blogs?"
 ```json
 {"reasoning": "Open-ended question about writing.", "flow_name": "chat", "confidence": 0.90}
 ```
-</positive_example>'''
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "how long should a technical tutorial run before it starts losing people?"
+## Output
+
+```json
+{"reasoning": "Open-ended question about writing, not tied to a specific post action.", "flow_name": "chat", "confidence": 0.88}
+```
+</positive_example>
+
+<edge_case>
+## Conversation History
+
+User: "Not really sure what to do next with any of this. Where would you even start?"
+## Output
+
+```json
+{"reasoning": "Vague reflection with no action verb belongs in conversation, not a specific flow.", "flow_name": "chat", "confidence": 0.80}
+```
+</edge_case>
+
+<edge_case>
+## Conversation History
+
+User: "I've got a rough idea about API versioning rattling around. Throw out a few angles I could take."
+## Output
+
+```json
+{"reasoning": "The casual framing carries a concrete ask for new angles, which is the Draft brainstorm flow.", "flow_name": "brainstorm", "confidence": 0.82}
+```
+</edge_case>
+
+<edge_case>
+## Conversation History
+
+User: "Didn't I write something about container security last year? Pull it up so I can see where I left off."
+## Output
+
+```json
+{"reasoning": "Locating a past post by topic is the Research find edge flow, not open conversation.", "flow_name": "find", "confidence": 0.82}
+```
+</edge_case>'''
 
 
 PROMPTS: dict[str, dict[str, str]] = {

@@ -37,7 +37,40 @@ User: "add a citation for that statistic"
 ```json
 {"reasoning": "Adding a source citation.", "flow_name": "cite", "confidence": 0.88}
 ```
-</positive_example>'''
+</positive_example>
+
+<edge_case>
+## Conversation History
+
+User: "get it ready to go live, but hold it until Monday morning"
+## Output
+
+```json
+{"reasoning": "A release timed for the future rather than immediately.", "flow_name": "schedule", "confidence": 0.85}
+```
+</edge_case>
+
+<edge_case>
+## Conversation History
+
+User: "the stats in the second section need sources before this goes out"
+## Output
+
+```json
+{"reasoning": "Adding citations is the blocking step, even though publishing is the eventual goal.", "flow_name": "cite", "confidence": 0.82}
+```
+</edge_case>
+
+<edge_case>
+## Conversation History
+
+User: "once it's up, also push it out to the newsletter and LinkedIn"
+## Output
+
+```json
+{"reasoning": "Cross-posting to secondary channels is part of releasing the post.", "flow_name": "release", "confidence": 0.80}
+```
+</edge_case>'''
 
 
 PROMPTS: dict[str, dict[str, str]] = {

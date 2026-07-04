@@ -149,3 +149,25 @@ Trajectory:
 1. Take the sections from the chosen option.
 2. Draft sub-sections and bullets per section.
 3. `generate_outline(post_id=abcd0123, content=<markdown with ## Section + ### Sub-section + bullets>)`.
+
+### Example 4: Propose mode grounded against prior work
+
+Resolved Details:
+- stage: propose
+- topic: "Feature Flags in Practice"
+- sections: []
+
+Trajectory:
+1. `find_posts(query='feature flags')` → one prior post on rollout strategy, so vary the new angles away from it.
+2. Emit three outline options with distinct angles (progressive delivery / testing in production / flag debt and cleanup). No `generate_outline` call.
+
+### Example 5: Topic cannot be extracted
+
+Resolved Details:
+- stage: propose
+- topic: (empty)
+- sections: []
+
+Trajectory:
+1. Neither a topic nor any sections are present, so there is nothing to outline.
+2. `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what the post should be about, then end turn.

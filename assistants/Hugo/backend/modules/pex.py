@@ -89,6 +89,7 @@ class PEX:
         self.config = config
         self.max_rounds = config['limits']['max_rounds']
         self.max_corrective = config['limits']['max_corrective']
+        self.max_reads = config['limits']['max_reads']
         self.ambiguity = ambiguity
         self.engineer = engineer
         self.memory = memory
@@ -149,6 +150,7 @@ class PEX:
         # end-of-turn checkpoint.
         self._completed_this_turn = []
         self._injected = False  # belief injected once per turn; reset in execute()
+        self._reads = 0  # per-turn count of successful read-only domain-tool calls; reset in execute()
         self._nlu_thread = None  # this turn's parallel NLU think thread; joined+cleared by _check_nlu
         self.nlu = None  # wired by Agent after construction; used to re-consult on policy failures
         # Orchestrator hot-path tools — wiring only; the implementations live in
@@ -289,6 +291,7 @@ class PEX:
         self._nlu_thread = nlu_thread
         self._completed_this_turn = []
         self._injected = False  # belief injected once per turn (whether or not it matches)
+        self._reads = 0  # per-turn read-only lookup budget
         if dax and not text.strip():
             utterance = self._execute_click(state, context, dax, payload or {})
         else:
@@ -438,10 +441,16 @@ class PEX:
             result = {'_success': False, '_error': 'duplicate_call',
                       '_message': 'Identical consecutive tool call skipped — change the '
                                   'arguments or respond to the user.'}
+        elif tool_use.name in READ_ONLY_DOMAIN_TOOLS and self._reads >= self.max_reads:
+            result = {'_success': False, '_error': 'read_cap',
+                      '_message': f'Already used {self.max_reads} read-only lookups this turn. '
+                                  'Stack on and activate a flow, or respond to the user.'}
         else:
             result = self._dispatch_tool(tool_use.name, dict(tool_use.input or {}))
             if '_success' not in result:  # manage_memory keeps its old {'status': ...} contract
                 result['_success'] = result.get('status') == 'success'
+            if tool_use.name in READ_ONLY_DOMAIN_TOOLS and result['_success']:
+                self._reads += 1
         return result, (call, result['_success'])
 
     def _track_usage(self, response):

@@ -42,3 +42,38 @@ Final reply:
 ```
 That's a great topic. Want me to brainstorm angles, or jump straight to outlining?
 ```
+
+### Example 3: Cold start greeting
+
+Recent conversation: empty
+
+Scratchpad: empty
+
+Final reply:
+```
+Hey there. I can help you research, draft, revise, or publish a post. What are you working on today?
+```
+
+### Example 4: Next-step suggestion after a completed action
+
+Recent conversation:
+- User: "ok the outline looks good"
+
+Scratchpad: `{'outline': {'flow': 'outline', 'summary': 'Saved a 4-section outline for the Kafka Consumer Groups post.'}}`
+
+Final reply:
+```
+Glad the outline works. The four sections are set, so the natural next move is turning them into prose. Want me to start composing?
+```
+
+### Example 5: Consolidation after a reference lookup
+
+Recent conversation:
+- User: "what's the difference between a canonical tag and a redirect for SEO?"
+
+Scratchpad: `{'reference': {'query': 'canonical vs redirect SEO', 'summary': "A canonical tag keeps both URLs live and tells search engines which to index; a 301 redirect sends users and crawlers to a single URL and drops the old one."}}`
+
+Final reply:
+```
+A canonical tag keeps both pages live and just tells search engines which one to index, while a 301 redirect actually sends everyone to one URL and retires the other. Reach for canonical when both pages have a reason to exist, and a redirect when one should replace the other.
+```

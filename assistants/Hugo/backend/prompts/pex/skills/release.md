@@ -112,3 +112,57 @@ Final reply:
   ]
 }
 ```
+
+### Example 3: No channel named, default to the primary blog
+
+Resolved Details:
+- post_id: 4b90c1a2, title: "Migrating a Monolith to Services"
+- channel: []
+
+Trajectory:
+1. Empty channel list, so default to `['mt1t']` without asking.
+2. `channel_status(post_id='4b90c1a2', platform='mt1t')` → ok.
+3. `release_post(post_id='4b90c1a2', platform='mt1t')` → `{_success: True, url: 'https://blog.example.com/migrating-a-monolith-to-services'}`.
+
+Final reply:
+```json
+{
+  "post_id": "4b90c1a2",
+  "title": "Migrating a Monolith to Services",
+  "releases": [
+    {"channel": "mt1t", "status": "published", "url": "https://blog.example.com/migrating-a-monolith-to-services", "notes": "Live on the primary blog."}
+  ]
+}
+```
+
+### Example 4: Unknown channel named
+
+Resolved Details:
+- post_id: 4b90c1a2, title: "Migrating a Monolith to Services"
+- channel: ['Mastodon']
+
+Trajectory:
+1. `Mastodon` matches none of the known channels (`mt1t`, `substack`, `linkedin`, `twitter`).
+2. `handle_ambiguity(level='specific', metadata={'missing': 'channel'})`. Name the channels you can publish to, then end turn.
+
+### Example 5: A syndicate flow is queued behind the release
+
+Resolved Details:
+- post_id: 4b90c1a2, title: "Migrating a Monolith to Services"
+- channel: ['Substack']
+
+Trajectory:
+1. `call_flow_stack(action='read', details='flows')` → a `promote` flow is queued behind this release, so keep the output to the primary channel and let promote handle amplification.
+2. `channel_status(post_id='4b90c1a2', platform='substack')` → ok.
+3. `release_post(post_id='4b90c1a2', platform='substack')` → `{_success: True, url: 'https://substack.com/p/migrating-a-monolith-to-services'}`.
+
+Final reply:
+```json
+{
+  "post_id": "4b90c1a2",
+  "title": "Migrating a Monolith to Services",
+  "releases": [
+    {"channel": "Substack", "status": "published", "url": "https://substack.com/p/migrating-a-monolith-to-services", "notes": "Live; promote flow will amplify next."}
+  ]
+}
+```

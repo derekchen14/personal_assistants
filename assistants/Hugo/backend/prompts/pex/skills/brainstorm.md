@@ -129,3 +129,32 @@ Final reply:
   "alternatives": ["radically cheap", "an order of magnitude cheaper", "vanishingly inexpensive"]
 }
 ```
+
+### Example 4: Neither topic nor snippet filled
+
+Resolved Details:
+- (no topic, no source snippet)
+
+Trajectory:
+1. Neither `topic` nor `source.snip` is present in the resolved details.
+2. `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what to brainstorm about, then end turn.
+
+### Example 5: Topic seeded by a saved note
+
+Resolved Details:
+- Topic: developer onboarding
+
+Trajectory:
+1. `search_notes(query='developer onboarding')` → a saved note on cutting time-to-first-commit.
+
+Final reply:
+```json
+{
+  "topic": "developer onboarding",
+  "ideas": [
+    {"title": "Time to first commit", "hook": "Treat the first pull request as the onboarding metric that matters"},
+    {"title": "The buddy system, measured", "hook": "What pairing new hires with a mentor actually changes"},
+    {"title": "Docs that survive contact", "hook": "Why setup guides rot and how to keep them honest"}
+  ]
+}
+```

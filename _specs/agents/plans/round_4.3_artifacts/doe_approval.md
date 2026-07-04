@@ -1,0 +1,20 @@
+# DoE approval — round 4.3
+
+## Orders echo
+1. round_4.3_spec.md is authoritative: D1 floor-5 for 13 priority PEX skills, 34 exemplars; D2 per-turn read counter, limits.max_reads: 3, corrective error read_cap in _guarded_call, count only successes; D3 13 contrastive NLU flow-detection exemplars, floor 6 per intent, write/rework boundary priority; flag disagreements, never silently deviate. 2. Exemplars: no Kitty Hawk, multi-word titles, 10-40 word implicit anaphoric utterances, no em-dashes, agentic shape never a JSON blob, rotate topics per skill, match write.md and existing expert block shapes. 3. Plain language: all banned words avoided. 4. StructuredOutput called once, short payload, fields under 150 words, work product in files. 5. Simplicity first, surgical changes, no defensive programming, 100-char lines. 6. No branches, no PRs, no commits.
+
+## Verdict
+Both plans approved; they implement the spec exactly with no placeholder output, and converge on all three parts and on execute() as the reset home (the spec's `_orchestrate` does not exist — verified in pex.py). Adopted SWE1's two refinements: initialize `_reads` in `__init__` beside `_injected` (line 151), and increment after the `_success` normalization (same behavior, removes a KeyError class). SWE1 also correctly flagged the stale path: detection files are `backend/prompts/experts/*_flows.py`, not `nlu/experts/`. Sample exemplars: both pass — utterances 19-21 words, implicit, no em-dashes, correct Resolved Details → Trajectory → Final reply shape, agentic trajectory plus prose reply, fresh topic versus propose.md's existing example. Nits: both chose beekeeping, so builders must rotate topics; SWE1's "section described loosely" Source line drifts from house format. Full direction: `_specs/agents/plans/round_4.3_direction.md`.
+
+## Ponytail (line-item)
+- +1 D2 reuses the existing per-turn flag pattern (_injected) and the existing guard home (_guarded_call): no new params, classes, or files for the counter.
+- +1 One total-cap config knob in the existing limits block; per-tool counters rightly rejected as extra state for no gain.
+- +1 Root-cause fix: the guard sits where every orchestrator read-only call routes; the prompt-only alternative was rightly rejected since the model already ignores the existing 'at most ONE' rule.
+- +1 Increment placed after the _success normalization: zero extra lines, deletes a KeyError class (SWE1's flagged deviation, adopted).
+- +1 Scope discipline: compare/rework/refine/write untouched, floor 5 not 7-10 since detection, not trajectory depth, is the bottleneck; plan.md (0 exemplars) left alone as out of spec scope.
+- -1 Both plans framed the read-cap test as standalone; extend the existing dedupe-test class and orch_agent fixture in pex_unit_tests.py (line 452) instead — no new test scaffolding.
+- 0 read_cap feeding the max_corrective error counter is accepted as-is; a carve-out would be code for a non-problem, any success resets the counter.
+- Net: +4. Plans are lean; nothing to strip.
+
+## Direction
+Read and implement /Users/derekchen/Documents/repos/personal_assistants/_specs/agents/plans/round_4.3_spec.md exactly. Exact code placements, path corrections, authoring rules, and test homes: /Users/derekchen/Documents/repos/personal_assistants/_specs/agents/plans/round_4.3_direction.md — read both in full first. Summary: D1, 34 PEX exemplars to floor 5 in backend/prompts/pex/skills/*.md, write.md shape; leave compare/rework/refine/write and plan.md alone. D2, limits.max_reads: 3 in shared/shared_defaults.yaml; pex.py adds max_reads in __init__, _reads=0 in __init__ and execute(), a read_cap elif in _guarded_call, increment successful read-only calls after _success normalization. D3, 13 contrastive detection exemplars in backend/prompts/experts/*_flows.py (NOT nlu/experts) to floor 6 per intent, write/rework priority, keep the JSON output block. No Kitty Hawk, no em-dashes in utterances, 10-40 word utterances, rotate topics, plain language, no defensive code, 100-char lines, no commits/branches/PRs; StructuredOutput once, diff summary to a file.

@@ -126,3 +126,35 @@ Trajectory:
 2. `read_section`/`convert_to_prose` for Process; `convert_to_prose` fails twice — skip Process, note for later.
 3. `read_section`/`convert_to_prose`/`revise_content` for Takeaways → `_success=True`.
 4. `execution_error(violation='tool_error', message='convert_to_prose failed twice for Process; skipped')`. End turn.
+
+### Example 3 — single named section with a tone hint
+
+Resolved Details:
+- Source: post=6b1d3e70
+- Guidance: keep it practical, second person
+- User asked: "Draft the Instrumentation section of the observability post."
+
+Trajectory:
+1. `read_section(post_id=6b1d3e70, sec_id=instrumentation)` → bullets on metrics, spans, and log correlation.
+2. `convert_to_prose(content=<bullets>)` → rough prose; smooth it and shift to a practical second-person register per the guidance.
+3. `revise_content(post_id=6b1d3e70, sec_id=instrumentation, content=<smoothed prose>)` → `_success=True`. End turn.
+
+### Example 4 — sentence-level edit, fall back to write
+
+Resolved Details:
+- Source: post=6b1d3e70, section=tracing
+- User asked: "The Tracing section already reads fine, just swap the opening line for something punchier."
+
+Trajectory: no tool calls. The request is a single-sentence rewrite inside prose that already exists, which is write's scope, not an outline-to-prose conversion.
+
+Final reply: call_flow_stack(action='fallback', details='write')
+
+### Example 5 — ambiguous scope on an already-prose section
+
+Resolved Details:
+- Source: post=6b1d3e70, section=alerting
+- User asked: "Redo the Alerting section."
+
+Trajectory:
+1. The Alerting preview in `<post_content>` is already full prose, so "redo" could mean recompose from scratch or leave it and edit.
+2. `handle_ambiguity(level='confirmation', metadata={'missing': 'scope', 'question': "Alerting is already written out. Want me to recompose it from the bullets, or edit the prose that's there?"})`. End turn.

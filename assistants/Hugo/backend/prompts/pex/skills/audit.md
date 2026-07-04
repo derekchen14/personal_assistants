@@ -99,3 +99,36 @@ Final reply:
 ```
 Audited the post — voice and structure already match your style, so I left it as is.
 ```
+
+### Example 4: Voice-only pass with an explicit exclusion
+
+User utterance: "Skip the structure check, just clean the AI tells out of the conclusion."
+
+Resolved Details:
+- Source: post=d5c71a08 ("Kafka Consumer Groups")
+
+Trajectory:
+1. `read_section(post_id='d5c71a08', sec_id='conclusion')`, then `editor_review(content=<conclusion prose>)` → applying the guide, the conclusion has 4 filler openers and a vague attribution. Structure family skipped per the exclusion.
+2. `revise_content(post_id='d5c71a08', sec_id='conclusion', content=<rewritten prose: filler openers cut, attribution grounded>)`.
+
+Final reply:
+```
+Cleaned the conclusion of Kafka Consumer Groups: dropped 4 filler openers and grounded the vague claim. Left the structure untouched as you asked.
+```
+
+### Example 5: One section fails to save
+
+User utterance: "Audit the cold start post and fix the AI voice."
+
+Resolved Details:
+- Source: post=9a2f66c1 ("Cold Start Latency")
+
+Trajectory:
+1. `read_section` each section, then `editor_review(content=<combined prose>)` → Benchmarks and Mitigations both drift.
+2. `read_section` + `revise_content` for Benchmarks → `_success=True`.
+3. `revise_content` for Mitigations → `_success=False`. Retry once → still `_success=False`. Skip it and note the gap.
+
+Final reply:
+```
+Rewrote Benchmarks into your usual voice. Mitigations failed to save twice, so it still reads AI-flat; want me to retry that one?
+```

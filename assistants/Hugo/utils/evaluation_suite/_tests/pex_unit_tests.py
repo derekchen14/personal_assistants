@@ -468,6 +468,20 @@ class TestOrchestratorLoop:
         second = json.loads(orch_agent.world.context.messages[4]['content'][0]['content'])
         assert second['_error'] != 'duplicate_call'  # re-dispatched, not skipped
 
+    def test_read_only_calls_capped_per_turn(self, orch_agent):
+        """AC-3 (round 4.3): the 4th successful read-only lookup in one turn returns read_cap
+        (limits.max_reads = 3) without dispatching; varied args do not evade the cap."""
+        _script(orch_agent, [_response(_tool_block('find_posts', {'query': 'bees'}, block_id='t1')),
+                             _response(_tool_block('find_posts', {'query': 'jazz'}, block_id='t2')),
+                             _response(_tool_block('find_posts', {'query': 'tea'}, block_id='t3')),
+                             _response(_tool_block('find_posts', {'query': 'vans'}, block_id='t4')),
+                             _response(_text_block('capped'))])
+        orch_agent.take_turn('survey everything')
+        results = [json.loads(orch_agent.world.context.messages[idx]['content'][0]['content'])
+                   for idx in (2, 4, 6, 8)]
+        assert [result['_success'] for result in results[:3]] == [True, True, True]
+        assert results[3]['_error'] == 'read_cap'
+
     def test_thinking_only_gets_one_nudge_then_text(self, orch_agent):
         _script(orch_agent, [_response(), _response(_text_block('after the nudge'))])
         result = orch_agent.take_turn('hello?')
@@ -515,7 +529,7 @@ class TestOrchestratorLoop:
     def test_max_rounds_read_from_config(self, sessions_dir, monkeypatch):
         """The round budget flows from config: max_rounds=1 stops the loop after one round and
         routes to the wrap-up emit. A dead config wire would silently keep the yaml 8."""
-        limits = {'max_rounds': 1, 'max_corrective': 3, 'max_tool_calls': 8,
+        limits = {'max_rounds': 1, 'max_corrective': 3, 'max_reads': 3, 'max_tool_calls': 8,
                   'extended_tool_calls': 16,
                   'extended_call_flows': ['audit', 'refine', 'rework', 'compose']}
         monkeypatch.setattr('backend.agent.load_config',

@@ -64,3 +64,50 @@ Trajectory:
 1. `read_metadata(post_id=ef012345)` → status=draft.
 2. `handle_ambiguity(level='confirmation', metadata={'missing': 'publish_status', 'question': "That post isn't published yet — release first, then promote?"})` → no tool call.
 ```
+
+### Example 3: No channel named, present options
+
+Resolved Details:
+- Source: post=a17c8d90 (published)
+- User asked: "Give the retrieval evaluation post a boost."
+
+Trajectory:
+1. `read_metadata(post_id=a17c8d90)` → status=published, no channel in the resolved details.
+
+Final reply:
+```
+It's published and ready to amplify. A few options: pin it to the top of the blog, feature it on the homepage, or send it to email subscribers. Which do you want?
+```
+
+### Example 4: Social share to a named channel
+
+Resolved Details:
+- Source: post=a17c8d90 (published)
+- Channel: twitter
+- User asked: "Share it on Twitter."
+
+Trajectory:
+1. `read_metadata(post_id=a17c8d90)` → status=published.
+2. `promote_post(post_id=a17c8d90, channel='twitter', action='social')` → `_success=True`.
+
+Final reply:
+```
+Shared it to Twitter. The post link is queued in the thread.
+```
+
+### Example 5: One channel fails, continue with the rest
+
+Resolved Details:
+- Source: post=a17c8d90 (published)
+- Channel: blog, email
+- User asked: "Pin it and email the list."
+
+Trajectory:
+1. `read_metadata(post_id=a17c8d90)` → status=published.
+2. `promote_post(post_id=a17c8d90, channel='blog', action='pin')` → `_success=True`.
+3. `promote_post(post_id=a17c8d90, channel='email', action='email')` → `_success=False`. Retry once → still `_success=False`.
+
+Final reply:
+```
+Pinned it to the top of the blog. The email send failed twice, so the subscriber blast did not go out. Want me to retry the email?
+```

@@ -78,3 +78,28 @@ Final reply:
 ```
 Your top 2 posts on `onboarding`: Week One Playbook and Designing Welcome Emails.
 ```
+
+### Example 4 — empty query lists everything
+
+Resolved Details:
+- Query: (empty)
+- Count: none
+- Items: 5 posts (Caching at the Edge, Postgres for Analytics, Designing Idempotent APIs, Monolith to Services, Feature Flags in Practice)
+- Page: posts
+
+Final reply:
+```
+You have 5 posts saved. The most recent are Caching at the Edge, Postgres for Analytics, and Designing Idempotent APIs.
+```
+
+### Example 5 — empty result with no query
+
+Resolved Details:
+- Query: (empty)
+- Count: none
+- Items: none
+- Page: posts
+
+Trajectory:
+1. Nothing came back and no search term was given.
+2. `handle_ambiguity(level='specific', metadata={'missing': 'query'})`. Ask what to search for, then end turn.

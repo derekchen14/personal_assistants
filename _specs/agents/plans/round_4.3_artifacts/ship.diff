@@ -1,0 +1,824 @@
+diff --git a/assistants/Hugo/backend/modules/pex.py b/assistants/Hugo/backend/modules/pex.py
+index 70fe45b..70a1e60 100644
+--- a/assistants/Hugo/backend/modules/pex.py
++++ b/assistants/Hugo/backend/modules/pex.py
+@@ -89,6 +89,7 @@ class PEX:
+         self.config = config
+         self.max_rounds = config['limits']['max_rounds']
+         self.max_corrective = config['limits']['max_corrective']
++        self.max_reads = config['limits']['max_reads']
+         self.ambiguity = ambiguity
+         self.engineer = engineer
+         self.memory = memory
+@@ -149,6 +150,7 @@ class PEX:
+         # end-of-turn checkpoint.
+         self._completed_this_turn = []
+         self._injected = False  # belief injected once per turn; reset in execute()
++        self._reads = 0  # per-turn count of successful read-only domain-tool calls; reset in execute()
+         self._nlu_thread = None  # this turn's parallel NLU think thread; joined+cleared by _check_nlu
+         self.nlu = None  # wired by Agent after construction; used to re-consult on policy failures
+         # Orchestrator hot-path tools — wiring only; the implementations live in
+@@ -289,6 +291,7 @@ class PEX:
+         self._nlu_thread = nlu_thread
+         self._completed_this_turn = []
+         self._injected = False  # belief injected once per turn (whether or not it matches)
++        self._reads = 0  # per-turn read-only lookup budget
+         if dax and not text.strip():
+             utterance = self._execute_click(state, context, dax, payload or {})
+         else:
+@@ -438,10 +441,16 @@ class PEX:
+             result = {'_success': False, '_error': 'duplicate_call',
+                       '_message': 'Identical consecutive tool call skipped — change the '
+                                   'arguments or respond to the user.'}
++        elif tool_use.name in READ_ONLY_DOMAIN_TOOLS and self._reads >= self.max_reads:
++            result = {'_success': False, '_error': 'read_cap',
++                      '_message': f'Already used {self.max_reads} read-only lookups this turn. '
++                                  'Stack on and activate a flow, or respond to the user.'}
+         else:
+             result = self._dispatch_tool(tool_use.name, dict(tool_use.input or {}))
+             if '_success' not in result:  # manage_memory keeps its old {'status': ...} contract
+                 result['_success'] = result.get('status') == 'success'
++            if tool_use.name in READ_ONLY_DOMAIN_TOOLS and result['_success']:
++                self._reads += 1
+         return result, (call, result['_success'])
+ 
+     def _track_usage(self, response):
+diff --git a/assistants/Hugo/backend/prompts/experts/converse_flows.py b/assistants/Hugo/backend/prompts/experts/converse_flows.py
+index 770c3c8..ff984de 100644
+--- a/assistants/Hugo/backend/prompts/experts/converse_flows.py
++++ b/assistants/Hugo/backend/prompts/experts/converse_flows.py
+@@ -27,7 +27,51 @@ User: "what's a good way to think about audience engagement on technical blogs?"
+ ```json
+ {"reasoning": "Open-ended question about writing.", "flow_name": "chat", "confidence": 0.90}
+ ```
+-</positive_example>'''
++</positive_example>
++
++<positive_example>
++## Conversation History
++
++User: "how long should a technical tutorial run before it starts losing people?"
++## Output
++
++```json
++{"reasoning": "Open-ended question about writing, not tied to a specific post action.", "flow_name": "chat", "confidence": 0.88}
++```
++</positive_example>
++
++<edge_case>
++## Conversation History
++
++User: "Not really sure what to do next with any of this. Where would you even start?"
++## Output
++
++```json
++{"reasoning": "Vague reflection with no action verb belongs in conversation, not a specific flow.", "flow_name": "chat", "confidence": 0.80}
++```
++</edge_case>
++
++<edge_case>
++## Conversation History
++
++User: "I've got a rough idea about API versioning rattling around. Throw out a few angles I could take."
++## Output
++
++```json
++{"reasoning": "The casual framing carries a concrete ask for new angles, which is the Draft brainstorm flow.", "flow_name": "brainstorm", "confidence": 0.82}
++```
++</edge_case>
++
++<edge_case>
++## Conversation History
++
++User: "Didn't I write something about container security last year? Pull it up so I can see where I left off."
++## Output
++
++```json
++{"reasoning": "Locating a past post by topic is the Research find edge flow, not open conversation.", "flow_name": "find", "confidence": 0.82}
++```
++</edge_case>'''
+ 
+ 
+ PROMPTS: dict[str, dict[str, str]] = {
+diff --git a/assistants/Hugo/backend/prompts/experts/draft_flows.py b/assistants/Hugo/backend/prompts/experts/draft_flows.py
+index 1726746..09a129e 100644
+--- a/assistants/Hugo/backend/prompts/experts/draft_flows.py
++++ b/assistants/Hugo/backend/prompts/experts/draft_flows.py
+@@ -48,7 +48,29 @@ User: "reorder the sections and tweak the headings"
+ ```json
+ {"reasoning": "Refining the outline structure.", "flow_name": "refine", "confidence": 0.90}
+ ```
+-</positive_example>'''
++</positive_example>
++
++<edge_case>
++## Conversation History
++
++User: "This section is already written out in full paragraphs. Just smooth the transitions between them, don't add anything new."
++## Output
++
++```json
++{"reasoning": "Editing existing prose at the sentence level is write, the Revise edge flow, not compose which turns an outline into prose.", "flow_name": "write", "confidence": 0.78}
++```
++</edge_case>
++
++<edge_case>
++## Conversation History
++
++User: "the last two sections are still bullet points, turn them into real paragraphs"
++## Output
++
++```json
++{"reasoning": "Composing prose from outlined sections, multi-section rather than a single-section edit.", "flow_name": "compose", "confidence": 0.80}
++```
++</edge_case>'''
+ 
+ 
+ PROMPTS: dict[str, dict[str, str]] = {
+diff --git a/assistants/Hugo/backend/prompts/experts/publish_flows.py b/assistants/Hugo/backend/prompts/experts/publish_flows.py
+index 129128f..d91900d 100644
+--- a/assistants/Hugo/backend/prompts/experts/publish_flows.py
++++ b/assistants/Hugo/backend/prompts/experts/publish_flows.py
+@@ -37,7 +37,40 @@ User: "add a citation for that statistic"
+ ```json
+ {"reasoning": "Adding a source citation.", "flow_name": "cite", "confidence": 0.88}
+ ```
+-</positive_example>'''
++</positive_example>
++
++<edge_case>
++## Conversation History
++
++User: "get it ready to go live, but hold it until Monday morning"
++## Output
++
++```json
++{"reasoning": "A release timed for the future rather than immediately.", "flow_name": "schedule", "confidence": 0.85}
++```
++</edge_case>
++
++<edge_case>
++## Conversation History
++
++User: "the stats in the second section need sources before this goes out"
++## Output
++
++```json
++{"reasoning": "Adding citations is the blocking step, even though publishing is the eventual goal.", "flow_name": "cite", "confidence": 0.82}
++```
++</edge_case>
++
++<edge_case>
++## Conversation History
++
++User: "once it's up, also push it out to the newsletter and LinkedIn"
++## Output
++
++```json
++{"reasoning": "Cross-posting to secondary channels is part of releasing the post.", "flow_name": "release", "confidence": 0.80}
++```
++</edge_case>'''
+ 
+ 
+ PROMPTS: dict[str, dict[str, str]] = {
+diff --git a/assistants/Hugo/backend/prompts/experts/research_flows.py b/assistants/Hugo/backend/prompts/experts/research_flows.py
+index 45d9c35..8bd10fc 100644
+--- a/assistants/Hugo/backend/prompts/experts/research_flows.py
++++ b/assistants/Hugo/backend/prompts/experts/research_flows.py
+@@ -49,7 +49,29 @@ User: "how do these two posts compare structurally?"
+ ```json
+ {"reasoning": "Comparing structure across posts.", "flow_name": "compare", "confidence": 0.90}
+ ```
+-</positive_example>'''
++</positive_example>
++
++<edge_case>
++## Conversation History
++
++User: "what actually changed between this draft and yesterday's version?"
++## Output
++
++```json
++{"reasoning": "A version-to-version comparison of one post, not a plain summary.", "flow_name": "compare", "confidence": 0.84}
++```
++</edge_case>
++
++<edge_case>
++## Conversation History
++
++User: "what have I already got saved on API design patterns?"
++## Output
++
++```json
++{"reasoning": "Locating existing saved posts by topic, not brainstorming new topics.", "flow_name": "find", "confidence": 0.83}
++```
++</edge_case>'''
+ 
+ 
+ PROMPTS: dict[str, dict[str, str]] = {
+diff --git a/assistants/Hugo/backend/prompts/experts/revise_flows.py b/assistants/Hugo/backend/prompts/experts/revise_flows.py
+index 3f5096e..4be7214 100644
+--- a/assistants/Hugo/backend/prompts/experts/revise_flows.py
++++ b/assistants/Hugo/backend/prompts/experts/revise_flows.py
+@@ -49,7 +49,29 @@ User: "fill in the placeholder in the intro with a couple of options"
+ ```json
+ {"reasoning": "Generate alternatives for a placeholder gap.", "flow_name": "propose", "confidence": 0.88}
+ ```
+-</positive_example>'''
++</positive_example>
++
++<edge_case>
++## Conversation History
++
++User: "The middle three sections keep restating the same idea. Reorganize them so the argument builds instead of repeating."
++## Output
++
++```json
++{"reasoning": "Restructuring the argument across several sections is post-level rework, not a single-section edit.", "flow_name": "rework", "confidence": 0.82}
++```
++</edge_case>
++
++<edge_case>
++## Conversation History
++
++User: "The opening of the pricing section reads flat. Rework just those couple of sentences so the hook lands harder."
++## Output
++
++```json
++{"reasoning": "Despite the word rework, the scope is a few sentences inside one section, so this is a sentence-level edit.", "flow_name": "write", "confidence": 0.80}
++```
++</edge_case>'''
+ 
+ 
+ PROMPTS: dict[str, dict[str, str]] = {
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/audit.md b/assistants/Hugo/backend/prompts/pex/skills/audit.md
+index 2ce3c39..33967ce 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/audit.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/audit.md
+@@ -99,3 +99,36 @@ Final reply:
+ ```
+ Audited the post — voice and structure already match your style, so I left it as is.
+ ```
++
++### Example 4: Voice-only pass with an explicit exclusion
++
++User utterance: "Skip the structure check, just clean the AI tells out of the conclusion."
++
++Resolved Details:
++- Source: post=d5c71a08 ("Kafka Consumer Groups")
++
++Trajectory:
++1. `read_section(post_id='d5c71a08', sec_id='conclusion')`, then `editor_review(content=<conclusion prose>)` → applying the guide, the conclusion has 4 filler openers and a vague attribution. Structure family skipped per the exclusion.
++2. `revise_content(post_id='d5c71a08', sec_id='conclusion', content=<rewritten prose: filler openers cut, attribution grounded>)`.
++
++Final reply:
++```
++Cleaned the conclusion of Kafka Consumer Groups: dropped 4 filler openers and grounded the vague claim. Left the structure untouched as you asked.
++```
++
++### Example 5: One section fails to save
++
++User utterance: "Audit the cold start post and fix the AI voice."
++
++Resolved Details:
++- Source: post=9a2f66c1 ("Cold Start Latency")
++
++Trajectory:
++1. `read_section` each section, then `editor_review(content=<combined prose>)` → Benchmarks and Mitigations both drift.
++2. `read_section` + `revise_content` for Benchmarks → `_success=True`.
++3. `revise_content` for Mitigations → `_success=False`. Retry once → still `_success=False`. Skip it and note the gap.
++
++Final reply:
++```
++Rewrote Benchmarks into your usual voice. Mitigations failed to save twice, so it still reads AI-flat; want me to retry that one?
++```
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/brainstorm.md b/assistants/Hugo/backend/prompts/pex/skills/brainstorm.md
+index 05f821c..9ab6d5a 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/brainstorm.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/brainstorm.md
+@@ -129,3 +129,32 @@ Final reply:
+   "alternatives": ["radically cheap", "an order of magnitude cheaper", "vanishingly inexpensive"]
+ }
+ ```
++
++### Example 4: Neither topic nor snippet filled
++
++Resolved Details:
++- (no topic, no source snippet)
++
++Trajectory:
++1. Neither `topic` nor `source.snip` is present in the resolved details.
++2. `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what to brainstorm about, then end turn.
++
++### Example 5: Topic seeded by a saved note
++
++Resolved Details:
++- Topic: developer onboarding
++
++Trajectory:
++1. `search_notes(query='developer onboarding')` → a saved note on cutting time-to-first-commit.
++
++Final reply:
++```json
++{
++  "topic": "developer onboarding",
++  "ideas": [
++    {"title": "Time to first commit", "hook": "Treat the first pull request as the onboarding metric that matters"},
++    {"title": "The buddy system, measured", "hook": "What pairing new hires with a mentor actually changes"},
++    {"title": "Docs that survive contact", "hook": "Why setup guides rot and how to keep them honest"}
++  ]
++}
++```
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/browse.md b/assistants/Hugo/backend/prompts/pex/skills/browse.md
+index 70c46d4..83550ee 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/browse.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/browse.md
+@@ -78,3 +78,27 @@ Final reply:
+ ```
+ Found 2 posts and 3 notes tagged `onboarding`. The posts include "Week One Playbook"; the notes are quick drafts from recent brainstorms.
+ ```
++
++### Example 4 — status-filtered browse
++
++Resolved Details:
++- Tags: security
++- Target: tag
++- Status: draft
++- Items: 3 drafts (Threat Modeling Basics, Secrets in CI Pipelines, Auth for Internal Tools)
++
++Final reply:
++```
++Three drafts tagged `security` are in progress: Threat Modeling Basics, Secrets in CI Pipelines, and Auth for Internal Tools.
++```
++
++### Example 5 — empty result with no tags
++
++Resolved Details:
++- Tags: none
++- Target: tag
++- Items: none
++
++Trajectory:
++1. No tags were provided and nothing came back to narrate.
++2. `handle_ambiguity(level='specific', metadata={'missing': 'tags'})`. Ask what to browse for, then end turn.
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/chat.md b/assistants/Hugo/backend/prompts/pex/skills/chat.md
+index f86e8b5..b756251 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/chat.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/chat.md
+@@ -42,3 +42,38 @@ Final reply:
+ ```
+ That's a great topic. Want me to brainstorm angles, or jump straight to outlining?
+ ```
++
++### Example 3: Cold start greeting
++
++Recent conversation: empty
++
++Scratchpad: empty
++
++Final reply:
++```
++Hey there. I can help you research, draft, revise, or publish a post. What are you working on today?
++```
++
++### Example 4: Next-step suggestion after a completed action
++
++Recent conversation:
++- User: "ok the outline looks good"
++
++Scratchpad: `{'outline': {'flow': 'outline', 'summary': 'Saved a 4-section outline for the Kafka Consumer Groups post.'}}`
++
++Final reply:
++```
++Glad the outline works. The four sections are set, so the natural next move is turning them into prose. Want me to start composing?
++```
++
++### Example 5: Consolidation after a reference lookup
++
++Recent conversation:
++- User: "what's the difference between a canonical tag and a redirect for SEO?"
++
++Scratchpad: `{'reference': {'query': 'canonical vs redirect SEO', 'summary': "A canonical tag keeps both URLs live and tells search engines which to index; a 301 redirect sends users and crawlers to a single URL and drops the old one."}}`
++
++Final reply:
++```
++A canonical tag keeps both pages live and just tells search engines which one to index, while a 301 redirect actually sends everyone to one URL and retires the other. Reach for canonical when both pages have a reason to exist, and a redirect when one should replace the other.
++```
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/cite.md b/assistants/Hugo/backend/prompts/pex/skills/cite.md
+index 0e4edc7..f6aaad0 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/cite.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/cite.md
+@@ -78,3 +78,39 @@ Final reply:
+ ```
+ Proposed source: "Predicting Dialogue Termination" (arxiv.org). Primary research paper, directly addresses the closure-marker training pattern. Want me to attach it?
+ ```
++
++### Example 3: Multiple URLs attached in order
++
++Resolved Details:
++- Target: post=9d2c7a40, section=scheduling, snippet="the scheduler evicts pods under memory pressure"
++- URL: https://kubernetes.io/docs/concepts/scheduling-eviction/; https://kubernetes.io/docs/tasks/administer-cluster/out-of-resource/
++
++Trajectory:
++1. `read_section(post_id=9d2c7a40, sec_id=scheduling)` → finds the eviction snippet.
++2. `revise_content(post_id=9d2c7a40, sec_id=scheduling, content="…evicts pods under memory pressure [[ref]](https://kubernetes.io/docs/concepts/scheduling-eviction/) [[ref]](https://kubernetes.io/docs/tasks/administer-cluster/out-of-resource/).")` → `_success=True`.
++
++Final reply:
++```
++Attached both Kubernetes docs pages to the eviction sentence in Scheduling.
++```
++
++### Example 4: Neither target nor URL given
++
++Resolved Details:
++- Source: post=4f8e1b60
++- User asked: "Add a citation somewhere in the sharding post."
++
++Trajectory:
++1. Neither `target` nor `url` is filled in the resolved details.
++2. `handle_ambiguity(level='partial', metadata={'missing': 'target'})`. Ask which sentence needs the source, then end turn.
++
++### Example 5: Save fails after retry
++
++Resolved Details:
++- Target: post=c3a90f22, section=backoff, snippet="exponential backoff with jitter avoids thundering herds"
++- URL: https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
++
++Trajectory:
++1. `read_section(post_id=c3a90f22, sec_id=backoff)` → finds the snippet.
++2. `revise_content(...)` → `_success=False`. Retry once → still `_success=False`.
++3. `execution_error(violation='tool_error', message='revise_content failed twice on the backoff citation', failed_tool='revise_content')`. End turn.
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/compose.md b/assistants/Hugo/backend/prompts/pex/skills/compose.md
+index dd7c240..43f039b 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/compose.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/compose.md
+@@ -126,3 +126,35 @@ Trajectory:
+ 2. `read_section`/`convert_to_prose` for Process; `convert_to_prose` fails twice — skip Process, note for later.
+ 3. `read_section`/`convert_to_prose`/`revise_content` for Takeaways → `_success=True`.
+ 4. `execution_error(violation='tool_error', message='convert_to_prose failed twice for Process; skipped')`. End turn.
++
++### Example 3 — single named section with a tone hint
++
++Resolved Details:
++- Source: post=6b1d3e70
++- Guidance: keep it practical, second person
++- User asked: "Draft the Instrumentation section of the observability post."
++
++Trajectory:
++1. `read_section(post_id=6b1d3e70, sec_id=instrumentation)` → bullets on metrics, spans, and log correlation.
++2. `convert_to_prose(content=<bullets>)` → rough prose; smooth it and shift to a practical second-person register per the guidance.
++3. `revise_content(post_id=6b1d3e70, sec_id=instrumentation, content=<smoothed prose>)` → `_success=True`. End turn.
++
++### Example 4 — sentence-level edit, fall back to write
++
++Resolved Details:
++- Source: post=6b1d3e70, section=tracing
++- User asked: "The Tracing section already reads fine, just swap the opening line for something punchier."
++
++Trajectory: no tool calls. The request is a single-sentence rewrite inside prose that already exists, which is write's scope, not an outline-to-prose conversion.
++
++Final reply: call_flow_stack(action='fallback', details='write')
++
++### Example 5 — ambiguous scope on an already-prose section
++
++Resolved Details:
++- Source: post=6b1d3e70, section=alerting
++- User asked: "Redo the Alerting section."
++
++Trajectory:
++1. The Alerting preview in `<post_content>` is already full prose, so "redo" could mean recompose from scratch or leave it and edit.
++2. `handle_ambiguity(level='confirmation', metadata={'missing': 'scope', 'question': "Alerting is already written out. Want me to recompose it from the bullets, or edit the prose that's there?"})`. End turn.
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/find.md b/assistants/Hugo/backend/prompts/pex/skills/find.md
+index 79f3b98..1e116a2 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/find.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/find.md
+@@ -78,3 +78,28 @@ Final reply:
+ ```
+ Your top 2 posts on `onboarding`: Week One Playbook and Designing Welcome Emails.
+ ```
++
++### Example 4 — empty query lists everything
++
++Resolved Details:
++- Query: (empty)
++- Count: none
++- Items: 5 posts (Caching at the Edge, Postgres for Analytics, Designing Idempotent APIs, Monolith to Services, Feature Flags in Practice)
++- Page: posts
++
++Final reply:
++```
++You have 5 posts saved. The most recent are Caching at the Edge, Postgres for Analytics, and Designing Idempotent APIs.
++```
++
++### Example 5 — empty result with no query
++
++Resolved Details:
++- Query: (empty)
++- Count: none
++- Items: none
++- Page: posts
++
++Trajectory:
++1. Nothing came back and no search term was given.
++2. `handle_ambiguity(level='specific', metadata={'missing': 'query'})`. Ask what to search for, then end turn.
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/outline.md b/assistants/Hugo/backend/prompts/pex/skills/outline.md
+index 7439039..48f7267 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/outline.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/outline.md
+@@ -149,3 +149,25 @@ Trajectory:
+ 1. Take the sections from the chosen option.
+ 2. Draft sub-sections and bullets per section.
+ 3. `generate_outline(post_id=abcd0123, content=<markdown with ## Section + ### Sub-section + bullets>)`.
++
++### Example 4: Propose mode grounded against prior work
++
++Resolved Details:
++- stage: propose
++- topic: "Feature Flags in Practice"
++- sections: []
++
++Trajectory:
++1. `find_posts(query='feature flags')` → one prior post on rollout strategy, so vary the new angles away from it.
++2. Emit three outline options with distinct angles (progressive delivery / testing in production / flag debt and cleanup). No `generate_outline` call.
++
++### Example 5: Topic cannot be extracted
++
++Resolved Details:
++- stage: propose
++- topic: (empty)
++- sections: []
++
++Trajectory:
++1. Neither a topic nor any sections are present, so there is nothing to outline.
++2. `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what the post should be about, then end turn.
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/promote.md b/assistants/Hugo/backend/prompts/pex/skills/promote.md
+index 7df9185..31ec4d9 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/promote.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/promote.md
+@@ -64,3 +64,50 @@ Trajectory:
+ 1. `read_metadata(post_id=ef012345)` → status=draft.
+ 2. `handle_ambiguity(level='confirmation', metadata={'missing': 'publish_status', 'question': "That post isn't published yet — release first, then promote?"})` → no tool call.
+ ```
++
++### Example 3: No channel named, present options
++
++Resolved Details:
++- Source: post=a17c8d90 (published)
++- User asked: "Give the retrieval evaluation post a boost."
++
++Trajectory:
++1. `read_metadata(post_id=a17c8d90)` → status=published, no channel in the resolved details.
++
++Final reply:
++```
++It's published and ready to amplify. A few options: pin it to the top of the blog, feature it on the homepage, or send it to email subscribers. Which do you want?
++```
++
++### Example 4: Social share to a named channel
++
++Resolved Details:
++- Source: post=a17c8d90 (published)
++- Channel: twitter
++- User asked: "Share it on Twitter."
++
++Trajectory:
++1. `read_metadata(post_id=a17c8d90)` → status=published.
++2. `promote_post(post_id=a17c8d90, channel='twitter', action='social')` → `_success=True`.
++
++Final reply:
++```
++Shared it to Twitter. The post link is queued in the thread.
++```
++
++### Example 5: One channel fails, continue with the rest
++
++Resolved Details:
++- Source: post=a17c8d90 (published)
++- Channel: blog, email
++- User asked: "Pin it and email the list."
++
++Trajectory:
++1. `read_metadata(post_id=a17c8d90)` → status=published.
++2. `promote_post(post_id=a17c8d90, channel='blog', action='pin')` → `_success=True`.
++3. `promote_post(post_id=a17c8d90, channel='email', action='email')` → `_success=False`. Retry once → still `_success=False`.
++
++Final reply:
++```
++Pinned it to the top of the blog. The email send failed twice, so the subscriber blast did not go out. Want me to retry the email?
++```
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/propose.md b/assistants/Hugo/backend/prompts/pex/skills/propose.md
+index 6f9e0af..be35140 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/propose.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/propose.md
+@@ -54,3 +54,55 @@ Final reply (no write tool — the policy turns these into a selection):
+ 1. "...but the latency tax compounds: every hop adds milliseconds the user feels."
+ 2. "...yet the bigger cost is operational — each new service is another pager rotation."
+ 3. "...though the real friction is for developers, who now debug across three boundaries instead of one."
++
++### Example 2: Loosely-located gap
++
++Resolved Details:
++- Source: post=7c1a4f20
++- User asked: "There's a TODO in the indexing part of the Postgres analytics post, give me a few ways to finish it."
++
++Trajectory:
++1. `read_metadata(post_id=7c1a4f20, include_outline=True)` → the section is `indexing-strategy`.
++2. `read_section(post_id=7c1a4f20, sec_id=indexing-strategy, include_sentence_ids=True)` → the `[TODO]` trails a sentence on partial indexes.
++3. Generate three completions from different angles (write amplification, planner cost, maintenance).
++
++Final reply (no write tool — the policy turns these into a selection):
++1. "...but partial indexes only pay off when the filtered rows stay a small slice of the table."
++2. "...though every added index taxes writes, so measure the insert path before you commit."
++3. "...and the planner ignores an index it thinks is too broad, so check the query plan first."
++
++### Example 3: Section cannot be located
++
++Resolved Details:
++- Source: post=3e9b0d55
++- User asked: "Fill the blank in the deployment checklist section."
++
++Trajectory:
++1. `read_metadata(post_id=3e9b0d55, include_outline=True)` → no section resembles a deployment checklist.
++2. `handle_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'section'})`. End turn.
++
++### Example 4: No gap in the named section
++
++Resolved Details:
++- Source: post=b2d84c10, section=conclusion
++- User asked: "Add some options to the conclusion of the caching post."
++
++Trajectory:
++1. `read_section(post_id=b2d84c10, sec_id=conclusion, include_sentence_ids=True)` → complete prose, no placeholder or blank slot.
++2. `handle_ambiguity(level='specific', metadata={'missing': 'gap', 'reason': 'unclear_value'})`. Say the conclusion reads complete and ask which sentence to open up, then end turn.
++
++### Example 5: Gap that references an earlier turn
++
++Resolved Details:
++- Source: post=5a6f2e31, section=introduction
++- User asked: "Use the angle we landed on earlier to fill the empty bullet in the intro."
++
++Trajectory:
++1. `coordinate_context(lookback)` → the earlier angle was framing rate limits as a fairness problem, not a capacity one.
++2. `read_section(post_id=5a6f2e31, sec_id=introduction, include_sentence_ids=True)` → the empty bullet sits under the opening hook.
++3. Generate three fill options that carry the fairness framing forward.
++
++Final reply (no write tool — the policy turns these into a selection):
++1. "Rate limits are less about protecting servers than about sharing a scarce resource fairly."
++2. "Treat the limit as a fairness contract between tenants, not a capacity ceiling."
++3. "The question is not how much traffic we can take, but whose traffic gets served first."
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/release.md b/assistants/Hugo/backend/prompts/pex/skills/release.md
+index 31edacb..5f55269 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/release.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/release.md
+@@ -112,3 +112,57 @@ Final reply:
+   ]
+ }
+ ```
++
++### Example 3: No channel named, default to the primary blog
++
++Resolved Details:
++- post_id: 4b90c1a2, title: "Migrating a Monolith to Services"
++- channel: []
++
++Trajectory:
++1. Empty channel list, so default to `['mt1t']` without asking.
++2. `channel_status(post_id='4b90c1a2', platform='mt1t')` → ok.
++3. `release_post(post_id='4b90c1a2', platform='mt1t')` → `{_success: True, url: 'https://blog.example.com/migrating-a-monolith-to-services'}`.
++
++Final reply:
++```json
++{
++  "post_id": "4b90c1a2",
++  "title": "Migrating a Monolith to Services",
++  "releases": [
++    {"channel": "mt1t", "status": "published", "url": "https://blog.example.com/migrating-a-monolith-to-services", "notes": "Live on the primary blog."}
++  ]
++}
++```
++
++### Example 4: Unknown channel named
++
++Resolved Details:
++- post_id: 4b90c1a2, title: "Migrating a Monolith to Services"
++- channel: ['Mastodon']
++
++Trajectory:
++1. `Mastodon` matches none of the known channels (`mt1t`, `substack`, `linkedin`, `twitter`).
++2. `handle_ambiguity(level='specific', metadata={'missing': 'channel'})`. Name the channels you can publish to, then end turn.
++
++### Example 5: A syndicate flow is queued behind the release
++
++Resolved Details:
++- post_id: 4b90c1a2, title: "Migrating a Monolith to Services"
++- channel: ['Substack']
++
++Trajectory:
++1. `call_flow_stack(action='read', details='flows')` → a `promote` flow is queued behind this release, so keep the output to the primary channel and let promote handle amplification.
++2. `channel_status(post_id='4b90c1a2', platform='substack')` → ok.
++3. `release_post(post_id='4b90c1a2', platform='substack')` → `{_success: True, url: 'https://substack.com/p/migrating-a-monolith-to-services'}`.
++
++Final reply:
++```json
++{
++  "post_id": "4b90c1a2",
++  "title": "Migrating a Monolith to Services",
++  "releases": [
++    {"channel": "Substack", "status": "published", "url": "https://substack.com/p/migrating-a-monolith-to-services", "notes": "Live; promote flow will amplify next."}
++  ]
++}
++```
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/schedule.md b/assistants/Hugo/backend/prompts/pex/skills/schedule.md
+index 5d2c8ec..ba25908 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/schedule.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/schedule.md
+@@ -78,3 +78,43 @@ Final reply:
+ ```
+ Scheduled to publish weekly starting May 4, 9:00 UTC, on Substack and LinkedIn.
+ ```
++
++### Example 3: Requested time is in the past
++
++Resolved Details:
++- post_id: 71c0a9d4
++- channel: ['Substack']
++- datetime: {start: '2026-06-30T14:00:00Z', recurrence: false}
++
++Trajectory:
++1. `datetime.start` is earlier than the current time, so the schedule cannot be set.
++2. `handle_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation='June 30 at 2:00 PM UTC has already passed; give me a future time')`. End turn.
++
++### Example 4: All channels
++
++Resolved Details:
++- post_id: 71c0a9d4
++- channel: ['all']
++- datetime: {start: '2026-07-15T08:00:00Z', recurrence: false}
++
++Trajectory:
++1. `list_channels()` → ['Substack', 'LinkedIn', 'Twitter'].
++2. `channel_status` + `release_post(scheduled_for='2026-07-15T08:00:00Z')` for each connected channel.
++3. `update_post(post_id=71c0a9d4, updates={'status': 'scheduled', 'scheduled_for': '2026-07-15T08:00:00Z', 'channels': ['Substack', 'LinkedIn', 'Twitter']})` → `_success=True`.
++
++Final reply:
++```
++Scheduled for July 15 at 8:00 UTC across Substack, LinkedIn, and Twitter.
++```
++
++### Example 5: One channel fails to schedule
++
++Resolved Details:
++- post_id: 71c0a9d4
++- channel: ['Substack', 'LinkedIn']
++- datetime: {start: '2026-07-20T09:30:00Z', recurrence: false}
++
++Trajectory:
++1. `channel_status(channel='Substack')` → ok; `release_post(post_id=71c0a9d4, channel='Substack', scheduled_for='2026-07-20T09:30:00Z')` → `_success=True`.
++2. `channel_status(channel='LinkedIn')` → ok; `release_post(...)` → `_success=False`. Retry once → still `_success=False`.
++3. `execution_error(violation='tool_error', message='LinkedIn scheduling failed twice', failed_tool='release_post')`. End turn.
+diff --git a/assistants/Hugo/backend/prompts/pex/skills/summarize.md b/assistants/Hugo/backend/prompts/pex/skills/summarize.md
+index 8e94867..84d3934 100644
+--- a/assistants/Hugo/backend/prompts/pex/skills/summarize.md
++++ b/assistants/Hugo/backend/prompts/pex/skills/summarize.md
+@@ -75,3 +75,29 @@ Final reply:
+ ```
+ "Multi-modal Models" is a stub: only the Motivation section has content, framing why text-only agents miss visual context. The Architecture, Examples, and Takeaways sections are still empty.
+ ```
++
++### Example 4: Named section does not exist
++
++Resolved Details:
++- Source: post=c0918a44 ("Designing Idempotent APIs")
++- User asked: "Summarize just the Retries section."
++
++Trajectory:
++1. The preloaded outline lists Motivation, Keys, and Failure Modes, with no Retries section.
++2. `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`. Name the sections that exist, then end turn.
++
++### Example 5: Read a section for extra detail
++
++Resolved Details:
++- Source: post=c0918a44 ("Designing Idempotent APIs")
++- Outline: Motivation, Keys, Failure Modes
++- Length: 90
++
++Trajectory:
++1. `read_section(post_id=c0918a44, sec_id='failure-modes')` → the outline preview was thin on the retry-storm example, so pull the prose.
++2. `summarize_text(content=<title + outline + failure-modes prose>, max_words=90)` → distilled paragraph below.
++
++Final reply:
++```
++"Designing Idempotent APIs" makes the case that safe retries hinge on stable idempotency keys, not clever server logic. Written for backend engineers building payment and ordering flows, it walks through key generation, storage windows, and the failure modes that bite when two requests race, including the retry-storm pattern that turns one timeout into a flood.
++```
+diff --git a/shared/shared_defaults.yaml b/shared/shared_defaults.yaml
+index 16002c6..fa0162f 100644
+--- a/shared/shared_defaults.yaml
++++ b/shared/shared_defaults.yaml
+@@ -91,6 +91,7 @@ limits:
+   max_recovery_attempts: 2          # max times Agent tries re-route before escalate
+   max_rounds: 8                     # orchestrator acting-loop rounds per turn
+   max_corrective: 3                 # consecutive failed tool calls before wrap-up
++  max_reads: 3                      # per-turn cap on direct read-only domain-tool calls
+   max_tool_calls: 8                 # per-flow tool-call cap in tool_call
+   extended_tool_calls: 16           # cap for the heavy flows below
+   extended_call_flows: [audit, refine, rework, compose]   # Hugo-specific flow names

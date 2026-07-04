@@ -241,6 +241,11 @@ name, plan-lifecycle regression test. Parked here as potential plans:
   and its unconditional blocking join serializes most parallel-think turns — the two-speed design only
   pays off if domain turns skip the belief read or the join becomes conditional. Keep-as-is is defensible
   (belief-first correctness) but should be an explicit decision.
+- **Flow-internal read-storm bounding (round 4.3 gate forensics, 2026-07-04):** the orchestrator
+  `limits.max_reads` cap never fires live because the observed storms (find_posts ×5-7,
+  read_metadata ×5-8) run inside flow policies' own tool loops, under `max_tool_calls`. The cap
+  that would actually move tool_match and latency is a per-flow read budget inside `llm_execute`
+  (or skill-prompt discipline for the read-heavy flows: browse, audit, find).
 - **Smaller parked items:** `execute()` carries 7 params (bundle dax/payload/text as one turn input);
   dead `_llm_quality_check` + placeholder lines in `_validate_artifact`; dead `keep_going` writes in
   draft/revise policies (Batch-2b scope); a test asserting the carrier-A message shape (belief note rides

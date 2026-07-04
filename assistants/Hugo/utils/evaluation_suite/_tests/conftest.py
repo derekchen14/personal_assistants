@@ -106,7 +106,7 @@ def minimal_config():
             },
             'overrides': {},
         },
-        'limits': {'max_rounds': 8, 'max_corrective': 3, 'max_tool_calls': 8,
+        'limits': {'max_rounds': 8, 'max_corrective': 3, 'max_reads': 3, 'max_tool_calls': 8,
                    'extended_tool_calls': 16,
                    'extended_call_flows': ['audit', 'refine', 'rework', 'compose']},
     })

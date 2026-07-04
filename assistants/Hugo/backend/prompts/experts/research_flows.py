@@ -49,7 +49,29 @@ User: "how do these two posts compare structurally?"
 ```json
 {"reasoning": "Comparing structure across posts.", "flow_name": "compare", "confidence": 0.90}
 ```
-</positive_example>'''
+</positive_example>
+
+<edge_case>
+## Conversation History
+
+User: "what actually changed between this draft and yesterday's version?"
+## Output
+
+```json
+{"reasoning": "A version-to-version comparison of one post, not a plain summary.", "flow_name": "compare", "confidence": 0.84}
+```
+</edge_case>
+
+<edge_case>
+## Conversation History
+
+User: "what have I already got saved on API design patterns?"
+## Output
+
+```json
+{"reasoning": "Locating existing saved posts by topic, not brainstorming new topics.", "flow_name": "find", "confidence": 0.83}
+```
+</edge_case>'''
 
 
 PROMPTS: dict[str, dict[str, str]] = {

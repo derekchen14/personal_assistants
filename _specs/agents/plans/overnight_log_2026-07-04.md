@@ -50,6 +50,68 @@ APPLIED (committed on master):
 6. New regression test added (the gap that let the Critical ship green).
    Suite after all fixes: 137 pex + 86 nlu/mem = 223 passed, 0 skipped.
 
+## Round 4.3 progress
+
+- 00:07 — PM finished the spec sheet at `round_4.3_spec.md` (216 lines, high quality): Decision 1
+  = uniform exemplar floor of 5 for the 13 thinnest PEX skills (34 new exemplars; argued against
+  the style guide's 7-10 as gold-plating while detection is the bottleneck); Decision 2 =
+  per-turn read counter, `limits.max_reads: 3`, corrective 'read_cap' error in _guarded_call,
+  only successful reads count; Decision 3 = YES fold NLU detection exemplars in (the load-bearing
+  part): 13 contrastive boundary exemplars, floor 6 per intent, priority on the write/rework
+  boundary that keeps failing in the gate. Verification: 7 acceptance criteria incl. gate deltas
+  vs 0.5152 / 0.0864 / 12.4s.
+- 00:13 — PM AGENT DIED reporting (StructuredOutput retry cap; 3rd such death) AFTER writing the
+  spec — work survived. Workflow edited and resumed: PM phase removed (spec exists), and the
+  output-death fix applied everywhere: builders now write diffs to FILES in the scratchpad and
+  return only the path + --stat (structured output stays small); explicit output discipline
+  order added. Resumed as task wtud3pdxm.
+
+- 00:2x — SWE plans + DoE approval completed (all order echoes present). DoE verdict: both plans
+  approved, no placeholder output; adopted SWE1's refinements (init `_reads` in __init__ beside
+  `_injected`; increment AFTER the _success normalization — deletes a KeyError class) and SWE1's
+  path correction (detection files are backend/prompts/experts/*_flows.py, NOT nlu/experts/ as
+  the PM spec said). Ponytail net +4 ("plans are lean; nothing to strip"), one -1: extend the
+  existing dedupe-test class instead of new test scaffolding. Sample propose exemplars from both
+  SWEs passed authoring review (19-21 word utterances, correct house shape); both picked
+  beekeeping as the topic, so builders were told to rotate. Direction persisted by the DoE itself
+  at round_4.3_direction.md.
+- 00:3x — SESSION LIMIT hit mid-round: both SWE builders died ("resets 3am"). The user manually
+  resumed at ~3am ("session limit reset, continue"); workflow resumed from cache (plans+approval
+  replay, builds re-run) as task wzumtlkli. If another limit hits while AFK, the standing
+  instruction applies: set a 2-hour recurring check instead of dying.
+
+- 03:1x — Round 4.3 builds + adjudication COMPLETE (the file-based diff transport worked — zero
+  output-cap deaths this run). Adjudication: SWE2 base with targeted SWE1 swaps. Decisive defect
+  caught: SWE1 authored 2 detection exemplars whose flow_name sits OUTSIDE the JSON schema enum
+  (Converse→summarize, Publish→promote — promote is a PEX-agent skill, not a flow); they would
+  train outputs the schema rejects. Also caught: one banned-tic use in SWE1's chat.md; SWE2's 4
+  converse additions were all chat (no adjacent-intent contrast) — DoE dropped 3 and authored 1
+  proper contrastive case itself. Ship diff: 20 files, +613/-5, apply-check pre-verified.
+  Compliance: order-by-order pass after merge fixes. Ponytail net +5/-0.
+- 03:2x — Applied. Orchestrator-owned pieces done per DoE MUST-FLAG: max_reads added to the two
+  fixture limits overrides (conftest.py, pex_unit_tests.py); AC-3 read-cap test written into the
+  existing guard-test class (4 varied-args find_posts calls → first 3 dispatch, 4th returns
+  read_cap). Suite: 224 passed, 0 skipped. AC-4 (detection boundary) is measured by the live
+  gate rather than a dedicated model test — deltas below are the verdict. Artifacts persisted to
+  round_4.3_artifacts/ incl. ship.diff. Live gate launched.
+
+- 03:3x — Round 4.3 GATE VERDICT (standard 8): completion 0.5152 (AC-6 met: no regression, but
+  flat), tool_match 0.0826 (AC-5 NOT met: flat vs 0.0864), mean turn 14.4s (worse than 12.4 —
+  within run-to-run variance; earlier identical-config runs spanned 12.4-15.5s). KEY FINDING from
+  transcript forensics: `read_cap` fired ZERO times across all 8 live sessions, yet B06.C01 turn
+  1 emitted 7 read-only calls — because that storm ran INSIDE the flow's own tool loop
+  (llm_execute → _dispatch_tool), which never routes through _guarded_call. The orchestrator-level
+  cap is live and unit-verified but targets the smaller half of the observed storms; the flow-
+  internal storms sit under max_tool_calls (8/16) and are the real latency sink. Follow-up
+  candidate recorded below. Detection exemplars: no visible movement this run — B06.C01's
+  turn-2-4 failures are stale-flow origins (the flow-switch behavior), not detection errors, so
+  the exemplars' effect needs the write/rework-specific scenarios to show. Committing the round:
+  content and cap are correct and tested; gate is flat-not-worse; single-run deltas at this
+  variance are not decisive.
+- FOLLOW-UP added to the deferred register: flow-internal read-storm bounding (per-flow read
+  budget inside llm_execute, or skill-prompt discipline for browse/audit) — the cap that would
+  actually move tool_match and latency.
+
 DEFERRED to master_plan.md "Deferred register" (questionable / design-level, per instruction 1):
 - One-source-of-truth flow stack (the mirror fix treats the symptom; two writers remain).
 - read_state's unconditional blocking join serializes most parallel-think turns because the

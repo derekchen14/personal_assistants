@@ -48,7 +48,29 @@ User: "reorder the sections and tweak the headings"
 ```json
 {"reasoning": "Refining the outline structure.", "flow_name": "refine", "confidence": 0.90}
 ```
-</positive_example>'''
+</positive_example>
+
+<edge_case>
+## Conversation History
+
+User: "This section is already written out in full paragraphs. Just smooth the transitions between them, don't add anything new."
+## Output
+
+```json
+{"reasoning": "Editing existing prose at the sentence level is write, the Revise edge flow, not compose which turns an outline into prose.", "flow_name": "write", "confidence": 0.78}
+```
+</edge_case>
+
+<edge_case>
+## Conversation History
+
+User: "the last two sections are still bullet points, turn them into real paragraphs"
+## Output
+
+```json
+{"reasoning": "Composing prose from outlined sections, multi-section rather than a single-section edit.", "flow_name": "compose", "confidence": 0.80}
+```
+</edge_case>'''
 
 
 PROMPTS: dict[str, dict[str, str]] = {

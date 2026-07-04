@@ -75,3 +75,29 @@ Final reply:
 ```
 "Multi-modal Models" is a stub: only the Motivation section has content, framing why text-only agents miss visual context. The Architecture, Examples, and Takeaways sections are still empty.
 ```
+
+### Example 4: Named section does not exist
+
+Resolved Details:
+- Source: post=c0918a44 ("Designing Idempotent APIs")
+- User asked: "Summarize just the Retries section."
+
+Trajectory:
+1. The preloaded outline lists Motivation, Keys, and Failure Modes, with no Retries section.
+2. `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`. Name the sections that exist, then end turn.
+
+### Example 5: Read a section for extra detail
+
+Resolved Details:
+- Source: post=c0918a44 ("Designing Idempotent APIs")
+- Outline: Motivation, Keys, Failure Modes
+- Length: 90
+
+Trajectory:
+1. `read_section(post_id=c0918a44, sec_id='failure-modes')` → the outline preview was thin on the retry-storm example, so pull the prose.
+2. `summarize_text(content=<title + outline + failure-modes prose>, max_words=90)` → distilled paragraph below.
+
+Final reply:
+```
+"Designing Idempotent APIs" makes the case that safe retries hinge on stable idempotency keys, not clever server logic. Written for backend engineers building payment and ordering flows, it walks through key generation, storage windows, and the failure modes that bite when two requests race, including the retry-storm pattern that turns one timeout into a flood.
+```
