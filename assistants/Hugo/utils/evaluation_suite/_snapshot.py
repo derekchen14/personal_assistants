@@ -34,7 +34,7 @@ def assert_snapshot(actual:dict, name:str):
         )
 
 
-_VOLATILE_KEYS = frozenset(('flow_id', 'turn_id', 'turn_ids', 'plan_id', 'post_id', 'created_at', 'updated_at'))
+_VOLATILE_KEYS = frozenset(('flow_id', 'turn_id', 'turn_ids', 'post_id', 'created_at', 'updated_at'))
 _MASK = '<masked>'
 
 
@@ -103,7 +103,6 @@ def _project_state_obj(state) -> dict:
         'flow_dax': state.pred_flow,
         'keep_going': state.keep_going,
         'has_issues': state.has_issues,
-        'has_plan': state.has_plan,
         'natural_birth': state.natural_birth,
         'active_post_set': state.active_post is not None,
     }

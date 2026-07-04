@@ -436,8 +436,7 @@ def _session_state() -> DialogueState:
     state.workflow_step = 4
     state.grounding = {'post': 'p1', 'sec': 'intro', 'snip': '', 'chl': 'substack', 'ver': True}
     state.flow_stack = [{'name': 'compose', 'status': 'Active', 'stage': 'writing',
-                         'plan_id': None, 'slots': {'source': {'post': 'p1'}}}]
-    state.has_plan = True
+                         'slots': {'source': {'post': 'p1'}}}]
     return state
 
 
@@ -459,7 +458,7 @@ class TestSessionStateFile:
         assert list(document['grounding']) == ['post', 'sec', 'snip', 'chl', 'ver']
         assert document['session']['turn_count'] == 12
         assert document['user_beliefs']['intent'] == 'Draft'
-        assert document['flags'] == {'has_issues': False, 'has_plan': True}
+        assert document['flags'] == {'has_issues': False}
 
     def test_load_rehydrates_fields(self, tmp_path):
         state_file = tmp_path / 'state.json'
@@ -470,7 +469,6 @@ class TestSessionStateFile:
         assert reloaded.workflow_step == 4
         assert reloaded.grounding['ver'] is True
         assert reloaded.flow_stack[0]['name'] == 'compose'
-        assert reloaded.has_plan is True
 
     def test_old_per_turn_form_unchanged(self):
         state = DialogueState(intent='Revise', dax='3AB', turn_count=2, confidence=0.9)
@@ -540,8 +538,8 @@ class TestWriteStateOps:
         top.fill_slot_values({'source': [{'post': 'p1'}]})
         top.is_filled()
         top.stage = 'discovery'
-        state.write_state(path, 'stackon', flow_name='brainstorm', plan_id='plan-7')
-        stack.stackon('brainstorm', plan_id='plan-7')
+        state.write_state(path, 'stackon', flow_name='brainstorm')
+        stack.stackon('brainstorm')
         state.write_state(path, 'fallback', flow_name='refine')
         stack.fallback('refine')
         state.write_state(path, 'update', grounding={'post': 'p1'})
@@ -559,8 +557,8 @@ class TestWriteStateOps:
         state.write_state(path, 'stackon', flow_name='outline')
         with pytest.raises(ValueError, match='grounding.post is empty'):
             state.write_state(path, 'update_flow', status='Completed')
-        assert state.flow_stack[0]['status'] == 'Active'  # rejected write left no trace
-        assert DialogueState.load(path).flow_stack[0]['status'] == 'Active'
+        assert state.flow_stack[0]['status'] == 'Pending'  # rejected write left no trace
+        assert DialogueState.load(path).flow_stack[0]['status'] == 'Pending'
 
     def test_grounding_validation_passes_once_post_is_set(self, tmp_path):
         path = tmp_path / 'state.json'

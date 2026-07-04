@@ -1479,12 +1479,12 @@ def _build_flowstack_machine():
                 top_before = self.stack._stack[-1] if self.stack._stack else None
                 new_flow = self.stack.stackon(name)
                 self.state.write_state(self.state_file, 'stackon', flow_name=name)
-                # Two valid outcomes: pushed a new Active flow, OR returned the
-                # existing in-flight top because no-consecutive-same-type kicked in.
+                # Two valid outcomes: pushed a new Pending flow (activation promotes),
+                # OR returned the existing in-flight top (no-consecutive-same-type).
                 assert new_flow.flow_id and len(new_flow.flow_id) >= 6
                 assert self.stack._stack[-1] is new_flow
                 if new_flow is not top_before:
-                    assert new_flow.status == 'Active'
+                    assert new_flow.status == 'Pending'
 
         @rule(name=st.sampled_from(_NAMES))
         def fallback(self, name):
@@ -1636,7 +1636,7 @@ from backend.prompts.for_pex import build_skill_system
 
 _SKILL_DIR = _Path(__file__).resolve().parents[3] / 'backend' / 'prompts' / 'pex' / 'skills'
 _TOOLS_YAML = _Path(__file__).resolve().parents[3] / 'schemas' / 'tools.yaml'
-_PEX_AGENT_SKILLS = {'promote'}
+_PEX_AGENT_SKILLS = {'promote', 'plan'}  # plan = Workflow Planner (orchestrator skill)
 _COMPONENT_TOOLS = {'handle_ambiguity', 'coordinate_context', 'manage_memory',
                     'call_flow_stack', 'execution_error', 'save_findings'}
 
@@ -1712,14 +1712,14 @@ def test_reminder_is_agentic():
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Single-call staging + prestage (fix_1: stackon active=true, Option B)
+# Single-call staging + prestack (fix_1: stackon active=true, Option B)
 # ═══════════════════════════════════════════════════════════════════
 
 
 
 class TestSingleCallStaging:
     """`write_state op=stackon active=true` stages, folds belief slots, and runs the policy in
-    one call; `prestage` is the code-side staging for the awaited-NLU path (fix 1 Option B)."""
+    one call; `prestack` is the code-side staging for the awaited-NLU path (fix 1 Option B)."""
 
     def _believe(self, state, flow_name, intent='Draft'):
         state.pred_intent = intent
@@ -1751,23 +1751,122 @@ class TestSingleCallStaging:
                                                {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True and not called
 
-    def test_prestage_stages_confident_detection(self, sessions_dir, mock_agent):
+    def test_prestack_stages_confident_detection(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
         state = mock_agent.world.current_state()
         self._believe(state, 'outline')
-        assert mock_agent.pex.prestage(state) is True
+        assert mock_agent.pex.prestack(state) is True
         top = rehydrate_flow(state.flow_stack[-1])
         assert top.flow_type == 'outline'
         assert top.slots['source'].values[0]['post'] == 'p1'
 
-    def test_prestage_skips_plan_converse_and_ambiguity(self, sessions_dir, mock_agent, monkeypatch):
+    def test_prestack_skips_plan_converse_and_ambiguity(self, sessions_dir, mock_agent, monkeypatch):
         mock_agent.world.open_session('wire-test')
         state = mock_agent.world.current_state()
         self._believe(state, 'outline', intent='Plan')
-        assert mock_agent.pex.prestage(state) is False
+        assert mock_agent.pex.prestack(state) is False
         self._believe(state, 'chat', intent='Converse')
-        assert mock_agent.pex.prestage(state) is False
+        assert mock_agent.pex.prestack(state) is False
         self._believe(state, 'outline')
         monkeypatch.setattr(mock_agent.pex.ambiguity, 'present', lambda: True)
-        assert mock_agent.pex.prestage(state) is False
+        assert mock_agent.pex.prestack(state) is False
         assert state.flow_stack == []
+class TestCheckNlu:
+    """The parallel NLU think thread joins at the hooks: a belief read blocks (the Plan/Clarify
+    wait); flow execution reaps a landed detection without blocking (Derek 2026-07-03)."""
+
+    def test_read_state_joins_slow_nlu_thread(self, sessions_dir, mock_agent):
+        import time
+        from threading import Thread
+        mock_agent.world.open_session('wire-test')
+        pex = mock_agent.pex
+        state = mock_agent.world.current_state()
+
+        def slow_detect():
+            time.sleep(0.05)
+            state.pred_flows = [{'flow_name': 'outline', 'confidence': 0.9, 'votes': 3}]
+        thread = Thread(target=slow_detect)
+        thread.start()
+        pex._nlu_thread = thread
+        result = pex.read_state({})
+        assert result['state']['user_beliefs']['pred_flows'][0]['flow_name'] == 'outline'
+        assert pex._nlu_thread is None    # joined and cleared
+
+    def test_settle_without_thread_is_noop(self, sessions_dir, mock_agent):
+        mock_agent.world.open_session('wire-test')
+        pex = mock_agent.pex
+        pex._nlu_thread = None            # the click / awaited-think paths
+        result = pex.read_state({})
+        assert result['_success'] is True
+
+    def test_flow_execution_never_blocks_on_running_nlu(self, sessions_dir, mock_agent):
+        from threading import Event, Thread
+        mock_agent.world.open_session('wire-test')
+        pex = mock_agent.pex
+        gate = Event()
+        thread = Thread(target=gate.wait)
+        thread.start()
+        pex._nlu_thread = thread
+        pex._check_nlu(wait=False)       # NLU still running: proceed, keep the handle
+        assert pex._nlu_thread is thread
+        gate.set()
+        thread.join()
+        pex._check_nlu(wait=False)       # landed detection: reap and clear
+        assert pex._nlu_thread is None
+
+class TestBeliefInjection:
+    """NLU belief state injection (round 5.1): once per turn the landed detection becomes a
+    [belief] note; intent-differs is forced in code, flow-differs is left to the orchestrator."""
+
+    def _believe(self, state, flow_name, intent='Draft'):
+        state.pred_intent = intent
+        state.pred_flows = [{'flow_name': flow_name, 'confidence': 0.9, 'votes': 2}]
+        state.pred_slots = {'source': [{'post': 'p1'}]}
+
+    def test_injection_fires_once(self, sessions_dir, mock_agent):
+        mock_agent.world.open_session('wire-test')
+        pex = mock_agent.pex
+        self._believe(mock_agent.world.current_state(), 'outline')
+        note = pex.inject_belief_state()
+        assert note.startswith('[belief]') and 'outline' in note
+        assert pex.inject_belief_state() is None      # once per turn
+
+    def test_injection_waits_for_landed_detection(self, sessions_dir, mock_agent):
+        from threading import Event, Thread
+        mock_agent.world.open_session('wire-test')
+        pex = mock_agent.pex
+        self._believe(mock_agent.world.current_state(), 'outline')
+        gate = Event()
+        thread = Thread(target=gate.wait)
+        thread.start()
+        pex._nlu_thread = thread
+        assert pex.inject_belief_state() is None      # still thinking: skip, do not block
+        gate.set()
+        thread.join()
+        assert pex.inject_belief_state() is not None  # landed: inject at the next hook
+
+    def test_intent_differs_forces_fallback(self, sessions_dir, mock_agent):
+        mock_agent.world.open_session('wire-test')
+        pex = mock_agent.pex
+        state = mock_agent.world.current_state()
+        state.write_state(mock_agent.world.state_file(), 'stackon', flow_name='outline')
+        live = pex.flow_stack.stackon('outline')
+        live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
+        self._believe(state, 'release', intent='Publish')
+        note = pex.inject_belief_state()
+        assert 'Intent changed' in note and 'Invalid' in note
+        assert live.status == 'Invalid'               # fallback: not coming back to it
+        assert pex.flow_stack.get_flow(status='Active').flow_type == 'release'
+        assert state.flow_stack[-1]['flow_name'] == 'release'   # NLU's flow took over
+
+    def test_flow_differs_same_intent_no_forcing(self, sessions_dir, mock_agent):
+        mock_agent.world.open_session('wire-test')
+        pex = mock_agent.pex
+        state = mock_agent.world.current_state()
+        state.write_state(mock_agent.world.state_file(), 'stackon', flow_name='outline')
+        live = pex.flow_stack.stackon('outline')
+        live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
+        self._believe(state, 'refine', intent='Draft')
+        note = pex.inject_belief_state()
+        assert 'refine' in note and 'Intent changed' not in note
+        assert live.status == 'Active'                # the orchestrator decides, not code

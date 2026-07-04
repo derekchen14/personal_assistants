@@ -283,8 +283,7 @@ def _session_state() -> DialogueState:
     state.workflow_step = 4
     state.grounding = {'post': 'p1', 'sec': 'intro', 'snip': '', 'chl': 'substack', 'ver': True}
     state.flow_stack = [{'name': 'compose', 'status': 'Active', 'stage': 'writing',
-                         'plan_id': None, 'slots': {'source': {'post': 'p1'}}}]
-    state.has_plan = True
+                         'slots': {'source': {'post': 'p1'}}}]
     return state
 
 
