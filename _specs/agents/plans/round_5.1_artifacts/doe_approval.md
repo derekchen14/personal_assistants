@@ -17,7 +17,7 @@ SWE1 wins. SWE2's plan is a placeholder ("test" in every field) — rejected out
 - net: -30 lines possible.
 
 ## Approved direction
-Build SWE1's plan with 4 corrections. Branch round/5.0-pex-hooks. Repo root /Users/derekchen/Documents/repos/personal_assistants, code under assistants/Hugo. Obey the 8 orders in orders_echo above verbatim — they are Derek's non-negotiables; re-read them before coding.
+Build SWE1's plan with 4 corrections. Branch round/5.0-pex-hooks. Repo root /Users/derekchen/Documents/repos/personal_assistants, code under assistants/Hugo. Obey the 8 orders in orders_echo above verbatim — they are the user's non-negotiables; re-read them before coding.
 
 1. NEW backend/prompts/pex/skills/plan.md (<20 lines) — the Workflow Planner skill, guidance only, returns nothing: read belief and the flow catalog; map each sub-task to an EXISTING catalog flow (never invent one); order by dependency, keep it minimal; stage and run ONE AT A TIME (stackon the next only after the current completes — stacking the whole sequence up front breaks the single-Active model); share a one-line plan with the user; after each flow judge whether the user's goal is met, then stage the next or conclude and report what was done.
 

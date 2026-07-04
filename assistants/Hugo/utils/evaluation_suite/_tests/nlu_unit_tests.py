@@ -429,7 +429,7 @@ class TestSessionScratchpad:
 def _session_state() -> DialogueState:
     state = DialogueState(intent='Draft', dax=None, turn_count=12)
     state.conversation_id = 'convo-42'
-    state.username = 'derek'
+    state.username = 'writer'
     state.goal = 'draft the agents post'
     state.confirmed = ['title']
     state.rejected = ['listicle format']
@@ -465,7 +465,7 @@ class TestSessionStateFile:
         _session_state().save(state_file)
         reloaded = DialogueState.load(state_file)
         assert reloaded.conversation_id == 'convo-42'
-        assert reloaded.username == 'derek'
+        assert reloaded.username == 'writer'
         assert reloaded.workflow_step == 4
         assert reloaded.grounding['ver'] is True
         assert reloaded.flow_stack[0]['name'] == 'compose'

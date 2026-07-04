@@ -276,7 +276,7 @@ from backend.components.dialogue_state import DialogueState
 def _session_state() -> DialogueState:
     state = DialogueState(intent='Draft', dax=None, turn_count=12)
     state.conversation_id = 'convo-42'
-    state.username = 'derek'
+    state.username = 'writer'
     state.goal = 'draft the agents post'
     state.confirmed = ['title']
     state.rejected = ['listicle format']

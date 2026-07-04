@@ -276,7 +276,7 @@ assistants/Hugo/utils/                 # three tiers map 1:1 to the eval ladder 
 
 - **Why record gold instead of synthesizing it:** a synthesized *label* is fine, but a synthesized *trajectory*
   or *end-state* won't reliably match live tool APIs. Gold trajectories/oracles must be **recorded from real
-  behavior and approved** — this is exactly Derek's "use the traces as ground truth once things work."
+  behavior and approved** — this is exactly the user's "use the traces as ground truth once things work."
 - **Leakage guard:** synthesized **Train** cases must not reuse a prompt exemplar's topic (e.g. the Kitty Hawk
   anchor must never appear in a prompt exemplar) — see the Train/Dev/Test split above. **Dev** is a random 25% slice the SWEs iterate on; the held-out **Test**
   set comes from real usage.

@@ -1,11 +1,11 @@
 # Round 5.1 — Workflow Planner skill + NLU belief state injection
 
-Status: APPROVED IN DIRECTION 2026-07-03 (Derek), mechanism REVISED by Derek 2026-07-03: the
+Status: APPROVED IN DIRECTION 2026-07-03 (the user), mechanism REVISED by the user 2026-07-03: the
 round 5.0 gate analysis called this a "mismatch gate" — wrong on both words. It is **NLU belief
 state injection**: belief is injected into the PEX orchestrator context on every turn, mismatch or
 not. Implements `step_5_plan.md` (locked §5.1-§5.4) plus the injection.
 
-**AMENDMENT 2 (Derek 2026-07-03, applied post-build):**
+**AMENDMENT 2 (the user 2026-07-03, applied post-build):**
 - No "staging" language anywhere — it is "stacking on" / "stacking a flow". Code renames:
   `prestage()` → `prestack()`, `_stage_flow()` → `_stack_flow()`; prompt and spec text swept.
   (The pre-existing `stage` FIELD on flow entries is a different concept and stays.)
@@ -18,7 +18,7 @@ not. Implements `step_5_plan.md` (locked §5.1-§5.4) plus the injection.
   activation (`_stack_flow`, `pop_completed`) promotes to Active. `fallback`'s replacement goes
   straight to Active — it takes over from a flow that was already running.
 
-**AMENDMENT (Derek 2026-07-03, applied by the orchestrator after the builds land):**
+**AMENDMENT (the user 2026-07-03, applied by the orchestrator after the builds land):**
 - Rename `_dispatch_read_state()` → `pex.read_state()` (public) — it IS how PEX reads the NLU
   belief state; the name should say so.
 - Rename `_settle_nlu()` → `inject_belief_state()` — "settle" is wrong (NLU may not have finished
@@ -31,7 +31,7 @@ not. Implements `step_5_plan.md` (locked §5.1-§5.4) plus the injection.
    Plan intent: decompose into EXISTING catalog flows, order by dependency, stage and run one at a
    time, share a one-line plan, judge goal completion after each flow (step_5 §5.1-5.2). The skill
    returns nothing; PEX issues the stack ops itself.
-2. **NLU belief state injection** (Derek 2026-07-03, replaces the "mismatch gate"):
+2. **NLU belief state injection** (the user 2026-07-03, replaces the "mismatch gate"):
    - Once per turn, the landed detection (intent, top flows + confidence, slots) is injected into
      the orchestrator's context — REGARDLESS of whether it matches the active flow.
    - Injection is attempted at hook points **② pre-tool-call, ③ post-tool-call, ④ tool-retry,
@@ -43,7 +43,7 @@ not. Implements `step_5_plan.md` (locked §5.1-§5.4) plus the injection.
      REQUIRE awaiting NLU (their `read_state` blocks).
    - **Flow differs, same intent** → the ORCHESTRATOR decides: continue the original flow or stop
      and go with NLU's proposed flow. The prompt tells it to defer to NLU in most cases (80%+).
-   - **Intent differs** → CODE forces a FALLBACK (Derek 2026-07-03): the active flow is marked
+   - **Intent differs** → CODE forces a FALLBACK (the user 2026-07-03): the active flow is marked
      Invalid — we are not coming back to it — and NLU's detected flow takes over as Active. No
      orchestrator discretion.
    - **Any other issue during policy execution** → re-consult NLU via `nlu.contemplate()`
@@ -104,7 +104,7 @@ counterweight is round 4.3 exemplars.
 
 ## Alternatives considered (not built)
 
-- **Blocking injection** (wait for NLU at ②): rejected — only Plan and Clarify wait (Derek's
+- **Blocking injection** (wait for NLU at ②): rejected — only Plan and Clarify wait (the user's
   dispatch rule); flow execution never blocks.
 - **Corrective-error-only reaction at pre-flow** and **prompt-only strengthening**: both rejected
   in round-1 planning — they miss text-only turns, which are the dominant failure.

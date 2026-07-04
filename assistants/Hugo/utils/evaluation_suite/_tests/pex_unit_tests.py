@@ -381,7 +381,7 @@ class TestOrchestratorPrompt:
 
     def _build(self, prompt_inputs):
         engineer, memory = prompt_inputs
-        return build_orchestrator_prompt(engineer, memory, 'conv-42', 'derek', '2026-06-11')
+        return build_orchestrator_prompt(engineer, memory, 'conv-42', 'writer', '2026-06-11')
 
     def test_byte_stable_across_builds(self, prompt_inputs):
         assert self._build(prompt_inputs) == self._build(prompt_inputs)
@@ -403,7 +403,7 @@ class TestOrchestratorPrompt:
         for tag in ('persona', 'intents', 'tool_policy', 'workflow', 'flow_catalog',
                     'outline_levels', 'preferences', 'session'):
             assert f'<{tag}>' in prompt and f'</{tag}>' in prompt
-        assert 'Session: conversation_id=conv-42 | user=derek | date=2026-06-11' in prompt
+        assert 'Session: conversation_id=conv-42 | user=writer | date=2026-06-11' in prompt
         assert '10. **Release and syndicate**' in prompt  # README workflow ported
         assert f'## Flow Catalog ({len(FLOW_CATALOG)} flows)' in prompt
 
@@ -1773,7 +1773,7 @@ class TestSingleCallStaging:
         assert state.flow_stack == []
 class TestCheckNlu:
     """The parallel NLU think thread joins at the hooks: a belief read blocks (the Plan/Clarify
-    wait); flow execution reaps a landed detection without blocking (Derek 2026-07-03)."""
+    wait); flow execution reaps a landed detection without blocking (the user 2026-07-03)."""
 
     def test_read_state_joins_slow_nlu_thread(self, sessions_dir, mock_agent):
         import time

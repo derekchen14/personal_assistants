@@ -604,7 +604,7 @@ class PEX:
             # state.flow_stack from it, so a stale live entry would resurrect popped flows.
             self.flow_stack.pop_completed()
         if params['op'] == 'stackon' and params.get('active'):
-            # Single-call stack-on (Derek 2026-07-03): stackon handed over matching slots; fold
+            # Single-call stack-on (the user 2026-07-03): stackon handed over matching slots; fold
             # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
             self._check_nlu(wait=False)  # reap a landed detection so the fold reads fresh belief
             self._apply_belief_slots(state, params['flow_name'])
@@ -628,7 +628,7 @@ class PEX:
         NLU thread (wait=False); if detection has not landed yet, skip and retry at the next hook.
         Flow-only difference is left to the orchestrator (the prompt rule). An INTENT difference is
         forced in code here as a FALLBACK: the active flow is marked Invalid (we are not coming
-        back to it) and NLU's flow takes over as Active (Derek 2026-07-03)."""
+        back to it) and NLU's flow takes over as Active (the user 2026-07-03)."""
         self._check_nlu(wait=False)
         state = self.world.current_state()
         if self._injected or self._nlu_thread is not None or not state.pred_flows:

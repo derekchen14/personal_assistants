@@ -3,7 +3,7 @@
 These rules define when a replayed orchestrator run **matches** an approved trajectory in this
 directory. They live next to the sidecars, not hard-coded in the harness, so approving a
 behavior change means editing this file (plus the sidecar) in the same PR. Status: draft —
-finalized with Derek when the 10 sidecars are approved.
+finalized with the user when the 10 sidecars are approved.
 
 ## Vocabulary — call classes
 
@@ -94,7 +94,7 @@ Each rule block names the sidecar it constrains. N/A classes are omitted.
 - NOTE for review: the design intent (decision 18) is that asks go through
   `handle_ambiguity(declare)` so AmbiguityHandler keeps the escalation bookkeeping. The
   recorded run asks directly in plain text without declaring (it does so on 05's turn 1 in
-  some runs). Derek decides at approval whether bare-text asks are acceptable here or
+  some runs). The user decides at approval whether bare-text asks are acceptable here or
   whether `handle_ambiguity(declare)` becomes a required call — the rule above encodes the
   observed trace until then.
 
@@ -142,5 +142,5 @@ Each rule block names the sidecar it constrains. N/A classes are omitted.
 ## Re-approval discipline
 
 A deliberate behavior change that alters any approved trace requires: re-record, re-render the
-sidecar, Derek re-checks `APPROVED: [x]`, and the PR body justifies the diff — the same rule
+sidecar, the user re-checks `APPROVED: [x]`, and the PR body justifies the diff — the same rule
 as snapshot sidecars (AGENTS.md).

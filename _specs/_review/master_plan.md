@@ -42,7 +42,7 @@ The recent cleanup landed most of the PEX/agent core. Verified present and spec-
 
 ---
 
-## Decisions (locked with Derek, 2026-06-21)
+## Decisions (locked with the user, 2026-06-21)
 
 - **Scope = core now, defer aspirational.** Build the structural skeleton; ship the speculative tier
   as marked "designed-not-built" stubs. See the Deferred register below.
@@ -158,7 +158,7 @@ embedded decision (below). File numbers are historical; the order below is the b
 scenarios (canonical post shape + normalizer), prints wall times against the
 `evaluation_suite.md` latency budget, and runs the 8-scenario release gate via `--ids`
 (8.4 min live; completion 0.36 post high-voter trim). Record/replay of model calls was built,
-proven, and removed by Derek's call — evals judge the 7 E2E criteria, no byte-exact replay.
+proven, and removed by the user's call — evals judge the 7 E2E criteria, no byte-exact replay.
 Trace replay (approved trajectories + cached votes) remains the future work here.
 
 Owned by a **separate coding agent**, so it is not one of our milestones — but it is the measurement track the
@@ -204,7 +204,7 @@ column is the sub-plan file number, not the build-order position above.)
 | E7 | Tool manifest `scope`/`dispatch`/`output_schema` fields | 6 | **DECIDED: don't back-fill** — code is the single source; document code-side routing; drop the fields from the required manifest. |
 | E8 | Parity oracle provenance (captured from deleted legacy pipeline) | 1/6 | Re-baseline from an approved orchestrator run; converge with the L2a trace model. |
 | E9 | Prompt taxonomy: does the 8-slot/JSON rule apply to skills? | 4 | **DECIDED: prompt taxonomy** — module skills return *nothing* (how-to guidance); sub-agents + tools return JSON. Skills carved out of the JSON rule (applied to style_guide/checklist/tool_smith 2026-06-21). |
-| E10 | Loop constants (`_MAX_ROUNDS`/`_MAX_CORRECTIVE`) — one source of truth | 4 | **DONE 2026-07-03 (round 4.5, PR #4):** single declaration each in config — Derek amended the home from `resilience` to a renamed `limits` section (no `resilience` section survives); the dead recovery keys collapsed into `limits.max_recovery_attempts`. |
+| E10 | Loop constants (`_MAX_ROUNDS`/`_MAX_CORRECTIVE`) — one source of truth | 4 | **DONE 2026-07-03 (round 4.5, PR #4):** single declaration each in config — the user amended the home from `resilience` to a renamed `limits` section (no `resilience` section survives); the dead recovery keys collapsed into `limits.max_recovery_attempts`. |
 | E11 | Basic-tier persistence (`session.persistence.backend: postgres` unused; sessions file-based) | 6 | **DECIDED: repoint to `filesystem`** + document file-based as the basic-tier truth; validate `tier`. |
 | E12 | Re-route ownership: NLU `contemplate` vs policy `fallback()` | 3 | **DECIDED: both, distinct roles** — policy uses a hard-coded `fallback()` when it knows the fix, else raises a general-fallback signal → Assistant → NLU `contemplate()` (cross-flow). |
 | E13 | Scratchpad physical location: keep on `MemoryManager` vs relocate to the World | 2 | **RESOLVED 2026-06-21:** extract to a `SessionScratchpad` component owned by the World; NLU sees it as `nlu.scratchpad` beside `nlu.ambiguity`. Done as part of Step 2. |

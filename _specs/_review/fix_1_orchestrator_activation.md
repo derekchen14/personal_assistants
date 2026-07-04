@@ -1,6 +1,6 @@
 # Fix 1 — The orchestrator must reliably call the terminal flow tool
 
-Status: Options A+B SHIPPED 2026-07-03 (PR #5) with single-call staging (stackon active=true, Derek amendment) — completion 0.21 -> 0.39 -> 0.52 on the 8. Remaining failure mode: stale/misdetected flows on ACTIVE-POST turns, where NLU runs parallel to PEX so prestage cannot apply; the next lever (await NLU on those turns) changes the two-speed design and needs a ruling. Option B awaits sign-off. The DEFAULT_SCENARIOS prerequisite is NOT built: the suite restructure ships a conflicting fresh-sample doctrine (utils corpus.py) — needs a ruling. Discovered by the 2026-07-03 evaluation-suite run.
+Status: Options A+B SHIPPED 2026-07-03 (PR #5) with single-call staging (stackon active=true, the user amendment) — completion 0.21 -> 0.39 -> 0.52 on the 8. Remaining failure mode: stale/misdetected flows on ACTIVE-POST turns, where NLU runs parallel to PEX so prestage cannot apply; the next lever (await NLU on those turns) changes the two-speed design and needs a ruling. Option B awaits sign-off. The DEFAULT_SCENARIOS prerequisite is NOT built: the suite restructure ships a conflicting fresh-sample doctrine (utils corpus.py) — needs a ruling. Discovered by the 2026-07-03 evaluation-suite run.
 Owner module: **PEX** (acting loop + orchestrator prompt). See also [[step_4_pex.md]], [[step_1_evals.md]].
 
 ---

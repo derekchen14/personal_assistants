@@ -102,7 +102,7 @@ diff --git a/assistants/Hugo/backend/modules/pex.py b/assistants/Hugo/backend/mo
      def _dispatch_write_state(self, params:dict) -> dict:
 @@ -576,6 +589,7 @@ class PEX:
          if params['op'] == 'stackon' and params.get('active'):
-             # Single-call staging (Derek 2026-07-03): stackon handed over matching slots; fold
+             # Single-call staging (the user 2026-07-03): stackon handed over matching slots; fold
              # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
 +            self._settle_nlu()  # staging path skips read_state; the fold reads THIS turn's belief
              self._apply_belief_slots(state, params['flow_name'])
@@ -146,5 +146,5 @@ index 1ef5a18..a4f27ff 100644
 
 ```
 
-> Post-adjudication amendment (Derek): flow-execution settles became non-blocking
+> Post-adjudication amendment (the user): flow-execution settles became non-blocking
 > (wait=False) and the PEX start/end comments were dropped — see round_5.0_spec.md.

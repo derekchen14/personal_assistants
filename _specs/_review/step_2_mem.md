@@ -1,6 +1,6 @@
 # Step 2 — MEM, the Head
 
-Maps to **Master Plan · Step 2**. Effort **L**. Depends on: the component shapes below (confirmed with Derek
+Maps to **Master Plan · Step 2**. Effort **L**. Depends on: the component shapes below (confirmed with the user
 2026-06-21). Foundational facade that Steps 3/5 read.
 
 **Goal:** stand up memory as a real module with the three tiers and the read skills, as a **synchronous

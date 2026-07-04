@@ -110,7 +110,7 @@ index 164e7bf..f105abc 100644
      def _dispatch_write_state(self, params:dict) -> dict:
 @@ -576,6 +589,7 @@ class PEX:
          if params['op'] == 'stackon' and params.get('active'):
-             # Single-call staging (Derek 2026-07-03): stackon handed over matching slots; fold
+             # Single-call staging (the user 2026-07-03): stackon handed over matching slots; fold
              # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
 +            self._settle_nlu()
              self._apply_belief_slots(state, params['flow_name'])

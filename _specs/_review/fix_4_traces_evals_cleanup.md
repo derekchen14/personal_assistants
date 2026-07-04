@@ -7,7 +7,7 @@ Owner: eval infrastructure. See also [[step_1_evals.md]] (Current-state audit), 
 
 ## What actually shipped (supersedes the plan below)
 
-The cleanup ran, then went further than the two options this doc weighed — Derek reorganized everything into
+The cleanup ran, then went further than the two options this doc weighed — the user reorganized everything into
 one folder. Final state (canonical: `_specs/utilities/evaluation_suite.md`):
 
 - **Everything under `utils/evaluation_suite/`.** Tiers are `_tests/` (deterministic `*_unit_tests.py` +
@@ -26,7 +26,7 @@ one folder. Final state (canonical: `_specs/utilities/evaluation_suite.md`):
   `--judge-response` for the LLM judge.
 - **No `DEFAULT_SCENARIOS`.** Fresh per-build sampling (`harness.sample`) replaced the fixed-8 idea — see
   fix_1's resolved prerequisite.
-- Deletes were done as **`mv` into `utils/trash_suite/`** (I can't delete; Derek empties it).
+- Deletes were done as **`mv` into `utils/trash_suite/`** (I can't delete; the user empties it).
 
 The delete-list and rationale below still hold; the layout/entry-point decision section is superseded by the
 above. Deterministic suite: **211 green**.
@@ -116,12 +116,12 @@ rewriting. Its replacement is a lean **`utils/evals/run_agent_evals.py`** that r
 ambiguity, planning). It reuses what already exists: `harness._build_agent`/`_seed_post`, the
 `completion`/`tools` scorers, and `utils/_snapshot.py` for state projection if the task/state criterion
 wants golden comparison. **Building that runner is a P4 eval-build task, not part of this cleanup** — this
-plan only DELETES the dead runner and stubs the entry point so the suite still resolves. Flag for Derek:
+plan only DELETES the dead runner and stubs the entry point so the suite still resolves. Flag for the user:
 confirm the delete-and-rewrite over a salvage of the old 3-tier scaffolding.
 
 ## Decision: folder layout for the three tiers
 
-The one firm requirement (Derek): `run_evaluation_suite.py` leaves `utils/evals/`. Beyond that, the tiers
+The one firm requirement (the user): `run_evaluation_suite.py` leaves `utils/evals/`. Beyond that, the tiers
 do not map cleanly to folders today — the **Traces runner lives in `utils/evals/`**, and `datasets/` +
 `scorers/` are **shared across tiers**. Two ways to resolve it.
 
@@ -156,7 +156,7 @@ do not map cleanly to folders today — the **Traces runner lives in `utils/eval
 
 ### Recommendation
 
-**Option A**, unless Derek specifically wants the folder symmetry. A deletes the confusing thing
+**Option A**, unless the user specifically wants the folder symmetry. A deletes the confusing thing
 (`utils/traces/` is not the traces tier — it is a graveyard) and satisfies the one hard requirement, at a
 fraction of the churn. Revisit B once the new evals runner exists and the shared surface is settled.
 

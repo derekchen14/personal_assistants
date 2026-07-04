@@ -1,7 +1,7 @@
 # Spec Sheet — 4.2 · Inject the closing reminder
 
 Round: 4.2 · Source: `_specs/_review/step_4_pex.md` §4.2 + Decisions · Milestone: Master Plan
-Step "1 · Hugo replies" (`master_plan.md:73,99-103`). Status: **signed off by Derek 2026-07-02**;
+Step "1 · Hugo replies" (`master_plan.md:73,99-103`). Status: **signed off by the user 2026-07-02**;
 agentic contract confirmed, with the explicit fallback that if parsing/contract issues appear in
 practice we revisit and switch (reopening E9).
 
@@ -85,7 +85,7 @@ flags; no signature changes; no defensive guards.
 
 ## 4 · Test plan — coverage doctrine: Evals lead → Traces → Tests → greps
 
-Per Derek's coverage doctrine (2026-07-02): coverage is a weighted mix of the three eval levels
+Per the user's coverage doctrine (2026-07-02): coverage is a weighted mix of the three eval levels
 (`_specs/utilities/evaluation.md` — Tests / Traces / Evals). Evals are the headline gate; unit
 tests must not grow the suite beyond checks that can genuinely fail.
 
@@ -106,7 +106,7 @@ maximum diversity of flows and reply shapes:
 | B03.C03 | compose→rework→audit→**propose** — propose has the weakest exemplar count (1, per §4.3), so it leans hardest on the reminder. |
 | B03.C07 | chat→brainstorm→outline→chat — Converse-led, pure-prose voice turns where instruction-echo or JSON wrapping is most visible. |
 
-Combined flow coverage: 15 distinct flows. Gap: **refine** appears in none of the 8; if Derek
+Combined flow coverage: 15 distinct flows. Gap: **refine** appears in none of the 8; if the user
 wants it covered, swap B01.C01 → B03.C11 (plan→outline→compose→refine). No new scenarios are
 needed — the corpus already exercises every reply shape 4.2 touches.
 
@@ -190,7 +190,7 @@ untouched.
 - **No new eval scenarios and no runner subset flag.** The existing 96-convo corpus already
   exercises every reply shape 4.2 touches; the 8 selected scenarios are judged from the runner's
   per-turn log, so no filtering feature is added. (Supersedes the pre-doctrine "no E2E eval"
-  stance — evals now lead per Derek's 2026-07-02 coverage doctrine.)
+  stance — evals now lead per the user's 2026-07-02 coverage doctrine.)
 - **No second reminder constant.** One reminder serves both `skill_call` and `tool_call` (see D1);
   a per-entry-point variant would be a new concept for zero measured benefit.
 - **No call-site edits in `prompt_engineer.py`** if D2 option A is chosen — both callers inherit
@@ -198,7 +198,7 @@ untouched.
 - **Sketch drift is cosmetic** — keep the existing `flow_name` local rather than matching the
   sketch's inlined f-string; smaller diff.
 
-## 6 · Open decisions for Derek
+## 6 · Open decisions for the user
 
 Locked and NOT re-asked: inject the reminder last, delete `JSON_REMINDER`, repurpose
 `SLOT_7_REMINDER`. The four below are the remaining genuine choices inside those locks.

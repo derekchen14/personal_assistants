@@ -1,14 +1,14 @@
 # Spec Sheet — E1 · Fast eval mode (record/replay at the PromptEngineer seam)
 
-Round: E1 · Source: Derek's eval-speed doctrine (2026-07-02) + `_specs/_review/step_1_evals.md`
-(Master Plan parallel eval track). Runs NEXT, ahead of 4.5. Status: **APPROVED by Derek
+Round: E1 · Source: the user's eval-speed doctrine (2026-07-02) + `_specs/_review/step_1_evals.md`
+(Master Plan parallel eval track). Runs NEXT, ahead of 4.5. Status: **APPROVED by the user
 2026-07-03** — every decision in §6 is recorded final (D1/D2 as recommended; D3 overruled to
 checkpoint reuse; D4 overruled to a config key; D5 canonical shape approved; timing =
 print-don't-gate; D6 = trim inside E1, sequenced). SWE planning builds from this revision.
 
-> **ROUND OUTCOME (2026-07-03) — scope reduced mid-round by Derek.** The record/replay seam was
+> **ROUND OUTCOME (2026-07-03) — scope reduced mid-round by the user.** The record/replay seam was
 > built, proven end-to-end on one scenario, and then REMOVED: byte-exact replay demanded pinning
-> every environmental input (session ids, timestamps, uuids, DB state), which Derek rejected as
+> every environmental input (session ids, timestamps, uuids, DB state), which the user rejected as
 > overkill for evals ("we do not need perfect replay"). Evals judge the 7 E2E criteria only; the
 > authoritative spec is `_specs/utilities/evaluation_suite.md` (latency = total ≤10 min +
 > TTFT ≤1 min — the per-turn 10 s target is retired). What E1 shipped: R9 (corpus-shape
@@ -19,7 +19,7 @@ print-don't-gate; D6 = trim inside E1, sequenced). SWE planning builds from this
 > completion 0.31→0.36, gate 11.8→8.4 min, its truncated-JSON turn crashes eliminated).
 > R1/R2/R9/R10 delivered; R3-R8 (replay, recordings, trace baseline) intentionally not.
 
-**Doctrine (refined by Derek, supersedes the first cut):** each TURN ≤ 10 s; each CONVERSATION
+**Doctrine (refined by the user, supersedes the first cut):** each TURN ≤ 10 s; each CONVERSATION
 ≤ 1 min; the **per-release gate is a SAMPLE of 8 scenarios in ≤ 10 min**. The full 96-sweep is
 NOT the per-release gate — it is the dev-iteration loop and the CI/trace substrate. Any pipeline
 part over 10 s gets terminated and sped up (e.g. by mocking the service).
@@ -98,7 +98,7 @@ under 60 s).
 | # | Requirement | Trace |
 |---|---|---|
 | R1 | **Per-release gate:** a LIVE sample of 8 scenarios completes in ≤ 10 min (scenario-level parallelism allowed; no record/replay required). The 96-sweep is not the release gate. | refined doctrine 2026-07-02 |
-| R2 | **Timing is printed, not gated** (Derek 2026-07-03): the runner reports per-turn, per-conversation, and total wall time in every run's output (~10 lines of measurement code); QA reads the report against the doctrine targets (≤ 10 s turn / ≤ 60 s convo / ≤ 10 min 8-scenario gate). NO new entries in `baselines/evals.json`, no timing gate records, no `expected_fail`. | refined doctrine; Derek's decision 2026-07-03 |
+| R2 | **Timing is printed, not gated** (the user 2026-07-03): the runner reports per-turn, per-conversation, and total wall time in every run's output (~10 lines of measurement code); QA reads the report against the doctrine targets (≤ 10 s turn / ≤ 60 s convo / ≤ 10 min 8-scenario gate). NO new entries in `baselines/evals.json`, no timing gate records, no `expected_fail`. | refined doctrine; the user's decision 2026-07-03 |
 | R3 | Replay mode makes **zero live model calls**; recorded responses fed back deterministically (record-once / replay-many, temp-0). Scope: the full-96 dev sweep, the trace gate, and CI-without-keys — not the release gate. | `evaluation.md:69-72`; `step_1_evals.md:58`; refined doctrine |
 | R4 | One mechanism at the PromptEngineer boundary — generalizes the cached-vote replay design rather than duplicating it; the traces-level runner consumes the same seam. | `step_1_evals.md:58,209-210` (complement, don't duplicate) |
 | R5 | Tool dispatch stays **live** during replay (local services): seeded posts, end-state, and grounding still change for real, so the completion scorer and the 3-axis parity checks keep working. | `evaluation.md` §Scenario/parity axes; `run_evals.py:44-64` |
@@ -255,7 +255,7 @@ picked up by the next round editing that file.
 
 | Check | Expected |
 |---|---|
-| `grep -rn HUGO_EVAL_MODE assistants/Hugo` | ZERO hits — Derek removed the env var mid-round (2026-07-03); the marker is now `schemas.config.EVAL_HARNESS`, a module flag set only by harness/test entrypoints |
+| `grep -rn HUGO_EVAL_MODE assistants/Hugo` | ZERO hits — the user removed the env var mid-round (2026-07-03); the marker is now `schemas.config.EVAL_HARNESS`, a module flag set only by harness/test entrypoints |
 | Replay-mode run with API keys unset | zero auth errors — proves no live path executes |
 
 ## 5 · Simplification opportunities
@@ -273,7 +273,7 @@ picked up by the next round editing that file.
 - **Agent-build cost (1.5 s) left as-is.** Parallelism absorbs it; shaving the build is a
   separate, unrequested optimization.
 
-## 6 · Decisions — recorded final (Derek, 2026-07-03)
+## 6 · Decisions — recorded final (the user, 2026-07-03)
 
 All six are settled; alternatives are kept below for the record. D1/D2 landed as recommended;
 D3/D4 were overruled; D5's canonical shape was approved verbatim; D6 chose trimming inside E1,
@@ -321,7 +321,7 @@ is the explicit re-record path. No silent live fallback anywhere.
 **DECIDED: A, as recommended.** Provider single-shot methods + per-round in the tool loops;
 tools dispatch live so replay runs produce real end-states.
 
-### D3 — Recording storage: DECIDED — Derek OVERRULED committed blob files
+### D3 — Recording storage: DECIDED — the user OVERRULED committed blob files
 
 **Decision: recordings reuse the EXISTING checkpoint system** —
 `ContextCoordinator.save_checkpoint(label, data)` / `get_checkpoint(label)`
@@ -348,7 +348,7 @@ Storage design as decided (verified against the component 2026-07-03):
   sampled slice; a scheduled full live record pass refreshes the rest (nightly cadence per
   `step_1_evals.md`).
 
-### D4 — Mode selection: DECIDED — config key, NOT a new env var (Derek overruled option A)
+### D4 — Mode selection: DECIDED — config key, NOT a new env var (the user overruled option A)
 
 **Decision: `models.eval_mode: off | record | replay`, default `off`**, read once in
 `PromptEngineer.__init__` from the config dict it already receives — `self._models =
@@ -357,7 +357,7 @@ config.get('models', {})` exists at `prompt_engineer.py:84`, so the read is one 
 `load_config(overrides=...)` path it already uses (`harness.py:32`). No new env var.
 
 **Mandatory safeguard — replay can never boot in a real session:** at `__init__`, any mode
-other than `'off'` demands the eval-harness marker. Mid-round (2026-07-03) Derek also removed
+other than `'off'` demands the eval-harness marker. Mid-round (2026-07-03) the user also removed
 the `HUGO_EVAL_MODE` env var entirely ("global env is generally to be avoided"); the marker is
 now `schemas.config.EVAL_HARNESS`, a module-level flag that only the harness/test entrypoints
 set (`utils/harness.py`, `utils/conftest.py`, the parity runners) and that also gates the
@@ -410,7 +410,7 @@ sections-as-name-list). **No corpus rewrite this round.**
 
 ### D6 — Live turns under 10 s: DECIDED — trim inside E1, sequenced
 
-The latency anatomy (§1) shows the remaining trims are all behavioral. Derek chose to do them
+The latency anatomy (§1) shows the remaining trims are all behavioral. The user chose to do them
 in this round, in a strict sequence so every regression is attributable:
 
 1. **Seam + timing reports land first** (the harness work: R9, the seam, the printed wall

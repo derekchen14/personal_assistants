@@ -4,7 +4,7 @@ Round: 4.5 · Source: `_specs/_review/step_4_pex.md` §4.5 + master plan decisio
 (`master_plan.md:207`) · Milestone: Master Plan Step "1 · Hugo replies" (`master_plan.md:99-108`).
 Status: **signed off 2026-07-03 with one amendment** — build order 4.2 (done) → **4.5** → 4.6 → 4.3.
 
-> **Amendments (Derek, 2026-07-03).** (1) **The `resilience` section is renamed `limits` outright**
+> **Amendments (the user, 2026-07-03).** (1) **The `resilience` section is renamed `limits` outright**
 > — "We should not have a 'resilience' section. Everything under this umbrella should go under the
 > new 'limits' name." Everywhere this sheet says `resilience`, read `limits`. The final `limits:`
 > section in `shared_defaults.yaml` = the old resilience contents (`tool_retries`, `llm_retries`,
@@ -244,7 +244,7 @@ Greps (QA manual):
 - **Messages stay put.** The three message strings are prose, not budgets — config would make
   them harder to review, not easier to tune (R4, locked).
 
-## 4.5.10 · Open decisions for Derek
+## 4.5.10 · Open decisions for the user
 
 Locked and NOT re-asked (E10): one declaration per bound; the home is config under `resilience`;
 the two dead recovery keys collapse to one; message strings stay code constants. The four below
@@ -261,7 +261,7 @@ are the remaining genuine choices inside those locks.
     extended_tool_calls: 16
     extended_call_flows: [audit, refine, rework, compose]
   ```
-  - Pro: matches the sketch Derek already reviewed; shortest reads
+  - Pro: matches the sketch the user already reviewed; shortest reads
     (`config['resilience']['max_rounds']`); `fallback_model`/`max_recovery_attempts` are already
     flat siblings, so the section stays stylistically mixed either way.
   - Con: five flat keys crowd the section; Hugo flow names land in the shared baseline file

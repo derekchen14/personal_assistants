@@ -290,7 +290,7 @@ WHAT CHANGED (exactly the 11 pre-justified files, per D1-D4 as amended):
 7-9. Dana — surgical rename only: _REQUIRED_SECTIONS, self._resilience -> self._limits (keeping the .get read style), test fixture 'resilience': {} -> 'limits': {}.
 10-11. Kalli — same rename in schemas/config.py and prompt_engineer.py (two lines). No Kalli fixture references the section.
 
-WHY: E10 — each loop bound declared exactly once, in config; the dead recovery keys collapse to one; the section renamed 'limits' outright per Derek's amendment. Behavior-preserving: values 8/3/8/16 and the four-flow list unchanged.
+WHY: E10 — each loop bound declared exactly once, in config; the dead recovery keys collapse to one; the section renamed 'limits' outright per the user's amendment. Behavior-preserving: values 8/3/8/16 and the four-flow list unchanged.
 
 SCOPE ADHERENCE: zero files beyond the 11; no new config keys beyond the five promoted; no multiplier key (D2); no code-side defaults on the promoted keys (D4/R5); self._limits keeps the underscore per the amendment wording (DoE-settled). Greps confirm: no _MAX_ROUNDS/_MAX_CORRECTIVE in Hugo *.py; no 'resilience' or 'recovery:' in any code/yaml (sole survivor is the pre-existing English-prose comment at Hugo utils/evals/e2e_agent_evals.py:1043 and my T3's own assertions); the inline flow list is gone from Hugo backend (lives in yaml + test fixture only).
 

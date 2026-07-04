@@ -38,7 +38,7 @@ step adds the thin Plan layer on top.
   scratchpad agenda. (§5.1)
 - **The Workflow Planner skill returns nothing — it is guidance.** PEX, following it, issues the `stackon`
   calls itself in its loop; the decomposition is PEX's reasoning + tool calls, not a value the skill returns.
-  (per Derek 2026-06-21; §5.1)
+  (per the user 2026-06-21; §5.1)
 - **PEX owns goal completion.** After each sub-flow, the orchestrator judges whether the user's goal is met
   and either runs the next flow or concludes — no completion-assessment flow. Added to the orchestrator prompt
   on 2026-06-21. (§5.2)

@@ -1,6 +1,6 @@
 # Round 5.0 — PEX hook points + Plan awaits NLU
 
-**AMENDMENT (Derek 2026-07-03, post-build):** only Plan and Clarify are REQUIRED to wait on NLU
+**AMENDMENT (the user 2026-07-03, post-build):** only Plan and Clarify are REQUIRED to wait on NLU
 (their `read_state` blocks). The other five intents never block: flow execution's settle is
 non-blocking (`_settle_nlu(wait=False)`) — it picks up a landed detection and otherwise proceeds
 on standing belief. When the predicted flow matches the active flow nothing changes; that is the
@@ -13,7 +13,7 @@ mismatching fresh detection (11 of 15 failed turns show a stale origin like find
 carried across turns). That reaction — pred vs active differs => reconsider (fallback/stackon) —
 is the spec's hook severity model, not yet built; candidate for round 5.1 alongside the Workflow
 Planner. Opens Master Plan Step 5 (`step_5_plan.md`); the Workflow Planner
-skill itself is the NEXT round (5.1). Derek's directive (2026-07-03): PEX follows the existing
+skill itself is the NEXT round (5.1). the user's directive (2026-07-03): PEX follows the existing
 6-hook framework (`_specs/modules/pex.md` § hook points — pre-flow, pre-tool, post-tool,
 tool-retry, post-flow, verification; no new hooks), and when the orchestrator picks the Plan
 intent on the parallel-NLU path, the pre-flow or pre-tool hook waits on NLU before proceeding.
@@ -38,7 +38,7 @@ it — no new hooks, no hook registry. The four hooks this round touches, and wh
 | post-flow (⑤+⑥) | after the policy returns (`pex.py:626-649`) | `_validate_artifact` + completion record + stack sync |
 
 The work at `execute()` entry and the end-of-turn checkpoint is ordinary turn lifecycle, not a
-hook (Derek 2026-07-03).
+hook (the user 2026-07-03).
 
 ## The Plan-awaits-NLU mechanism
 
@@ -72,7 +72,7 @@ Agent._orchestrate
 ```
 
 Non-Plan turns that answer from a lookup or plain reply never touch belief or a flow, so they keep
-full parallelism. The wait cost lands exactly where Derek scoped it: Plan turns (and any flow
+full parallelism. The wait cost lands exactly where the user scoped it: Plan turns (and any flow
 activation).
 
 ## New concepts

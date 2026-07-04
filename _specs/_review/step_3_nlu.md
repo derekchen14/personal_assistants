@@ -27,22 +27,22 @@ Spec: `modules/nlu.md`; `components/{dialogue_state,ambiguity_handler,session_sc
 - **Intent model = PEX System-1 hint.** Coarse intent is PEX's in-reasoning guess (no model call); NLU
   flow-detection is the authoritative write. Locked in the master plan — the keystone of this step. (§3.1)
 - **Keep `_classify_intent` as a callable.** Drop only its unconditional pre-pass call site; retain it for
-  round-2 escalation and `contemplate`. (per Derek; §3.1.1)
+  round-2 escalation and `contemplate`. (per the user; §3.1.1)
 - **Ambiguity resolution is LLM-driven.** The model judges whether the reply answers the open question rather
-  than a fixed template; on resolve it fills the slot and clears. (per Derek; §3.2.1)
+  than a fixed template; on resolve it fills the slot and clears. (per the user; §3.2.1)
 - **Flag cleanup.** Remove the dead `keep_going` / `has_issues` / `natural_birth` writes; **keep `has_plan`**
   for now (Step 5 removes it — Plan-aware chaining becomes behavior, no flag). (§3.4)
 
 **Resolved here — confirm or override:**
 - **E14 · low-confidence entity repair.** rec: write the value but set `grounding.ver=False` (a prediction);
-  **no blanket PEX gate** — a policy opts into gating only if it uses the signal. (per Derek; §3.2.2)
+  **no blanket PEX gate** — a policy opts into gating only if it uses the signal. (per the user; §3.2.2)
 - **E12 · re-route ownership — DECIDED: both, distinct roles.** The policy applies a **hard-coded
   `fallback()`** when it knows the fix (within-policy sibling swap), else raises a **general-fallback signal** →
   the Assistant has NLU run `contemplate()` (cross-flow re-detect). (§3.2.4)
 - **E13 · scratchpad location.** Resolved in Step 2 — on the World as `SessionScratchpad`, reached as
   `nlu.scratchpad`; this step adds the entry contract + NLU review on it. (§3.3.2)
 - **Scratchpad write path.** rec: writers append through `NLU.append_to_scratchpad(...)` so each append
-  triggers NLU review; MemoryManager never writes the pad. (per Derek; §3.3.1)
+  triggers NLU review; MemoryManager never writes the pad. (per the user; §3.3.1)
 
 **Deferred (stub — designed, not built):**
 - Escalating 3-round ensemble + alignment + abstention (§S-1); scratchpad auto-promotion (§S-2); the
