@@ -16,7 +16,7 @@ instruction prompts. This round:
   `tools` list the sole tool registry,
 - renames the four `skill`-named methods/functions to say "flow",
 - keeps `plan.md` (the Workflow Planner) as the one real agent skill, in `backend/prompts/pex/skills/`,
-- folds in two content fixes (audit read-storm; compose no-re-read),
+- folds in two content fixes (audit: too many read actions; compose no-re-read),
 - retires the one drift test that only policed the now-deleted frontmatter/tools duplication.
 
 Expected net: deletion. Starters lose their `<task>` prose; 16 files lose frontmatter; one test and
@@ -241,10 +241,10 @@ def build(flow, resolved:dict, user_text:str) -> str:
 
 ## 5.3.7 Content fixes (folded in while touching the files)
 
-### 5.3.7.1 Audit read-storm (approved point 5a)
+### 5.3.7.1 Audit: too many read actions (approved point 5a)
 
 Problem: `audit.md` step 1a tells the sub-agent to `read_section` every section before `editor_review`
-— an N-read storm. Fix by preloading the full post prose once in the policy and telling the flow to use
+— N repeated read actions. Fix by preloading the full post prose once in the policy and telling the flow to use
 it.
 
 `backend/modules/policies/revise.py::audit_policy` (225–245): at line 233–234, fetch the pre-edit prose
@@ -445,7 +445,7 @@ vanish. If anything else disappears, a starter deletion went too far — restore
 - **(e) Compose preload.** No — compose keeps its per-section `read_section` because the preview holds
   only the first lines and conversion needs the full bullets. Its fix is the no-re-read rule only. Audit
   is different: `editor_review` wants the whole post prose at once, so preloading it via `extra_resolved`
-  removes a real N-read storm.
+  removes a real case of N repeated read actions.
 - **(f) Retired drift tests.** Exactly one is retired: `test_skill_tools_match_flow` (it only synced the
   frontmatter `tools:` list with `flow.tools`, and that list is deleted). Its sibling helper
   `_PEX_AGENT_SKILLS` goes with it. `load_skill_meta` and `_split_frontmatter` are deleted because that

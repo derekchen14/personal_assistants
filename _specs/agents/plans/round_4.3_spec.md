@@ -1,7 +1,7 @@
-# Round 4.3 Spec — Exemplar raise + read-storm cap
+# Round 4.3 Spec — Exemplar raise + cap on repeated read actions
 
 Source: `_specs/_review/step_4_pex.md` §4.3 (8b). Traces to the live-gate failure buckets:
-(a) NLU flow-**detection** errors, (b) read-only tool storms sinking `tool_match` and latency.
+(a) NLU flow-**detection** errors, (b) repeated read-only tool calls sinking `tool_match` and latency.
 
 ## Baselines (8-scenario gate: B01.C01, B01.C04, B02.C01, B02.C02, B03.C01, B04.C01, B05.C01, B06.C01)
 - completion **0.5152** · tool_match **0.0864** · mean turn **12.4 s**
@@ -47,7 +47,7 @@ New exemplars to author: propose +4, each 2-count skill +3 (×6 = 18), each 3-co
 - **Con:** below the style-guide's stated 7–10; a later round may revisit if traces isolate skill
   **trajectory** (not detection) as the limiter.
 - **Why stop at 5, not 7–10:** the gate's binding constraints are detection (Part C) and tool
-  storms (Part B), not skill-trajectory depth. Pushing 17 skills to 7 is ~70 exemplars of authoring
+  repeated reads (Part B), not skill-trajectory depth. Pushing 17 skills to 7 is ~70 exemplars of authoring
   against a bottleneck that sits elsewhere — gold-plating. Revisit toward 7–10 when a trace gate
   shows trajectory scores, not detection, capping completion.
 
@@ -66,7 +66,7 @@ bottleneck.
 
 ---
 
-## Part B — Read-storm cap (bucket b)
+## Part B — Cap on repeated read actions (bucket b)
 
 **Problem.** The orchestrator calls `find_posts` 3–9× and `read_metadata`/`read_section` 5–8× in
 one turn. The dedupe guard (`pex.py:434`) only blocks **identical consecutive** successful calls,
@@ -109,7 +109,7 @@ Count only **successful** read-only calls toward the cap, mirroring the dedupe g
 burn the budget. Total cap across all read-only tools (not per-tool), because latency is bounded by
 the total, and a single knob is simpler.
 
-- **Pro:** directly bounds the storm and the latency it drives; one config knob; the corrective
+- **Pro:** directly bounds the repeated reads and the latency it drives; one config knob; the corrective
   error steers the model to stack-and-activate (the intended behavior). Sits with the other guards.
 - **Con:** a rare pre-stack flow that legitimately needs 4 distinct lookups gets nudged to stack
   early. Mitigated: within-flow reads happen in the flow's own `tool_call` loop (capped separately
@@ -118,7 +118,7 @@ the total, and a single knob is simpler.
 
 **Why N = 3, not 1:** the prompt's "one" is the ideal, but `find_posts` (get an id) → `read_metadata`
 (get the outline) is a plausible 2-step before stacking. N = 3 leaves one call of margin and still
-kills every observed storm (all ≥ 5). Present the strict N = 1 below.
+kills every observed run of repeated reads (all ≥ 5). Present the strict N = 1 below.
 
 **Alternative 1 — widen the dedupe guard to same-TOOL repeats.** Block the 2nd call to any given
 read-only tool regardless of args. Pro: tiniest diff (one condition in `_guarded_call`, no counter,

@@ -8,7 +8,7 @@ Merge, SWE1 as base. The plans are the same on agent.py, _settle_nlu, the two sp
 - Dedicated activate_flow backstop test (SWE1 optional test 3 / SWE2 test 4) — the join there is the same one line; the stackon+active fold test exercises the meaningful stale path instead
 - SWE2's multi-sentence docstring on _settle_nlu — one comment line suffices
 - Testing multiple belief fields (SWE1 writes pred_flows, SWE2 writes pred_intent) — pick one field per test, no duplicated variants
-- Any join inside _guarded_call for every tool — joining on all pre-tool dispatches would serialize lookups and kill the two-speed design (neither plan proposed it; recorded so the builder doesn't add it)
+- Any join inside _guarded_call for every tool — joining on all pre-tool dispatches would serialize lookups and serialize the parallel NLU/PEX processing (neither plan proposed it; recorded so the builder doesn't add it)
 - declare_intent tool / hook registry — already rejected by the spec, stays rejected
 
 ## Approved direction

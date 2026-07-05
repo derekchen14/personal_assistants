@@ -300,6 +300,52 @@ class TestPolicyCompletion:
         assert state.active_post == 'cafe0001'  # old-path mirror until cutover
 
 
+class TestResolveOrCreate:
+    """resolve_or_create births a post when a filled source names one that does not exist yet —
+    the outline/compose/write path for a brand-new draft (create_post is otherwise orchestrator/UI)."""
+
+    def test_creates_missing_post_then_resolves(self, sessions_dir, mock_agent):
+        pex = mock_agent.pex
+        mock_agent.world.open_session('create-test')
+        state = mock_agent.world.current_state()
+        flow = pex.flow_stack.stackon('outline')
+        flow.slots['source'].add_one(post='sleeper trains')
+        policy = pex._policies['Draft']
+
+        created = {}
+
+        def tools(name, params):
+            if name == 'create_post':
+                created['id'] = 'train001'
+                return {'_success': True, 'post_id': 'train001', 'title': params['title'],
+                        'status': 'draft', 'section_ids': []}
+            if name == 'find_posts':
+                items = [{'post_id': 'train001', 'title': 'sleeper trains'}] if created else []
+                return {'_success': True, 'items': items}
+            return {'_success': True, 'title': 'sleeper trains', 'status': 'draft', 'section_ids': []}
+
+        post_id, sec_id, error = policy.resolve_or_create(flow, state, tools)
+        assert error is None
+        assert post_id == 'train001'
+        assert created['id'] == 'train001'  # the missing post was created exactly once
+
+    def test_no_create_when_source_empty(self, sessions_dir, mock_agent):
+        """Empty source + empty grounding: nothing to resolve or create; no create_post call."""
+        pex = mock_agent.pex
+        mock_agent.world.open_session('create-test-empty')
+        state = mock_agent.world.current_state()
+        flow = pex.flow_stack.stackon('outline')
+        policy = pex._policies['Draft']
+
+        calls = []
+
+        def tools(name, params):
+            calls.append(name)
+            return {'_success': True, 'items': []}
+
+        post_id, sec_id, error = policy.resolve_or_create(flow, state, tools)
+        assert (post_id, error) == (None, None)
+        assert 'create_post' not in calls
 
 
 class TestProposeTwoPhase:

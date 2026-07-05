@@ -282,7 +282,7 @@ Acceptance: `grep -rn '<task>' backend/prompts/pex/starters/ backend/prompts/for
 
 ## 6. Content fixes (5.3.7)
 
-### 6a. audit read-storm (5.3.7.1)
+### 6a. audit: too many read actions (5.3.7.1)
 `backend/modules/policies/revise.py::audit_policy` line 233-234. Before:
 ```python
         self.record_snapshot(self.content, flow, context, post_id)

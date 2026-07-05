@@ -17,8 +17,8 @@ Modules import `build_*_prompt` helpers directly from `backend/prompts/`.
 Use `raw_output` before parsing, with meaningful name (`parsed`, `pred_slots`, `verdict`, `cleaned`, `repaired`, etc.) after.
 
 Special LLM calls:
-2. `skill_call(flow, convo_history, scratchpad, skill_name=None, skill_prompt=None, resolved=None, max_tokens=1024) -> str`  →  skill execution WITHOUT tools (sibling of tool_call). Loads `prompts/pex/skills/<skill_name or flow.name()>.md`, builds `[system, user]`, returns LLM text. Pass `skill_prompt=` to override the loaded template.
-3. `tool_call(flow, convo_history, scratchpad, tool_defs, dispatcher, skill_name=None, skill_prompt=None, resolved=None, max_tokens=4096) -> tuple[str, list[dict]]`  →  skill execution WITH tools (sibling of skill_call). Same skill-assembly API; adds `tool_defs` and `dispatcher` for the agentic loop.
+2. `flow_reply(flow, convo_history, scratchpad, skill_name=None, flow_prompt=None, resolved=None, max_tokens=1024, user_text=None, model='med') -> str`  →  flow sub-agent turn WITHOUT tools (sibling of flow_execute). Loads `prompts/pex/flows/<skill_name or flow.name()>.md`, builds `[system, user]`, returns LLM text. Pass `flow_prompt=` to override the loaded prompt.
+3. `flow_execute(flow, convo_history, scratchpad, tool_defs, tool_dispatcher, skill_name=None, flow_prompt=None, resolved=None, max_tokens=4096, user_text=None, model='med', schema=None) -> tuple[str, list[dict]]`  →  flow sub-agent turn WITH tools (sibling of flow_reply). Same assembly API; adds `tool_defs` and `tool_dispatcher` for the agentic loop; `schema=` forces a schema-constrained final emit.
 4. `stream(prompt:str, task='skill', model='sonnet', max_tokens=4096)`  →  async token streaming (future scaffolding).
 
 Output parsing (dispatched via `apply_guardrails`):
@@ -28,7 +28,7 @@ Output parsing (dispatched via `apply_guardrails`):
   * `_parse_markdown(text, shape)`  →  `shape='outline'` extracts `##` sections; `shape='candidates'` parses `### Option N / ## Section`.
 
 File I/O + tool-log helpers:
-6. `load_skill_template(flow_name) -> str | None`  →  reads `backend/prompts/pex/skills/<flow_name>.md`.
+6. `load_flow_prompt(flow_name) -> str`  →  reads `backend/prompts/pex/flows/<flow_name>.md`. `load_skill(skill_name) -> str`  →  reads `backend/prompts/pex/skills/<skill_name>.md` (currently only `plan.md`).
 7. `extract_tool_result(tool_log, tool_name) -> dict`  →  first successful result for a given tool; strips underscore-prefixed keys.
 
 Instance attribute: `persona` (public) — `dict` loaded from `config.persona`. For the persona-based system prompt, call `build_system(engineer.persona)` directly from `prompts/general.py`.
@@ -37,7 +37,7 @@ Class constants: `_FLOW_DIR` → `backend/prompts/pex/flows/` (flow instruction 
 
 **Prompt compilation is NOT a PromptEngineer concern.** The `backend/prompts/` module owns prompt-text compilation; consumer modules import what they need:
 - NLU owns `_detect_flow_prompt`, `_fill_slot_prompt`, `_contemplate_prompt` (all >2 lines of real work). `build_intent_prompt` is called inline at its one use site.
-- BasePolicy owns `_build_skill_prompt`.
+- `for_pex.py` owns `build_flow_system` / `build_flow_messages` (called inside flow_reply / flow_execute).
 - PEX composes the reply directly from blocks/metadata — no RES, no separate naturalize prompt.
 - AmbiguityHandler renders clarification text via `ask()` — level-specific prose lives in the handler itself.
 
@@ -197,7 +197,7 @@ Hugo entity parts inside SourceSlot entities: `{post, sec, snip, chl, ver}`.
 
 `backend/modules/policies/base.py`
 
-- `llm_execute(flow, state, context, tools) -> tuple[str, list[dict]]`  →  build_resolved_context + load_skill_template + build_skill_prompt + tool_call  (:18)
+- `llm_execute(flow, state, context, tools, include_preview=False, extra_resolved=None, exclude_tools=(), model='med', schema=None) -> tuple[str, list[dict]]`  →  pre_llm hook + build_resolved_context + flow_execute + post_llm hook  (:62)
 - `_read_post_content(post_id, tools) -> dict`  →  card-block-shaped `{post_id, title, status, content}` with `##` headers per section  (:30)
 - `resolve_post_id(identifier, tools) -> str | None`  →  UUID-looking → direct; otherwise fuzzy `find_posts` across status suffixes  (:55)
 - `_resolve_source_ids(flow, state, tools) -> tuple[str|None, str|None]`  →  extracts `(post_id, sec_id)` from entity slot; side-effect: syncs `state.active_post`  (:86)

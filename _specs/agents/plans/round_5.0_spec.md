@@ -23,7 +23,7 @@ intent on the parallel-NLU path, the pre-flow or pre-tool hook waits on NLU befo
 On active-post turns NLU `think` runs on a thread in parallel with `pex.execute` (`agent.py:74-77`),
 so this turn's detection is invisible to the acting loop — the documented remaining eval failure
 (stale/misdetected flow origins; fix_1 ticket). Full serialization would fix it but give up the
-two-speed design. The hooks let ONLY the turns that need detection pay the wait.
+parallel NLU/PEX design. The hooks let ONLY the turns that need detection pay the wait.
 
 ## The hook points (the 6-hook framework, mapped to today's code)
 
@@ -104,7 +104,7 @@ the spec's existing 6-hook framework, not new machinery.
 ## Alternatives considered
 
 - **Serialize NLU on all active-post turns** (join before the loop): simplest, and prestage would
-  apply everywhere — but every turn pays the detection latency and the two-speed design dies.
+  apply everywhere — but every turn pays the detection latency and the parallel NLU/PEX design dies.
 - **Do nothing; rely on round 4.3 exemplars**: better detection accuracy doesn't fix staleness —
   the loop would still act on LAST turn's belief.
 

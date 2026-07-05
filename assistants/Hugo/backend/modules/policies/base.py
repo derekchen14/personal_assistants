@@ -182,6 +182,19 @@ class BasePolicy:
         state.active_post = post_id
         return post_id, sec_id, None
 
+    def resolve_or_create(self, flow, state, tools):
+        """Like resolve_source_ids, but when a filled source names a post that does not exist yet,
+        create it and resolve again. Only the drafting flows (outline/compose/write) call this — a
+        new post is otherwise born through the orchestrator or the UI, never a flow."""
+        post_id, sec_id, error = self.resolve_source_ids(flow, state, tools)
+        if not error or not flow.slots['source'].check_if_filled():
+            return post_id, sec_id, error
+        created = tools('create_post', {'title': flow.slots['source'].post_name()})
+        if not created['_success']:
+            return post_id, sec_id, error
+        state.grounding['post'] = created['post_id']
+        return self.resolve_source_ids(flow, state, tools)
+
     def _build_resolved_context(self, flow, state, tools, include_preview:bool=False) -> dict|None:
         """Pre-resolve post/section IDs so the LLM gets deterministic entities.
 

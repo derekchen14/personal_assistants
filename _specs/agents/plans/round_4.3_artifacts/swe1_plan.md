@@ -13,7 +13,7 @@ Plan only; edited nothing. Three-part change matching the spec.
 
 Part A: raise 13 PEX skill exemplars in backend/prompts/pex/skills/*.md to a floor of 5 (propose +4; six 2-count +3; six 3-count +2 = 34). Each new block copies write.md shape (Resolved Details -> Trajectory -> optional Final reply) and spans the skill's real tool space.
 
-Part B: read-storm cap. Add limits.max_reads: 3 to shared_defaults.yaml; read it in pex __init__; reset self._reads=0 beside self._injected in __init__ and execute(); add a third guard in _guarded_call turning the 4th successful read-only call into a read_cap corrective error, counting only successes.
+Part B: cap on repeated read actions. Add limits.max_reads: 3 to shared_defaults.yaml; read it in pex __init__; reset self._reads=0 beside self._injected in __init__ and execute(); add a third guard in _guarded_call turning the 4th successful read-only call into a read_cap corrective error, counting only successes.
 
 Part C: raise experts/*_flows.py detection EXAMPLES to floor 6 per intent (13 new contrastive boundary cases on write/rework and refine/compose/write), keeping the positive_example/edge_case JSON block shape.
 

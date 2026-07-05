@@ -1,6 +1,6 @@
 # Fix 1 — The orchestrator must reliably call the terminal flow tool
 
-Status: Options A+B SHIPPED 2026-07-03 (PR #5) with single-call staging (stackon active=true, the user amendment) — completion 0.21 -> 0.39 -> 0.52 on the 8. Remaining failure mode: stale/misdetected flows on ACTIVE-POST turns, where NLU runs parallel to PEX so prestage cannot apply; the next lever (await NLU on those turns) changes the two-speed design and needs a ruling. Option B awaits sign-off. The DEFAULT_SCENARIOS prerequisite is NOT built: the suite restructure ships a conflicting fresh-sample doctrine (utils corpus.py) — needs a ruling. Discovered by the 2026-07-03 evaluation-suite run.
+Status: Options A+B SHIPPED 2026-07-03 (PR #5) with single-call staging (stackon active=true, the user amendment) — completion 0.21 -> 0.39 -> 0.52 on the 8. **2026-07-04 transcript review (B01.C01, B06.C01): the earlier "stale/misdetected flows" description did NOT reproduce** — NLU detection and orchestrator routing were correct on every turn. The remaining failures are all `missing_reference`: the eval database lacks the posts the scenarios assume (6 of the 8 gate scenarios seed zero posts), and no flow can create a post (`create_post` is in the PEX dispatch table but unused by any flow — only frontend routes call it). Next lever is eval-world seeding (draft posts for the data_aug_guide topics) + commit-then-restore around suite runs, per the user's 2026-07-04 direction. The DEFAULT_SCENARIOS prerequisite was resolved separately (fresh ~8 sample doctrine).
 Owner module: **PEX** (acting loop + orchestrator prompt). See also [[step_4_pex.md]], [[step_1_evals.md]].
 
 ---
@@ -76,7 +76,7 @@ Two coupled symptoms, one lever:
    `read_section` / `find_posts` (the read-only allowlist) and then emits a text reply WITHOUT ever
    calling `activate_flow`. No policy runs → the artifact has no `origin` → the completion scorer reports
    `expected 'outline', got ''`.
-2. **A read-storm precedes activation when it does happen.** Even on turns that eventually activate a
+2. **Too many read actions precede activation when it does happen.** Even on turns that eventually activate a
    flow, the orchestrator first fires 7–18 `read_metadata`/`read_section` calls. That tanks `tool_match`
    and blows the per-turn latency budget (worst turn 52.1s vs a 10s target).
 
@@ -152,7 +152,7 @@ Tighten `for_orchestrator.py`:
 
 - **Pros:** zero code change; reversible; keeps NLU/PEX contract untouched; the prompt already carries the
   recipe so this is a nudge, not a rewrite; byte-stable prompt preserves prefix caching.
-- **Cons:** probabilistic — depends on the model obeying; may reduce but not eliminate the read-storm;
+- **Cons:** probabilistic — depends on the model obeying; may reduce but not eliminate the repeated read actions;
   needs an eval loop to confirm.
 
 ### Option B — Deterministic pre-stage of the detected flow
@@ -176,7 +176,7 @@ pred_slots)` — the exact calls the orchestrator makes today, moved into code a
   every domain touch through a flow. Rejected as the first move because some turns legitimately need a
   cheap lookup (find a post by title before staging) and the read-only flows exist for that; revisit if
   A+B don't land.
-- **Lower `_MAX_ROUNDS`** to starve the read-storm. Rejected: it caps the symptom, not the cause, and
+- **Lower `_MAX_ROUNDS`** to starve the repeated read actions. Rejected: it caps the symptom, not the cause, and
   would truncate legitimately multi-step turns.
 - **Change the scorer** to credit read-only lookups. Rejected as a fix for this problem — the dominant
   signal (`origin=''`) is real; the metric is right that no work happened. (There is a *separate,
@@ -184,8 +184,8 @@ pred_slots)` — the exact calls the orchestrator makes today, moved into code a
 
 ### Recommendation
 
-Ship **A first**, measure on the 8 scenarios. If completion clears ~0.6 and the read-storm is gone, stop.
-If completion improves but the read-storm persists, add **B** (guarded to confident single-flow turns).
+Ship **A first**, measure on the 8 scenarios. If completion clears ~0.6 and the repeated reads are gone, stop.
+If completion improves but the repeated reads persist, add **B** (guarded to confident single-flow turns).
 Both reuse existing calls; neither adds a component.
 
 ## New concepts introduced
@@ -198,13 +198,36 @@ Both reuse existing calls; neither adds a component.
   the "no new concepts / respect module contracts" rules (`feedback_no_new_concepts`,
   `feedback_hook_philosophy`). Flagged here; do not build B without sign-off.
 
+## 2026-07-04 resolution — the premise was stale; the block was the empty database
+
+Transcript review of the eight gate conversations (B01.C01, B06.C01 dumped in full; the other six
+match) showed the "prompt-only Option A" premise no longer holds. On every turn NLU detected the
+right flow and the orchestrator dispatched it. There is no wandering read loop to tighten. Every
+remaining failure is a `missing_reference`: the flow resolves a source post, the post does not
+exist, and the turn dies. Six of the eight gate scenarios seed zero posts, and no flow could create
+one (`create_post` sat in the dispatch table but only the frontend routes called it). So Option A
+would have moved nothing.
+
+Two fixes shipped instead, per the user's 2026-07-04 direction:
+
+1. **create-on-missing for the drafting flows.** A `resolve_or_create` helper on `BasePolicy`: when
+   a filled source names a post that does not exist, it calls `create_post` once and re-resolves.
+   Wired into `outline`, `compose`, and `write` (the flows the user sanctioned to birth a post; a
+   new post is otherwise an orchestrator/UI job). Deterministic in the policy, not a sub-agent tool
+   call, so there is no double-create. Covered by `TestResolveOrCreate` (two offline cases).
+2. **A standing 32-post library.** `utils/evaluation_suite/library_spec.py` +
+   `library_prose.py` + `seed_library.py`: 16 topics from the generating-evals guide x 2 titles,
+   one outline-only draft and one full-prose draft each. Tags carry the query keywords (find_posts
+   is a substring match) so scenario openers like "posts about sleeper trains" resolve. Committed
+   into `database/content`; live runs mutate it, then `git restore database/content` after the gate.
+
 ## Secondary note — a real but smaller scorer nuance
 
 `run_evals.py:109` counts every domain tool (including read-only reads) into `actual`, while the corpus
 `expected_tools` lists only the terminal tool (e.g. `[generate_outline]`). So even a clean turn that reads
 once then activates scores below 1.0. This is worth a follow-up decision (allow a bounded read in
 `expected_tools`, or weight terminal-tool presence), but it is NOT the cause of the 0.05 rate — the
-read-STORM and the missing terminal tool are. Keep it out of this fix; log it in `step_1_evals.md`.
+repeated reads and the missing terminal tool are. Keep it out of this fix; log it in `step_1_evals.md`.
 
 ## How to verify
 

@@ -18,11 +18,11 @@ reset.
 - 23:5x — New git workflow committed (2069b58): no PRs; plan → code → commit → push after a few
   commits; the user reviews live after each step. `_specs/agents/README.md` updated.
 - Code-review agent (dispatched earlier over fa49a89..23d515c, focus: thread-safety of the
-  two-speed model, message pairing, Pending lifecycle coherence, prompt/code drift) — still
+  parallel NLU/PEX model, message pairing, Pending lifecycle coherence, prompt/code drift) — still
   running; findings will be triaged per instruction 1 when it reports.
 - 00:0x — Round 4.3 team workflow LAUNCHED (PM → SWE plans → DoE approve → builds → adjudicate).
   Scope handed to the PM: step_4_pex.md §4.3 exemplar raise (priority propose → 2-count → 3-count
-  group) PLUS the read-storm cap (find_posts ×3-9/turn observed in every recent gate) PLUS a
+  group) PLUS the repeated read actions cap (find_posts ×3-9/turn observed in every recent gate) PLUS a
   decision on whether NLU detection prompts also need exemplars (the gate's binding constraint is
   DETECTION accuracy, while §4.3 as written targets PEX skill exemplars — the PM must reconcile).
 
@@ -99,18 +99,18 @@ APPLIED (committed on master):
   flat), tool_match 0.0826 (AC-5 NOT met: flat vs 0.0864), mean turn 14.4s (worse than 12.4 —
   within run-to-run variance; earlier identical-config runs spanned 12.4-15.5s). KEY FINDING from
   transcript forensics: `read_cap` fired ZERO times across all 8 live sessions, yet B06.C01 turn
-  1 emitted 7 read-only calls — because that storm ran INSIDE the flow's own tool loop
+  1 emitted 7 read-only calls — because those repeated reads ran INSIDE the flow's own tool loop
   (llm_execute → _dispatch_tool), which never routes through _guarded_call. The orchestrator-level
-  cap is live and unit-verified but targets the smaller half of the observed storms; the flow-
-  internal storms sit under max_tool_calls (8/16) and are the real latency sink. Follow-up
+  cap is live and unit-verified but targets the smaller half of the observed repeated reads; the flow-
+  internal repeated reads sit under max_tool_calls (8/16) and are the real latency sink. Follow-up
   candidate recorded below. Detection exemplars: no visible movement this run — B06.C01's
   turn-2-4 failures are stale-flow origins (the flow-switch behavior), not detection errors, so
   the exemplars' effect needs the write/rework-specific scenarios to show. Committing the round:
   content and cap are correct and tested; gate is flat-not-worse; single-run deltas at this
   variance are not decisive.
-- FOLLOW-UP added to the deferred register: flow-internal read-storm bounding (per-flow read
-  budget inside llm_execute, or skill-prompt discipline for browse/audit) — the cap that would
-  actually move tool_match and latency.
+- FOLLOW-UP added to the deferred register: bounding too many read actions inside a flow
+  (per-flow read budget inside llm_execute, or skill-prompt discipline for browse/audit) — the
+  cap that would actually move tool_match and latency.
 
 - 03:4x — Round 4.3 COMMITTED (dbc2b00, 33 files: 34 PEX exemplars, 13 detection exemplars, the
   read cap, tests, artifacts incl. ship.diff). Gate-run seed mutations restored again (same
@@ -146,7 +146,7 @@ DEFERRED to master_plan.md "Deferred register" (questionable / design-level, per
 - One-source-of-truth flow stack (the mirror fix treats the symptom; two writers remain).
 - read_state's unconditional blocking join serializes most parallel-think turns because the
   prompt sends every intent to read belief first — needs the user's explicit ruling (keep vs
-  conditional join vs prompt change). THE MOST IMPORTANT OPEN QUESTION for the two-speed design.
+  conditional join vs prompt change). THE MOST IMPORTANT OPEN QUESTION for the parallel NLU/PEX processing.
 - Smaller: execute() 7 params; dead _llm_quality_check; dead keep_going writes (Batch-2b); a
   carrier-A message-shape test; forced fallback on the loop's final round waits a turn;
   scratchpad in-memory crash; eval runs mutate checked-in content seeds.

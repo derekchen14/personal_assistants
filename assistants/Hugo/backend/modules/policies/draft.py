@@ -86,7 +86,7 @@ class DraftPolicy(BasePolicy):
 
         if flow.slots['sections'].check_if_filled():
             flow.stage = 'direct'
-            post_id, _, error = self.resolve_source_ids(flow, state, tools)
+            post_id, _, error = self.resolve_or_create(flow, state, tools)
             if error: return error
 
             self.record_snapshot(self.content, flow, context, post_id)
@@ -194,7 +194,7 @@ class DraftPolicy(BasePolicy):
         if not flow.slots['source'].check_if_filled():
             self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
             return TaskArtifact()
-        post_id, _, error = self.resolve_source_ids(flow, state, tools)
+        post_id, _, error = self.resolve_or_create(flow, state, tools)
         if error: return error
 
         # Compose converts an existing outline into prose; if there are no bullets yet,
