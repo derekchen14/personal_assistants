@@ -33,7 +33,8 @@ if str(_HUGO_ROOT) not in sys.path:
 
 # harness flips schemas.config.EVAL_HARNESS + loads .env at import — wanted here.
 from utils.evaluation_suite.harness import (
-    _build_agent, _seed_post, _clean_leftovers, _TURN_TIMEOUT_SEC, load_cases, sample)
+    _build_agent, _seed_post, _clean_leftovers, _TURN_TIMEOUT_SEC, load_cases, sample,
+    seed_active_post)
 from utils.evaluation_suite.scoring import is_completed, tool_similarity
 from utils.evaluation_suite import scoring as gates
 
@@ -93,7 +94,8 @@ def _run_case(case:dict, domain_tools:set) -> tuple[int, int, list, list]:
         _seed_post(post['post_id'], post['title'], post['sections'])
         seeded.append((post['post_id'], post['title']))
 
-    agent = _build_agent()
+    agent = _build_agent(case['convo_id'])
+    seed_active_post(agent, case, seeded)
     tool_log = _install_tool_logger(agent)
     completed = total = 0
     sims, turn_secs = [], []

@@ -77,14 +77,20 @@ def _clean_leftovers(post_id:str, title:str):
             svc.delete_post(entry['post_id'])
 
 
-def _build_agent():
-    """Orchestrator-path Agent with debug=True."""
+def _build_agent(session_id:str|None=None):
+    """Orchestrator-path Agent with debug=True. Pass a `session_id` (the convo_id) to name the
+    session dir after the scenario, so its transcript persists at a findable
+    database/sessions/<session_id>/messages.jsonl instead of an anonymous timestamp — that file is
+    the per-turn observability trace (NLU belief, tool calls, flow dispatch) read back for diagnosis."""
     from schemas.config import load_config
     import backend.agent as agent_mod
     orig_load = agent_mod.load_config
     agent_mod.load_config = lambda: load_config(overrides={'debug': True})
     agent = agent_mod.Agent(username='trace_user')
     agent_mod.load_config = orig_load
+    if session_id:
+        agent.world.open_session(session_id)   # bind the scenario-named dir
+        agent.world.reset()                     # clear any stale run so the transcript starts fresh
     return agent
 
 
@@ -103,3 +109,27 @@ def _seed_post(post_id:str, title:str, sections:dict):
     content = ContentService()
     for sec_id, prose in zip(created['section_ids'], sections.values()):
         content.revise_content(post_id, sec_id, prose)
+
+
+# Flows that edit a specific existing post — a scenario opening on one assumes the post is already
+# selected (grounded), the way the UI grounds a post the user clicked before NLU ever runs.
+_EXISTING_CONTENT_FLOWS = {'refine', 'compose', 'rework', 'write', 'audit', 'propose',
+                          'summarize', 'compare', 'release', 'schedule', 'cite'}
+
+
+def seed_active_post(agent, case:dict, seeded:list):
+    """Mirror a UI post selection: when a scenario opens on an existing-content flow, ground the
+    seeded post it targets BEFORE the first turn, so NLU/the policy see an active post instead of a
+    missing reference. Picks the seeded post matching the first turn's source, else the only one."""
+    if not seeded:
+        return
+    first = case['turns'][0]
+    stack = first['labels']['stack']
+    if not stack or stack[0].get('flow') not in _EXISTING_CONTENT_FLOWS:
+        return
+    source = (first.get('slots') or {}).get('source') or {}
+    want = source.get('post', '').lower() if isinstance(source, dict) else ''
+    post_id = next((pid for pid, title in seeded if title.lower() == want), seeded[0][0])
+    state = agent.world.current_state()
+    state.active_post = post_id
+    state.grounding['post'] = post_id

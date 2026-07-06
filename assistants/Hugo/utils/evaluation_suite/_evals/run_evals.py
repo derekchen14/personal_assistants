@@ -34,7 +34,8 @@ if str(_HUGO_ROOT) not in sys.path:
     sys.path.insert(0, str(_HUGO_ROOT))
 
 from utils.evaluation_suite.harness import (
-    _build_agent, _seed_post, _clean_leftovers, _TURN_TIMEOUT_SEC, sample, all_ids, load_cases)
+    _build_agent, _seed_post, _clean_leftovers, _TURN_TIMEOUT_SEC, sample, all_ids, load_cases,
+    seed_active_post)
 from utils.evaluation_suite.scoring import (
     is_completed, tool_similarity, semantic_similarity, judge_response)
 from utils.evaluation_suite._traces.run_traces import _normalize_post, _install_tool_logger, _domain_tools
@@ -81,7 +82,8 @@ def _score_convo(case:dict, domain_tools:set, judge:bool=False) -> dict:
         _seed_post(post['post_id'], post['title'], post['sections'])
         seeded.append((post['post_id'], post['title']))
 
-    agent = _build_agent()
+    agent = _build_agent(case['convo_id'])
+    seed_active_post(agent, case, seeded)
     tool_log = _install_tool_logger(agent)
     turns = case['turns']
     completion, correctness, response, state, ambiguity, planning = [], [], [], [], [], []
