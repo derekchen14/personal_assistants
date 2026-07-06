@@ -4,7 +4,12 @@ INSTRUCTIONS = (
     'outlines, composing prose from an outline, and refining an in-progress outline or its sections.'
 )
 
-RULES = ''
+RULES = (
+    '`refine` and `compose` operate on an EXISTING outline or its prose. When the user introduces a '
+    'brand-new post — an indefinite reference with nothing outlined yet in the conversation ("a post '
+    'about X", "I want to write X", "an X post") — pick `outline`: there is no content to refine or '
+    'compose from. `brainstorm` is for topic ideas before any post exists.'
+)
 
 EXAMPLES = '''<positive_example>
 ## Conversation History

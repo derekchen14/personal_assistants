@@ -184,7 +184,7 @@ class RevisePolicy(BasePolicy):
 
     def write_policy(self, flow, state, context, tools):
         if artifact := self._guard_entity(flow): return artifact
-        post_id, sec_id, error = self.resolve_or_create(flow, state, tools)
+        post_id, sec_id, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         self.record_snapshot(self.content, flow, context, post_id,
             sec_ids=[sec_id] if sec_id else None)

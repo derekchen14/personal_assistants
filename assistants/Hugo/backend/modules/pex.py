@@ -157,6 +157,7 @@ class PEX:
             'read_state':           self.read_state,
             'write_state':          self._dispatch_write_state,
             'activate_flow':        self.activate_flow,
+            'understand':           self._dispatch_understand,
             'append_to_scratchpad': self._dispatch_append_scratchpad,
             'read_scratchpad':      self._dispatch_read_scratchpad,
             'store_preference':     self._dispatch_store_preference,
@@ -710,6 +711,18 @@ class PEX:
             record = self.scratchpad.write_completion(flow.name(), summary, metadata=artifact.data)
         return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
 
+    def _dispatch_understand(self, params:dict) -> dict:
+        """Re-consult NLU mid-turn. The orchestrator calls this with op='contemplate' when a flow it
+        dispatched stalled on a missing entity (a partial ambiguity): NLU re-routes over the failed
+        flow and rewrites belief. The stale ambiguity is cleared (the re-route supersedes it) and the
+        corrected detection is returned so the orchestrator can stack the right flow."""
+        self._check_nlu()
+        state = self.nlu.understand(op=params['op'], user_text=self.world.context.last_user_text)
+        self.ambiguity.resolve()
+        top = state.pred_flows[0]
+        return {'_success': True, 'intent': state.pred_intent,
+                'flow_name': top['flow_name'], 'confidence': top['confidence']}
+
     def _dispatch_append_scratchpad(self, params:dict) -> dict:
         self.scratchpad.write(params['entry'])  # `writer` stamped by code
         return {'_success': True, 'size': self.scratchpad.size}
@@ -1017,6 +1030,24 @@ class PEX:
                                       'description': 'catalog name of the flow to run'},
                     },
                     'required': ['flow_name'],
+                },
+            },
+            {
+                'name': 'understand',
+                'description': (
+                    "Re-consult NLU when a flow you dispatched stalled on a missing entity (a "
+                    "`partial` ambiguity — it needs a post/section that isn't grounded). Call with "
+                    "op='contemplate': NLU re-routes over the failed flow and returns a corrected "
+                    "`flow_name`. Use it BEFORE relaying a partial-ambiguity clarification — the "
+                    "stall often means the first flow pick was wrong (e.g. `refine`/`audit` on a "
+                    "post that doesn't exist yet, when the user is starting a fresh post → "
+                    "`outline`). Stack the returned flow and run it; only relay a clarification if "
+                    "the re-route still cannot proceed."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {'op': {'type': 'string', 'enum': ['contemplate']}},
+                    'required': ['op'],
                 },
             },
             {

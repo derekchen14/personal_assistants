@@ -72,6 +72,14 @@ _Output_
 {{"thought": "No prior draft to rework. Route to write to create content first.", "flow_name": "write", "confidence": 0.75}}
 ```
 ---
+Failed flow: refine (post not found)
+User: "a backyard-composting post I want reading as one piece"
+Candidates: outline, compose, brainstorm, chat
+_Output_
+```json
+{{"thought": "There is no post to refine yet — the user is starting a fresh post. Route to outline to build its structure first.", "flow_name": "outline", "confidence": 0.85}}
+```
+---
 Failed flow: release (prerequisites not met)
 User: "publish everything"
 Candidates: release, schedule, find

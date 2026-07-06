@@ -86,17 +86,23 @@ class DraftPolicy(BasePolicy):
 
         if flow.slots['sections'].check_if_filled():
             flow.stage = 'direct'
-            post_id, _, error = self.resolve_or_create(flow, state, tools)
+            post_id, _, error = self.resolve_source_ids(flow, state, tools)
             if error: return error
 
             self.record_snapshot(self.content, flow, context, post_id)
             text, tool_log = self.llm_execute(flow, state, context, tools,
                 extra_resolved={'depth': depth})
             saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_outline')
+            if not saved:                       # the generate is flaky — one retry before giving up
+                text, tool_log = self.llm_execute(flow, state, context, tools,
+                    extra_resolved={'depth': depth})
+                saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_outline')
 
             if not text or not saved:
-                artifact = self.error_artifact(flow, 'failed_to_save',
-                    thoughts='LLM failed to generate outline.')
+                failed = next((entry['result'] for entry in tool_log
+                    if entry['tool'] == 'generate_outline' and not entry['result']['_success']), None)
+                thoughts = failed['_message'] if failed else 'Sub-agent did not call generate_outline.'
+                artifact = self.error_artifact(flow, 'failed_to_save', thoughts=thoughts, code=text)
             else:
                 for step in flow.slots['sections'].steps:
                     flow.slots['sections'].mark_as_complete(step['name'])
@@ -194,7 +200,7 @@ class DraftPolicy(BasePolicy):
         if not flow.slots['source'].check_if_filled():
             self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
             return TaskArtifact()
-        post_id, _, error = self.resolve_or_create(flow, state, tools)
+        post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
 
         # Compose converts an existing outline into prose; if there are no bullets yet,
