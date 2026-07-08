@@ -22,12 +22,6 @@ if TYPE_CHECKING:
     from backend.components.context_coordinator import ContextCoordinator
     from backend.components.world import World
 
-
-_UNSUPPORTED = {
-    'think', 'context',
-}
-
-
 class PEX:
 
     def __init__(self, config:MappingProxyType, ambiguity:AmbiguityHandler,
@@ -88,18 +82,8 @@ class PEX:
         if check_result:
             return check_result, False
 
-        if flow_name in _UNSUPPORTED:
-            self.flow_stack.mark_complete(result={'unsupported': True})
-            artifact = self.world.latest_artifact() or TaskArtifact(self.config)
-            return artifact, False
-
         policy = self._policies.get(active_flow.intent)
-        if policy:
-            artifact = policy.execute(
-                active_flow, state, context, self._dispatch_tool,
-            )
-        else:
-            artifact = TaskArtifact(self.config)
+        artifact = policy.execute(active_flow, state, context, self._dispatch_tool)
 
         if active_flow.intent != Intent.PLAN:
             self.flow_stack.mark_complete(result={'flow_name': flow_name})
@@ -123,10 +107,7 @@ class PEX:
 
     # -- Pre-hook ---------------------------------------------------------
 
-    def _check(self, flow,
-               context:'ContextCoordinator') -> TaskArtifact | None:
-        if flow.name() in _UNSUPPORTED:
-            return None
+    def _check(self, flow, context:'ContextCoordinator') -> TaskArtifact | None:
 
         required_missing = []
         for slot_name, slot in flow.slots.items():
