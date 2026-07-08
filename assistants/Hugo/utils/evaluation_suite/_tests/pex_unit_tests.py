@@ -26,8 +26,7 @@ from backend.prompts.for_orchestrator import build_orchestrator_prompt
 from schemas.config import load_config
 from schemas.ontology import FLOW_ONTOLOGY
 
-_HOT_PATH_TOOLS = ('manage_flows', 'understand',
-                   'append_to_scratchpad', 'store_preference', 'read_scratchpad')
+_HOT_PATH_TOOLS = ('manage_flows', 'understand', 'scratchpad', 'store_preference')
 
 
 # ==============================================================================
@@ -143,13 +142,13 @@ class TestOrchestratorDispatch:
         assert result['_error'] == 'invalid_input'
         assert "'source'" in result['_message']  # valid slots are listed for the retry
 
-    def test_scratchpad_tools_route_to_memory(self, mock_agent, tmp_path):
+    def test_scratchpad_tool_routes_to_memory(self, mock_agent, tmp_path):
         pex = mock_agent.pex
         pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
-        appended = pex._dispatch_tool('append_to_scratchpad',
-                                      {'entry': {'finding': 'intro is weak'}})
+        appended = pex._dispatch_tool('scratchpad',
+                                      {'op': 'append', 'entry': {'finding': 'intro is weak'}})
         assert appended == {'_success': True, 'size': 1}
-        result = pex._dispatch_tool('read_scratchpad', {'writer': 'orchestrator'})
+        result = pex._dispatch_tool('scratchpad', {'op': 'read', 'writer': 'orchestrator'})
         assert result['entries'] == [{'finding': 'intro is weak', 'writer': 'orchestrator'}]
 
     def test_understand_hint_is_deterministic_from_stack_top(self, mock_agent):

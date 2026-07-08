@@ -23,7 +23,7 @@ The scratchpad is a **shared resource** that many components read from and write
 
 | Method | Caller | Effect |
 |---|---|---|
-| `append_to_scratchpad(writer, entry)` | any sub-agent / the PEX loop | append a new entry; the `writer` is stamped **in code** so authorship can't be forged. Appending **triggers NLU** to review. |
+| `scratchpad(op='append', entry)` | any sub-agent / the PEX loop | append a new entry; the `writer` is stamped **in code** so authorship can't be forged. Appending **triggers NLU** to review. |
 | `read_from_scratchpad(...)` | any sub-agent / the PEX loop | read entries (by key, by writer, or walk the pad) — read-only |
 | `update_scratchpad(key, entry)` | **NLU only** | revise or correct a prior entry during review (merge duplicates, fix a stale note) |
 

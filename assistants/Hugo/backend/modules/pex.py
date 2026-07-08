@@ -161,8 +161,7 @@ class PEX:
         self._orchestrator_dispatch = {
             'manage_flows':         self._dispatch_manage_flows,
             'understand':           self._dispatch_understand,
-            'append_to_scratchpad': self._dispatch_append_scratchpad,
-            'read_scratchpad':      self._dispatch_read_scratchpad,
+            'scratchpad':           self._dispatch_scratchpad,
             'store_preference':     self._dispatch_store_preference,
         }
 
@@ -747,11 +746,11 @@ class PEX:
         return {'_success': True, 'intent': state.pred_intent,
                 'flow_name': top['flow_name'], 'confidence': top['confidence']}
 
-    def _dispatch_append_scratchpad(self, params:dict) -> dict:
-        self.scratchpad.write(params['entry'])  # `writer` stamped by code
-        return {'_success': True, 'size': self.scratchpad.size}
-
-    def _dispatch_read_scratchpad(self, params:dict) -> dict:
+    def _dispatch_scratchpad(self, params:dict) -> dict:
+        """The orchestrator's one scratchpad tool — op 'read' or 'append'."""
+        if params['op'] == 'append':
+            self.scratchpad.write(params['entry'])  # `writer` stamped by code
+            return {'_success': True, 'size': self.scratchpad.size}
         entries = self.scratchpad.read(writer=params.get('writer'), keys=params.get('keys'))
         return {'_success': True, 'entries': entries}
 
@@ -990,18 +989,15 @@ class PEX:
             {
                 'name': 'manage_flows',
                 'description': (
-                    "Your one flow tool — ALL domain writes go through a flow it runs, never "
-                    "through domain tools directly. Beliefs and grounding are NLU's job; no op "
-                    "here touches them. Ops:\n"
+                    "Possible Ops:\n"
                     "- `update`   — mutate the flow on top of the stack. `fields` may carry `slots` "
                     "(slot-name → value, in the exact shapes belief's `pred_slots` carries: "
                     "strings for single-value slots, lists for multi-value slots), `stage`, and "
-                    "`status`. An entity-grounded flow cannot reach status=Completed while "
-                    "grounding.post is empty.\n"
+                    "`status`.\n"
                     "- `stackon`  — push `flow_name` on top of the stack as Pending; matching "
                     "slot values hand over from the prior flow automatically. Pass `active: true` "
                     "to also fold in belief's `pred_slots`, promote to Active, and run the policy "
-                    "immediately — the one-call way to dispatch a flow. A Plan stacks ALL its "
+                    "immediately. If executing a multi-step plan, you can stacks ALL related "
                     "flows at once (reverse execution order, first-to-run pushed last with "
                     "`active: true`); the rest wait as Pending.\n"
                     "- `fallback` — replace the top flow with `flow_name`, transferring matching "
@@ -1055,17 +1051,28 @@ class PEX:
                 },
             },
             {
-                'name': 'append_to_scratchpad',
+                'name': 'scratchpad',
                 'description': (
-                    "Append one agent-belief entry to the session scratchpad (JSONL). `entry` is "
-                    "a schema-free JSON object — intermediate findings, tool results worth "
-                    "keeping, working notes. The `writer` stamp is added by code; do not include "
-                    "a writer key yourself."
+                    "The session scratchpad (JSONL). Ops:\n"
+                    "- `read`   — return entries, newest last. Optional filters: `writer` "
+                    "('orchestrator' or a flow name) and `keys` (only entries carrying every "
+                    "named key — e.g. ['flow', 'summary'] selects completion records).\n"
+                    "- `append` — add one agent-belief entry. `entry` is a schema-free JSON "
+                    "object — intermediate findings, tool results worth keeping, working notes. "
+                    "The `writer` stamp is added by code; do not include a writer key yourself."
                 ),
                 'input_schema': {
                     'type': 'object',
-                    'properties': {'entry': {'type': 'object'}},
-                    'required': ['entry'],
+                    'properties': {
+                        'op': {'type': 'string', 'enum': ['read', 'append']},
+                        'entry': {'type': 'object',
+                                  'description': 'for append — the entry to add'},
+                        'writer': {'type': 'string',
+                                   'description': 'for read — filter by writer'},
+                        'keys': {'type': 'array', 'items': {'type': 'string'},
+                                 'description': 'for read — only entries carrying every named key'},
+                    },
+                    'required': ['op'],
                 },
             },
             {
@@ -1082,22 +1089,6 @@ class PEX:
                         'value': {'type': 'string'},
                     },
                     'required': ['key', 'value'],
-                },
-            },
-            {
-                'name': 'read_scratchpad',
-                'description': (
-                    "Read session scratchpad entries, newest last. Optional filters: `writer` "
-                    "('orchestrator' or a flow name) and `keys` (only entries carrying every "
-                    "named key — e.g. ['flow', 'summary'] selects completion records)."
-                ),
-                'input_schema': {
-                    'type': 'object',
-                    'properties': {
-                        'writer': {'type': 'string'},
-                        'keys': {'type': 'array', 'items': {'type': 'string'}},
-                    },
-                    'required': [],
                 },
             },
         ]
