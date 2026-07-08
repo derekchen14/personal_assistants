@@ -389,15 +389,14 @@ class NLU:
         if not flow.is_filled():
             convo_history = self.world.context.compile_history()
             prompt = build_slot_filling_prompt(flow, convo_history, self._active_post_dict())
-            # fix_3: gemini preview models sometimes ignore response_json_schema, returning a
-            # bare entity dict — retry once before giving up (a dropped fill loses real values).
             for attempt in (1, 2):
-                pred_slots = self.engineer(prompt, 'fill_slots', max_tokens=2048,
-                                           schema=_fill_slots_schema(flow))
+                try:
+                    pred_slots = self.engineer(prompt, 'fill_slots', max_tokens=2048, schema=_fill_slots_schema(flow))
+                except ValueError:
+                    pred_slots = {}
                 if 'slots' in pred_slots:
                     break
-                log.warning('[fill_slots] schema violation flow=%s attempt=%s payload=%s',
-                            flow.name(), attempt, pred_slots)
+                log.warning('[fill_slots] schema violation flow=%s attempt=%s payload=%s', flow.name(), attempt, pred_slots)
             if 'slots' not in pred_slots:
                 log.warning('[fill_slots] convo_history=\n%s', convo_history)
                 log.warning('[fill_slots] filled-state: %s', {n: s.filled for n, s in flow.slots.items()})

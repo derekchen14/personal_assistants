@@ -143,6 +143,29 @@ class TestNLUSpecificRegressions:
         })
         assert flow.slots['steps'].steps[0] == {'name': "Remove X", 'description': 'why', 'checked': False}
 
+    def test_fill_slots_retries_after_parse_failure(self, nlu):
+        """Round 3.7: a truncated response makes the engineer raise ValueError; _fill_slots
+        retries once and keeps the second, well-formed fill."""
+        flow = flow_classes['refine']()
+        good = {'reasoning': 'r', 'slots': {'source': [{'post': 'abc12345'}]}}
+        mock = MagicMock(side_effect=[ValueError('unparseable'), good])
+        mock._strip_nulls = nlu.engineer._strip_nulls
+        nlu.engineer = mock
+        nlu._fill_slots(flow)
+        assert flow.slots['source'].values
+        assert mock.call_count == 2
+
+    def test_fill_slots_gives_up_after_two_parse_failures(self, nlu):
+        """Round 3.7: two consecutive parse failures hit the final-resort path — the flow
+        stays unfilled, no exception escapes."""
+        flow = flow_classes['refine']()
+        mock = MagicMock(side_effect=ValueError('unparseable'))
+        mock._strip_nulls = nlu.engineer._strip_nulls
+        nlu.engineer = mock
+        nlu._fill_slots(flow)
+        assert not flow.slots['source'].values
+        assert mock.call_count == 2
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Agent.take_turn — full keep_going loop integration

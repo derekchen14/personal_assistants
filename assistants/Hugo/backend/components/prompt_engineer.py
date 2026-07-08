@@ -626,7 +626,7 @@ class PromptEngineer:
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
+            match = re.search(r'\{.*\}', text, re.DOTALL)
             if match:
                 try:
                     return json.loads(match.group())

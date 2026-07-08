@@ -54,6 +54,20 @@ def _script(agent, responses):
     return queue
 
 
+class TestParseJson:
+    """Round 3.7 Decision A: the JSON-parse fallback recovers the FULL object or returns None —
+    never a nested fragment (the old innermost regex returned slices like {'post': ...})."""
+
+    def test_prose_wrapped_object_returns_full_object(self):
+        text = 'Sure! {"reasoning": "x", "slots": {"source": {"post": "T"}}}'
+        parsed = PromptEngineer._parse_json(text)
+        assert parsed == {'reasoning': 'x', 'slots': {'source': {'post': 'T'}}}
+
+    def test_truncated_object_returns_none_not_fragment(self):
+        text = '{"reasoning": "x", "slots": {"source": {"post": "T"}'
+        assert PromptEngineer._parse_json(text) is None
+
+
 
 
 class TestOrchestratorToolDefs:
