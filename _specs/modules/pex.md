@@ -106,7 +106,7 @@ and `_final_emit` are the loop-level guardrails. Component/tool errors surface *
 ### The system prompt
 Built once per session and frozen:
 - **Tier 1 — stable:** persona, the 7-intent taxonomy, tool policy, loop discipline.
-- **Tier 2 — context:** the workflow recipe, the flow catalog grouped by intent, the outline levels.
+- **Tier 2 — context:** the workflow recipe, the flow ontology grouped by intent, the outline levels.
 - **Tier 3 — volatile:** the L2 user-preferences snapshot and the session line.
 
 ---

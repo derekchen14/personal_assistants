@@ -3,11 +3,12 @@
 Two things share this spec: the **FlowStack** data structure that stores the flows (code: `flow_stack.py`),
 and **Workflow Planning** (equivalently, **Sub-agent Routing**) — the activity [PEX](../modules/pex.md)'s LLM
 performs over it. PEX plans: it decides which sub-agents to run, handles fallbacks and stack-ons, and tracks
-how far through a complex request the agent is. Its **primary input is NLU's classified intent and detected
-flow** (`classify_intent` / `detect_flow`) — the planner routes from that belief, not the raw utterance. The flows it plans across are stored in the FlowStack, whose
-contents are serialized in the Dialogue State document's `flow_stack` block — the one block the Workflow
-Planner owns and writes (`stackon` / `fallback` / `pop_completed`), distinct from the belief blocks NLU's
-Dialogue State tools manage.
+how far through a complex request the agent is. Its **primary input is NLU's detected flow** (the flow fixes
+the intent — see [Dialogue State § Predicting the Belief State](./dialogue_state.md#predicting-the-belief-state))
+— the planner routes from that belief, not the raw utterance. The flows it plans across are stored in the
+FlowStack, whose contents are serialized in the Dialogue State document's `flow_stack` block — the one block
+the Workflow Planner owns and writes via the `manage_flowstack(op)` tool (`stackon` / `fallback` /
+`pop_completed` / `update_flow`; renamed from `write_state`), distinct from the belief NLU maintains.
 
 The stack admits **multiple active flows running in parallel** (bounded — see
 [Data Structure](#data-structure)), so independent branches advance together while the stack discipline
@@ -66,8 +67,8 @@ Every flow inherits these methods from `BaseFlow`:
 
 | Method | Purpose |
 |---|---|
-| `fill_slot_values(values)` | Bulk slot fill from a predictions dict — see Slot Filling below |
-| `fill_slots_by_label(labels)` | Targeted single-slot fill with entity validation — see Slot Filling below |
+| `fill_slot_values(values)` | Bulk slot fill from a predictions dict — see [Dialogue State § Slot-Filling Methods](./dialogue_state.md#slot-filling-methods) |
+| `fill_slots_by_label(labels)` | Targeted single-slot fill with entity validation — same reference |
 | `slot_values_dict()` | Read all filled slot values as a flat `{name: value}` dict |
 | `is_filled()` | Check if all required slots and at least one elective (if any) are filled |
 | `needs_to_think()` | Determine if further contemplation is needed before execution |
@@ -78,67 +79,11 @@ Every flow inherits these methods from `BaseFlow`:
 
 These methods are distinct from the lifecycle states below — they describe *how* a flow prepares for execution, while lifecycle states describe *where* a flow is in the stack.
 
-### Slot Filling
+### Slot Filling and Entity Extraction
 
-Two methods fill slots, distinguished by **prompt scope** and **when they run**:
-
-**`fill_slot_values(values: dict)`** — Bulk fill from a full-flow prediction.
-
-The upstream prompt sees the entire flow (all slots, descriptions, types) and produces a dict of `{slot_name: value}` pairs for every slot it can extract. The method then routes each value to the correct slot object based on type:
-
-- Lists → `slot.add_one()` per item (for GroupSlot variants)
-- Dicts → `slot.add_one(**value)` (for entity dicts, key-value pairs)
-- Scalars → `slot.assign_one(value)` or `slot.value = str(value)`
-
-Also resolves **aliases** (e.g., the LLM says `'post'` but the slot is named `'source'`). Does not return a value. Used primarily by **NLU** — after `think()`, `contemplate()`, and `react()` predict a flow, the extracted slots dict is passed here for bulk transfer.
-
-**`fill_slots_by_label(labels: dict)`** — Targeted fill for a specific slot.
-
-The upstream prompt is shorter and more focused: it knows exactly which slot it needs to fill (e.g., "Extract the topic the user wants to outline") and produces a single `{slot_name: value}` pair. The method routes entity-slot values through `extract_entity()` — the entity-extraction hook that domain parent flows can override for early validation (e.g., checking that a post exists before filling the source slot). Non-entity slots delegate to `fill_slot_values` for the actual storage. Returns `is_filled()` status.
-
-Used primarily by **policies in PEX** — when a policy knows a specific slot is missing, it runs a targeted extraction prompt and fills just that slot:
-
-```python
-# In a policy: targeted extraction of a single slot
-text = self.engineer.call(history, system="Extract the topic the user wants to outline.")
-flow.fill_slots_by_label({'topic': parsed_value})
-if not flow.slots['topic'].filled:
-    self.ambiguity.declare('specific', metadata={'missing': 'topic'})
-```
-
-**Summary of the distinction:**
-
-| | `fill_slot_values` | `fill_slots_by_label` |
-|---|---|---|
-| **Prompt scope** | Full flow — all slots at once | Single slot — focused extraction |
-| **Primary caller** | NLU (after flow detection) | Policies in PEX (during execution) |
-| **Entity handling** | Direct to slot | Via `extract_entity()` hook |
-| **Alias resolution** | Yes | No |
-| **Returns** | Nothing | `is_filled()` boolean |
-
-### Entity Extraction (sub-task of slot filling)
-
-Industry NLU draws a line between **entity extraction** (identifying which entity the user is referring to — e.g. "this post", "the second section") and **slot filling** (writing a value into a structured variable). Hugo follows this distinction:
-
-| Layer | Action verb | Subject |
-|---|---|---|
-| NLU | classifies | intent |
-| NLU | detects | flow |
-| NLU | extracts | entity (`entities are extracted`) |
-| NLU | fills | slot (`slots are filled`) |
-
-**Entity extraction** is a sub-task of slot filling, focused on grounding:
-
-- In **NLU**, the `_extract_entities(flow, entity_dict)` helper (called from `_fill_slots`) routes entity payload values (`post`, `sec`, `snip`, `chl`) into the flow's grounding slots — its `SourceSlot` / `TargetSlot` / `RemovalSlot`, or into the `query` / `word` `ExactSlot` for snippet-scoped flows like `find` and `reference`.
-- In **flows**, the `BaseFlow.extract_entity(entity)` hook is what `fill_slots_by_label` invokes when the slot being filled is the flow's `entity_slot`. Domain parents may override `extract_entity` to add validation (e.g. confirming the post exists before committing).
-
-**Failure mapping:**
-- `partial` ambiguity = entity extraction failed (the entity the user was referring to could not be resolved). The flow's `entity_slot` is still unfilled after extraction attempts.
-- `specific` ambiguity = slot filling failed for some other (non-entity) slot.
-
-Both share the same runtime contract — `parts={'missing': <slot_name>, 'entity': <entity_type>?, 'reason': <code>?}` — so consumers reading an artifact's `parts` have a uniform "what was missing?" key regardless of which sub-task failed.
-
-The canonical entity slot name is `'source'` (matching `BaseFlow.entity_slot`); the slot type is `SourceSlot` (or a `SourceSlot`-derived class like `TargetSlot` / `RemovalSlot`).
+Moved to [Dialogue State](./dialogue_state.md) — the canonical home for everything slot-related:
+priorities, the 12+4 type hierarchy, grounding slots, the two filling methods (`fill_slot_values` /
+`fill_slots_by_label`), and entity extraction with its ambiguity failure mapping.
 
 ### Flow Registration: `flow_classes` Dict
 
@@ -174,99 +119,8 @@ Flow
 └── tools: [tool_name, ...]                 # PEX calls these
 ```
 
-### Slot Type Hierarchy — 12 Universal + 4 Domain-Specific
-
-Every domain defines exactly **16 slot types**: 12 universal types shared across all assistants, plus 4 domain-specific types selected by that domain. Each domain's `flow_stack/slots.py` contains all 16 class definitions directly (self-contained, no cross-module slot imports).
-
-#### Universal Slots (12)
-
-```
-BaseSlot                  # abstract base — never instantiated directly
-├── GroupSlot             # holds a list of items
-│   ├── SourceSlot        # references existing entities (grounding)
-│   │   ├── TargetSlot    # new entities being created
-│   │   └── RemovalSlot   # entities being removed
-│   ├── FreeTextSlot      # free-form text or operations
-│   ├── ChecklistSlot     # ordered steps to check off
-│   └── ProposalSlot      # candidate options for confirmation
-├── LevelSlot             # single numeric value with range constraints
-│   ├── PositionSlot      # non-negative integer position
-│   ├── ProbabilitySlot   # 0–1 range [domain-specific, common option]
-│   └── ScoreSlot         # any numeric value [domain-specific, common option]
-├── CategorySlot          # exactly one from a predefined set (≤8, mutually exclusive)
-├── ExactSlot             # specific token or phrase
-├── DictionarySlot        # key-value pairs
-└── RangeSlot             # start/stop interval (often date range)
-```
-
-`BaseSlot` is the shared abstract parent — it is never used directly. Concrete single-value behavior lives on the specific subclasses (`ExactSlot`, `CategorySlot`, `LevelSlot` and its descendants).
-
-#### Grounding Slots
-
-**SourceSlot** references existing entities. Each entity is a dict whose fields are domain-specific, matching the domain's `KEY_ENTITIES`. The hierarchy is built into a single slot.
-
-Each domain defines its own grounding entity vocabulary:
-
-| Domain | Entity fields |
-|--------|---------------|
-| Dana (Data Analysis) | `{tab, col, row, ver, rel}` — tab=table, col=column, row=row |
-| Hugo (Blog Writing) | `{post, sec, snip, chl, ver}` — post=post, sec=section, snip=snippet, chl=channel |
-
-`ver` is a **verified bool**, not a version int — it flags whether the entity was user-approved vs. agent-predicted. NLU does not predict `ver`; it is set by the grounding layer.
-
-**Canonical name.** A flow's grounding slot is always named `'source'` (matching `BaseFlow.entity_slot`). One SourceSlot per flow — do not split entity parts into separate slots. Not every flow requires a grounding slot (e.g., `chat`, `brainstorm`).
-
-**`entity_part` is optional.** `SourceSlot(min_size=1, entity_part='', priority='required')` accepts any entity type. Setting `entity_part='post'` constrains the slot to that single field.
-
-When a flow needs both a SourceSlot and a FreeTextSlot, name the FreeText something other than `'source'` (e.g., `'context'`).
-
-**TargetSlot → SourceSlot**: Entities being created (new columns, new rows, new posts).
-
-**RemovalSlot → SourceSlot**: Entities being deleted or removed.
-
-#### Domain-Specific Slots (4 per domain)
-
-Each domain selects 4 additional slot types. Two are typically common options (`ProbabilitySlot`, `ScoreSlot`) that most domains include; the remaining two are truly unique to the domain. All are real `BaseSlot` subclasses.
-
-| Domain | Common options | Domain-unique |
-|--------|---------------|---------------|
-| Dana | ProbabilitySlot, ScoreSlot | **ChartSlot** (chart reference), **FunctionSlot** (executable code) |
-| Hugo | ProbabilitySlot, ScoreSlot | **ChannelSlot** (publishing destination), **ImageSlot** (hero image, diagram) |
-
-This 12+4 pattern is the scalable architecture for adding new domains. When creating a new assistant:
-1. Copy the 12 universal slot classes from any existing domain's `slots.py`.
-2. Select common options (ProbabilitySlot, ScoreSlot) if the domain needs them.
-3. Define domain-unique slot types as `BaseSlot` subclasses (total domain-specific = 4).
-4. Define the domain's grounding entity vocabulary.
-
-### Slot Priority
-
-A slot's priority is one of: `required`, `optional`, `elective`.
-
-- **required** — must be filled before execution. Missing → `specific` ambiguity with `metadata={'missing': '<slot_name>'}`.
-- **elective** — at least one of N elective slots must be filled (choice among alternatives). A flow with elective slots must have ≥2 elective options — single-elective is invalid (convert to required or optional).
-- **optional** — nice-to-have. With a defensible default, commit it inline at policy entry. Without, treat absence as OK.
-
-`flow.is_filled()` already encodes "all required filled AND ≥1 elective filled (if any)." Trust it; don't re-derive.
-
-### CategorySlot Constraints
-
-A CategorySlot's options list must be:
-- **Mutually exclusive** — selecting one option rules out all others.
-- **At most 8 options** — if you need more than 8, the taxonomy is too fine-grained; consider grouping or using FreeTextSlot instead.
-
-### ExactSlot as Category Extension
-
-When a CategorySlot covers the common cases but users may need values beyond the predefined set, pair it with an ExactSlot as electives. The user fills either the category (pick from the list) or the exact slot (provide a custom value):
-
-```python
-self.slots = {
-    'custom_tone': ExactSlot(priority='elective'),
-    'chosen_tone': CategorySlot(['formal', 'casual', 'technical', ...], priority='elective'),
-}
-```
-
-This preserves structured options for NLU prediction while allowing open-ended input when needed.
+Slot types, priorities, and grounding rules live in
+[Dialogue State § Slot-Filling](./dialogue_state.md#slot-filling).
 
 ## Data Structure
 
@@ -326,7 +180,7 @@ The **Plan** intent is served by the **Workflow Planner skill** (`backend/prompt
 every module skill it **returns nothing** — it is how-to guidance injected into the orchestrator's context, not
 a flow policy and not a returning call. Following it, PEX issues the stack ops itself. Sketch:
 - **Input** — NLU's detected intent/flow(s) (the orchestrator routes from belief, not raw text), the flow
-  catalog (flows by intent), current grounding, and recent context.
+  ontology (flows by intent), current grounding, and recent context.
 - **What it tells PEX to do** — map each sub-task to an **existing** flow (never invent one), order by
   dependency, keep it minimal, then `stackon` the sub-flows in that order and share a one-line plan.
 - **Result** — PEX emits the `stackon` calls in its loop plus a short plan for the user; the decomposition is
@@ -383,23 +237,14 @@ The fallback process: a new flow is created for the target; best-effort slot map
 
 Use only when the intent belongs elsewhere — never for skill errors (use error artifacts) or tool failures (use error artifacts).
 
-### Yield-When-Stacked (Converse on top of an active flow)
+### Confirmation turns
 
-When a Converse intent (`endorse`, `dismiss`) pushes onto an already-active flow during a confirmation resolution turn, the **single Converse sub-agent** (one `converse` policy serves all Converse flows, not a per-flow policy) should **yield** rather than respond with its own chit-chat skill output. The underlying flow's resolution turn consumes the user's accept/decline.
-
-```python
-def endorse_policy(self, flow, state, context, tools):
-    if self.flow_stack.stack_size() > 1:
-        flow.status = 'Completed'
-        # Optional scratchpad note so the resumed flow knows the user accepted.
-        self.memory.write_scratchpad(flow.name(), {'accepted': True})
-        return TaskArtifact(flow.name())  # empty yield-artifact
-    # ...fall through to the normal chit-chat path
-```
-
-Without yielding, the user's "yes" gets answered by Converse with a generic acknowledgement, the underlying flow stays paused, and the originally-promised work never lands. Applies to `endorse` and `dismiss` — the flows that consume explicit accept/decline. Other Converse flows (`chat`, `suggest`, `explain`, `preference`, `undo`) don't carry an accept/decline contract and should not yield.
-
-PEX `_validate_artifact` allows empty artifacts on a yielding turn — the empty artifact here is intentional, not a bug for the retry mechanism to chase.
+When a flow is awaiting the user's accept/decline, the answer belongs to that flow's resolution turn:
+the active flow stays on the stack, the user's yes/no arrives as an utterance or button payload, and
+PEX resolves it on the active flow. `endorse` / `dismiss` are **tools** PEX may call to record the
+outcome — never a second flow stacked on top, so nothing competes with the active flow for the turn.
+(Historical: when endorse/dismiss were Converse flows, they had to yield to the flow beneath them; the
+flow audit converted them to tools and removed that case.)
 
 ## Worked Examples — Flow-Stack Scenarios
 
@@ -463,7 +308,7 @@ Failure recovery is owned by [PEX](../modules/pex.md), not the Workflow Planner 
 1. **Policy classifies the failure** — tool-call failure → error artifact with `parts={'violation': 'tool_error', ...}`; ambiguous user intent → `ambiguity.declare(level, observation=, metadata=)` (note: `declare()`'s `metadata=` parameter stays — it's the ambiguity component's input, not the artifact attribute); malformed skill output → error artifact with `parts={'violation': 'parse_failure'}`.
 2. **PEX decides** based on what was returned:
    - Tool error and transient → retry once via `BasePolicy.retry_tool(tools, name, params, max_attempts=2)`.
-   - Ambiguity that may indicate the wrong flow → `NLU.contemplate()` to re-route; mark current flow Invalid; best-effort slot mapping to the new flow.
+   - Ambiguity that may indicate the wrong flow → `understand(op='contemplate')` to re-route; mark current flow Invalid; best-effort slot mapping to the new flow.
    - Otherwise → PEX surfaces the clarification so the user can answer.
 
 Tool failures are infrastructure, not user-facing questions — never declare ambiguity for them. Ambiguity is the only channel that produces a clarification question. Conflating the two channels hides root cause.
