@@ -78,7 +78,7 @@ class TestEnsembleVoting:
         stub = MagicMock(side_effect=mock_call)
         stub.apply_guardrails = real_engineer.apply_guardrails
         nlu.engineer = stub
-        result = nlu._detect_flow('hello', intent='Converse')
+        result = nlu._detect_flow('hello', hint='Converse')
 
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == pytest.approx(1.0)
@@ -91,7 +91,7 @@ class TestEnsembleVoting:
         stub = MagicMock(side_effect=mock_call)
         stub.apply_guardrails = real_engineer.apply_guardrails
         nlu.engineer = stub
-        result = nlu._detect_flow('hello', intent='Converse')
+        result = nlu._detect_flow('hello', hint='Converse')
 
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == 0.3
@@ -106,10 +106,65 @@ class TestEnsembleVoting:
         stub = MagicMock(side_effect=mock_call)
         stub.apply_guardrails = real_engineer.apply_guardrails
         nlu.engineer = stub
-        result = nlu._detect_flow('give me ideas', intent='Draft')
+        result = nlu._detect_flow('give me ideas', hint='Draft')
 
         assert result['flow_name'] == 'brainstorm'
         assert result['confidence'] == pytest.approx(0.70)   # med voter alone (D6 two-voter ensemble)
+
+
+def _detection(pairs, confidence):
+    """Build a detection dict from (flow_name, weight) pairs at a given top-1 confidence."""
+    pred_flows = [{'flow_name': name, 'confidence': w, 'votes': 1} for name, w in pairs]
+    return {'flow_name': pairs[0][0], 'confidence': confidence, 'pred_flows': pred_flows}
+
+
+class TestPredictDispatch:
+    """predict() detects first and only pays for a classify + narrowed re-detect on a low-confidence
+    cross-intent tie (§3.1.1). _intent_split is the boolean that governs that escalation."""
+
+    def test_predict_skips_classify_on_confident_detection(self, nlu):
+        nlu._detect_flow = MagicMock(return_value=_detection([('outline', 0.9)], 0.9))
+        nlu._classify_intent = MagicMock()
+        result = nlu.predict('draft me an outline')
+        nlu._classify_intent.assert_not_called()
+        assert result['flow_name'] == 'outline'
+
+    def test_predict_escalates_on_low_conf_cross_intent(self, nlu):
+        low = _detection([('outline', 0.5), ('find', 0.5)], 0.4)
+        high = _detection([('compose', 0.8)], 0.8)
+        nlu._detect_flow = MagicMock(side_effect=[low, high])
+        nlu._classify_intent = MagicMock(return_value='Draft')
+        result = nlu.predict('do the thing')
+        nlu._classify_intent.assert_called_once()
+        assert nlu._detect_flow.call_count == 2
+        assert nlu._detect_flow.call_args.kwargs['hint'] == 'Draft'
+        assert result['flow_name'] == 'compose'
+
+    def test_intent_split_true_when_flows_span_intents_and_low_conf(self, nlu):
+        assert nlu._intent_split(_detection([('outline', 0.5), ('find', 0.5)], 0.4)) is True
+
+    def test_intent_split_false_when_confident(self, nlu):
+        assert nlu._intent_split(_detection([('outline', 0.5), ('find', 0.5)], 0.9)) is False
+
+    def test_intent_split_false_when_single_intent(self, nlu):
+        assert nlu._intent_split(_detection([('outline', 0.6), ('compose', 0.4)], 0.4)) is False
+
+    def test_classify_intent_still_callable(self, nlu):
+        nlu.engineer = MagicMock(return_value={'reasoning': 'improving', 'intent': 'Revise'})
+        assert nlu._classify_intent('polish the intro') == 'Revise'
+
+    def test_candidate_names_empty_hint_is_full_catalog(self, nlu):
+        assert nlu._flow_candidate_names('') == list(FLOW_CATALOG)
+
+    def test_candidate_names_hint_narrows_to_intent(self, nlu):
+        names = set(nlu._flow_candidate_names('Draft'))
+        assert {'outline', 'compose', 'refine', 'brainstorm'} <= names
+        assert 'release' not in names
+
+    def test_generic_flow_prompt_used_when_no_hint(self):
+        from backend.prompts.for_experts import build_flow_prompt
+        prompt = build_flow_prompt('publish it', '', 'history', 'catalog')
+        assert 'across ALL' in prompt
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -258,20 +258,30 @@ class NLU:
 
     # ── Prediction ────────────────────────────────────────────────────
 
-    def predict(self, user_text:str) -> dict:
-        intent = self._classify_intent(user_text)
-        detection = self._detect_flow(user_text, intent)
+    def predict(self, user_text:str, hint:str='') -> dict:
+        detection = self._detect_flow(user_text, hint)      # hint='' on the pre-hook first pass
+        if self._intent_split(detection):                   # low-confidence AND spans >1 intent
+            intent = self._classify_intent(user_text)       # the retained tie-break call
+            detection = self._detect_flow(user_text, hint=intent)
         return {
             'flow_name': detection['flow_name'],
             'confidence': detection['confidence'],
             'pred_flows': detection.get('pred_flows', []),
         }
 
-    def _detect_flow_prompt(self, user_text:str, intent:str, convo_history:str) -> str:
-        candidate_names = self._flow_candidate_names(intent)
+    def _intent_split(self, detection:dict) -> bool:
+        """True only when the ranked flows span >1 intent AND top-1 is under the confidence floor —
+        the one case a coarse-intent tie-break is worth a call. Under D1-A the span clause is almost
+        always true, so the confidence clause is the real trigger. At most one extra classify + one
+        extra detect per turn."""
+        intents = {FLOW_CATALOG[f['flow_name']]['intent'] for f in detection['pred_flows']}
+        return len(intents) > 1 and detection['confidence'] < self.ambiguity.confidence_min
+
+    def _detect_flow_prompt(self, user_text:str, hint:str, convo_history:str) -> str:
+        candidate_names = self._flow_candidate_names(hint)
         catalog = render_flow_catalog(candidate_names, FLOW_CATALOG, flow_classes)
         active_post = self._active_post_dict()
-        return build_flow_prompt(user_text, intent, convo_history,
+        return build_flow_prompt(user_text, hint, convo_history,
                                  catalog, active_post=active_post)
 
     def _active_post_dict(self) -> dict | None:
@@ -320,10 +330,10 @@ class NLU:
             self._raise_if_debug(ecp)
             return 'Converse'
 
-    def _detect_flow(self, user_text:str, intent:str|None=None) -> dict:
+    def _detect_flow(self, user_text:str, hint:str='') -> dict:
         convo_history = self.world.context.compile_history()
-        prompt = self._detect_flow_prompt(user_text, intent, convo_history)
-        candidate_names = self._flow_candidate_names(intent)
+        prompt = self._detect_flow_prompt(user_text, hint, convo_history)
+        candidate_names = self._flow_candidate_names(hint)
         schema = _flow_detection_schema(candidate_names)
 
         def _call_voter(voter:dict) -> dict | None:
@@ -359,11 +369,11 @@ class NLU:
 
         return self._tally_votes(votes)
 
-    def _flow_candidate_names(self, intent:str|None) -> list[str]:
-        if intent is None:
+    def _flow_candidate_names(self, hint:str='') -> list[str]:
+        if not hint:
             return list(FLOW_CATALOG)
-        edges = _get_edge_flows_for_intent(intent)
-        return [name for name, cat in FLOW_CATALOG.items() if cat['intent'] == intent or name in edges]
+        edges = _get_edge_flows_for_intent(hint)
+        return [name for name, cat in FLOW_CATALOG.items() if cat['intent'] == hint or name in edges]
 
     def _fill_slots(self, flow, payload:dict={}):
         last_turn = self.world.context.last_user_turn

@@ -27,5 +27,72 @@ for _mod in _MODULES:
     PROMPTS.update(_mod.PROMPTS)
 
 
+# ── Generic (intent-agnostic) flow prompt — used on the first pass when hint='' ──────
+# One <positive_example> per flow-owning intent (find / outline / rework / release / chat), so an
+# 18-way choice still sees every intent family represented.
+GENERIC_FLOW_EXAMPLES = '''<positive_example>
+## Conversation History
+
+User: "find my posts about onboarding"
+## Output
+
+```json
+{"reasoning": "Locating existing posts.", "flow_name": "find", "confidence": 0.92}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "outline a post about remote work"
+## Output
+
+```json
+{"reasoning": "Generating an outline.", "flow_name": "outline", "confidence": 0.92}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "restructure the draft, the sections are out of order"
+## Output
+
+```json
+{"reasoning": "Reworking the draft structure.", "flow_name": "rework", "confidence": 0.90}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "publish it to the blog"
+## Output
+
+```json
+{"reasoning": "Releasing the post.", "flow_name": "release", "confidence": 0.92}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "hi there"
+## Output
+
+```json
+{"reasoning": "Simple greeting.", "flow_name": "chat", "confidence": 0.95}
+```
+</positive_example>'''
+
+GENERIC_FLOW_PROMPT = {
+    'instructions': ('Choose the single flow that best matches what the user wants across ALL '
+                     'intents. The candidate list spans every flow; the detected flow fixes the '
+                     'intent, so do not pre-commit to one intent family.'),
+    'rules': '',                       # build_flow_prompt falls back to PRECEDENCE_NOTE
+    'examples': GENERIC_FLOW_EXAMPLES,
+}
+
+
 def get_prompt(intent:str) -> dict[str, str]:
-    return PROMPTS[intent]
+    return PROMPTS[intent] if intent else GENERIC_FLOW_PROMPT

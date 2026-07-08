@@ -23,17 +23,18 @@ from schemas.ontology import FLOW_CATALOG
 
 # ── Tier 1: stable ───────────────────────────────────────────────────────
 
-# NLU classifies the coarse intent and detects the flow before the loop runs; the orchestrator
-# reads that detection from belief and acts on it.
+# NLU detects the flow before the loop runs; that detection fixes the intent, which the
+# orchestrator reads from belief and acts on.
 INTENT_TAXONOMY = (
     '## Intent Taxonomy\n\n'
     'Work is organized into **flows** — units of work that share a goal (drafting a post, '
-    'releasing it, browsing notes, etc.). Flows group under one of seven **intents**. NLU runs '
-    'before you and has ALREADY classified the intent and detected the flow for this turn — read '
-    'them from belief with `read_state` (user_beliefs.intent, pred_flows, pred_slots). Your job '
-    'is to ACT on that detection, not to re-classify it; treat your own read of the intent as '
-    'internal reasoning, and bias toward Plan or Clarify only when the detection looks uncertain '
-    'or the request spans several steps:\n'
+    'releasing it, browsing notes, etc.). Flows group under one of seven **intents**. You form a '
+    'quick sense of the intent as you reason — but you do NOT classify on the record. NLU owns the '
+    'authoritative intent: it is written when NLU detects a flow, and you read it from belief with '
+    '`read_state` (user_beliefs.intent, pred_flows, pred_slots). Use your own sense only to pick '
+    'which flow to activate when the mapping is obvious (a click or a clear continuation). When you '
+    'are unsure — the request is multi-step, vague, or spans intents — bias toward Plan or Clarify, '
+    'which wait for NLU rather than guessing. Never assert a final intent yourself:\n'
     '- **Research**: browse topics, find posts, view and summarize drafts, compare posts.\n'
     '- **Draft**: brainstorm ideas, generate outlines, compose prose from an outline, '
     'refine sections.\n'
@@ -50,7 +51,7 @@ INTENT_TAXONOMY = (
 TOOL_POLICY = (
     '## Tool-Use Policy\n\n'
     '**Understanding a user turn.** NLU runs before you and writes the detection to belief: the '
-    'classified `intent`, ranked candidate flows (`pred_flows`), and filled slot values '
+    'detected `intent`, ranked candidate flows (`pred_flows`), and filled slot values '
     '(`pred_slots`). Call `read_state` to read it — do not re-derive the flow yourself.\n'
     '**You route; flows resolve.** You are not responsible for resolving the user\'s request '
     'yourself — the flow you dispatch does that with its own skill prompt and tools. So you do '
