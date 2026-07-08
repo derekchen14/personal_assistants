@@ -76,7 +76,7 @@ class TestOrchestratorToolDefs:
         pex = mock_agent.pex
         names = [tool['name'] for tool in pex._orchestrator_tool_definitions()]
         assert names == list(_HOT_PATH_TOOLS)
-        assert set(pex._orchestrator_dispatch) == set(names)
+        assert set(pex._orchestrator_toolset) == set(names)
 
     def test_orchestrator_tool_list_composition(self, mock_agent):
         names = [tool['name'] for tool in mock_agent.pex.get_tools_for_orchestrator()]

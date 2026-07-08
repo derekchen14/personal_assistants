@@ -158,7 +158,7 @@ class PEX:
         self.nlu = None  # wired by Agent after construction; used to re-consult on policy failures
         # Orchestrator hot-path tools — wiring only; the implementations live in
         # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
-        self._orchestrator_dispatch = {
+        self._orchestrator_toolset = {
             'manage_flows':         self._dispatch_manage_flows,
             'understand':           self._dispatch_understand,
             'scratchpad':           self._dispatch_scratchpad,
@@ -485,8 +485,8 @@ class PEX:
                 return self._dispatch_flow_stack_tool(tool_input)
             elif tool_name == 'save_findings':
                 return self._dispatch_save_findings_tool(tool_input)
-            elif tool_name in self._orchestrator_dispatch:
-                return self._orchestrator_dispatch[tool_name](tool_input)
+            elif tool_name in self._orchestrator_toolset:
+                return self._orchestrator_toolset[tool_name](tool_input)
             else:
                 return {
                     '_success': False, '_error': 'invalid_input',

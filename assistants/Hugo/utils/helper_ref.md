@@ -223,7 +223,7 @@ Before proposing a new tool, grep for the capability here first.
 
 **BusinessContext** (1): `search_faqs`.
 
-**Orchestrator hot-path tools** (6, `_orchestrator_dispatch`): `read_state`, `write_state`, `activate_flow`, `append_to_scratchpad`, `store_preference`, `read_scratchpad`. Writes still route through a flow via `activate_flow`; flow-stack ops are `write_state` ops. `read_flow_stack` / `call_flow_stack` is retired — its job lives in `read_state` / `write_state`.
+**Orchestrator hot-path tools** (5, `_orchestrator_toolset`): `understand`, `manage_flows`, `scratchpad`, `store_preference`, plus the long-tail component tools. Writes still route through a flow via `manage_flows` op=activate; the tool surface is being reshaped per `_specs/_review/rounds/round_0.1_spec.md` (scoped per-agent toolsets).
 
 **Component tools** (3): `handle_ambiguity`, `coordinate_context`, `manage_memory`.
 
