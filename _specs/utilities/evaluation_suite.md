@@ -116,23 +116,23 @@ paying for E2E. Covers:
   fixed artifact (no template fill, no naturalization step).
 - **[NLU](../modules/nlu.md)** Dialogue State tools — op contracts against a real state file.
 
+Because flow detection is a multi-voter ensemble, the recorder also captures **each voter's output**; replay
+feeds those cached votes back instead of calling the model (record-once / replay-many, temp-0), so detection
+is deterministic at replay. Live ensembles run only at the **scenario / parity** stage (E2E Agent Evaluations),
+where the judge axis tolerates vote-to-vote drift.
+
 Model-accuracy testing lives here too: when a prompt's exemplars change, evaluate with train/dev/test splits
 (exemplars = train, scenarios = dev, held-out = test) scoped to that one component.
 
 ## Observability Traces
 
-### Trace replay (deterministic + tolerance)
+### Trace replay - series of model calls
 
 Replay the **human-approved tool-call trajectories** — the trace dev set (the approved trajectories +
 `tolerance_rules.md`). The recorder parses a session's `messages.jsonl` + `scratchpad.jsonl` into per-turn
 `(tool, key_args, ok)` sequences, activated flows, and completion records; replay compares against the
 approved trace, allowing only the documented tolerances. Deterministic and cheap — this is trajectory
 correctness made reproducible.
-
-Because flow detection is a multi-voter ensemble, the recorder also captures **each voter's output**; replay
-feeds those cached votes back instead of calling the model (record-once / replay-many, temp-0), so detection
-is deterministic at replay. Live ensembles run only at the **scenario / parity** stage (E2E Agent Evaluations),
-where the judge axis tolerates vote-to-vote drift.
 
 **Trajectory scoring modes** (for the tool sequence within a flow):
 
@@ -147,7 +147,7 @@ Default to **full workflow** (strictest); report all four for diagnostics.
 
 ### Operational tool scoring (implemented)
 
-The live Traces runner (`utils/evaluation_suite/_traces/run_traces.py`) scores each user turn's tool calls against
+The Traces runner (`utils/evaluation_suite/_traces/run_traces.py`) scores each user turn's tool calls against
 the following agent turn's `actions` with a **token-level Levenshtein similarity** — `1 − editDistance / max(len)`
 between the dispatched domain tools and the expected list (`utils/evaluation_suite/scoring.py`). It is **partial credit against
 a threshold** (target ~0.9), not strict pass/fail: a new feature passes once similarity clears the bar, so
@@ -194,19 +194,17 @@ All **seven are wired** in `utils/evaluation_suite/_evals/run_evals.py` — the 
 offline embedding, not an LLM), so scoring adds no meaningful cost on top of running the agent itself:
 
 1. **Task completion** — did the turn reach the end in the right mode? `is_completed` (artifact origin == label flow).
-2. **Task correctness (actions)** — did the agent take the right actions? **Deterministic**: per-turn tool-match
-   (Levenshtein similarity vs the label's `expected_tools`), aggregated over the conversation.
-3. **Task success (response)** — is the reply close to the ground-truth agent turn? **Default: offline embedding
+2. **Task correctness (artifact)** — did the agent's action result in the right task artifact? Deterministic:: Match the expected TaskArtifact against the actual TaskArtifact.
+3. **Task success (utterance)** — is the agent response close to the ground-truth agent turn? **Default: offline embedding
    similarity** (cosine over the shared `all-MiniLM-L6-v2`, no API); `--judge-response` swaps in an LLM-as-judge
    that also sees the conversation lead-up. This is the only criterion that costs a model call, and it is opt-out.
-4. **Task success (state)** — did NLU's belief detect the labelled flow? **Deterministic**:
-   `pred_flows[0].flow_name == labels.stack[0].flow`.
+4. **Task success (stack)** — do we end up with the right flows on the stack in the right order? This is a measure of the Workflow Planner doing the right job. Deterministic: check the FlowStack component.
 5. **Latency** — **ideal** targets we **measure** but do **not** gate on: time-to-first-token **≤ 5 s**,
    full turn **≤ 10 s**, whole conversation **≤ 60 s**, the 8-scenario gate **≤ 10 min**. Track distance to
    these goals rather than pass/fail them.
 6. **Ambiguity** — did the agent declare ambiguity when the label says the turn is ambiguous (no false positives)?
-   **Deterministic** from the per-turn `ambiguity` level.
-7. **Planning** — did multi-flow plan turns complete? **Deterministic** from the multi-item plan stacks.
+   Deterministic: from the per-turn `ambiguity` level.
+7. **Planning** — did multi-flow plan turns complete? Deterministic: from the multi-item plan stacks.
 
 ### Quality / judge rubrics
 
