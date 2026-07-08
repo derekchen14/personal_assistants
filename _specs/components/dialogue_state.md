@@ -5,7 +5,7 @@ agent thinks (the open-ended half is NLU's [Session Scratchpad](./session_scratc
 Ground the agent back to its beliefs: explicitly define a set of categories in an ontology, predict the active
 user intent, and track this belief over time.
 
-## Predicted State
+## Predicted Belief State
 
 Hierarchical with two levels:
 
