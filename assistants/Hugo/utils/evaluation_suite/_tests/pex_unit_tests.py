@@ -26,7 +26,7 @@ from backend.prompts.for_orchestrator import build_orchestrator_prompt
 from schemas.config import load_config
 from schemas.ontology import FLOW_ONTOLOGY
 
-_HOT_PATH_TOOLS = ('read_state', 'write_state', 'activate_flow', 'understand',
+_HOT_PATH_TOOLS = ('manage_flows', 'understand',
                    'append_to_scratchpad', 'store_preference', 'read_scratchpad')
 
 
@@ -101,44 +101,44 @@ class TestOrchestratorToolDefs:
 class TestOrchestratorDispatch:
     """_dispatch_tool routes the hot-path names onto the Phase 1/2 surfaces."""
 
-    def test_read_state_returns_document(self, mock_agent):
-        result = mock_agent.pex._dispatch_tool('read_state', {})
+    def test_understand_read_returns_document(self, mock_agent):
+        result = mock_agent.pex._dispatch_tool('understand', {'op': 'read'})
         assert result['_success'] is True
         assert list(result['state']) == ['session', 'user_beliefs', 'grounding',
                                          'flow_stack', 'flags']
 
-    def test_write_state_stacks_and_saves(self, sessions_dir, mock_agent):
+    def test_manage_flows_stacks_and_saves(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
-        result = mock_agent.pex._dispatch_tool('write_state',
+        result = mock_agent.pex._dispatch_tool('manage_flows',
                                                {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['state']['flow_stack'][0]['flow_name'] == 'outline'
         assert (sessions_dir / 'wire-test' / 'state.json').exists()
         assert mock_agent.pex.flow_stack.peek().flow_type == 'outline'
 
-    def test_write_state_pop_completed_pops_the_stack(self, sessions_dir, mock_agent):
-        """pop_completed acts on the one flow stack and the saved document shows it."""
+    def test_manage_flows_pop_clears_the_stack(self, sessions_dir, mock_agent):
+        """`pop` removes Completed and Invalid flows all at once; the saved document shows it."""
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         pex.flow_stack.stackon('chat').status = 'Completed'
-        result = pex._dispatch_tool('write_state', {'op': 'pop_completed'})
+        result = pex._dispatch_tool('manage_flows', {'op': 'pop'})
         assert result['_success'] is True
         assert result['state']['flow_stack'] == []
         assert pex.flow_stack.to_list() == []
 
-    def test_write_state_bad_op_returns_corrective_error(self, sessions_dir, mock_agent):
+    def test_manage_flows_bad_op_returns_corrective_error(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
-        result = mock_agent.pex._dispatch_tool('write_state', {'op': 'merge'})
+        result = mock_agent.pex._dispatch_tool('manage_flows', {'op': 'merge'})
         assert result['_success'] is False
         assert 'Unknown write_state op' in result['_message']
 
-    def test_write_state_unknown_slot_returns_corrective_error(self, sessions_dir, mock_agent):
+    def test_manage_flows_unknown_slot_returns_corrective_error(self, sessions_dir, mock_agent):
         """LLM-invented slot names (e.g. create's `type` reread as genre) get a corrective
         error naming the valid slots, instead of fill_slot_values dropping them silently."""
         mock_agent.world.open_session('wire-test')
-        mock_agent.pex._dispatch_tool('write_state', {'op': 'stackon', 'flow_name': 'outline'})
+        mock_agent.pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
         result = mock_agent.pex._dispatch_tool(
-            'write_state', {'op': 'update_flow', 'fields': {'slots': {'genre': 'tutorial'}}})
+            'manage_flows', {'op': 'update', 'fields': {'slots': {'genre': 'tutorial'}}})
         assert result['_success'] is False
         assert result['_error'] == 'invalid_input'
         assert "'source'" in result['_message']  # valid slots are listed for the retry
@@ -152,19 +152,22 @@ class TestOrchestratorDispatch:
         result = pex._dispatch_tool('read_scratchpad', {'writer': 'orchestrator'})
         assert result['entries'] == [{'finding': 'intro is weak', 'writer': 'orchestrator'}]
 
-    def test_understand_domain_intent_becomes_hint(self, mock_agent):
-        """The orchestrator's first-pass intent selection reaches NLU as the hint — but only the
-        four domain intents; Plan/Clarify/Converse carry no real signal and blank out."""
+    def test_understand_hint_is_deterministic_from_stack_top(self, mock_agent):
+        """The hint is coordination code, never a tool argument: the flow PEX committed to the
+        stack is its first-pass selection — a domain intent on top hints NLU; Converse or an
+        empty stack carries no real signal and blanks out."""
         pex = mock_agent.pex
         state = mock_agent.world.current_state()
         state.pred_intent, state.pred_flows = 'Draft', [{'flow_name': 'outline', 'confidence': 0.9}]
         pex.nlu = MagicMock()
         pex.nlu.understand.return_value = state
-        pex._dispatch_tool('understand', {'op': 'think', 'intent': 'Draft'})
-        assert pex.nlu.understand.call_args.kwargs['hint'] == 'Draft'
-        pex._dispatch_tool('understand', {'op': 'think', 'intent': 'Plan'})
+        pex._dispatch_tool('understand', {'op': 'think'})          # empty stack → blank
         assert pex.nlu.understand.call_args.kwargs['hint'] == ''
-        pex._dispatch_tool('understand', {'op': 'contemplate'})   # intent omitted → blank
+        pex.flow_stack.stackon('outline')                          # Draft flow on top → hint
+        pex._dispatch_tool('understand', {'op': 'think'})
+        assert pex.nlu.understand.call_args.kwargs['hint'] == 'Draft'
+        pex.flow_stack.stackon('chat')                             # Converse on top → blank
+        pex._dispatch_tool('understand', {'op': 'contemplate'})
         assert pex.nlu.understand.call_args.kwargs['hint'] == ''
 
 
@@ -205,7 +208,7 @@ class TestDispatchFlow:
         state = wired.world.current_state()
         state.grounding['post'] = 'cafe01'
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack)
-        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['status'] == 'Completed'
         assert result['completion'] == {'flow': 'outline', 'summary': 'Drafted the intro.',
@@ -234,7 +237,7 @@ class TestDispatchFlow:
 
         pex._policies['Draft'] = _CapturingPolicy(pex.flow_stack)
         assert pex.flow_stack.find_by_name('outline') is not None
-        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['status'] == 'Completed'
         assert captured['slots']['source'][0]['post'] == 'cafe01'
 
@@ -244,7 +247,7 @@ class TestDispatchFlow:
                                              thoughts='Need a post first.')
         pex.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'},
                               observation='Which post should I work on?')
-        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['status'] == 'Active'
         assert result['question'] == 'Which post should I work on?'
@@ -253,7 +256,7 @@ class TestDispatchFlow:
     def test_empty_artifact_fails_validation(self, wired):
         pex = wired.pex
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack, status='Active', thoughts='')
-        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is False
         assert result['_error'] == 'validation'
 
@@ -296,7 +299,7 @@ class TestPolicyCompletion:
         state.grounding['post'] = 'cafe01'
         pex._policies['Draft'] = self._migrated_policy(wired, 'Wrote the intro.',
                                                        metadata={'sec': 'intro'})
-        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['completion'] == {'flow': 'outline', 'summary': 'Wrote the intro.',
                                         'metadata': {'sec': 'intro'}, 'writer': 'outline'}
@@ -307,7 +310,7 @@ class TestPolicyCompletion:
     def test_complete_flow_blocks_ungrounded_completion(self, wired):
         pex = wired.pex
         pex._policies['Draft'] = self._migrated_policy(wired, 'Done.')
-        result = pex._dispatch_tool('activate_flow', {'flow_name': 'outline'})
+        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is False
         assert 'grounding.post is empty' in result['_message']
         assert pex.scratchpad.read(keys=['flow', 'summary']) == []  # no record written
@@ -453,14 +456,14 @@ class TestOrchestratorLoop:
                                'content': 'You have three posts in progress.'}
 
     def test_tool_round_dispatches_and_appends_results(self, orch_agent):
-        _script(orch_agent, [_response(_tool_block('read_state', {})),
+        _script(orch_agent, [_response(_tool_block('understand', {'op': 'read'})),
                              _response(_text_block('All caught up.'))])
         result = orch_agent.take_turn('where were we?')
         assert result['message'] == 'All caught up.'
         messages = orch_agent.world.context.messages
         assert [msg['role'] for msg in messages] == ['user', 'assistant', 'user', 'assistant']
         tool_use = messages[1]['content'][0]
-        assert tool_use['type'] == 'tool_use' and tool_use['name'] == 'read_state'
+        assert tool_use['type'] == 'tool_use' and tool_use['name'] == 'understand'
         tool_result = messages[2]['content'][0]
         assert tool_result['tool_use_id'] == 'toolu_01'
         assert json.loads(tool_result['content'])['_success'] is True
@@ -475,8 +478,8 @@ class TestOrchestratorLoop:
         assert 'Unknown tool' in tool_result['_message']
 
     def test_identical_consecutive_call_is_deduped(self, orch_agent):
-        _script(orch_agent, [_response(_tool_block('read_state', {}, block_id='t1')),
-                             _response(_tool_block('read_state', {}, block_id='t2')),
+        _script(orch_agent, [_response(_tool_block('understand', {'op': 'read'}, block_id='t1')),
+                             _response(_tool_block('understand', {'op': 'read'}, block_id='t2')),
                              _response(_text_block('done'))])
         orch_agent.take_turn('check state twice')
         second = json.loads(orch_agent.world.context.messages[4]['content'][0]['content'])
@@ -485,9 +488,9 @@ class TestOrchestratorLoop:
     def test_identical_retry_after_error_is_dispatched(self, orch_agent):
         """Dedupe only fires after a SUCCESSFUL identical call — retrying the same call
         after a transient tool error is legitimate recovery, not a loop."""
-        bad_call = _tool_block('write_state', {'op': 'bogus'}, block_id='t1')
+        bad_call = _tool_block('manage_flows', {'op': 'bogus'}, block_id='t1')
         _script(orch_agent, [_response(bad_call),
-                             _response(_tool_block('write_state', {'op': 'bogus'}, block_id='t2')),
+                             _response(_tool_block('manage_flows', {'op': 'bogus'}, block_id='t2')),
                              _response(_text_block('gave up'))])
         orch_agent.take_turn('do the thing')
         second = json.loads(orch_agent.world.context.messages[4]['content'][0]['content'])
@@ -561,7 +564,7 @@ class TestOrchestratorLoop:
                             lambda: load_config(overrides={'debug': True, 'limits': limits}))
         agent = Agent(username='test_user')
         agent.nlu.understand = lambda *args, **kwargs: None
-        queue = _script(agent, [_response(_tool_block('read_state', {})),
+        queue = _script(agent, [_response(_tool_block('understand', {'op': 'read'})),
                                 _response(_text_block('Wrapped up after one round.'))])
         result = agent.take_turn('walk the whole backlog')
         agent.close()
@@ -1754,7 +1757,7 @@ class TestSingleCallStackon:
         ran = {}
         monkeypatch.setattr(pex, 'activate_flow',
                             lambda params: ran.update(params) or {'_success': True, 'status': 'Completed'})
-        result = pex._dispatch_tool('write_state',
+        result = pex._dispatch_tool('manage_flows',
                                     {'op': 'stackon', 'flow_name': 'outline', 'active': True})
         assert result['_success'] is True
         assert ran['flow_name'] == 'outline'   # policy ran with no separate activate_flow call
@@ -1767,7 +1770,7 @@ class TestSingleCallStackon:
         self._believe(state, 'outline')
         called = []
         monkeypatch.setattr(mock_agent.pex, 'activate_flow', lambda params: called.append(params))
-        result = mock_agent.pex._dispatch_tool('write_state',
+        result = mock_agent.pex._dispatch_tool('manage_flows',
                                                {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True and not called
 
@@ -1850,7 +1853,7 @@ class TestBeliefInjection:
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         state = mock_agent.world.current_state()
-        pex._dispatch_tool('write_state', {'op': 'stackon', 'flow_name': 'outline'})
+        pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
         live = pex.flow_stack.peek()
         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
         self._believe(state, 'release', intent='Publish')
@@ -1864,7 +1867,7 @@ class TestBeliefInjection:
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         state = mock_agent.world.current_state()
-        pex._dispatch_tool('write_state', {'op': 'stackon', 'flow_name': 'outline'})
+        pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
         live = pex.flow_stack.peek()
         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
         self._believe(state, 'refine', intent='Draft')
@@ -1884,7 +1887,7 @@ class TestPlanLifecycle:
         pex = mock_agent.pex
         state = mock_agent.world.current_state()
         for flow_name in ('release', 'compose'):    # reverse execution order: first-to-run last
-            result = pex._dispatch_tool('write_state', {'op': 'stackon', 'flow_name': flow_name})
+            result = pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': flow_name})
             assert result['_success'] is True
 
         class _CompletingPolicy:
@@ -1895,12 +1898,12 @@ class TestPlanLifecycle:
                 return {'flow': 'outline', 'summary': 'done', 'metadata': {}}
         monkeypatch.setitem(pex._policies, Intent.DRAFT, _CompletingPolicy())
 
-        result = pex._dispatch_tool('write_state',
+        result = pex._dispatch_tool('manage_flows',
                                     {'op': 'stackon', 'flow_name': 'outline', 'active': True})
         assert result['_success'] is True and result['status'] == 'Completed'
         entries = [(entry['flow_name'], entry['status']) for entry in state.flow_stack]
         assert ('compose', 'Pending') in entries    # the plan survived the completion
         assert ('release', 'Pending') in entries
-        pex._dispatch_tool('write_state', {'op': 'pop_completed'})
+        pex._dispatch_tool('manage_flows', {'op': 'pop'})
         top = state.flow_stack[-1]
         assert top['flow_name'] == 'compose' and top['status'] == 'Active'   # next flow surfaces

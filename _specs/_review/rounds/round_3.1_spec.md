@@ -5,15 +5,23 @@ Status: **signed off 2026-07-08** — Derek picked D1-A, D2-A, D3-A (the recomme
 refer to it). Shipped in `942bb79`.
 
 **Amendments (2026-07-08, after ship):**
-1. **D3-A superseded — the hint now has a real caller.** The `understand` orchestrator tool gained
-   an `intent` parameter and op `'think'`: PEX passes its first-pass intent selection on every
-   consult. `_dispatch_understand` maps it to NLU's hint — Research / Draft / Revise / Publish pass
-   through (they narrow detection); Plan / Clarify / Converse blank out (PEX's guidance offers no
-   real signal there, so NLU detects over the full ontology). The hint threads
-   `understand(..., hint='') → think(..., hint='') → _detect_flow(text, hint)`.
+1. **D3-A superseded — the hint now has a real caller, and it is deterministic code.** PEX/NLU
+   coordination is the Assistant's job, so the hint is never a tool argument: on an NLU consult,
+   `_dispatch_understand` reads the flow PEX committed to the stack top — a domain intent
+   (Research / Draft / Revise / Publish) becomes NLU's candidate-narrowing hint; Plan / Clarify /
+   Converse (or an empty stack) carry no real signal, so the hint stays blank and NLU detects over
+   the full ontology. The hint threads `understand(..., hint='') → think(..., hint='') →
+   _detect_flow(text, hint)`. The orchestrator prompt carries no hint instructions.
 2. **`predict()` folded into `think()`** (Derek): the detect-first + tie-break logic lives directly
    in `think`; there is no separate `predict` method. Tests renamed `TestPredictDispatch` →
    `TestThinkDispatch` and drive `think()` with the fill/repair steps stubbed.
+3. **Orchestrator tool surface converged to two hot-path tools** (Derek): `understand(op = read |
+   think | contemplate)` is the one belief tool (`read` returns the serialized belief and joins the
+   NLU thread — Plan/Clarify wait there; `read_state` retired), and `manage_flows(op = update |
+   stackon | fallback | activate | pop)` is the one flow tool (replaces `write_state` +
+   `activate_flow`; `update` = the old update_flow, `pop` = the old pop_completed — Completed and
+   Invalid flows removed all at once; the old belief-fields update op is gone — PEX cannot
+   manipulate the belief, that is NLU's job).
 
 Scope is **only §3.1**. Ambiguity binding (§3.2), the scratchpad contract (§3.3), and the flag
 cleanup (§3.4) are separate sub-rounds and are not touched here.

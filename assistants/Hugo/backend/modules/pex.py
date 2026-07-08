@@ -36,10 +36,15 @@ _PARTIAL_ENTITY = {'post', 'section', 'snippet', 'channel'}
 _SPECIFIC_REASON = {'invalid_value', 'unclear_value', 'wrong_slot'}
 
 # Read-only domain tools the orchestrator may call directly for trivial lookups. Every write
-# still goes through a flow via activate_flow, preserving policy invariants, grounding
+# still goes through a flow via manage_flows, preserving policy invariants, grounding
 # discipline, and completion records.
 READ_ONLY_DOMAIN_TOOLS = ('find_posts', 'read_metadata', 'read_section', 'search_notes',
                           'list_channels', 'channel_status')
+
+# The four intents whose flows act on domain data. A flow of one of these on the stack top is
+# PEX's first-pass selection and becomes NLU's candidate-narrowing hint; Plan/Clarify/Converse
+# carry no real signal, so they never hint.
+_DOMAIN_INTENTS = (Intent.RESEARCH, Intent.DRAFT, Intent.REVISE, Intent.PUBLISH)
 
 
 def _block_summaries(artifact) -> list:
@@ -154,9 +159,7 @@ class PEX:
         # Orchestrator hot-path tools — wiring only; the implementations live in
         # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
         self._orchestrator_dispatch = {
-            'read_state':           self.read_state,
-            'write_state':          self._dispatch_write_state,
-            'activate_flow':        self.activate_flow,
+            'manage_flows':         self._dispatch_manage_flows,
             'understand':           self._dispatch_understand,
             'append_to_scratchpad': self._dispatch_append_scratchpad,
             'read_scratchpad':      self._dispatch_read_scratchpad,
@@ -218,7 +221,7 @@ class PEX:
     def _check_nlu(self, wait:bool=True):
         # Join this turn's parallel NLU think thread so belief reads see THIS turn's detection,
         # then clear it — later calls are no-ops. Plan/Clarify turns are REQUIRED to wait (their
-        # read_state blocks); flow execution passes wait=False and continues if NLU is still
+        # understand read blocks); flow execution passes wait=False and continues if NLU is still
         # running — it only reaps a finished thread so belief reads pick up a landed detection.
         if self._nlu_thread is None:
             return
@@ -285,7 +288,7 @@ class PEX:
     def execute(self, state, context, system_prompt, *, dax=None, payload=None, text='', nlu_thread=None) -> str:
         """The acting loop the Assistant calls once per turn, after NLU has written belief. A
         pure click (dax, no text) is resolved deterministically — no LLM. Otherwise the bounded
-        orchestrator loop reads belief (read_state) and decides by intent per the system prompt,
+        orchestrator loop reads belief (understand) and decides by intent per the system prompt,
         dispatching tool calls through `_dispatch_tool`. Returns the spoken utterance."""
         self._nlu_thread = nlu_thread
         self._completed_this_turn = []
@@ -388,7 +391,7 @@ class PEX:
                     last_call = None
                 # hook: post-tool — a policy execution failure re-consults NLU with narrowed
                 # candidates (contemplate, never think), then re-arms belief for the fresh detection.
-                if tool_use.name == 'activate_flow' and result.get('_error') == 'execution_error':
+                if tool_use.name == 'manage_flows' and result.get('_error') == 'execution_error':
                     # Order the two belief writers: a still-running think would overwrite
                     # contemplate's narrowed detection with the original failed one.
                     self._check_nlu()
@@ -599,6 +602,16 @@ class PEX:
         state.flow_stack = self.flow_stack.to_list()  # saved copy tracks the one stack
         return {'_success': True, 'state': state.read_state()}
 
+    def _dispatch_manage_flows(self, params:dict) -> dict:
+        """The orchestrator's one flow tool — ops [update, stackon, fallback, activate, pop].
+        `update` mutates the top flow (old update_flow) and `pop` removes Completed AND Invalid
+        flows in one sweep (old pop_completed). Belief and grounding stay NLU's job — no op here
+        touches them."""
+        if params['op'] == 'activate':
+            return self.activate_flow(params)
+        op = {'update': 'update_flow', 'pop': 'pop_completed'}.get(params['op'], params['op'])
+        return self._dispatch_write_state({**params, 'op': op})
+
     def _dispatch_write_state(self, params:dict) -> dict:
         state = self.world.current_state()
         kwargs = dict(params.get('fields', {}))
@@ -661,7 +674,7 @@ class PEX:
             self._apply_belief_slots(state, top['flow_name'])
             note += (f" Intent changed: I dropped {old_name} (Invalid) and swapped in "
                      f"{top['flow_name']} for the detected {state.pred_intent} intent — run it "
-                     f"with activate_flow.")
+                     f"with manage_flows (op='activate').")
         return note
 
     def activate_flow(self, params:dict) -> dict:
@@ -712,17 +725,21 @@ class PEX:
         return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
 
     def _dispatch_understand(self, params:dict) -> dict:
-        """Re-consult NLU mid-turn. op='think' re-runs detection; op='contemplate' re-routes over a
-        flow that stalled on a missing entity (a partial ambiguity) and rewrites belief. The
-        orchestrator passes its first-pass `intent` selection: a domain intent (Research / Draft /
-        Revise / Publish) becomes NLU's candidate-narrowing hint; Plan / Clarify / Converse carry no
-        real signal, so the hint stays blank and NLU detects over the full ontology. The stale
-        ambiguity is cleared (the re-consult supersedes it) and the corrected detection is returned
-        so the orchestrator can stack the right flow."""
+        """The orchestrator's one belief tool. op='read' returns the serialized belief (joining the
+        NLU thread first, so Plan/Clarify wait here). op='think' re-runs detection; op='contemplate'
+        re-routes over a flow that stalled on a missing entity (a partial ambiguity) and rewrites
+        belief. The intent hint is DETERMINISTIC coordination code, never a tool argument: the flow
+        PEX committed to the stack is its first-pass selection, so a domain intent (Research / Draft
+        / Revise / Publish) on top becomes NLU's candidate-narrowing hint; Plan / Clarify / Converse
+        (or an empty stack) carry no real signal, so the hint stays blank and NLU detects over the
+        full ontology. On think/contemplate the stale ambiguity is cleared (the re-consult
+        supersedes it) and the corrected detection is returned so the orchestrator can stack the
+        right flow."""
         self._check_nlu()
-        hint = params.get('intent', '')
-        if hint not in (Intent.RESEARCH, Intent.DRAFT, Intent.REVISE, Intent.PUBLISH):
-            hint = ''
+        if params['op'] == 'read':
+            return self.read_state(params)
+        top = self.flow_stack.peek()
+        hint = top.intent if top and top.intent in _DOMAIN_INTENTS else ''
         state = self.nlu.understand(op=params['op'], user_text=self.world.context.last_user_text,
                                     hint=hint)
         self.ambiguity.resolve()
@@ -957,7 +974,7 @@ class PEX:
     def get_tools_for_orchestrator(self) -> list[dict]:
         """The orchestrator's tool list: hot-path dedicated tools, the three long-tail
         component dispatch tools, and the read-only domain allowlist. call_flow_stack is
-        deliberately absent — its job lives in read_state/write_state."""
+        deliberately absent — its job lives in understand/manage_flows."""
         tools = self._orchestrator_tool_definitions()
         component = {tool['name']: tool for tool in self._component_tool_definitions()}
         tools += [component[name] for name in ('handle_ambiguity', 'coordinate_context',
@@ -971,47 +988,43 @@ class PEX:
     def _orchestrator_tool_definitions(self) -> list[dict]:
         return [
             {
-                'name': 'read_state',
+                'name': 'manage_flows',
                 'description': (
-                    "Read the session's DialogueState file: user beliefs (intent, goal, "
-                    "confirmed/rejected, workflow_step), the grounding block (the active "
-                    "post/sec/snip/chl entity), the flow stack, and flags. Cheap read — call it "
-                    "whenever you need current state rather than guessing."
-                ),
-                'input_schema': {'type': 'object', 'properties': {}, 'required': []},
-            },
-            {
-                'name': 'write_state',
-                'description': (
-                    "Mutate the DialogueState file — the ONLY writer of state.json. Ops:\n"
-                    "- `update`        — set user-belief / grounding / flag fields. Pass them in "
-                    "`fields`, e.g. {goal: ..., workflow_step: 3, grounding: {post: ...}}.\n"
-                    "- `update_flow`   — mutate the top stack flow. `fields` may carry `slots` "
+                    "Your one flow tool — ALL domain writes go through a flow it runs, never "
+                    "through domain tools directly. Beliefs and grounding are NLU's job; no op "
+                    "here touches them. Ops:\n"
+                    "- `update`   — mutate the flow on top of the stack. `fields` may carry `slots` "
                     "(slot-name → value, in the exact shapes belief's `pred_slots` carries: "
                     "strings for single-value slots, lists for multi-value slots), `stage`, and "
                     "`status`. An entity-grounded flow cannot reach status=Completed while "
                     "grounding.post is empty.\n"
-                    "- `stackon`       — push `flow_name` on top of the stack as Pending; "
-                    "matching slot values hand over from the prior flow automatically. Pass "
-                    "`active: true` to also fold in belief's `pred_slots`, promote to Active, "
-                    "and run the policy immediately — the one-call way to dispatch a flow. A "
-                    "Plan stacks ALL its flows at once (reverse execution order, first-to-run "
-                    "pushed last with `active: true`); the rest wait as Pending.\n"
-                    "- `fallback`      — replace the top flow with `flow_name`, transferring "
-                    "matching slot values.\n"
-                    "- `pop_completed` — remove Completed/Invalid flows, activating the next "
-                    "Pending one.\n"
-                    "Returns the full state document after the write."
+                    "- `stackon`  — push `flow_name` on top of the stack as Pending; matching "
+                    "slot values hand over from the prior flow automatically. Pass `active: true` "
+                    "to also fold in belief's `pred_slots`, promote to Active, and run the policy "
+                    "immediately — the one-call way to dispatch a flow. A Plan stacks ALL its "
+                    "flows at once (reverse execution order, first-to-run pushed last with "
+                    "`active: true`); the rest wait as Pending.\n"
+                    "- `fallback` — replace the top flow with `flow_name`, transferring matching "
+                    "slot values.\n"
+                    "- `activate` — run the named flow's policy inline as a sub-agent (skill "
+                    "prompt + domain tools). Slots come from the flow's stack entry; grounding "
+                    "from the state file. On completion you get the completion record {flow, "
+                    "summary, metadata} — also appended to the scratchpad. A non-completed run "
+                    "returns the flow status plus any pending clarification question. `blocks` "
+                    "summarizes the UI artifact (cards, selection options) the frontend renders "
+                    "alongside your reply — reference it briefly, never restate its contents.\n"
+                    "- `pop`      — remove Completed and Invalid flows all at once, surfacing "
+                    "the next Pending flow."
                 ),
                 'input_schema': {
                     'type': 'object',
                     'properties': {
-                        'op': {'type': 'string', 'enum': ['update', 'update_flow', 'stackon',
-                                                          'fallback', 'pop_completed']},
-                        'fields': {'type': 'object',
-                                   'description': 'for update / update_flow — the fields to set'},
+                        'op': {'type': 'string',
+                               'enum': ['update', 'stackon', 'fallback', 'activate', 'pop']},
                         'flow_name': {'type': 'string',
-                                      'description': 'for stackon / fallback — the target flow'},
+                                      'description': 'for stackon / fallback / activate — the target flow'},
+                        'fields': {'type': 'object',
+                                   'description': 'for update — the flow fields to set'},
                         'active': {'type': 'boolean',
                                    'description': 'for stackon — promote to Active and run the flow in one call'},
                     },
@@ -1019,48 +1032,25 @@ class PEX:
                 },
             },
             {
-                'name': 'activate_flow',
-                'description': (
-                    "Run the named flow's policy inline as a sub-agent (skill prompt + domain "
-                    "tools). Slots come from the flow's stack entry; grounding from the state "
-                    "file. On completion you get the completion record {flow, summary, metadata} "
-                    "— also appended to the scratchpad. A non-completed run returns the flow "
-                    "status plus any pending clarification question. `blocks` summarizes the UI "
-                    "artifact (cards, selection options) the frontend renders alongside your "
-                    "reply — reference it briefly, never restate its contents. ALL domain "
-                    "writes go through this tool, never through domain tools directly."
-                ),
-                'input_schema': {
-                    'type': 'object',
-                    'properties': {
-                        'flow_name': {'type': 'string',
-                                      'description': 'ontology name of the flow to run'},
-                    },
-                    'required': ['flow_name'],
-                },
-            },
-            {
                 'name': 'understand',
                 'description': (
-                    "Re-consult NLU. op='think' re-runs flow detection over the latest turn; "
+                    "Your one belief tool. op='read' returns the session's DialogueState: user "
+                    "beliefs (intent, goal, confirmed/rejected, workflow_step), the grounding "
+                    "block (the active post/sec/snip/chl entity), the flow stack, and flags — "
+                    "cheap, call it whenever you need current state rather than guessing. "
+                    "op='think' re-runs NLU's flow detection over the latest turn. "
                     "op='contemplate' re-routes when a flow you dispatched stalled on a missing "
                     "entity (a `partial` ambiguity — it needs a post/section that isn't grounded) "
                     "and returns a corrected `flow_name`. Use contemplate BEFORE relaying a "
                     "partial-ambiguity clarification — the stall often means the first flow pick "
                     "was wrong (e.g. `refine`/`audit` on a post that doesn't exist yet, when the "
                     "user is starting a fresh post → `outline`). Stack the returned flow and run "
-                    "it; only relay a clarification if the re-route still cannot proceed. Always "
-                    "pass `intent`: your current intent selection. Research/Draft/Revise/Publish "
-                    "narrow NLU's detection; Plan/Clarify/Converse offer no real signal and are "
-                    "ignored (NLU searches the full flow ontology)."
+                    "it; only relay a clarification if the re-route still cannot proceed."
                 ),
                 'input_schema': {
                     'type': 'object',
-                    'properties': {
-                        'op': {'type': 'string', 'enum': ['think', 'contemplate']},
-                        'intent': {'type': 'string',
-                                   'description': 'your first-pass intent selection'},
-                    },
+                    'properties': {'op': {'type': 'string',
+                                          'enum': ['read', 'think', 'contemplate']}},
                     'required': ['op'],
                 },
             },

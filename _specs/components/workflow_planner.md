@@ -7,8 +7,9 @@ how far through a complex request the agent is. Its **primary input is NLU's det
 the intent — see [Dialogue State § Predicting the Belief State](./dialogue_state.md#predicting-the-belief-state))
 — the planner routes from that belief, not the raw utterance. The flows it plans across are stored in the
 FlowStack, whose contents are serialized in the Dialogue State document's `flow_stack` block — the one block
-the Workflow Planner owns and writes via the `manage_flowstack(op)` tool (`stackon` / `fallback` /
-`pop_completed` / `update_flow`; renamed from `write_state`), distinct from the belief NLU maintains.
+the Workflow Planner owns and writes via the `manage_flows(op)` tool (`update` / `stackon` / `fallback` /
+`activate` / `pop`; replaces the old `write_state` + `activate_flow` pair), distinct from the belief NLU
+maintains.
 
 The stack admits **multiple active flows running in parallel** (bounded — see
 [Data Structure](#data-structure)), so independent branches advance together while the stack discipline
@@ -153,7 +154,7 @@ Each flow on the stack is in exactly one of four states:
 |-------|-------------|
 | **Pending** | Stacked but not yet active — waiting its turn (e.g., queued in a plan). |
 | **Active** | Top of the stack; currently being executed by the policy. |
-| **Completed** | Successfully finished; will be popped by the Workflow Planner (`pop_completed`). |
+| **Completed** | Successfully finished; will be popped by the Workflow Planner (`pop`). |
 | **Invalid** | Incorrectly detected or encountered a hard failure; will be popped during fallback. |
 
 ## Concurrency Model
@@ -188,7 +189,7 @@ a flow policy and not a returning call. Following it, PEX issues the stack ops i
 
 ### Execution
 On approval the Planner stacks the sub-flows in order with `stackon` and runs them through the ordinary flow
-lifecycle (Active → Completed → `pop_completed`). Each completed flow appends its completion record
+lifecycle (Active → Completed → `pop`). Each completed flow appends its completion record
 `{flow, summary, metadata}` to the [Session Scratchpad](./session_scratchpad.md), so a later sub-flow can read
 what an earlier one produced. Mid-plan, PEX keeps going across the sub-flows on the same turn — a Plan is the
 sanctioned chaining path; a lone flow stacked outside a plan exits for user review instead.
@@ -204,11 +205,11 @@ turn, stated here for plans; it is a prompted decision, never automatic.
 
 ## Transitions
 
-Three transition channels, each with different UX. Inside an active Plan, PEX continues to the next flow on the same turn; outside a Plan, a sub-flow pushed by stack-on exits for user review. **`keep_going` is PEX's loop-control behavior**, *not* a stored state flag: each round PEX emits tool calls and/or a user-facing message and loops again until it chooses to stop. Continuation is just running another round — e.g., `activate_flow` to run the next flow, a stack op (`stackon` / `fallback` / `pop_completed`), a consult, or a progress message. (`complete_flow` is the flow's own policy marking itself done — not a planner op.) Whether to continue or exit for review is PEX's call, read from the agenda (are we mid-Plan?).
+Three transition channels, each with different UX. Inside an active Plan, PEX continues to the next flow on the same turn; outside a Plan, a sub-flow pushed by stack-on exits for user review. **`keep_going` is PEX's loop-control behavior**, *not* a stored state flag: each round PEX emits tool calls and/or a user-facing message and loops again until it chooses to stop. Continuation is just running another round — e.g., `activate` to run the next flow, a stack op (`stackon` / `fallback` / `pop`), a consult, or a progress message. (`complete_flow` is the flow's own policy marking itself done — not a planner op.) Whether to continue or exit for review is PEX's call, read from the agenda (are we mid-Plan?).
 
 ### Activate Flow (pending → active)
 
-`activate_flow` turns a **pending** flow into an **active** one and runs its policy as a sub-agent. Two rules:
+`activate` turns a **pending** flow into an **active** one and runs its policy as a sub-agent. Two rules:
 
 - **Top-of-stack only.** Only the flow(s) at the **top** of the stack can be activated — Active stays
   contiguous at the top, Pending strictly beneath.
@@ -249,7 +250,7 @@ flow audit converted them to tools and removed that case.)
 ## Worked Examples — Flow-Stack Scenarios
 
 Four exemplars of stack management in concert. Stacks are shown **bottom → top**; the **top** is the next flow
-to run. `complete_flow` is the flow's own policy marking itself done (not a planner op); `pop_completed` then
+to run. `complete_flow` is the flow's own policy marking itself done (not a planner op); `pop` then
 removes it.
 
 **1 — Single flow (baseline lifecycle).** *"Outline a post on tide-pool ecology."* → intent **Draft**, flow `outline`.
@@ -257,9 +258,9 @@ removes it.
 | Op | Stack after |
 |---|---|
 | `stackon(outline)` | `[outline·pending]` |
-| `activate_flow(outline)` | `[outline·active]` — sub-agent runs |
+| `activate(outline)` | `[outline·active]` — sub-agent runs |
 | policy `complete_flow` (grounded) | `[outline·completed]` |
-| `pop_completed` | `[]` → **TaskArtifact delivered** |
+| `pop` | `[]` → **TaskArtifact delivered** |
 
 **2 — Prerequisite stack-on (yield → run prereq → re-activate from scratch).** *"Publish it to Substack."* — but
 the post isn't drafted → flow `publish`.
@@ -267,10 +268,10 @@ the post isn't drafted → flow `publish`.
 | Op | Stack after |
 |---|---|
 | `stackon(publish)` | `[publish·pending]` |
-| `activate_flow(publish)` → finds no draft, `stackon(draft)`, **yields** (no L4) | `[publish·pending, draft·pending]` |
-| `activate_flow(draft)` → drafts, writes scratchpad, `complete_flow` | `[publish·pending, draft·completed]` |
-| `pop_completed` | `[publish·pending]` |
-| `activate_flow(publish)` → **re-activated from scratch**, reads draft from scratchpad, publishes, `complete_flow` → `pop_completed` | `[]` → **delivered** |
+| `activate(publish)` → finds no draft, `stackon(draft)`, **yields** (no L4) | `[publish·pending, draft·pending]` |
+| `activate(draft)` → drafts, writes scratchpad, `complete_flow` | `[publish·pending, draft·completed]` |
+| `pop` | `[publish·pending]` |
+| `activate(publish)` → **re-activated from scratch**, reads draft from scratchpad, publishes, `complete_flow` → `pop` | `[]` → **delivered** |
 
 `publish` reverts to pending while its prerequisite owns the top; on return it runs fresh, picking up state from
 the scratchpad.
@@ -281,8 +282,8 @@ three `draft` flows, different targets.
 | Op | Stack after |
 |---|---|
 | `stackon` ×3 | `[draft·intro·pending, draft·methods·pending, draft·results·pending]` |
-| `activate_flow(...)` — **same type ⇒ batch together** | `[…·active, …·active, …·active]` — 3 sub-agents in parallel |
-| each policy `complete_flow`; `pop_completed` ×3 | `[]` |
+| `activate(...)` — **same type ⇒ batch together** | `[…·active, …·active, …·active]` — 3 sub-agents in parallel |
+| each policy `complete_flow`; `pop` ×3 | `[]` |
 
 PEX curates the **3 same-type artifacts into one** (origin trivially `draft`). This is the case the same-type
 activation rule exists for.
@@ -293,12 +294,12 @@ it."* → Plan, 3 different-type sub-flows run in order.
 | Op | Stack after |
 |---|---|
 | `stackon(publish)`, `stackon(draft)`, `stackon(research)` | `[publish·pending, draft·pending, research·pending]` |
-| `activate_flow(research)` — top only, **can't batch (different types)** → complete → pop | `[publish·pending, draft·pending]` |
-| `activate_flow(draft)` → complete → pop | `[publish·pending]` |
-| `activate_flow(publish)` → complete → pop | `[]` → **delivered** |
+| `activate(research)` — top only, **can't batch (different types)** → complete → pop | `[publish·pending, draft·pending]` |
+| `activate(draft)` → complete → pop | `[publish·pending]` |
+| `activate(publish)` → complete → pop | `[]` → **delivered** |
 
 Mid-Plan PEX keeps going across all three on one turn (Plan = the sanctioned chaining path). The contrast with
-example 3 pins down both `activate_flow` rules: **same type → activate together; different types → one at a
+example 3 pins down both `activate` rules: **same type → activate together; different types → one at a
 time, top first.**
 
 ## Failure Recovery

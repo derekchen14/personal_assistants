@@ -58,11 +58,11 @@ prose — no tool call)              FLOW_ONTOLOGY[flow]['intent'] (System 2) an
     └── intent unclear (PEX chose Plan, Clarify, or Converse — no real signal, hint stays blank)
           │
           ▼
-        Plan / Clarify: PEX calls understand(op='think') and WAITS for NLU's answer
+        Plan / Clarify: PEX calls understand(op='read') and WAITS for NLU's answer
           │
           ▼
         Workflow Planner orchestrates the flows
-        (stackon → activate_flow → … → pop_completed)
+        (manage_flows: stackon → activate → … → pop)
 ```
 
 Step by step:
@@ -74,14 +74,17 @@ Step by step:
    the authoritative intent from the detected flow. **The hint rule:** when PEX's first pass selects
    a domain intent (Research, Draft, Revise, Publish), NLU receives that selection as an intent hint
    and narrows its candidate flows to it; when PEX selects Plan, Clarify, or Converse, the hint stays
-   blank — PEX's guidance offers no real signal there, so NLU detects over the full ontology. NLU
+   blank — PEX's guidance offers no real signal there, so NLU detects over the full ontology. The
+   hint is derived by the **Assistant's coordination code, deterministically** — PEX's selection is
+   the flow it committed to the stack, and the code reads that stack top; it is never a tool argument
+   the orchestrator has to remember. NLU
    then compares its intent against the one PEX picked — a comparison NLU does on its own, without
    interrupting PEX. If (and only if) there is a discrepancy, PEX has multiple hook points where NLU
    intervenes — see
    [PEX § Policy hook points](../modules/pex.md#policy-hook-points--the-6-hook-sub-agent-framework).
    *Why parallel:* on the common turn the two agree, so the user never waits on a second model call;
    the hook points exist so a wrong first impression is corrected before destructive action.
-3. **If the intent is not clear** — PEX chose Plan or Clarify — PEX calls `understand(op='think')`
+3. **If the intent is not clear** — PEX chose Plan or Clarify — PEX calls `understand(op='read')`
    and waits for NLU's answer before proceeding. These are the only two intents that block on NLU.
    *Why these two:* Plan decomposes into other flows and Clarify questions the user, so both need the
    settled belief; every other intent can start its read-only work safely while NLU confirms.
@@ -320,22 +323,24 @@ details.
 
 ## Belief Tools
 
-Target surface (decided 2026-07-08). PEX has **one** tool for reading and consulting the belief, and
-one tool for stack structure — nothing else touches the Dialogue State:
+Shipped 2026-07-08. PEX has **one** tool for reading and consulting the belief, and one tool for the
+flow stack — nothing else touches the Dialogue State:
 
 | Tool | Owner | What it does |
 |---|---|---|
-| `understand(op, intent)` | NLU | PEX's primary belief tool. Returns the serialized belief (flow, intent, confidence, slots, grounding). `op='think'` re-runs prediction over the latest turn; `op='contemplate'` re-routes over a failed flow. `intent` is PEX's first-pass selection: Research/Draft/Revise/Publish become NLU's candidate-narrowing hint; Plan/Clarify/Converse are ignored (no real signal). |
-| `manage_flowstack(op)` | Workflow Planner | Stack structure only — `stackon` / `fallback` / `pop_completed` / `update_flow`. Renamed from `write_state`: these ops manage the flow stack, not the belief. |
+| `understand(op)` | NLU | PEX's one belief tool. `op='read'` returns the serialized belief (flow, intent, confidence, slots, grounding), joining the parallel NLU thread first — this is where Plan/Clarify wait. `op='think'` re-runs prediction over the latest turn; `op='contemplate'` re-routes over a failed flow. |
+| `manage_flows(op)` | Workflow Planner | The flow stack only — ops `update` (top-flow slots/stage/status), `stackon` (+ `active: true` single-call dispatch), `fallback`, `activate` (run the policy), `pop` (remove Completed AND Invalid flows all at once). Replaces the old `write_state` + `activate_flow` pair; the old belief-fields update op is gone — PEX cannot manipulate the belief, that is NLU's job. |
+
+The intent hint is **deterministic coordination code in the Assistant, never a tool argument**: the
+flow PEX committed to the stack IS its first-pass selection, so on an NLU consult the code reads the
+stack top — a domain intent (Research/Draft/Revise/Publish) becomes the candidate-narrowing hint;
+Plan/Clarify/Converse (or an empty stack) carry no real signal, so the hint stays blank. The
+orchestrator prompt carries no hint instructions.
 
 `classify_intent`, `detect_flow`, and `fill_slots` are **internal steps of `NLU.think()`** — not
 tools. Detection is the authoritative write (the detected flow fixes the intent via
 `FLOW_ONTOLOGY[flow]['intent']`); `_classify_intent` runs only as the low-confidence cross-intent
 tie-break (round 3.1).
-
-> Code status 2026-07-08: the implementation still names this surface `read_state` / `write_state` /
-> `understand(op=think|contemplate)`. Convergence — rename `write_state` → `manage_flowstack`, fold
-> the belief read into `understand`, retire `read_state` — is queued code work.
 
 One flow write is **not** the Dialogue State's: a flow's lifecycle `status` is set by PEX's
 `complete_flow` (which requires the grounding checks to pass).
