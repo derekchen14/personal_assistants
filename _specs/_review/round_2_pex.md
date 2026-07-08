@@ -1,6 +1,6 @@
-# Step 4 — PEX rendering & prompt conformance
+# Round 2 — PEX rendering & prompt conformance
 
-Maps to **Master Plan · Step 4**. Effort **M**. Depends on: mostly independent — can run alongside Steps 2/3.
+Maps to **Master Plan · Round 2**. Effort **M**. Depends on: mostly independent — can run alongside Rounds 3/4.
 
 **Goal:** close the style-guide and prompt-assembly gaps so PEX's skill prompts + voice match the spec.
 **Deliverable:** the items below; offline suites green; the trace gate still passes.
@@ -29,29 +29,29 @@ Spec: `style_guide.md`; `components/prompt_engineer.md`; `modules/pex.md`.
 
 **Locked (this step implements):**
 - **Inject the slot-7 closing reminder.** Defined but never used; append it last in the assembled skill
-  prompt. (§4.2)
+  prompt. (§2.2)
 - **Delete `JSON_REMINDER`.** Zero call sites and it contradicts the agentic (prose + tools) contract;
-  repurpose `SLOT_7_REMINDER` to the agentic reminder text. (§4.2)
+  repurpose `SLOT_7_REMINDER` to the agentic reminder text. (§2.2)
 - **Per-call skill tier.** `skill_call` takes `model='med'` as a per-call arg (symmetry with `tool_call`), so
-  a policy can request `high` for a hard skill. (§4.6)
+  a policy can request `high` for a hard skill. (§2.6)
 
 **Resolved here — confirm or override:**
 - **Prompt taxonomy (supersedes the old "8-slot/JSON" framing).** Skills (orchestrator how-to guides) return
   **nothing**; sub-agents (flows) and tools return **JSON**. The per-flow `prompts/pex/skills/*.md` are
   sub-agent prompts. The style guide's "every prompt is multi-slot + JSON" overreaches — skills are carved out
-  (applied to style_guide/checklist/tool_smith 2026-06-21). (§4.1)
+  (applied to style_guide/checklist/tool_smith 2026-06-21). (§2.1)
 - **E10 · loop bounds — DECIDED: one source of truth.** Each bound declared in exactly one place (we use
   config under `resilience`, matching `compression`); collapse the two dead recovery keys into one; message
-  strings stay code constants. No duplication. (§4.5)
+  strings stay code constants. No duplication. (§2.5)
 - **Grounding-first ordering.** rec: spec clarification, not a code change — slot-1 "grounding first" targets
-  the cacheable system prompt, not the volatile per-turn message. (§4.4)
+  the cacheable system prompt, not the volatile per-turn message. (§2.4)
 
 **Deferred (stub — designed, not built):**
-- Multi-sub-agent artifact curation — latent until a turn runs concurrent flows (the Step 5 concurrency stub).
+- Multi-sub-agent artifact curation — latent until a turn runs concurrent flows (the Round 5 concurrency stub).
 
 ---
 
-## 4.1 — Get the prompt taxonomy right first (skills vs sub-agents vs tools)
+## 2.1 — Get the prompt taxonomy right first (skills vs sub-agents vs tools)
 Three prompt kinds, three contracts:
 - **Module skills** — the orchestrator how-to guides (`plan`, `explain`, `recap` / `recall` / `retrieve`).
   They describe *how* an orchestrator uses a component and **return nothing**; they are guidance injected into
@@ -67,15 +67,15 @@ it does **not** hold for skills, which return nothing. The per-flow prompt bodie
 **Reconcile the spec — DONE 2026-06-21.** The carve-out is in `style_guide.md`, `checklist/phase_8`, and
 `tool_smith.md`: how-to skills return nothing and are exempt from the JSON rule; the multi-slot structure +
 JSON applies to sub-agent/tool prompts. (`tool_smith.md` also dropped `scope`/`dispatch`/`output_schema` per
-E7 / Step 6.10.)
+E7 / Round 6.10.)
 
-## 4.2 — Inject the closing reminder — DONE 2026-07-02
+## 2.2 — Inject the closing reminder — DONE 2026-07-02
 The closing reminder is defined but never used. `build_skill_system` ends with the prompt body; nothing
 re-states the output contract at the end (the highest-recency position).
 
 **Change.** Append the reminder as the **final** element of the assembled per-flow (sub-agent) prompt, after
 the body/exemplars — it restates that prompt's output contract. Repurpose `SLOT_7_REMINDER` to that text and
-**delete** `JSON_REMINDER` (unused; and per 4.1 the how-to skills it implied don't return JSON at all).
+**delete** `JSON_REMINDER` (unused; and per 2.1 the how-to skills it implied don't return JSON at all).
 
 ```python
 # general.py — repurpose the constant (was a JSON instruction)
@@ -92,12 +92,12 @@ return ''.join(parts)
 ```
 
 Single-shot NLU prompts keep their JSON demand through `_TASK_SUFFIXES` (`prompt_engineer.py:20-37`) — the
-carve-out from 4.1.
+carve-out from 2.1.
 
 Shipped on the offline verdict; the E2E-eval leg is deferred to the fast-eval round (E1), which re-gates the
 8 selected scenarios under replay mode.
 
-## 4.3 — Raise exemplar counts toward 7–10  · 8b
+## 2.3 — Raise exemplar counts toward 7–10  · 8b
 Style guide targets 7–10 exemplars per PEX skill (`style_guide.md:124`). **Current counts** (from the `.md`
 files under `prompts/pex/skills/`):
 
@@ -115,7 +115,7 @@ utterances ([[feedback-training-vs-test-separation]]). Each exemplar shows the a
 a prose reply), not a JSON blob. Pair with the trace gate / model_tests since exemplars are a behavior
 surface — diff detection/trajectory scores after.
 
-## 4.4 — Grounding-first ordering note  · 8d
+## 2.4 — Grounding-first ordering note  · 8d
 The starter emits `<task>` before `<resolved_details>` (`for_pex.py:119-122`); `style_guide.md:128` says
 grounding-first. Hugo correctly keeps volatile grounding in the **per-turn user message** (out of the cache
 prefix).
@@ -124,7 +124,7 @@ prefix).
 targets the **cacheable system prompt**, not the per-turn message — where putting volatile grounding first
 would churn the cache key every turn. A cheap reorder within the starter is optional and not required.
 
-## 4.5 — Config-promote loop bounds + call-caps (E10)  · 1 / 7b — DONE 2026-07-03 (PR #4; resilience renamed limits per amendment)
+## 2.5 — Config-promote loop bounds + call-caps (E10)  · 1 / 7b — DONE 2026-07-03 (PR #4; resilience renamed limits per amendment)
 `_MAX_ROUNDS` / `_MAX_CORRECTIVE` are module constants (`pex.py:21-22`); the per-flow call-cap doubling is
 inline (`prompt_engineer.py:215-217`). Two recovery keys exist that nothing reads —
 `resilience.max_recovery_attempts` and `recovery.max_repair_attempts`.
@@ -156,9 +156,9 @@ max_num_calls = 8 if flow.name() not in res.get('extended_call_flows', []) \
     else 8 * res.get('extended_call_multiplier', 2)
 ```
 
-(Config validation that catches duplicate/dead keys like the two recovery keys lands in **Step 6.1**.)
+(Config validation that catches duplicate/dead keys like the two recovery keys lands in **Round 6.1**.)
 
-## 4.6 — Per-call skill tier  · 7d
+## 2.6 — Per-call skill tier  · 7d
 `skill_call` hardcodes the `'med'` tier (`prompt_engineer.py:190`) while `tool_call` already accepts `model=`
 (`:202`). Make the skill tier a per-call arg (default `'med'`), so a policy can request `'high'` for a hard
 skill — symmetry with `tool_call`.
@@ -179,7 +179,7 @@ def skill_call(self, flow, convo_history, scratchpad, skill_name=None, skill_pro
 **Now:** `activate_flow` runs **one** policy and inserts **one** artifact (`world.insert_artifact`). One flow,
 one artifact per turn.
 
-**Target:** when a turn activates **concurrent** flows (the deferred multi-active concurrency from Step 5),
+**Target:** when a turn activates **concurrent** flows (the deferred multi-active concurrency from Round 5),
 their artifacts are curated into a single turn artifact — blocks merged, deduped, ordered by flow priority —
 before the turn ends ("PEX owns ending the turn").
 
@@ -200,7 +200,7 @@ def _curate_artifacts(self, artifacts:list[TaskArtifact]) -> TaskArtifact:
 ```
 
 - **Why deferred:** latent until a turn runs concurrent flows, which needs the multi-active concurrency +
-  contiguous-Active invariant (Step 5 deferred). Mark the seam in `activate_flow` `# designed-not-built`.
+  contiguous-Active invariant (Round 5 deferred). Mark the seam in `activate_flow` `# designed-not-built`.
 
 ---
 

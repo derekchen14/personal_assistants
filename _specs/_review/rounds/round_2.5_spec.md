@@ -1,8 +1,8 @@
-# Spec Sheet — 4.5 · Config-promote the PEX loop bounds + per-flow call caps (E10)
+# Spec Sheet — 2.5 · Config-promote the PEX loop bounds + per-flow call caps (E10)
 
-Round: 4.5 · Source: `_specs/_review/step_4_pex.md` §4.5 + master plan decision E10
+Round: 2.5 · Source: `_specs/_review/round_2_pex.md` §2.5 + master plan decision E10
 (`master_plan.md:207`) · Milestone: Master Plan Step "1 · Hugo replies" (`master_plan.md:99-108`).
-Status: **signed off 2026-07-03 with one amendment** — build order 4.2 (done) → **4.5** → 4.6 → 4.3.
+Status: **signed off 2026-07-03 with one amendment** — build order 2.2 (done) → **2.5** → 2.6 → 2.3.
 
 > **Amendments (the user, 2026-07-03).** (1) **The `resilience` section is renamed `limits` outright**
 > — "We should not have a 'resilience' section. Everything under this umbrella should go under the
@@ -21,7 +21,7 @@ Status: **signed off 2026-07-03 with one amendment** — build order 4.2 (done) 
 > round (a config promotion has no business touching many files) — it is not a universal pipeline
 > rule. D2/D4 stand as recommended.
 
-## 4.5.1 · Feature definition & user story
+## 2.5.1 · Feature definition & user story
 
 Three acting-loop budgets are hardcoded today: the orchestrator round budget, the consecutive-
 tool-failure cap, and the per-flow tool-call cap inside `tool_call`. Two config keys that were
@@ -40,19 +40,19 @@ the 8-scenario gate — no code edit, no risk of touching one of the two places 
 duplicated and missing the other. As a config reader, I find every loop budget in the
 `resilience` section instead of grepping module constants.
 
-## 4.5.2 · Requirements (each traced — nothing invented)
+## 2.5.2 · Requirements (each traced — nothing invented)
 
 | # | Requirement | Trace |
 |---|---|---|
-| R1 | `_MAX_ROUNDS` and `_MAX_CORRECTIVE` move from module constants (`pex.py:21-22`) to config keys under `resilience`; PEX reads them from config. | `step_4_pex.md:132-135`; E10 `master_plan.md:207` |
-| R2 | The per-flow call-cap logic (`prompt_engineer.py:215-217`) reads its numbers and its flow list from config under `resilience` — no inline flow-name list in code. | `step_4_pex.md:134,153-156` |
-| R3 | Collapse the two dead recovery keys into one: exactly one recovery-attempts key remains in `shared_defaults.yaml`; the other (and its section, if emptied) is deleted. | `step_4_pex.md:129-135`; E10 |
-| R4 | Message strings (`_FALLBACK_MESSAGE`, `_NUDGE_MESSAGE`, `_WRAP_UP_MESSAGE`, `pex.py:23-27`) stay code constants — not config. | `step_4_pex.md:135-136` |
+| R1 | `_MAX_ROUNDS` and `_MAX_CORRECTIVE` move from module constants (`pex.py:21-22`) to config keys under `resilience`; PEX reads them from config. | `round_2_pex.md:132-135`; E10 `master_plan.md:207` |
+| R2 | The per-flow call-cap logic (`prompt_engineer.py:215-217`) reads its numbers and its flow list from config under `resilience` — no inline flow-name list in code. | `round_2_pex.md:134,153-156` |
+| R3 | Collapse the two dead recovery keys into one: exactly one recovery-attempts key remains in `shared_defaults.yaml`; the other (and its section, if emptied) is deleted. | `round_2_pex.md:129-135`; E10 |
+| R4 | Message strings (`_FALLBACK_MESSAGE`, `_NUDGE_MESSAGE`, `_WRAP_UP_MESSAGE`, `pex.py:23-27`) stay code constants — not config. | `round_2_pex.md:135-136` |
 | R5 | Each bound is declared exactly once — no code-side default that duplicates the yaml value (see D4: the sub-plan's own `.get(…, 8)` sketch would violate this). | E10: "single declaration each … no duplication" |
 | R6 | Values are unchanged: rounds 8, corrective 3, base cap 8, extended cap 16 for {audit, refine, rework, compose}. Offline suites stay green (baseline 208 passed / 0 skipped / 0 failed, measured 2026-07-03). | refactor scope; `master_plan.md:235-241` |
-| R7 | Config validation that catches duplicate/dead keys is **out of scope** — it lands in Step 6.1. | `step_4_pex.md:159` |
+| R7 | Config validation that catches duplicate/dead keys is **out of scope** — it lands in Step 6.1. | `round_2_pex.md:159` |
 
-## 4.5.3 · The constants being promoted — exact inventory (verified 2026-07-03)
+## 2.5.3 · The constants being promoted — exact inventory (verified 2026-07-03)
 
 | Constant | Value | Declared | Read |
 |---|---|---|---|
@@ -82,7 +82,7 @@ Config surface facts the changes lean on:
 - PEX already holds `self.config` (`pex.py:93`); `agent.py:122` reads `self.config['compression']`
   by direct indexing — the precedent D4 follows.
 
-## 4.5.4 · Config change (yaml)
+## 2.5.4 · Config change (yaml)
 
 `shared/shared_defaults.yaml` — the `resilience` section gains four keys (final shape pending
 D1/D2; this shows the recommended options), and the `recovery:` section is deleted:
@@ -113,7 +113,7 @@ anyway (see D1 for the alternatives considered). A one-line comment marks them d
 No change to `schemas/tools.yaml` (inherits shared `resilience`) and no change to
 `_REQUIRED_SECTIONS` in `schemas/config.py`.
 
-## 4.5.5 · Code changes (pseudo-code, verified against current source)
+## 2.5.5 · Code changes (pseudo-code, verified against current source)
 
 **`backend/modules/pex.py`** — delete lines 21-22 (`_MAX_ROUNDS`, `_MAX_CORRECTIVE`) and the
 now-stale half of the comment at :19-20; keep :23-27 (messages). Read the bounds once in
@@ -153,23 +153,23 @@ max_num_calls = self._resilience['extended_tool_calls' if extended else 'max_too
 
 Diff size: ~6 changed lines in code, ~7 in yaml, one fixture edit, plus tests. No new components,
 no new function signatures, no new attributes on frames/artifacts. The only new surface is the
-config keys themselves (justified per decision in §4.5.10; nothing else is invented).
+config keys themselves (justified per decision in §2.5.10; nothing else is invented).
 
 **Caveat for SWE plans — override semantics.** `load_config(overrides=…)` replaces whole
 top-level sections (`config.py:66` does `merged.update(overrides)`). A test overriding
 `resilience` must pass the full section (at minimum the four new keys — `llm_retries` readers
 use `.get` chains and survive its absence). T1 below does exactly this.
 
-## 4.5.6 · Test plan — E2E Agent Evaluations (headline gate, ~8 of 96)
+## 2.5.6 · Test plan — E2E Agent Evaluations (headline gate, ~8 of 96)
 
 The round must prove **no behavior change** under the same values, with the heaviest coverage on
 turns that actually approach the promoted budgets: long flow chains (round budget) and the four
 extended-cap flows (call cap). 8 scenarios selected from `utils/evals/datasets/scenarios/`
-(none flagged; overlap with the E1 release-gate set kept where it stresses this round):
+(none flagged; overlap with the 1.1 release-gate set kept where it stresses this round):
 
-| Scenario | Why it judges 4.5 |
+| Scenario | Why it judges 2.5 |
 |---|---|
-| B01.C01 | Release-gate anchor (find→outline→compose→release) — continuity with the E1/4.2 baseline runs. |
+| B01.C01 | Release-gate anchor (find→outline→compose→release) — continuity with the 1.1/2.2 baseline runs. |
 | B01.C14 | 12 turns, longest chain (browse→find→summarize→outline→compose→audit) — most orchestrator rounds per session. |
 | B02.C02 | 10 turns with **refine** — extended-cap flow that no prior gate set covered. |
 | B02.C06 | 12 turns, audit twice + rework + compose — densest extended-cap usage in the corpus. |
@@ -182,25 +182,25 @@ All four `extended_call_flows` (audit, refine, rework, compose) appear; B01.C14/
 carry the 12-turn round-budget pressure. No scenario deliberately forces 3 consecutive tool
 failures — the corrective cap is covered offline (T-existing below), not by evals.
 
-**Run command** (cwd = `assistants/Hugo`; live, ≤10 min per the E1 gate budget):
+**Run command** (cwd = `assistants/Hugo`; live, ≤10 min per the 1.1 gate budget):
 
 ```
 python utils/evals/run_evals.py --ids B01.C01,B01.C14,B02.C02,B02.C06,B02.C14,B03.C03,B03.C07,B03.C11
 ```
 
 **What pass looks like.** Same red-green model as E1: gate exit 0; `completion_rate` at or above
-the post-E1 stamped baseline (0.36 after the high-voter trim — any drop on this refactor means
+the post-1.1 stamped baseline (0.36 after the high-voter trim — any drop on this refactor means
 the wiring changed a value, not just its home); printed wall times read against the doctrine
 targets (≤10 min gate, ≤60 s convo — informational). QA reads the per-turn log for the 8 ids.
 
-## 4.5.7 · Test plan — Observability Traces
+## 2.5.7 · Test plan — Observability Traces
 
-Carried flag from 4.2/E1: the approved-trajectory set is still thin; this round does not grow it.
+Carried flag from 2.2/1.1: the approved-trajectory set is still thin; this round does not grow it.
 One check: a trace-level run (`run_evals.py`, default `--level traces`) on the same 8 ids —
 `tool_match_rate` should be unchanged from baseline, since identical budgets must produce
 identical dispatch trajectories at temp 0. A shift means a bound got mistranslated.
 
-## 4.5.8 · Test plan — offline deterministic tests + greps
+## 2.5.8 · Test plan — offline deterministic tests + greps
 
 Baseline first (cwd = `assistants/Hugo`, the cwd gotcha applies):
 
@@ -231,7 +231,7 @@ Greps (QA manual):
 | `grep -rn "max_repair_attempts\|recovery:" shared/shared_defaults.yaml` | zero hits |
 | `grep -rn "'audit', 'refine', 'rework', 'compose'" assistants/Hugo/backend` | zero hits (list lives in yaml + test fixture only) |
 
-## 4.5.9 · Simplification opportunities
+## 2.5.9 · Simplification opportunities
 
 - **No multiplier key.** The sub-plan sketch's `extended_call_multiplier: 2` is dropped (D2):
   the multiplier was only ever a way to write 16, and a config key nobody would set fails the
@@ -244,7 +244,7 @@ Greps (QA manual):
 - **Messages stay put.** The three message strings are prose, not budgets — config would make
   them harder to review, not easier to tune (R4, locked).
 
-## 4.5.10 · Open decisions for the user
+## 2.5.10 · Open decisions for the user
 
 Locked and NOT re-asked (E10): one declaration per bound; the home is config under `resilience`;
 the two dead recovery keys collapse to one; message strings stay code constants. The four below
@@ -252,7 +252,7 @@ are the remaining genuine choices inside those locks.
 
 ### D1 — Where the four keys sit in yaml
 
-- **A (flat keys on `resilience`, per the sub-plan sketch `step_4_pex.md:139-146`):**
+- **A (flat keys on `resilience`, per the sub-plan sketch `round_2_pex.md:139-146`):**
   ```yaml
   resilience:
     max_rounds: 8
@@ -297,7 +297,7 @@ Current code (`prompt_engineer.py:215-217`): base 8, doubled to 16 for the four 
 - **A (sketch verbatim: list + multiplier, base stays a code literal):**
   `extended_call_flows: [...]` + `extended_call_multiplier: 2`; code keeps
   `max_num_calls = 8 if … else 8 * multiplier`.
-  - Pro: smallest yaml; exactly `step_4_pex.md:143-144`.
+  - Pro: smallest yaml; exactly `round_2_pex.md:143-144`.
   - Con: the base cap 8 stays declared in code — the very split-declaration E10 forbids (and the
     literal appears twice in the expression).
 - **B (all three promoted, multiplier kept):** `max_tool_calls: 8` + `extended_call_flows` +
@@ -352,8 +352,8 @@ consumer is already on the roadmap.
     crashes at agent build (loud failure per repo doctrine, same as `agent.py:122`'s
     `self.config['compression']` precedent); reads in the loop are attribute lookups.
   - Con: any test override of `resilience` must carry all four keys (one fixture edit; noted in
-    §4.5.5).
-- **B (`.get()` with defaults, per the sketch `step_4_pex.md:149-156`):**
+    §2.5.5).
+- **B (`.get()` with defaults, per the sketch `round_2_pex.md:149-156`):**
   `config['resilience'].get('max_rounds', 8)`.
   - Pro: fixtures and partial overrides keep working untouched.
   - Con: 8 is now declared in yaml **and** in code — the exact double declaration E10 forbids;

@@ -1,6 +1,6 @@
-# Round 4.3 Build Direction (DoE)
+# Round 2.3 Build Direction (DoE)
 
-AUTHORITATIVE SPEC: `_specs/agents/plans/round_4.3_spec.md` — read it in full and implement it
+AUTHORITATIVE SPEC: `_specs/_review/rounds/round_2.3_spec.md` — read it in full and implement it
 exactly (Decision 1, 2, and 3 recommendations). Flag disagreements in notes; never silently
 deviate. All paths below are relative to `assistants/Hugo/` unless they start with `shared/` or
 `_specs/`.
@@ -109,5 +109,5 @@ string. Raise to floor 6: research 4→6, draft 4→6, revise 4→6, publish 3�
   B05.C01, B06.C01) is run by the orchestrator after the build; report deltas vs completion
   0.5152 / tool_match 0.0864 / mean turn 12.4 s.
 
-Write your diff summary to `_specs/agents/plans/round_4.3_build_<your-role>.md`; keep the
+Write your diff summary to `_specs/_review/rounds/round_2.3_build_<your-role>.md`; keep the
 StructuredOutput payload short.

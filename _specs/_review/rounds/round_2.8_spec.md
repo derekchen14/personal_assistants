@@ -1,4 +1,4 @@
-# Round 5.2 — One flow stack
+# Round 2.8 — One flow stack
 
 Status: PM spec, implements the design direction approved by the user 2026-07-04.
 Base commit: 0f27939 (all line numbers below refer to it).
@@ -16,7 +16,7 @@ flow stack**. `DialogueState.flow_stack` becomes a saved copy — written from
 
 After this round, one stack op = one mutation of one object. No repeated writes anywhere.
 
-## 5.2.1 Where the write_state ops live (the resolved question)
+## 2.8.1 Where the write_state ops live (the resolved question)
 
 **Resolution: the ops stay in `DialogueState.write_state`, which gains a `stack` parameter —
 callers pass the live FlowStack component.** Signature:
@@ -35,7 +35,7 @@ class, no new method, one new parameter.
 `stack=None` is a real default, not a guard: op `update` touches no flows and legitimately has no
 stack. Stack ops called without a stack crash on `None.stackon(...)` — loud, as required.
 
-## 5.2.2 dialogue_state.py — write_state mutates the live stack
+## 2.8.2 dialogue_state.py — write_state mutates the live stack
 
 **Edit `write_state` (lines 160-178).** New body:
 
@@ -97,7 +97,7 @@ throwaway FlowStack from the saved dicts. Both are gone; nothing replaces them.
 **`rehydrate_flow` (lines 35-47) survives unchanged** — its docstring's last sentence gains:
 "Used at session load (World.open_session) and in serialization round-trip tests."
 
-## 5.2.3 pex.py — single write in _dispatch_write_state; delete the repeated ops
+## 2.8.3 pex.py — single write in _dispatch_write_state; delete the repeated ops
 
 **Edit `_dispatch_write_state` (lines 600-631).** The unknown-slot precheck reads the live top
 directly; the write passes the live stack; the repeat block (lines 613-623) and its comment are
@@ -134,7 +134,7 @@ is then a harmless no-op-equivalent and the call site stays uniform.
 **Line 7**: delete `from backend.components.dialogue_state import rehydrate_flow` — PEX no longer
 rebuilds flows from saved dicts anywhere.
 
-## 5.2.4 pex.py — _apply_belief_slots and inject_belief_state write once
+## 2.8.4 pex.py — _apply_belief_slots and inject_belief_state write once
 
 **Edit `_apply_belief_slots` (lines 633-642)** — read the live top, write once:
 
@@ -164,7 +164,7 @@ comment) is deleted:
         note += (...)   # unchanged
 ```
 
-## 5.2.5 Delete prestack (pex.py, agent.py, for_orchestrator.py)
+## 2.8.5 Delete prestack (pex.py, agent.py, for_orchestrator.py)
 
 **Delete `PEX.prestack` (pex.py:674-688) entirely.** The orchestrator receives the belief note at
 its first hook and the single-call stackon recipe covers the awaited-think turns. Accepted cost:
@@ -186,7 +186,7 @@ claim. Replace lines 97-99 (through "ONE call does everything: ") with:
 
 The rest of the bullet (lines 100-103) is unchanged.
 
-## 5.2.6 pex.py — collapse _stack_flow into activate_flow
+## 2.8.6 pex.py — collapse _stack_flow into activate_flow
 
 With one stack the live flow is always current: there is no state-file entry to layer on and no
 lazy rebuild. **Delete `_stack_flow` (pex.py:735-763)** and replace its call site
@@ -203,10 +203,10 @@ same flow is never re-targeted — the grounding-switch protection is preserved 
 branch. `activate_flow`'s copy refresh at line 723 (`state.flow_stack = self.flow_stack.to_list()`)
 stays: policies mutate live flow status during `execute`, and the tool result's state must show it.
 
-## 5.2.7 Saved-copy refresh at the two remaining serialization points
+## 2.8.7 Saved-copy refresh at the two remaining serialization points
 
 The saved copy must be current whenever the session document is serialized or saved. `write_state`
-now refreshes internally (5.2.2) and `activate_flow` keeps its refresh (5.2.6). Two more points:
+now refreshes internally (2.8.2) and `activate_flow` keeps its refresh (2.8.6). Two more points:
 
 **`PEX.read_state` (pex.py:596-598)** — the orchestrator's ground-truth read must show the live
 stack even after a policy-internal stackon/fallback (draft.py:167,204; revise.py:103,107,211):
@@ -226,7 +226,7 @@ stack even after a policy-internal stackon/fallback (draft.py:167,204; revise.py
         state.save(self.world.state_file())
 ```
 
-## 5.2.8 world.py — session load rebuilds the one stack
+## 2.8.8 world.py — session load rebuilds the one stack
 
 `rehydrate_flow` survives ONLY here. **Edit `open_session` (world.py:56-59)**:
 
@@ -243,7 +243,7 @@ Add `from backend.components.dialogue_state import DialogueState, rehydrate_flow
 existing line 4 import). Direct `_stack` assignment matches the existing `reset()` usage
 (world.py:73); no new FlowStack method.
 
-## 5.2.9 base.py — complete_flow checks and writes through the one stack
+## 2.8.9 base.py — complete_flow checks and writes through the one stack
 
 **Edit `complete_flow` (base.py:224-237).** The pre-write copy (line 230) and the post-write
 status repeat (line 235) are deleted; the top-of-stack check reads the live stack:
@@ -269,13 +269,13 @@ status repeat (line 235) are deleted; the top-of-stack check reads the live stac
 `write_state` sets `flow.status` on the same live object the policy holds, so the old mirror line
 is dead.
 
-## 5.2.10 Comment and word sweep in touched files
+## 2.8.10 Comment and word sweep in touched files
 
 The wipe-risk bug class no longer exists; its warnings go with it. Also sweep the banned words in
 the files this round edits (only the listed lines — no drive-by rewrites elsewhere):
 
-- pex.py:613-617 — deleted with the repeat block (5.2.3).
-- pex.py:668, 686 — deleted with their code (5.2.4, 5.2.5).
+- pex.py:613-617 — deleted with the repeat block (2.8.3).
+- pex.py:668, 686 — deleted with their code (2.8.4, 2.8.5).
 - pex.py:429 — `_guarded_call` docstring: drop the adverb before "unpredictable input", leaving
   "LLM output is unpredictable input."
 - dialogue_state.py:15 — `normalize_slot_values` docstring: drop the same adverb, leaving
@@ -287,7 +287,7 @@ the files this round edits (only the listed lines — no drive-by rewrites elsew
 - world.py:50 — open_session docstring: replace its second word so the sentence reads "reloads
   its state.json as the current state and rebuilds the flow stack from it".
 
-## 5.2.11 Test changes (utils/evaluation_suite/_tests)
+## 2.8.11 Test changes (utils/evaluation_suite/_tests)
 
 All in-place edits; run from the assistants/Hugo cwd.
 
@@ -412,7 +412,7 @@ def test_open_session_rebuilds_flow_stack(self, sessions_dir, minimal_config):
 No changes — verified: neither references prestack, the deleted helpers, or direct stack-op
 write_state calls.
 
-## 5.2.12 Acceptance criteria
+## 2.8.12 Acceptance criteria
 
 1. Free suite green with ZERO skips from the assistants/Hugo cwd: `pex_unit_tests.py`,
    `nlu_unit_tests.py`, `mem_unit_tests.py`, `model_tests.py`. Builders run NO live evals — the
@@ -430,7 +430,7 @@ write_state calls.
    (-15), pex.py mirror block + prestack + _stack_flow (-60 or so), base.py (-2), test prestack
    block (-20), against small additions (stack= threading, world.py +2, agent.py +1, pex
    read_state +1, one new mem test).
-7. Banned-word sweep of 5.2.10 applied; no new occurrences introduced anywhere in the diff.
+7. Banned-word sweep of 2.8.10 applied; no new occurrences introduced anywhere in the diff.
 
 ## Builder notes
 

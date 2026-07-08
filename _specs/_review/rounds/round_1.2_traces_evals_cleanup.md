@@ -1,7 +1,7 @@
-# Fix 4 — Clean up the Traces and Evals tiers (delete the dead taxonomy)
+# Round 1.2 (was fix 4) — Clean up the Traces and Evals tiers (delete the dead taxonomy)
 
 Status: **SHIPPED 2026-07-03 — Option B, with the whole suite consolidated under `utils/evaluation_suite/`.**
-Owner: eval infrastructure. See also [[step_1_evals.md]] (Current-state audit), [[fix_1_orchestrator_activation.md]].
+Owner: eval infrastructure. See also [[round_1_evals.md]] (Current-state audit), [[round_2.10_orchestrator_activation.md]].
 
 ---
 
@@ -25,7 +25,7 @@ one folder. Final state (canonical: `_specs/utilities/evaluation_suite.md`):
   (`backend/utilities/embeddings.py`, `all-MiniLM-L6-v2` — the same model business context will use), with
   `--judge-response` for the LLM judge.
 - **No `DEFAULT_SCENARIOS`.** Fresh per-build sampling (`harness.sample`) replaced the fixed-8 idea — see
-  fix_1's resolved prerequisite.
+  round 2.10's resolved prerequisite.
 - Deletes were done as **`mv` into `utils/trash_suite/`** (I can't delete; the user empties it).
 
 The delete-list and rationale below still hold; the layout/entry-point decision section is superseded by the
@@ -53,7 +53,7 @@ No behavior change to the agent. This is deletion + one relocation + one path fi
 
 The corpus, catalog, and pipeline all moved: 48 flows → 16, `detect_and_fill` retired, and the **RES module
 removed** (PEX composes the reply). Every LLM-bearing asset built before those changes now encodes a dead
-taxonomy. `step_1_evals.md`'s Current-state audit already ruled "discard, don't migrate" on each of these;
+taxonomy. `round_1_evals.md`'s Current-state audit already ruled "discard, don't migrate" on each of these;
 this plan operationalizes that ruling with a concrete delete-list, now that the Tests tier proved the
 approach.
 
@@ -79,7 +79,7 @@ it removes a fragile dependency, not just clutter.
 | `parity/capture_oracle.py`, `comparator.py`, `record_traces.py`, `run_parity.py`, `smoke_openings.py`, `trace_recorder.py` | **DELETE** | the 3-axis parity oracle, built on the deleted NLU→PEX→RES pipeline (comparator.py:3-4) |
 | `parity/fixtures/{observability,vision,voice}.json` | **DELETE** | recordings of the old pipeline; can never be replayed |
 | `parity/capture_oracle.py::_clean_leftovers` | **RELOCATE → `utils/harness.py`** | 8-line cleanup helper, the ONLY live dependency (`harness.py:22`) |
-| `tolerance_rules.md` | **KEEP → relocate** to `utils/evals/datasets/` | the tolerance vocabulary is still normative (`step_1_evals.md` Traces phase); it is a dataset-adjacent reference, not code |
+| `tolerance_rules.md` | **KEEP → relocate** to `utils/evals/datasets/` | the tolerance vocabulary is still normative (`round_1_evals.md` Traces phase); it is a dataset-adjacent reference, not code |
 
 After this, `utils/traces/` has no code left. Whether the empty dir survives depends on the layout decision
 below.
@@ -95,7 +95,7 @@ below.
 | `evaluation_guidelines.md` | **DELETE** | documents the NLU→PEX→RES pipeline; superseded by `_specs/utilities/evaluation_suite.md` |
 | `diagnose_crashes.py` | **DELETE** | throwaway crash-hypothesis script with stale line refs (`pex.py:228`, `nlu.py:410-414`) |
 | `e2e_progress_latest.jsonl` | **DELETE + gitignore** | run artifact written by `e2e_agent_evals.py` |
-| `run_evals.py` | **KEEP** (the live Traces runner) | the real Traces tier; the `--ids`/8-scenario default lands here (fix_1) |
+| `run_evals.py` | **KEEP** (the live Traces runner) | the real Traces tier; the `--ids`/8-scenario default lands here (round 2.10) |
 | `scorers/completion.py`, `scorers/tools.py` | **KEEP** | live scoring, shared by traces (and the new evals) |
 | `gates.py`, `baselines/traces.json` | **KEEP** | folded-baseline gate + current baseline |
 | `datasets/**` (96 scenarios, feedback, guides) | **KEEP** | the live corpus; path is referenced by the `generating-evals` skill — do not move casually |
@@ -111,7 +111,7 @@ below.
 
 `e2e_agent_evals.py` is deleted, not edited — migrating 1670 lines of dead-flow lifecycle costs more than
 rewriting. Its replacement is a lean **`utils/evals/run_agent_evals.py`** that runs the standard 8 scenarios
-(fix_1) end-to-end through `agent.take_turn` and scores the **7 Eval criteria** from
+(round 2.10) end-to-end through `agent.take_turn` and scores the **7 Eval criteria** from
 `_specs/utilities/evaluation_suite.md` (completion, correctness/actions, response, task/state, latency,
 ambiguity, planning). It reuses what already exists: `harness._build_agent`/`_seed_post`, the
 `completion`/`tools` scorers, and `utils/_snapshot.py` for state projection if the task/state criterion
@@ -129,12 +129,12 @@ do not map cleanly to folders today — the **Traces runner lives in `utils/eval
 
 - Move `run_evaluation_suite.py` → `utils/`.
 - **Delete `utils/traces/` outright** (after relocating `_clean_leftovers` + `tolerance_rules.md`).
-- Leave the Traces runner where `step_1_evals.md`'s target architecture already puts it —
+- Leave the Traces runner where `round_1_evals.md`'s target architecture already puts it —
   `utils/evals/run_evals.py`. `utils/evals/` stays the shared home for the corpus, scorers, gate, review
   app, and both live runners (traces + the new evals).
 
 - **Pros:** smallest diff; no import churn; keeps the `datasets/` path the `generating-evals` skill and
-  `data_aug_guide.md` already document; matches the layout `step_1_evals.md` already committed to.
+  `data_aug_guide.md` already document; matches the layout `round_1_evals.md` already committed to.
 - **Cons:** the folder name `evals/` still contains the Traces runner — tier≠folder. `utils/traces/`
   disappears, so there is no "traces folder" to reflect the tier.
 
@@ -160,7 +160,7 @@ do not map cleanly to folders today — the **Traces runner lives in `utils/eval
 (`utils/traces/` is not the traces tier — it is a graveyard) and satisfies the one hard requirement, at a
 fraction of the churn. Revisit B once the new evals runner exists and the shared surface is settled.
 
-### Shared corpus constant (needed by both options, ties to fix_1)
+### Shared corpus constant (needed by both options, ties to round 2.10)
 
 `model_tests.py:27` imports `SCENARIOS` from `run_evals`. Rather than couple the Tests tier to the Traces
 runner, hoist the corpus path AND the standard 8 into one small module — `utils/evals/corpus.py`:
@@ -168,10 +168,10 @@ runner, hoist the corpus path AND the standard 8 into one small module — `util
 from pathlib import Path
 SCENARIOS = Path(__file__).resolve().parent / 'datasets' / 'scenarios'
 DEFAULT_SCENARIOS = ('B01.C01', 'B01.C04', 'B02.C01', 'B02.C02',
-                     'B03.C01', 'B04.C01', 'B05.C01', 'B06.C01')  # fix_1's standard 8
+                     'B03.C01', 'B04.C01', 'B05.C01', 'B06.C01')  # round 2.10's standard 8
 ```
 `run_evals.py`, `model_tests.py`, and the new `run_agent_evals.py` all import from here. This is the same
-`DEFAULT_SCENARIOS` fix_1 introduces — define it once, in this module, and fix_1's "Shared prerequisite"
+`DEFAULT_SCENARIOS` round 2.10 introduces — define it once, in this module, and round 2.10's "Shared prerequisite"
 points at it.
 
 ## Connected files (imports to update after deletion)
@@ -180,7 +180,7 @@ points at it.
 |---|---|
 | `utils/harness.py:3-7,22` | drop the parity import; inline `_clean_leftovers`; fix the docstring (it names the deleted recorder) |
 | `utils/tests/model_tests.py:27` | import `SCENARIOS` (and `DEFAULT_SCENARIOS`) from `utils/evals/corpus.py`, not `run_evals` |
-| `utils/evals/run_evals.py:39` | `SCENARIOS` now comes from `corpus.py` (fix_1 already touches this file for the 8-default) |
+| `utils/evals/run_evals.py:39` | `SCENARIOS` now comes from `corpus.py` (round 2.10 already touches this file for the 8-default) |
 | `utils/run_evaluation_suite.py` (moved) | `_HUGO_ROOT = Path(__file__).resolve().parent` → **`.parent`** now IS `utils`, so use `.parents[0]` for Hugo root (was `.parents[1]`); the `'utils/tests/...'` argv paths stay root-relative and unchanged (cwd is still Hugo root) |
 | `utils/run_evaluation_suite.py:53-54` | the `--evals` argv points at the deleted `e2e_*_evals.py`; repoint to `utils/evals/run_agent_evals.py` (or, until that exists, drop `--evals` from the default and print "evals runner: TODO") |
 | `.gitignore` | add `utils/evals/e2e_progress_latest.jsonl` (moot once its writer is deleted, but keeps stray runs out) |

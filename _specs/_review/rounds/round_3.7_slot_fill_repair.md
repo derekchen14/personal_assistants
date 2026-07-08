@@ -1,8 +1,14 @@
-# Fix 3 — Repair/retry a slot-fill response that is missing the `slots` key
+# Round 3.7 (was fix 3b) — Repair/retry a slot-fill response that is missing the `slots` key
 
-Status: proposed (handoff). Discovered by the 2026-07-03 evaluation-suite run.
-Owner module: **NLU** (`_fill_slots`) + **PromptEngineer** (JSON parse fallback). See also [[step_3_nlu.md]],
-[[fix_1_orchestrator_activation.md]].
+Status: **done (2026-07-08).** Decision B shipped earlier as a plain one-retry loop (no
+corrective-nudge line, which is fine). Decision A shipped 2026-07-08: `_parse_json`'s fallback regex is
+now outermost-greedy (`r'\{.*\}'`), so it can only recover the full object (prose-wrapped JSON) and
+returns None on truncation — never a nested fragment. The `_fill_slots` retry loop catches the
+resulting ValueError from the engineer's schema path as one more retry-once case. Tests:
+`TestParseJson` (pex) + two `_fill_slots` retry tests (nlu).
+Discovered by the 2026-07-03 evaluation-suite run.
+Owner module: **NLU** (`_fill_slots`) + **PromptEngineer** (JSON parse fallback). See also [[round_3_nlu.md]],
+[[round_2.10_orchestrator_activation.md]].
 
 ---
 

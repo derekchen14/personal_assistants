@@ -1,9 +1,9 @@
-# Round 5.3 Spec — Flow Prompt Consolidation
+# Round 2.9 Spec — Flow Prompt Consolidation
 
 Verified against live source at commit `1615be4`. Every file:line below was read from that tip.
 All paths are relative to `assistants/Hugo/`.
 
-## 5.3.0 Goal and shape of the change
+## 2.9.0 Goal and shape of the change
 
 Hugo's 16 per-flow markdown files under `backend/prompts/pex/skills/` are NOT progressively-loaded
 agent skills — every flow sub-agent loads its own file unconditionally on each turn. They are flow
@@ -25,7 +25,7 @@ one `extra_resolved` preload.
 
 ---
 
-## 5.3.1 Directory and file moves
+## 2.9.1 Directory and file moves
 
 1. Create `backend/prompts/pex/flows/`.
 2. `git mv` all 16 flow files from `backend/prompts/pex/skills/` to `backend/prompts/pex/flows/`:
@@ -34,12 +34,12 @@ one `extra_resolved` preload.
 3. `plan.md` STAYS in `backend/prompts/pex/skills/`. After the move, `pex/skills/` holds only
    `plan.md`, and `pex/flows/` holds exactly the 16 flow prompts.
 
-Reason (5.3.11-a): two real directories, each holding one concept — flow prompts vs agent skills.
+Reason (2.9.11-a): two real directories, each holding one concept — flow prompts vs agent skills.
 `pex/flows/` globs to exactly the 16 flow names, so no exclusion list is needed anywhere.
 
 ---
 
-## 5.3.2 Frontmatter removal (all 16 flow files)
+## 2.9.2 Frontmatter removal (all 16 flow files)
 
 Delete the leading `---` … `---` YAML block from every file in `pex/flows/`. Each file begins at its
 first body line (for most, the "This flow …" paragraph or the first `#` heading). Concretely each file
@@ -50,18 +50,18 @@ loses: `name`, `description`, `version`, `tools` (and `outline.md` also loses `s
 - The `tools` list now lives only on the flow class (`backend/components/flow_stack/flows.py`,
   `flow.tools`). Do not touch the flow classes.
 - `version`, `name`, `stages` had no runtime consumer at all (only `load_skill_meta` read frontmatter,
-  and its only caller is the drift test being retired — see 5.3.8).
+  and its only caller is the drift test being retired — see 2.9.8).
 
 `plan.md` has no frontmatter today; leave it as-is.
 
 Do NOT mass-rewrite the word "skill" inside the body prose of the 16 files. Rewriting every "This
 skill …" sentence is high-churn, non-deterministic, and risks introducing slop. The reframe is
 structural (location + frontmatter + method names + starter merge), not a prose sweep. The only body
-edits are the four specified in 5.3.6/5.3.7.
+edits are the four specified in 2.9.6/2.9.7.
 
 ---
 
-## 5.3.3 Loader rewrite — `backend/components/prompt_engineer.py`
+## 2.9.3 Loader rewrite — `backend/components/prompt_engineer.py`
 
 Current (lines 70–73, 686–719): `_SKILL_DIRS` (two dirs, second one `prompts/skills/` does not exist),
 `_resolve_skill_path` (loops dirs), `load_skill_template` (strips frontmatter, returns body or None),
@@ -92,15 +92,15 @@ Delete: `_resolve_skill_path` (686–692), `load_skill_template` (694–700), `l
 Contract note (no defensive programming): every flow has a `pex/flows/*.md`, so `load_flow_prompt`
 returns a real string and never None. A missing file raises `FileNotFoundError` loudly — that is the
 desired failure. Remove the old `None` return and every `or ''` / `is None` guard that only existed to
-tolerate a missing file (see the call sites in 5.3.4).
+tolerate a missing file (see the call sites in 2.9.4).
 
-Reason (5.3.11-b): two named methods beat one two-dir search because the two directories now mean two
+Reason (2.9.11-b): two named methods beat one two-dir search because the two directories now mean two
 different things; a flow prompt and an agent skill should not resolve through the same fuzzy lookup.
 Each method is a one-liner, so there is no shared helper (a 2-use helper would be over-extraction).
 
 ---
 
-## 5.3.4 Rename map (every call site)
+## 2.9.4 Rename map (every call site)
 
 | Old | New | Kind |
 |---|---|---|
@@ -108,11 +108,11 @@ Each method is a one-liner, so there is no shared helper (a 2-use helper would b
 | `PromptEngineer.tool_call` | `PromptEngineer.flow_execute` | method (sub-agent, with tools → (str, tool_log)) |
 | `for_pex.build_skill_system` | `for_pex.build_flow_system` | function |
 | `for_pex.build_skill_messages` | `for_pex.build_flow_messages` | function |
-| `PromptEngineer.load_skill_template` | `PromptEngineer.load_flow_prompt` | method (5.3.3) |
-| `PromptEngineer.load_skill_meta` | — (deleted, 5.3.3) | — |
+| `PromptEngineer.load_skill_template` | `PromptEngineer.load_flow_prompt` | method (2.9.3) |
+| `PromptEngineer.load_skill_meta` | — (deleted, 2.9.3) | — |
 | divider `--- {Flow} Skill Instructions ---` | `--- {Flow} Flow Instructions ---` | text, for_pex.py:63 |
 
-`flow_reply` keeps its round-4.6 `model:str='med'` argument. `flow_execute` keeps its full signature
+`flow_reply` keeps its round-2.6 `model:str='med'` argument. `flow_execute` keeps its full signature
 (`schema`, `model`, etc.) unchanged apart from the name.
 
 Call sites to sweep (exhaustive — grep confirms no others):
@@ -124,7 +124,7 @@ Call sites to sweep (exhaustive — grep confirms no others):
    - `tool_call` def (199) → `flow_execute`; body uses `load_flow_prompt` (209), `build_flow_system`
      (211), `build_flow_messages` (212).
 2. `backend/prompts/for_pex.py` — rename the two functions (51, 68); update the divider (63); update
-   `_render_starter`/`_default_starter` per 5.3.5.
+   `_render_starter`/`_default_starter` per 2.9.5.
 3. `backend/modules/policies/base.py:83` — `self.engineer.tool_call(...)` → `self.engineer.flow_execute(...)`.
 4. `backend/modules/policies/research.py`
    - line 46: `self.engineer.skill_call(...)` → `flow_reply`.
@@ -132,7 +132,7 @@ Call sites to sweep (exhaustive — grep confirms no others):
    - line 73: `self.engineer.skill_call(...)` → `flow_reply`.
 5. `backend/prompts/for_orchestrator.py:233` — `engineer.load_skill_template("plan")` →
    `engineer.load_skill("plan")` (plan is an agent skill in `pex/skills/`, not a flow prompt).
-6. Tests (see 5.3.8): `utils/evaluation_suite/_tests/pex_unit_tests.py` lines 556–557 (`tool_call` →
+6. Tests (see 2.9.8): `utils/evaluation_suite/_tests/pex_unit_tests.py` lines 556–557 (`tool_call` →
    `flow_execute`), 560/566/567 (`skill_call` → `flow_reply`), 1647 import, 1695/1710
    (`load_skill_template` → `load_flow_prompt`), and the drift block.
 7. Doc-only: `utils/helper_ref.md:36` mentions `_SKILL_DIRS` — update the sentence to name `_FLOW_DIR`
@@ -144,16 +144,16 @@ methods. Leave it. Out of scope for this round.
 
 ---
 
-## 5.3.5 `backend/prompts/for_pex.py` — assembly + starter shrink
+## 2.9.5 `backend/prompts/for_pex.py` — assembly + starter shrink
 
-### 5.3.5.1 Module docstring (1–17) and function docstrings
+### 2.9.5.1 Module docstring (1–17) and function docstrings
 
 Rewrite the docstring to describe: system = persona + intent prompt + ambiguity block + flow prompt
 (`pex/flows/<flow>.md`) + closing reminder; user message = filled starter (runtime parameters +
 preloaded content) + recent conversation. Replace the words "skill body"/"skill file"/"Skill-rendering
 helpers" with "flow prompt" / "starter render helpers". No banned words.
 
-### 5.3.5.2 `build_flow_system` (was build_skill_system, 51–65)
+### 2.9.5.2 `build_flow_system` (was build_skill_system, 51–65)
 
 Behavior unchanged except the divider text. `parts` still = `[base_system, intent_prompt,
 AMBIGUITY_AND_ERRORS, (divider + flow_prompt), SLOT_7_REMINDER]`. Only line 63 changes:
@@ -166,13 +166,13 @@ Rename the `skill_prompt` parameter to `flow_prompt` for clarity (local rename; 
 prompt_engineer.py pass positionally / update the keyword). `AMBIGUITY_AND_ERRORS` stays as-is (the
 shared block is kept per the approved direction).
 
-### 5.3.5.3 `build_flow_messages` (was build_skill_messages, 68–84)
+### 2.9.5.3 `build_flow_messages` (was build_skill_messages, 68–84)
 
 No logic change beyond the rename. Update the docstring line "The starter owns task framing, preloaded
 content, and resolved details." → "The starter renders runtime parameters and any preloaded content;
 task framing now lives in the flow prompt."
 
-### 5.3.5.4 `_default_starter` (95–125) — drop the synthesized task
+### 2.9.5.4 `_default_starter` (95–125) — drop the synthesized task
 
 `chat`, `find`, `propose` use this (no per-flow starter module). Remove the `<task>` synthesis; return
 only the resolved-details block. Keep the slot-iteration that builds `details` and keep
@@ -194,7 +194,7 @@ is unchanged.
 
 ---
 
-## 5.3.6 Per-flow starter shrink + merge plan
+## 2.9.6 Per-flow starter shrink + merge plan
 
 Rule for every starter in `backend/prompts/pex/starters/`: delete the `<task> … </task>` block from the
 `TEMPLATE`(s) and delete the `build()` logic that computed `tool_sequence` / `verb` / `end_condition`.
@@ -206,23 +206,23 @@ signature stays `build(flow, resolved, user_text)` (still called positionally by
 The task/tool-order prose being deleted is already present in the corresponding flow `.md` (Process +
 Tools). So the default per-flow action is DELETE-ONLY. Four flows also need one specified sentence
 ADDED to their `.md` because the starter carried a judgment the `.md` did not state; those are called
-out below and in 5.3.7.
+out below and in 2.9.7.
 
 | Starter | Action | New `build()` output | Notes |
 |---|---|---|---|
-| `audit.py` | delete `<task>`+`tool_sequence` (9–28); ADD `<post_content>` prose block (5.3.7) | `<post_content>` + `<resolved_details>` | keep `_format_parameters` |
+| `audit.py` | delete `<task>`+`tool_sequence` (9–28); ADD `<post_content>` prose block (2.9.7) | `<post_content>` + `<resolved_details>` | keep `_format_parameters` |
 | `brainstorm.py` | delete `<task>`+verb/tool_sequence/end_condition (9–45) | `<resolved_details>` only | topic-vs-snippet judgment already in brainstorm.md Process 2/3 |
 | `browse.py` | delete `<task>` (10–16) | `<resolved_details>` only | narration rule already in browse.md |
 | `cite.py` | delete `<task>`+tool_sequence from both templates (12–53) | `<line_content>` (when snippet) + `<resolved_details>` | keep the two-template split (snippet vs none) for the content block only |
 | `compare.py` | delete `<task>`+`_DIFF_CLAUSE` (7–28) | `<post_content>` (when previews) + `<resolved_details>` | keep both templates for the previews block only |
 | `compose.py` | delete `<task>` (11–21) | `<post_content>` + `<resolved_details>` | compose.md Process 3 already has the read/convert/save loop |
-| `outline.py` | delete `<task>`+tool_sequence/end_condition (13–45); ADD forbidden-tools sentence to outline.md (5.3.7) | `<resolved_details>` only | |
+| `outline.py` | delete `<task>`+tool_sequence/end_condition (13–45); ADD forbidden-tools sentence to outline.md (2.9.7) | `<resolved_details>` only | |
 | `refine.py` | delete `<task>` (9–19) | `<post_content>` + `<resolved_details>` | refine.md Process 4 + Tools already carry the full tool map |
 | `release.py` | delete `<task>` (7–13) | `<resolved_details>` only | |
 | `rework.py` | delete `<task>`+tool_sequence (12–37) | `<post_preview>` + `<resolved_details>` | |
 | `schedule.py` | delete `<task>` (7–13) | `<resolved_details>` only | |
 | `summarize.py` | delete `<task>` from both templates (7–39) | `<post_content>` (when outline) + `<resolved_details>` | keep both templates for the outline block only; Length stays in resolved_details |
-| `write.py` | delete `<task>`+3-way tool_sequence (9–33); ADD image sentence to write.md (5.3.7) | `<resolved_details>` only | style_notes priority already in write.md step 3 |
+| `write.py` | delete `<task>`+3-way tool_sequence (9–33); ADD image sentence to write.md (2.9.7) | `<resolved_details>` only | style_notes priority already in write.md step 3 |
 
 For starters that keep a conditional content block (cite/compare/summarize), the `build()` still
 branches on whether the block's data is present, but returns the block(s) + `<resolved_details>` with no
@@ -239,9 +239,9 @@ def build(flow, resolved:dict, user_text:str) -> str:
 
 ---
 
-## 5.3.7 Content fixes (folded in while touching the files)
+## 2.9.7 Content fixes (folded in while touching the files)
 
-### 5.3.7.1 Audit: too many read actions (approved point 5a)
+### 2.9.7.1 Audit: too many read actions (approved point 5a)
 
 Problem: `audit.md` step 1a tells the sub-agent to `read_section` every section before `editor_review`
 — N repeated read actions. Fix by preloading the full post prose once in the policy and telling the flow to use
@@ -262,7 +262,7 @@ Leave line 244 (`self._read_post_content(post_id, tools)` for the card) as its o
 happen AFTER edits to show the updated post.
 
 `backend/prompts/pex/starters/audit.py`: render the prose as a `<post_content>` block when present
-(this is the ADD in 5.3.6):
+(this is the ADD in 2.9.6):
 
 ```python
 def build(flow, resolved:dict, user_text:str) -> str:
@@ -278,7 +278,7 @@ combined text." with: "It takes PROSE, not an id: the full post prose is preload
 Also in step 2 ("For each section that drifted, `read_section` it (if not already read)…"), keep the
 "(if not already read)" clause — it already forbids re-reads; leave it.
 
-### 5.3.7.2 Compose no-re-read (approved point 5a, "same treatment … if its policy allows")
+### 2.9.7.2 Compose no-re-read (approved point 5a, "same treatment … if its policy allows")
 
 `compose.md` needs one `read_section` per in-scope section (the preview carries only the first
 lines; conversion needs the full bullets), so the fix here is the no-re-read rule, not a prose preload.
@@ -286,7 +286,7 @@ The compose policy (`draft.py:209`) already passes `include_preview=True`; leave
 Tools, change the `read_section` line to add: "Read each in-scope section at most once; never re-read a
 section you have already converted."
 
-### 5.3.7.3 write.md image sentence (the ADD in 5.3.6)
+### 2.9.7.3 write.md image sentence (the ADD in 2.9.6)
 
 `write.py`'s image branch tool_sequence ("assess the image vs the section's main idea, propose a
 replacement") is not stated in write.md. Add one sentence to write.md Process step 3 (or the Tools
@@ -294,7 +294,7 @@ section): "When an `image` parameter is present, judge whether the image fits th
 and replace or drop it via `revise_content` / `remove_content`." (style_notes priority is already
 covered by step 3's "treat it as the priority signal".)
 
-### 5.3.7.4 outline.md forbidden-tools sentence (the ADD in 5.3.6)
+### 2.9.7.4 outline.md forbidden-tools sentence (the ADD in 2.9.6)
 
 `outline.py`'s propose-mode tool_sequence forbids `read_metadata`, `generate_outline`, `inspect_post`,
 `write_text`. outline.md propose mode only forbids `generate_outline`. In outline.md "Propose mode" step
@@ -302,7 +302,7 @@ covered by step 3's "treat it as the priority signal".)
 except an optional single `find_posts`; specifically do not call `read_metadata`, `generate_outline`,
 `inspect_post`, or `write_text`. End the turn by returning the text you just wrote."
 
-### 5.3.7.5 Trim "### Tools" to judgment-only (approved point 5b)
+### 2.9.7.5 Trim "### Tools" to judgment-only (approved point 5b)
 
 Across the 16 flow files, in the `## Tools` → `### Task-specific tools` lists, drop lines that only
 restate the `tools.yaml` description (plain signature + what the tool does). Keep lines that carry flow
@@ -315,7 +315,7 @@ apply the same test per line; when unsure, keep the line (a kept redundant line 
 
 ---
 
-## 5.3.8 Tests — retire / keep / repurpose
+## 2.9.8 Tests — retire / keep / repurpose
 
 All in `utils/evaluation_suite/_tests/pex_unit_tests.py`, drift-catcher block 1636–1723.
 
@@ -349,7 +349,7 @@ starter shrink needs no test edits beyond the above.
 
 ---
 
-## 5.3.9 Pseudo-code summary of changed methods
+## 2.9.9 Pseudo-code summary of changed methods
 
 `PromptEngineer.flow_reply` (was skill_call) — body identical, renamed calls:
 
@@ -370,15 +370,15 @@ callers never pass it.)
 
 `PromptEngineer.flow_execute` (was tool_call) — same rename pattern; signature otherwise unchanged.
 
-`load_flow_prompt` / `load_skill` — see 5.3.3.
+`load_flow_prompt` / `load_skill` — see 2.9.3.
 
-`for_pex._default_starter` — see 5.3.5.4. `build_flow_system` — see 5.3.5.2.
+`for_pex._default_starter` — see 2.9.5.4. `build_flow_system` — see 2.9.5.2.
 
-`audit_policy` — see 5.3.7.1.
+`audit_policy` — see 2.9.7.1.
 
 ---
 
-## 5.3.10 Acceptance criteria
+## 2.9.10 Acceptance criteria
 
 1. `pex/skills/` contains only `plan.md`; `pex/flows/` contains the 16 flow prompts; none has a `---`
    frontmatter block; `plan.md` unchanged.
@@ -396,9 +396,9 @@ callers never pass it.)
    sys.path[0] per the test-cwd note). No live evals — the orchestrator runs the 8-scenario gate after
    ship.
 5. Prompt-composition content is preserved except the deliberately removed duplication. Verify by eye
-   (5.3.10.1).
+   (2.9.10.1).
 
-### 5.3.10.1 Composition diff check (both builders run this before reporting done)
+### 2.9.10.1 Composition diff check (both builders run this before reporting done)
 
 Render the composed system + user message for `audit`, `outline`, and `write` before and after, and
 diff by eye:
@@ -422,7 +422,7 @@ vanish. If anything else disappears, a starter deletion went too far — restore
 
 ---
 
-## 5.3.11 Open-question resolutions (one paragraph each)
+## 2.9.11 Open-question resolutions (one paragraph each)
 
 - **(a) Directory + naming.** Flow prompts → `backend/prompts/pex/flows/`; the loader is
   `load_flow_prompt`. This mirrors the existing `pex/starters/` sibling and reads as "the flow's
@@ -455,16 +455,16 @@ vanish. If anything else disappears, a starter deletion went too far — restore
 
 ---
 
-## 5.3.12 Out of scope / notes
+## 2.9.12 Out of scope / notes
 
 - `AMBIGUITY_AND_ERRORS` (for_pex.py) and the intent prompts (`sys_prompts.py`) are untouched (kept per
   the approved direction). Each flow file keeps its own `## Handling Ambiguity and Errors` section — the
   duplication between that section and the shared block predates this round and is not in scope.
 - `_TASK_SUFFIXES['skill']` / `['clarify']` and `_get_temperature(task='skill')` are the `__call__` task
   labels, not the flow sub-agent — left as-is.
-- The body prose of the 16 files still says "This flow / this skill …" in places; not swept (5.3.2).
+- The body prose of the 16 files still says "This flow / this skill …" in places; not swept (2.9.2).
 - `write.md`, `cite.md`, `compare.md`, `summarize.md`, `refine.md` few-shot exemplars are kept intact
-  (round 4.3 content, per the approved direction).
+  (round 2.3 content, per the approved direction).
 - If the final diff ADDS more than it removes, something went wrong — the expected shape is net
   deletion (one test, three loader helpers, 16 frontmatter blocks, 13 `<task>` blocks) against four
   one-line prompt additions and one `extra_resolved` line.

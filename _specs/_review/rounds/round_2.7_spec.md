@@ -1,4 +1,4 @@
-# Round 5.0 — PEX hook points + Plan awaits NLU
+# Round 2.7 — PEX hook points + Plan awaits NLU
 
 **AMENDMENT (the user 2026-07-03, post-build):** only Plan and Clarify are REQUIRED to wait on NLU
 (their `read_state` blocks). The other five intents never block: flow execution's settle is
@@ -6,13 +6,13 @@ non-blocking (`_settle_nlu(wait=False)`) — it picks up a landed detection and 
 on standing belief. When the predicted flow matches the active flow nothing changes; that is the
 speed-up. The DoE's third join site (the stackon-active fold) stays, but non-blocking.
 
-Status: SHIPPED 2026-07-03 (branch round/5.0-pex-hooks). Free suite 132+86/0 skips. Live gate
+Status: SHIPPED 2026-07-03 (branch round/5.0-pex-hooks (pre-renumber branch name)). Free suite 132+86/0 skips. Live gate
 (standard 8): completion 0.52 -> 0.5455, tool_match 0.0613, mean turn 14.0s, wall 465s. Dominant
 remaining failure: the loop CONTINUES last turn's still-Active flow instead of reacting to a
 mismatching fresh detection (11 of 15 failed turns show a stale origin like find/compose/outline
 carried across turns). That reaction — pred vs active differs => reconsider (fallback/stackon) —
-is the spec's hook severity model, not yet built; candidate for round 5.1 alongside the Workflow
-Planner. Opens Master Plan Step 5 (`step_5_plan.md`); the Workflow Planner
+is the spec's hook severity model, not yet built; candidate for round 5.1 (Workflow Planner) alongside the Workflow
+Planner. Opens Master Plan Round 5 (`round_5_plan.md`); the Workflow Planner
 skill itself is the NEXT round (5.1). the user's directive (2026-07-03): PEX follows the existing
 6-hook framework (`_specs/modules/pex.md` § hook points — pre-flow, pre-tool, post-tool,
 tool-retry, post-flow, verification; no new hooks), and when the orchestrator picks the Plan
@@ -22,7 +22,7 @@ intent on the parallel-NLU path, the pre-flow or pre-tool hook waits on NLU befo
 
 On active-post turns NLU `think` runs on a thread in parallel with `pex.execute` (`agent.py:74-77`),
 so this turn's detection is invisible to the acting loop — the documented remaining eval failure
-(stale/misdetected flow origins; fix_1 ticket). Full serialization would fix it but give up the
+(stale/misdetected flow origins; round 2.10 ticket). Full serialization would fix it but give up the
 parallel NLU/PEX design. The hooks let ONLY the turns that need detection pay the wait.
 
 ## The hook points (the 6-hook framework, mapped to today's code)
@@ -105,7 +105,7 @@ the spec's existing 6-hook framework, not new machinery.
 
 - **Serialize NLU on all active-post turns** (join before the loop): simplest, and prestage would
   apply everywhere — but every turn pays the detection latency and the parallel NLU/PEX design dies.
-- **Do nothing; rely on round 4.3 exemplars**: better detection accuracy doesn't fix staleness —
+- **Do nothing; rely on round 2.3 exemplars**: better detection accuracy doesn't fix staleness —
   the loop would still act on LAST turn's belief.
 
 ## Build list (small)

@@ -1,7 +1,7 @@
-# Step 2 — MEM, the Head
+# Round 4 — MEM, the Head
 
-Maps to **Master Plan · Step 2**. Effort **L**. Depends on: the component shapes below (confirmed with the user
-2026-06-21). Foundational facade that Steps 3/5 read.
+Maps to **Master Plan · Round 4**. Effort **L**. Depends on: the component shapes below (confirmed with the user
+2026-06-21). Foundational facade that Rounds 3/5 read.
 
 **Goal:** stand up memory as a real module with the three tiers and the read skills, as a **synchronous
 facade** (the continuous background loop is deferred). **Deliverable:** `MemoryManager` rebuilt as the facade
@@ -36,11 +36,11 @@ storage out of `MemoryManager`, don't copy it. After this step: `ContextCoordina
 
 **Resolved here — confirm or override:**
 - **E1 · memory tools.** rec: add `recap` / `recall` / `retrieve` as the public surface over the existing
-  `compile_history` / `manage_memory` / `search_faqs` implementations; don't rename them. (§2.1, §2.5)
+  `compile_history` / `manage_memory` / `search_faqs` implementations; don't rename them. (§4.1, §4.5)
 
 ---
 
-## 2.1 — Component shapes
+## 4.1 — Component shapes
 
 **`MemoryManager` — the facade (the "Head").** Synchronous; holds the three tiers; exposes the read skills.
 ```python
@@ -106,7 +106,7 @@ class SessionScratchpad:
 
 ---
 
-## 2.2 — L2: create `user_preferences.py`
+## 4.2 — L2: create `user_preferences.py`
 - Move preference storage out of `MemoryManager` (the `_preferences` dict + the read/write methods) into
   `UserPreferences`.
 - Implement the typed `Preference` record; `store_preference(bare_str)` writes the degenerate `endorsed=True`
@@ -116,7 +116,7 @@ class SessionScratchpad:
 - Update call sites: `pex.py` `_dispatch_store_preference` → `memory.preferences.store_preference`; the
   `manage_memory` read-preferences path → `memory.preferences.read_all`; the `for_orchestrator.py` render call.
 
-## 2.3 — L3: create `business_context.py`
+## 4.3 — L3: create `business_context.py`
 - Fold `FAQService` (`utilities/faq_service.py`) into `BusinessContext`: move the corpus load, `search_faqs`,
   and the rerank prompt + schema. Delete `faq_service.py`.
 - Add `search_all` (return candidates — the whole corpus until a vector store exists) and `rerank` (the LLM
@@ -126,7 +126,7 @@ class SessionScratchpad:
   import + `self._faq_service`.
 - Mark vector retrieval + `agent.md` ingestion `# designed-not-built` at the seam.
 
-## 2.4 — Extract `session_scratchpad.py` (owned by the World)
+## 4.4 — Extract `session_scratchpad.py` (owned by the World)
 - Move the scratchpad code out of `MemoryManager` into a `SessionScratchpad` component
   (`write`/`read`/`write_completion`/`clear`/`size`), preserving the current dual-mode (in-memory dict vs
   append-only JSONL) and the `writer` recorded in code.
@@ -137,18 +137,18 @@ class SessionScratchpad:
   `scratchpad_size` + the `append_to_scratchpad`/`read_scratchpad` dispatch + the `manage_memory` scratchpad
   actions), `policies/{base,research,revise}.py`, and the `agent.py` reset.
 - The completion-record schema reconciliation (`write_completion` vs the minimal entry schema) stays in
-  Step 3.3.1.
+  Round 3 §3.3.1.
 
-## 2.5 — The facade: rebuild `MemoryManager`
+## 4.5 — The facade: rebuild `MemoryManager`
 - Strip scratchpad + preference storage out of `MemoryManager`; its `__init__` now takes the three tiers and
   holds them as `.context` / `.preferences` / `.business`.
-- Implement `recap` / `recall` / `retrieve` per 2.1. Keep the `manage_memory` / `search_faqs` /
+- Implement `recap` / `recall` / `retrieve` per 4.1. Keep the `manage_memory` / `search_faqs` /
   `store_preference` tool names; route their dispatch through the facade or the tiers.
 - Instantiate in `agent.py` alongside NLU/PEX: build `UserPreferences`, `BusinessContext`, and the
   `SessionScratchpad` (on the World), then `MemoryManager(world.context, preferences, business)`. The
   session-dir layout (`world.py`) is unchanged.
 
-## 2.6 — Stubs + markers (deferred)
+## 4.6 — Stubs + markers (deferred)
 - `# designed-not-built` at each seam: scratchpad auto-promotion (salience + `used_count` judge — keep the
   `used_count` plumbing), proactive push (prefetch + anticipatory scratchpad notes), vector L3 retrieval +
   `agent.md` ingestion, and the caution-dial → threshold wiring.

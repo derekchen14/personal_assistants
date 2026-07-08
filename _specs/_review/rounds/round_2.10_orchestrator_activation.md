@@ -1,7 +1,14 @@
-# Fix 1 — The orchestrator must reliably call the terminal flow tool
+# Round 2.10 (was fix 1) — The orchestrator must reliably call the terminal flow tool
+
+**2026-07-06 update (commit `169419e`):** the create-on-missing helper (`BasePolicy.resolve_or_create`,
+shipped in `a2445f6`) was REMOVED — outline/compose/write call plain `resolve_source_ids` again. Its
+replacement is the `understand` dispatch tool in `pex.py`: when a flow stalls on a missing entity (a
+partial ambiguity), the orchestrator calls `understand(op='contemplate')`, NLU re-routes over the failed
+flow, and the corrected flow is stacked. The 32-post library's generator scripts were retired (trashed);
+the seeded posts themselves stay committed in `database/content`.
 
 Status: Options A+B SHIPPED 2026-07-03 (PR #5) with single-call staging (stackon active=true, the user amendment) — completion 0.21 -> 0.39 -> 0.52 on the 8. **2026-07-04 transcript review (B01.C01, B06.C01): the earlier "stale/misdetected flows" description did NOT reproduce** — NLU detection and orchestrator routing were correct on every turn. The remaining failures are all `missing_reference`: the eval database lacks the posts the scenarios assume (6 of the 8 gate scenarios seed zero posts), and no flow can create a post (`create_post` is in the PEX dispatch table but unused by any flow — only frontend routes call it). Next lever is eval-world seeding (draft posts for the data_aug_guide topics) + commit-then-restore around suite runs, per the user's 2026-07-04 direction. The DEFAULT_SCENARIOS prerequisite was resolved separately (fresh ~8 sample doctrine).
-Owner module: **PEX** (acting loop + orchestrator prompt). See also [[step_4_pex.md]], [[step_1_evals.md]].
+Owner module: **PEX** (acting loop + orchestrator prompt). See also [[round_2_pex.md]], [[round_1_evals.md]].
 
 ---
 
@@ -59,7 +66,7 @@ Then:
 
 Verification for this prerequisite: `python utils/evals/run_evals.py` (no flags) prints
 `... | 8 scenarios`; `python utils/tests/model_tests.py --module nlu` scores the same 8 ids; `--all`
-restores 96. Note in `step_1_evals.md` run-cadence that the default is 8.
+restores 96. Note in `round_1_evals.md` run-cadence that the default is 8.
 
 New concept check: none. `DEFAULT_SCENARIOS` is a constant, not a concept; it reuses the existing
 `--ids` / `SCENARIOS.glob` machinery.
@@ -117,7 +124,7 @@ B02.C01 turn 2: ok | tools 0.06 (exp [editor_review] got [read_metadata ×5, rea
 
 ### Why it matters
 
-`completion_rate` and `tool_match_rate` are the two headline Traces metrics (`step_1_evals.md`). At 0.21 /
+`completion_rate` and `tool_match_rate` are the two headline Traces metrics (`round_1_evals.md`). At 0.21 /
 0.05 the agent is, in eval terms, mostly not doing the work the user asked for. This single behavior
 dominates both metrics, so it is the highest-leverage fix in the suite.
 
@@ -227,7 +234,7 @@ Two fixes shipped instead, per the user's 2026-07-04 direction:
 `expected_tools` lists only the terminal tool (e.g. `[generate_outline]`). So even a clean turn that reads
 once then activates scores below 1.0. This is worth a follow-up decision (allow a bounded read in
 `expected_tools`, or weight terminal-tool presence), but it is NOT the cause of the 0.05 rate — the
-repeated reads and the missing terminal tool are. Keep it out of this fix; log it in `step_1_evals.md`.
+repeated reads and the missing terminal tool are. Keep it out of this fix; log it in `round_1_evals.md`.
 
 ## How to verify
 

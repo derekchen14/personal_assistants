@@ -1,7 +1,7 @@
-# Step 6 — Config / Server / Blocks / Tool-manifest infra
+# Round 6 — Config / Server / Blocks / Tool-manifest infra
 
-Maps to **Master Plan · Step 6**. Effort **M–L**. Depends on: nothing structural (the eval items moved to
-Step 1). The catch-all conformance step; several items are spec-fixes or designed-not-built markers rather
+Maps to **Master Plan · Round 6**. Effort **M–L**. Depends on: nothing structural (the eval items moved to
+Round 1). The catch-all conformance step; several items are spec-fixes or designed-not-built markers rather
 than code.
 
 **Goal:** conform the remaining infrastructure surfaces. **Deliverable:** the items below; offline suites
@@ -9,7 +9,7 @@ green.
 
 Spec: `utilities/{configuration,blocks,server_setup,tool_smith}.md`.
 **Evaluation moved out:** the eval system (parity oracle re-baseline E8, the test pyramid, robustness) is now
-owned by **`step_1_evals.md`**. Step 6 keeps only the non-eval infra (config / server / blocks / manifest)
+owned by **`round_1_evals.md`**. Round 6 keeps only the non-eval infra (config / server / blocks / manifest)
 plus deleting the two RES-era test tombstones (6.11).
 
 **Reading the current code.** The pieces this step touches:
@@ -43,7 +43,7 @@ plus deleting the two RES-era test tombstones (6.11).
 - **Validating config loader + ontology merge.** Refuse to start on bad config (warn in dev, fail in prod);
   add `compression` / `content_validation` to the required sections; populate `config.flows` from
   `FLOW_CATALOG`. (§6.1)
-- **Enforce `max_turns`.** A cheap backend runaway guard at turn entry; `max_flow_depth` is Step 5.3;
+- **Enforce `max_turns`.** A cheap backend runaway guard at turn entry; `max_flow_depth` is Round 5 §5.3;
   `idle_timeout_ms` is noted and deferred. (§6.3)
 - **Block-type registry sync.** Add `grid` to `VALID_BLOCK_TYPES` — emitted but unlisted, a latent bug. (§6.5)
 - **WS mid-turn streaming.** Stream `text` / `feedback` live; blocks deliver once at turn end. (§6.7)
@@ -112,7 +112,7 @@ return _deep_freeze(merged)
 
 `_check_flow_integrity` is where dax-code conflicts (two flows sharing a dax) and dead policy paths surface —
 exactly the duplicate-key class that left `resilience.max_recovery_attempts` vs `recovery.max_repair_attempts`
-both unread (Step 4.5).
+both unread (Round 2 §2.5).
 
 ## 6.2 — Remove `content_validation` + `response_constraints` (E4)  · A3
 Both are half-wired and **removed** (decided 2026-06-21).
@@ -126,7 +126,7 @@ Output quality is carried by the skill prompts + exemplars, not a runtime gate.
 
 ## 6.3 — Session limits  · A6
 `session.{max_turns, idle_timeout_ms}` are unconsumed; `max_flow_depth` is already enforced (`stack.py`).
-Enforce the runaway guard `max_turns` (backend-only, cheap); `max_flow_depth` is handled by Step 5.3.
+Enforce the runaway guard `max_turns` (backend-only, cheap); `max_flow_depth` is handled by Round 5 §5.3.
 
 ```python
 # agent.py — _orchestrate, at turn entry (after add_turn)
@@ -291,10 +291,10 @@ dashboards. Hugo already tracks `last_prompt_tokens` and the round count interna
 # designed-not-built — telemetry sink
 @telemetry_router.post('/api/v1/telemetry')
 def record(event:dict):
-    _SINK.append({**event, 'conversation_id': ..., 'turn': ...})   # later: Langfuse (Step 1 seam)
+    _SINK.append({**event, 'conversation_id': ..., 'turn': ...})   # later: Langfuse (Round 1 seam)
 ```
 
-- **Why deferred:** observability is the Langfuse seam owned by the eval plan (Step 1); a local sink is the
+- **Why deferred:** observability is the Langfuse seam owned by the eval plan (Round 1); a local sink is the
   interim.
 
 ### S-3 — Responsive block hints
@@ -305,7 +305,7 @@ small screens. `BuildingBlock` already has `panel` + `expand`; this adds present
 
 ### S-4 — `models.cost` budgeting + `feature_flags.proactive_issue_detection`
 A per-session token/cost budget that degrades tiers (or refuses) when exceeded, and a feature flag that turns
-on MEM's proactive issue detection (the proactive-push channel, itself deferred in Step 2).
+on MEM's proactive issue detection (the proactive-push channel, itself deferred in Round 4).
 
 - **Why deferred:** budgeting needs the telemetry sink (S-2); proactive detection needs the real background
   MEM loop. Both are config keys with no consumer yet — note them, don't wire.

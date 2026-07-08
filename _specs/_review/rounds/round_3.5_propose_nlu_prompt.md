@@ -1,7 +1,7 @@
-# Fix 2 — Add the missing `propose` NLU slot-fill prompt
+# Round 3.5 (was fix 2) — Add the missing `propose` NLU slot-fill prompt
 
 Status: DONE 2026-07-03 (PR #5). Discovered by the 2026-07-03 evaluation-suite run.
-Owner module: **NLU** (slot-fill prompt registry). See also [[step_3_nlu.md]], [[fix_1_orchestrator_activation.md]].
+Owner module: **NLU** (slot-fill prompt registry). See also [[round_3_nlu.md]], [[round_2.10_orchestrator_activation.md]].
 
 ---
 

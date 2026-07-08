@@ -1,6 +1,6 @@
-# Spec Sheet — 4.2 · Inject the closing reminder
+# Spec Sheet — 2.2 · Inject the closing reminder
 
-Round: 4.2 · Source: `_specs/_review/step_4_pex.md` §4.2 + Decisions · Milestone: Master Plan
+Round: 2.2 · Source: `_specs/_review/round_2_pex.md` §2.2 + Decisions · Milestone: Master Plan
 Step "1 · Hugo replies" (`master_plan.md:73,99-103`). Status: **signed off by the user 2026-07-02**;
 agentic contract confirmed, with the explicit fallback that if parsing/contract issues appear in
 practice we revisit and switch (reopening E9).
@@ -15,7 +15,7 @@ Engineer after the body/exemplars (`style_guide.md:137,142`).
 
 Two constants exist for it but neither is used, and both carry the wrong (JSON) contract: per the
 4.1 taxonomy, sub-agent prompts are **agentic** — they finish by calling a tool or replying in
-plain prose, not by emitting JSON (`step_4_pex.md:54-65`).
+plain prose, not by emitting JSON (`round_2_pex.md:54-65`).
 
 **User story.** As a Hugo user, when I say "draft an intro about X", the reply is plain prose (or
 a persisted tool action) — never a JSON blob, a markdown-fenced object, or a restatement of the
@@ -34,12 +34,12 @@ is why the reminder forbids JSON-wrapped replies.
 
 | # | Requirement | Trace |
 |---|---|---|
-| R1 | Append the closing reminder as the **final** element of the assembled per-flow system prompt, after the skill body. | `step_4_pex.md:76-78,90`; Decisions `:31-32`; `style_guide.md:137,142` |
-| R2 | Repurpose `SLOT_7_REMINDER` (`general.py:12`) to the agentic reminder text (tool call OR plain prose; no JSON wrapping, no instruction restating). | `step_4_pex.md:78,82-84`; Decisions `:33-34` |
-| R3 | **Delete** `JSON_REMINDER` (`general.py:10`) — zero call sites, contradicts the agentic contract. | `step_4_pex.md:78,84`; Decisions `:33` |
-| R4 | Single-shot NLU prompts keep their JSON demands via `_TASK_SUFFIXES` (`prompt_engineer.py:20-37`) — do not touch them (4.1 carve-out). | `step_4_pex.md:94-95` |
-| R5 | After the change: `SLOT_7_REMINDER` has a live call site in `for_pex.py`; `JSON_REMINDER` is gone from the codebase. | `step_4_pex.md:209` (§Verification) |
-| R6 | Offline gate suites stay green — baseline 324 passed / 0 skipped / 0 failed. | `step_4_pex.md:205`; `master_plan.md:229` |
+| R1 | Append the closing reminder as the **final** element of the assembled per-flow system prompt, after the skill body. | `round_2_pex.md:76-78,90`; Decisions `:31-32`; `style_guide.md:137,142` |
+| R2 | Repurpose `SLOT_7_REMINDER` (`general.py:12`) to the agentic reminder text (tool call OR plain prose; no JSON wrapping, no instruction restating). | `round_2_pex.md:78,82-84`; Decisions `:33-34` |
+| R3 | **Delete** `JSON_REMINDER` (`general.py:10`) — zero call sites, contradicts the agentic contract. | `round_2_pex.md:78,84`; Decisions `:33` |
+| R4 | Single-shot NLU prompts keep their JSON demands via `_TASK_SUFFIXES` (`prompt_engineer.py:20-37`) — do not touch them (4.1 carve-out). | `round_2_pex.md:94-95` |
+| R5 | After the change: `SLOT_7_REMINDER` has a live call site in `for_pex.py`; `JSON_REMINDER` is gone from the codebase. | `round_2_pex.md:209` (§Verification) |
+| R6 | Offline gate suites stay green — baseline 324 passed / 0 skipped / 0 failed. | `round_2_pex.md:205`; `master_plan.md:229` |
 
 **Notes (consequences of R1-R3, not new requirements):**
 - The `build_skill_system` docstring (`for_pex.py:52-53`) says "there is no shared suffix" — that
@@ -52,7 +52,7 @@ is why the reminder forbids JSON-wrapped replies.
 
 ## 3 · Pseudo-code (verified against current source)
 
-**Drift check on the sub-plan's sketch (`step_4_pex.md:80-92`):** the `parts` list matches
+**Drift check on the sub-plan's sketch (`round_2_pex.md:80-92`):** the `parts` list matches
 `for_pex.py:58` exactly. Current code at `:59-61` hoists `flow_name = flow.name().capitalize()`
 into a local before the f-string; the sketch inlines it — keep the existing local (surgical-change
 rule). The sketch omits the docstring fix (R6 note). Exact current line numbers confirmed
@@ -95,7 +95,7 @@ The closing reminder shapes **every** sub-agent reply, so the judge is the live 
 96 scenarios under `utils/evals/datasets/scenarios/`, these 8 (all unflagged) were selected for
 maximum diversity of flows and reply shapes:
 
-| Scenario | Why it judges 4.2 |
+| Scenario | Why it judges 2.2 |
 |---|---|
 | B01.C01 | Canonical straight build (find→outline→compose→release) — the literal "Hugo replies" user story, publish end. |
 | B01.C08 | Plan-chain (fan_out, step_0 check) + chat + audit + release — plan orchestration, converse, and publish in one convo. |
@@ -103,12 +103,12 @@ maximum diversity of flows and reply shapes:
 | B01.C12 | write→audit→cite→release — publish-heavy; citation reply shape. |
 | B01.C14 | browse→find→summarize→outline→compose→audit — longest chain (6 flows); research prose replies where JSON leakage shows first. |
 | B02.C15 | **Confirmation** ambiguity with a user reject at turn 5, ends in release — clarify + rejection + publish. |
-| B03.C03 | compose→rework→audit→**propose** — propose has the weakest exemplar count (1, per §4.3), so it leans hardest on the reminder. |
+| B03.C03 | compose→rework→audit→**propose** — propose has the weakest exemplar count (1, per §2.3), so it leans hardest on the reminder. |
 | B03.C07 | chat→brainstorm→outline→chat — Converse-led, pure-prose voice turns where instruction-echo or JSON wrapping is most visible. |
 
 Combined flow coverage: 15 distinct flows. Gap: **refine** appears in none of the 8; if the user
 wants it covered, swap B01.C01 → B03.C11 (plan→outline→compose→refine). No new scenarios are
-needed — the corpus already exercises every reply shape 4.2 touches.
+needed — the corpus already exercises every reply shape 2.2 touches.
 
 **Run command** (cwd = `assistants/Hugo`; live LLM run):
 
@@ -127,7 +127,7 @@ scorer judges completion from the reply plus the TaskArtifact's `origin` (the po
 PEX); flow summaries live only as the Session Scratchpad completion entry (`{flow, summary,
 metadata}`) — there is no standalone completion object. The gate's baseline entry for this
 metric is currently `target: 0.9, expected_fail: true, value: null` (red-green model:
-the gate reports `xfail` / exit 0 while the feature set is unbuilt). Pass for 4.2 = (a) gate
+the gate reports `xfail` / exit 0 while the feature set is unbuilt). Pass for 2.2 = (a) gate
 exit 0, (b) every user turn of the 8 selected scenarios logs `ok`, (c) no JSON-wrapped or
 instruction-restating reply in those turns (QA reads the transcripts). Once the milestone
 stabilizes, stamp with `--record` so any later drop turns the gate red.
@@ -136,11 +136,11 @@ stabilizes, stamp with `--record` so any later drop turns the gate red.
 
 | ID | Check | Expected |
 |---|---|---|
-| TR1 | Trace-gate smoke run. 4.2 changes no exemplars, so trajectory scores are expected unchanged; a shift flags the reminder wording for review. | pass, no score regression |
+| TR1 | Trace-gate smoke run. 2.2 changes no exemplars, so trajectory scores are expected unchanged; a shift flags the reminder wording for review. | pass, no score regression |
 
-**Milestone-view flag: traces need attention.** TR1 is the only trace check applicable to 4.2,
+**Milestone-view flag: traces need attention.** TR1 is the only trace check applicable to 2.2,
 and the approved-trajectory dev set is still thin (Step 1 deliverable). Growing approved traces
-should be prioritized within "1 · Hugo replies"; 4.2 does not block on it.
+should be prioritized within "1 · Hugo replies"; 2.2 does not block on it.
 
 ### 4c · Model Unit Tests (suite must not grow beyond genuinely-failable checks)
 
@@ -163,7 +163,7 @@ Expected baseline: **324 passed, 0 skipped, 0 failed**.
 
 T1-T3 qualify under the doctrine — each can genuinely fail (wording regressed, constant
 resurrected, JSON demand leaked into the reminder). `test_artifacts.py` parametrizes over the
-skill `.md` files (frontmatter `tools:` lints) — 4.2 adds no exemplars, so those lints are
+skill `.md` files (frontmatter `tools:` lints) — 2.2 adds no exemplars, so those lints are
 untouched.
 
 **Deletion candidates for the DoE** (adjacent to files this round touches; PM deletes nothing):
@@ -188,7 +188,7 @@ untouched.
 ## 5 · Simplification opportunities
 
 - **No new eval scenarios and no runner subset flag.** The existing 96-convo corpus already
-  exercises every reply shape 4.2 touches; the 8 selected scenarios are judged from the runner's
+  exercises every reply shape 2.2 touches; the 8 selected scenarios are judged from the runner's
   per-turn log, so no filtering feature is added. (Supersedes the pre-doctrine "no E2E eval"
   stance — evals now lead per the user's 2026-07-02 coverage doctrine.)
 - **No second reminder constant.** One reminder serves both `skill_call` and `tool_call` (see D1);
@@ -268,11 +268,11 @@ parametrization plumbing is free there.
 - **A (keep `SLOT_7_REMINDER`):**
   - Pro: zero extra churn; the sub-plan, style guide (slot 7), and verification greps all use this
     name.
-  - Con: "slot 7" comes from the 8-slot format that §4.1 partially carved out; the number is
+  - Con: "slot 7" comes from the 8-slot format that §2.1 partially carved out; the number is
     opaque to a reader who hasn't seen `style_guide.md:137`.
 - **B (rename to `CLOSING_REMINDER`):**
   - Pro: self-describing; survives any future style-guide renumbering.
-  - Con: breaks the verification grep as written in `step_4_pex.md:209` (it names
+  - Con: breaks the verification grep as written in `round_2_pex.md:209` (it names
     `SLOT_7_REMINDER`), so the sub-plan text would need a matching edit; extra diff for zero
     behavior change.
 

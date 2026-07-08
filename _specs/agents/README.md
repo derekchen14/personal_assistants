@@ -24,7 +24,7 @@ Roles: [PM](./pm.md) · [SWE1](./swe1.md) · [SWE2](./swe2.md) · [DoE](./doe.md
 | **Commit** | DoE | human | Final commit (reviewed live by the user; pushed to master after a few accumulate) |
 
 Artifacts pass agent-to-agent — the orchestrator hands each as the next role's input. Every round,
-persist all of them under `plans/round_<id>_artifacts/` (the SWE plans, the DoE approval and
+persist all of them under `_specs/_review/rounds/round_<id>_artifacts/` (the SWE plans, the DoE approval and
 adjudication, the QA verdict) so the back-and-forth is readable after the fact, and relay the DoE's
 approval notes and adjudication summary to the user during the round, not only the final report.
 

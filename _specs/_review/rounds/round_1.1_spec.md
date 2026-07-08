@@ -1,7 +1,7 @@
-# Spec Sheet — E1 · Fast eval mode (record/replay at the PromptEngineer seam)
+# Spec Sheet — 1.1 · Fast eval mode (record/replay at the PromptEngineer seam)
 
-Round: E1 · Source: the user's eval-speed doctrine (2026-07-02) + `_specs/_review/step_1_evals.md`
-(Master Plan parallel eval track). Runs NEXT, ahead of 4.5. Status: **APPROVED by the user
+Round: 1.1 · Source: the user's eval-speed doctrine (2026-07-02) + `_specs/_review/round_1_evals.md`
+(Master Plan parallel eval track). Runs NEXT, ahead of 2.5. Status: **APPROVED by the user
 2026-07-03** — every decision in §6 is recorded final (D1/D2 as recommended; D3 overruled to
 checkpoint reuse; D4 overruled to a config key; D5 canonical shape approved; timing =
 print-don't-gate; D6 = trim inside E1, sequenced). SWE planning builds from this revision.
@@ -11,7 +11,7 @@ print-don't-gate; D6 = trim inside E1, sequenced). SWE planning builds from this
 > every environmental input (session ids, timestamps, uuids, DB state), which the user rejected as
 > overkill for evals ("we do not need perfect replay"). Evals judge the 7 E2E criteria only; the
 > authoritative spec is `_specs/utilities/evaluation_suite.md` (latency = total ≤10 min +
-> TTFT ≤1 min — the per-turn 10 s target is retired). What E1 shipped: R9 (corpus-shape
+> TTFT ≤1 min — the per-turn 10 s target is retired). What 1.1 shipped: R9 (corpus-shape
 > normalizer — the runner seeds all 96 cases), timing reports + `--ids` gate subset in the
 > runner, `HUGO_EVAL_MODE` env var removed in favor of `schemas.config.EVAL_HARNESS`, the
 > fill_slots prompt slot-order nondeterminism fix (keyed by `slot.slot_type`), an atomic
@@ -24,7 +24,7 @@ print-don't-gate; D6 = trim inside E1, sequenced). SWE planning builds from this
 NOT the per-release gate — it is the dev-iteration loop and the CI/trace substrate. Any pipeline
 part over 10 s gets terminated and sped up (e.g. by mocking the service).
 
-**Round 4.2 status:** shipped — PR #1, commit `2f51b6b`, branch `round/4.2-closing-reminder`, on
+**Round 2.2 status:** shipped — PR #1, commit `2f51b6b`, branch `round/4.2-closing-reminder (pre-renumber branch name)`, on
 the offline verdict; its eval leg is deferred to this round's acceptance demo (R10).
 
 ## 1 · Feature definition & user story
@@ -38,7 +38,7 @@ the offline verdict; its eval leg is deferred to this round's acceptance demo (R
 | 96-scenario sweep | ~2 h |
 | `HUGO_EVAL_MODE` | mocks **nothing** — only prefixes artifact filenames (`platform_service.py:486`) |
 
-**Interim 8-scenario run (2026-07-02, for round 4.2) — confirmed the doctrine, surfaced a
+**Interim 8-scenario run (2026-07-02, for round 2.2) — confirmed the doctrine, surfaced a
 blocker:**
 - **B01.C01 took 59 s for one 4-user-turn conversation.** 1/4 turns completed: turn 1 expected
   `find`, got `''` (empty artifact origin); turns 3-4 expected `compose`/`release` but got
@@ -52,7 +52,7 @@ blocker:**
   carry `{id, title, status, sections:[names]}` (wrong key — runner wants `post_id` — and
   section *names* without prose, so `_seed_post`'s `sections.values()` zip has no content).
   Several cases also carry a `notes` key the runner ignores. Net: **zero scenarios seed
-  correctly today**, and the eval leg of round 4.2 was **deferred pending E1**.
+  correctly today**, and the eval leg of round 2.2 was **deferred pending 1.1**.
 
 **Where the 12.6 s goes (from code structure — every stage routes through `PromptEngineer`,
 `ACTIVE_FAMILY='gemini'`).** A turn runs these model stages **sequentially**:
@@ -67,7 +67,7 @@ blocker:**
 
 The ensemble is already parallel, so every trim that would push a live turn under 10 s is
 **behavioral**: drop/downgrade the high voter, merge intent+flow detection, cap PEX rounds lower,
-or skip `quality_check`. Per D6 (decided), E1 **does** trim — but sequenced: the seam and timing
+or skip `quality_check`. Per D6 (decided), 1.1 **does** trim — but sequenced: the seam and timing
 reports land first, a pre-trim baseline is recorded, then one trim at a time with the 8-scenario
 gate re-run after each so regressions are attributable. Timing itself is printed, not gated (R2).
 What needs **no** behavior change: **the 8-scenario release gate fits its 10-min budget live
@@ -77,7 +77,7 @@ parallelism (comfortable). Record/replay is therefore NOT a prerequisite of the 
 Record/replay remains the right tool for everything else: the full 96-sweep (dev iteration), the
 trace gate, and CI-without-keys. The spec already prescribes it for traces — record-once /
 replay-many, cached voter outputs fed back instead of calling the model, temp-0
-(`evaluation.md:69-72`; `step_1_evals.md:58`); this round extends that pattern to every model
+(`evaluation.md:69-72`; `round_1_evals.md:58`); this round extends that pattern to every model
 call at the PromptEngineer provider boundary, so the full loop runs with zero live calls.
 
 **User story (the iteration loop).** As a developer on Hugo, I change a prompt or a policy, run
@@ -99,14 +99,14 @@ under 60 s).
 |---|---|---|
 | R1 | **Per-release gate:** a LIVE sample of 8 scenarios completes in ≤ 10 min (scenario-level parallelism allowed; no record/replay required). The 96-sweep is not the release gate. | refined doctrine 2026-07-02 |
 | R2 | **Timing is printed, not gated** (the user 2026-07-03): the runner reports per-turn, per-conversation, and total wall time in every run's output (~10 lines of measurement code); QA reads the report against the doctrine targets (≤ 10 s turn / ≤ 60 s convo / ≤ 10 min 8-scenario gate). NO new entries in `baselines/evals.json`, no timing gate records, no `expected_fail`. | refined doctrine; the user's decision 2026-07-03 |
-| R3 | Replay mode makes **zero live model calls**; recorded responses fed back deterministically (record-once / replay-many, temp-0). Scope: the full-96 dev sweep, the trace gate, and CI-without-keys — not the release gate. | `evaluation.md:69-72`; `step_1_evals.md:58`; refined doctrine |
-| R4 | One mechanism at the PromptEngineer boundary — generalizes the cached-vote replay design rather than duplicating it; the traces-level runner consumes the same seam. | `step_1_evals.md:58,209-210` (complement, don't duplicate) |
+| R3 | Replay mode makes **zero live model calls**; recorded responses fed back deterministically (record-once / replay-many, temp-0). Scope: the full-96 dev sweep, the trace gate, and CI-without-keys — not the release gate. | `evaluation.md:69-72`; `round_1_evals.md:58`; refined doctrine |
+| R4 | One mechanism at the PromptEngineer boundary — generalizes the cached-vote replay design rather than duplicating it; the traces-level runner consumes the same seam. | `round_1_evals.md:58,209-210` (complement, don't duplicate) |
 | R5 | Tool dispatch stays **live** during replay (local services): seeded posts, end-state, and grounding still change for real, so the completion scorer and the 3-axis parity checks keep working. | `evaluation.md` §Scenario/parity axes; `run_evals.py:44-64` |
-| R6 | Side effect: a runnable trace gate — `baselines/` today holds only `evals.json`; the replay runner writes `traces` metrics + baseline so the trace level stops being aspirational. | QA finding; `step_1_evals.md:246` (one entrypoint, four levels) |
-| R7 | Live runs remain the ground-truth source: recordings are captured from live runs and re-captured on demand; gold is recorded, never synthesized. | `step_1_evals.md:253-264` |
+| R6 | Side effect: a runnable trace gate — `baselines/` today holds only `evals.json`; the replay runner writes `traces` metrics + baseline so the trace level stops being aspirational. | QA finding; `round_1_evals.md:246` (one entrypoint, four levels) |
+| R7 | Live runs remain the ground-truth source: recordings are captured from live runs and re-captured on demand; gold is recorded, never synthesized. | `round_1_evals.md:253-264` |
 | R8 | Every run (live gate or replay sweep) prints per-turn, per-conversation, and total wall time in its output; QA reads them against the R2 targets. | doctrine ("the new mode must itself be timed") |
 | R9 | Reconcile the runner with the current corpus schema per D5 (decided): declare the canonical shape in `datasets/_gen_spec.md` and add one thin temporary `_normalize_posts()` in `run_evals.py` upgrading the three legacy shapes on read; no crash on any of the 96 cases; no corpus rewrite this round. | coordinator addendum 2026-07-02; corpus audit above; `run_evals.py:44-48`; D5 |
-| R10 | Acceptance demo: re-gate round 4.2 (shipped as PR #1, `2f51b6b`, on the offline verdict) by running its 8 selected scenarios (B01.C01/C08/C11/C12/C14, B02.C15, B03.C03/C07) as the first live release gate — 4.2's deferred eval leg completes as E1's verification. | coordinator addendum 2026-07-02; `round_4.2_spec.md` §4a |
+| R10 | Acceptance demo: re-gate round 2.2 (shipped as PR #1, `2f51b6b`, on the offline verdict) by running its 8 selected scenarios (B01.C01/C08/C11/C12/C14, B02.C15, B03.C03/C07) as the first live release gate — 2.2's deferred eval leg completes as 1.1's verification. | coordinator addendum 2026-07-02; `round_2.2_spec.md` §4a |
 
 ## 3 · Pseudo-code — the record/replay seam
 
@@ -200,11 +200,11 @@ runner crashes on 27 of 96 cases and seeds none of them.
 python utils/evals/run_evals.py --level evals --metric completion        # live, 8-scenario sample
 ```
 
-on round 4.2's 8 selected scenarios. Pass = (a) no crash on B01.C08 (schema fix proven),
+on round 2.2's 8 selected scenarios. Pass = (a) no crash on B01.C08 (schema fix proven),
 (b) QA reads the printed wall times against the doctrine targets — 8-scenario gate ≤ 10 min,
 convos ≤ 60 s, turns ≤ 10 s (turns start at ~12.6 s pre-trim; noted, not gated — R2),
-(c) QA applies 4.2's pass criteria from the per-turn log (turns log `ok` per the red-green
-model; no JSON-wrapped or instruction-restating replies). This completes 4.2's deferred eval
+(c) QA applies 2.2's pass criteria from the per-turn log (turns log `ok` per the red-green
+model; no JSON-wrapped or instruction-restating replies). This completes 2.2's deferred eval
 leg and is the template for every future release gate. Re-run after each D6 trim so any
 completion regression is attributable to that one trim.
 
@@ -220,17 +220,17 @@ parallel budget predicts (report `sweep_seconds`; informational, not doctrine-ga
 (c) `completion_rate` in replay equals the recorded live baseline exactly (same responses in →
 same verdicts out; any diff means the seam leaks nondeterminism).
 
-**Round process note (applies to E1 and every later round):** DoE adjudication of the merged
+**Round process note (applies to 1.1 and every later round):** DoE adjudication of the merged
 diff must include a visible ponytail over-engineering review — what could be deleted or
 simplified, stated in the Verdict, not silently skipped.
 
 ### 4b · Observability Traces
 
 - The recording layer captures per-round model outputs — a superset of the cached voter outputs
-  the traces design needs (`step_1_evals.md:58`). The trace-replay runner consumes the same
+  the traces design needs (`round_1_evals.md:58`). The trace-replay runner consumes the same
   recordings; this round writes the first `baselines/traces.json` (R6), turning the trace gate
   from missing to runnable.
-- Milestone flag (carried from 4.2): approved gold trajectories are still thin; this round gives
+- Milestone flag (carried from 2.2): approved gold trajectories are still thin; this round gives
   them a fast recorder, it does not author them.
 
 ### 4c · Model Unit Tests (only genuinely-failable checks)
@@ -246,7 +246,7 @@ Baseline first (cwd = `assistants/Hugo`): 324 passed / 0 skipped / 0 failed via
 | T4 | `test_off_mode_untouched` — mode `off` never reads or writes checkpoints; and `models.eval_mode != 'off'` with `schemas.config.EVAL_HARNESS` False raises at `__init__` (the D4 safeguard). | passes |
 | S1 | Full offline gate rerun. | 324 + T1-T4 passed / 0 skipped / 0 failed |
 
-**Piggyback candidate (from 4.2's ponytail retro-review):** if this round touches
+**Piggyback candidate (from 2.2's ponytail retro-review):** if this round touches
 `test_artifacts.py`, delete the `test_json_reminder_deleted` tombstone test — it guards against
 a constant resurrecting, which grep G1-style checks cover; flagged optional by the retro, to be
 picked up by the next round editing that file.
@@ -346,7 +346,7 @@ Storage design as decided (verified against the component 2026-07-03):
     before the first turn.
 - **Fresh truth:** the live 8-scenario release gate every release is the drift canary for the
   sampled slice; a scheduled full live record pass refreshes the rest (nightly cadence per
-  `step_1_evals.md`).
+  `round_1_evals.md`).
 
 ### D4 — Mode selection: DECIDED — config key, NOT a new env var (the user overruled option A)
 

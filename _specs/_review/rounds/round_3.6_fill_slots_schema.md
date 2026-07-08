@@ -1,6 +1,6 @@
-# Fix 3 — fill_slots schema violations on the gemini family
+# Round 3.6 (was fix 3a) — fill_slots schema violations on the gemini family
 
-Status: FIXED 2026-07-03 (retry guardrail; PR #5 branch). Discovered live during fix_1/fix_2
+Status: FIXED 2026-07-03 (retry guardrail; PR #5 branch). Discovered live during round 2.10/round 3.5
 verification. Owner module: **NLU** (slot-fill call path) + **PromptEngineer** (schema handling).
 
 ## What happened

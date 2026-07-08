@@ -1,6 +1,6 @@
-# Round 4.6 Spec — Per-call skill tier
+# Round 2.6 Spec — Per-call skill tier
 
-**Master Plan step:** step_4_pex.md §4.6 (`_specs/_review/step_4_pex.md:161-172`).
+**Master Plan step:** round_2_pex.md §2.6 (`_specs/_review/round_2_pex.md:161-172`).
 
 ## What changes
 
@@ -82,6 +82,6 @@ the `match` family branch) rather than hitting a model — same isolation style 
 
 - The plan's `'high'` hint is satisfied for the actual hard skills (audit/rework) by `tool_call`'s existing
   `model=` — no `skill_call` site needs the upgrade today. Flagging this as agreement with the plan, not a
-  deviation: the round ships the capability, exactly as §4.6 states.
+  deviation: the round ships the capability, exactly as §2.6 states.
 - `model` is positional-last to match `tool_call`; every current `skill_call` invocation uses only the earlier
   args, so ordering is safe.

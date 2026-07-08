@@ -1,7 +1,7 @@
-# Step 3 — NLU belief, ambiguity & the intent rework (the Heart)
+# Round 3 — NLU belief, ambiguity & the intent rework (the Heart)
 
-Maps to **Master Plan · Step 3**. Effort **L**. Depends on: **Step 1** (eval gate — required for the intent
-rework) and **Step 2** (the scratchpad now lives on the World as `SessionScratchpad`). The highest-risk step;
+Maps to **Master Plan · Round 3**. Effort **L**. Depends on: **Round 1** (eval gate — required for the intent
+rework) and **Round 4** (the scratchpad now lives on the World as `SessionScratchpad`). The highest-risk step;
 gate every sub-item on the trace runner.
 
 **Goal:** bring NLU belief + ambiguity behavior to spec and adopt the PEX System-1 intent hint.
@@ -31,7 +31,7 @@ Spec: `modules/nlu.md`; `components/{dialogue_state,ambiguity_handler,session_sc
 - **Ambiguity resolution is LLM-driven.** The model judges whether the reply answers the open question rather
   than a fixed template; on resolve it fills the slot and clears. (per the user; §3.2.1)
 - **Flag cleanup.** Remove the dead `keep_going` / `has_issues` / `natural_birth` writes; **keep `has_plan`**
-  for now (Step 5 removes it — Plan-aware chaining becomes behavior, no flag). (§3.4)
+  for now (Round 5 removes it — Plan-aware chaining becomes behavior, no flag). (§3.4)
 
 **Resolved here — confirm or override:**
 - **E14 · low-confidence entity repair.** rec: write the value but set `grounding.ver=False` (a prediction);
@@ -39,7 +39,7 @@ Spec: `modules/nlu.md`; `components/{dialogue_state,ambiguity_handler,session_sc
 - **E12 · re-route ownership — DECIDED: both, distinct roles.** The policy applies a **hard-coded
   `fallback()`** when it knows the fix (within-policy sibling swap), else raises a **general-fallback signal** →
   the Assistant has NLU run `contemplate()` (cross-flow re-detect). (§3.2.4)
-- **E13 · scratchpad location.** Resolved in Step 2 — on the World as `SessionScratchpad`, reached as
+- **E13 · scratchpad location.** Resolved in Round 4 — on the World as `SessionScratchpad`, reached as
   `nlu.scratchpad`; this step adds the entry contract + NLU review on it. (§3.3.2)
 - **Scratchpad write path.** rec: writers append through `NLU.append_to_scratchpad(...)` so each append
   triggers NLU review; MemoryManager never writes the pad. (per the user; §3.3.1)
@@ -265,7 +265,7 @@ self.nlu.understand(op='contemplate', user_text=last_user_text)   # writes a new
 
 ## 3.3 — Scratchpad schema & synchronous review  ·  S2 / S3
 
-The scratchpad is the `SessionScratchpad` on the World (Step 2), reached as `nlu.scratchpad`. **MemoryManager
+The scratchpad is the `SessionScratchpad` on the World (Round 4), reached as `nlu.scratchpad`. **MemoryManager
 does not write to it.** The common writer is a **sub-agent** (a policy, or the PEX loop) writing its findings
 through NLU's exposed write method; NLU reviews the pad after each write.
 
@@ -311,15 +311,15 @@ nlu.append_to_scratchpad(flow.name(), {
 entry = nlu.read_from_scratchpad('audit')
 ```
 
-**Wiring note.** Step 2 wired policies/PEX to call `self.scratchpad.write(...)` directly (the interim path).
+**Wiring note.** Round 4 wired policies/PEX to call `self.scratchpad.write(...)` directly (the interim path).
 This step re-points those writers to `NLU.append_to_scratchpad(...)` so the append triggers review. PEX and
 the policies get the NLU handle the same way they get other shared components (passed in `components` /
 constructor); the scratchpad **instance** stays on the World, so this is an access-path change, not a second
 store.
 
-**Completion records.** `SessionScratchpad.write_completion` (Step 2) appends `{flow, summary, metadata}`.
+**Completion records.** `SessionScratchpad.write_completion` (Round 4) appends `{flow, summary, metadata}`.
 Bring it under the same contract — include `version`/`turn_number`/`used_count` — so completion entries read
-back through the same filters. (This is the `c6` completion-vehicle item deferred from Step 2.)
+back through the same filters. (This is the `c6` completion-vehicle item deferred from Round 4.)
 
 ### 3.3.2 — Synchronous NLU review + `update_scratchpad`  · S2
 **Spec:** appending triggers NLU to review the pad — merge duplicate entries, reconcile contradictions, prune
@@ -343,7 +343,7 @@ def _review_scratchpad(self):
 
 Mark the **continuous / event-triggered** version (below) `# designed-not-built`.
 
-**E13 — RESOLVED in Step 2:** the scratchpad lives on the World as a `SessionScratchpad` component, reached
+**E13 — RESOLVED in Round 4:** the scratchpad lives on the World as a `SessionScratchpad` component, reached
 as `nlu.scratchpad`. This section adds the entry-field contract + NLU review on that component (not
 `MemoryManager`).
 
@@ -356,15 +356,15 @@ as `nlu.scratchpad`. This section adds the entry-field contract + NLU review on 
 
 | Flag | Written by | Read by | Verdict |
 |---|---|---|---|
-| `keep_going` | `draft.py:168,205`; `revise.py:108,112,216` | **nobody** | **Remove** — dead write. Plan-aware chain rebuilt as behavior in **Step 5.4** (PEX knows it is mid-plan), never as a stored flag. |
+| `keep_going` | `draft.py:168,205`; `revise.py:108,112,216` | **nobody** | **Remove** — dead write. Plan-aware chain rebuilt as behavior in **Round 5 §5.4** (PEX knows it is mid-plan), never as a stored flag. |
 | `has_issues` | `_BELIEF_FIELDS` (write_state `update`) | **nobody** | **Remove** — defined + serialized but never read. |
 | `natural_birth` | `reset`/`serialize`/`from_dict` only | **nobody** | **Remove** — fully vestigial. |
-| `has_plan` | `_BELIEF_FIELDS` (write_state `update`) | `revise.py:67,227` | **Keep for now** — read by Revise's Plan-aware scratchpad writes. **Step 5** removes it (the gated write is redundant with completion records). |
+| `has_plan` | `_BELIEF_FIELDS` (write_state `update`) | `revise.py:67,227` | **Keep for now** — read by Revise's Plan-aware scratchpad writes. **Round 5** removes it (the gated write is redundant with completion records). |
 
 **Do now (3.4):** remove `keep_going`, `has_issues`, `natural_birth` from `__init__`, `reset`, `serialize`,
 `serialize_session` flags, `load`, `from_dict`, and `_BELIEF_FIELDS`; delete the dead `state.keep_going = True`
 writes in `draft.py`/`revise.py`. Leave `has_plan` (and its two Revise reads) untouched — it is live and
-Step 5 owns its removal. After this, the only `flags` block entry persisted is `has_plan`, pending Step 5.
+Round 5 owns its removal. After this, the only `flags` block entry persisted is `has_plan`, pending Round 5.
 
 ---
 
@@ -422,7 +422,7 @@ for key, entry in scratchpad.read().items():
 - **Triggers:** `used_count ≥ N` **or** a LOW-tier salience/surprisal judge passes **or** explicit user save
   (`store_preference`).
 - **Keep the `used_count` plumbing** (3.3) so this has its frequency signal when built.
-- **Why deferred:** needs the real background MEM loop; the synchronous facade (Step 2) has no loop yet.
+- **Why deferred:** needs the real background MEM loop; the synchronous facade (Round 4) has no loop yet.
 
 ### S-3 — Continuous, event-triggered scratchpad review
 The synchronous `_review_scratchpad` (3.3.2) runs at turn points. The target is an **always-running asyncio

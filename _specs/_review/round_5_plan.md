@@ -1,6 +1,6 @@
-# Step 5 — Plan intent / Workflow Planner skill (minimal)
+# Round 5 — Plan intent / Workflow Planner skill (minimal)
 
-Maps to **Master Plan · Step 5** (build step 4). Effort **M**. Depends on: working flows (PEX, build step 1);
+Maps to **Master Plan · Round 5**. Effort **M**. Depends on: working flows (PEX, Round 2);
 benefits from Steps 2/3. Scope: **minimal**.
 
 **Terminology:** **Plan** is the *intent*; the **Workflow Planner** is the *skill* that serves it.
@@ -25,7 +25,7 @@ step adds the thin Plan layer on top.
   after each one (`for_orchestrator.py`, the Plan bullet — added 2026-06-21).
 - `plan_id` is a field on `BaseFlow` (`parents.py:14`, serialized `:87`, restored `dialogue_state.py:44`) but
   **inert** — nothing mints or reads it. This step **removes** it (§5.4).
-- `state.has_plan` is read by `revise.py:67,227` for a Plan-aware scratchpad write; Step 3.4 left it for this
+- `state.has_plan` is read by `revise.py:67,227` for a Plan-aware scratchpad write; Round 3 §3.4 left it for this
   step to remove.
 
 ---
@@ -53,7 +53,7 @@ step adds the thin Plan layer on top.
   guide, testable as a prompt), not prompt-only orchestrator text and not a flow policy. (§5.1)
 
 **Deferred (stub — designed, not built):**
-- Per-step replanning (§S-1); multi-active concurrency + artifact curation (§S-2, shared with Step 4). LATS
+- Per-step replanning (§S-1); multi-active concurrency + artifact curation (§S-2, shared with Round 2). LATS
   decomposition search is **dropped** — not pursuing it.
 
 ---
@@ -111,7 +111,7 @@ session:
 
 Also bump the code default fallback to 16 (`stack.py:12`: `get('max_flow_depth', 16)`). **Keep the hard
 `RuntimeError`** (`:98-101`) for now — the spec's note-and-proceed overflow only matters once plans routinely
-stack deep; defer it. Coordinate with **Step 6.3** (session-limit enforcement reads the same key).
+stack deep; defer it. Coordinate with **Round 6 §6.3** (session-limit enforcement reads the same key).
 
 ## 5.4 — Remove the dead Plan state (`has_plan` + `plan_id`)
 Two now-unused Plan-tracking fields go away. Plan-aware chaining is rebuilt as **behavior**, not a flag:
@@ -136,7 +136,7 @@ or read. Remove it from `BaseFlow.__init__`, `to_dict`/`serialize`, and the Dial
 ```
 
 After this the `flags` block has no remaining live entries — finishing the flag-block removal started in
-Step 3.4 — and no Plan-tracking field survives on the flow.
+Round 3 §3.4 — and no Plan-tracking field survives on the flow.
 
 ---
 
@@ -158,7 +158,7 @@ goal judgment in §5.2), so explicit replanning is just a richer prompted versio
 
 ### S-2 — Multi-active concurrency + artifact curation  (`workflow_planner.md:284-311`)
 Today one flow is Active at a time. The target lets several sub-flows be Active concurrently (preserving the
-contiguous-Active invariant), their artifacts curated into one turn artifact (the **Step 4** curation stub).
+contiguous-Active invariant), their artifacts curated into one turn artifact (the **Round 2** curation stub).
 
 - **Why deferred:** a large change touching the stack lifecycle, the turn loop, and artifact curation. Mark the
   single-active assumption in `activate_flow` `# designed-not-built`.

@@ -1,9 +1,9 @@
 # Round 5.1 — Workflow Planner skill + NLU belief state injection
 
 Status: APPROVED IN DIRECTION 2026-07-03 (the user), mechanism REVISED by the user 2026-07-03: the
-round 5.0 gate analysis called this a "mismatch gate" — wrong on both words. It is **NLU belief
+round 2.7 gate analysis called this a "mismatch gate" — wrong on both words. It is **NLU belief
 state injection**: belief is injected into the PEX orchestrator context on every turn, mismatch or
-not. Implements `step_5_plan.md` (locked §5.1-§5.4) plus the injection.
+not. Implements `round_5_plan.md` (locked §5.1-§5.4) plus the injection.
 
 **AMENDMENT 2 (the user 2026-07-03, applied post-build):**
 - No "staging" language anywhere — it is "stacking on" / "stacking a flow". Code renames:
@@ -29,7 +29,7 @@ not. Implements `step_5_plan.md` (locked §5.1-§5.4) plus the injection.
 
 1. **The Workflow Planner skill** (`backend/prompts/pex/skills/plan.md`) — how-to guidance for the
    Plan intent: decompose into EXISTING catalog flows, order by dependency, stage and run one at a
-   time, share a one-line plan, judge goal completion after each flow (step_5 §5.1-5.2). The skill
+   time, share a one-line plan, judge goal completion after each flow (round_5_plan §5.1-5.2). The skill
    returns nothing; PEX issues the stack ops itself.
 2. **NLU belief state injection** (the user 2026-07-03, replaces the "mismatch gate"):
    - Once per turn, the landed detection (intent, top flows + confidence, slots) is injected into
@@ -50,7 +50,7 @@ not. Implements `step_5_plan.md` (locked §5.1-§5.4) plus the injection.
      (nlu.py:118, the failed-flow re-route with narrowed candidates) — never `think()`.
 3. **Depth 8→16** (`shared/shared_defaults.yaml:55`, `stack.py:12` fallback). Keep the overflow
    `RuntimeError`.
-4. **Remove dead Plan state** (step_5 §5.4): `has_plan`
+4. **Remove dead Plan state** (round_5_plan §5.4): `has_plan`
    (dialogue_state.py:9,62,100,115,129,155,249; revise.py:67,227 — redundant with completion
    records) and `plan_id` (parents.py:14,87; dialogue_state.py:44,170,215; stack.py:17,27,97-108;
    pex.py:578,960,979). NOTE (SWE1 round-1 finding): the removals also touch suite files
@@ -81,7 +81,7 @@ the matching `tool_result` blocks — a free-standing user text message cannot s
   that round's tool results (an extra text block beside the `tool_result` blocks — API-legal);
   after a text-only model response (⑤ post-LLM), the note is appended as its own user message and
   the loop runs one more round instead of ending the turn. Pros: covers ②③④ moments with zero
-  extra rounds; the ⑤ path catches exactly the failed turns from the 5.0 gate (12/15 ended
+  extra rounds; the ⑤ path catches exactly the failed turns from the 2.7 gate (12/15 ended
   text-only, no tool calls); never blocks. Cons: two code paths for one concept; a text-only turn
   that ends before NLU lands is still possible (rare — the boundary join then reconciles at the
   next turn).
@@ -91,7 +91,7 @@ the matching `tool_result` blocks — a free-standing user text message cannot s
   append-only context and prompt caching.
 
 **2. Where the Workflow Planner guidance lives** — unchanged from round-1 plan: skill file read
-into Tier 2 (locked step_5 decision; ~250 tokens/turn riding the prompt cache), over a prompt
+into Tier 2 (locked round_5_plan decision; ~250 tokens/turn riding the prompt cache), over a prompt
 constant or on-demand loading.
 
 **3. Intent-differs forcing mechanics.** Code compares `pred_intent` to the active flow's intent
@@ -100,7 +100,7 @@ at injection time; on difference (and no pending ambiguity, and a domain `pred_i
 note states what was forced.
 Trade-off: a wrong NLU intent now overrides the orchestrator with no appeal — accepted, NLU's
 intent is authoritative by design ("coarse intent is NLU's authoritative write", pex.md); the
-counterweight is round 4.3 exemplars.
+counterweight is round 2.3 exemplars.
 
 ## Alternatives considered (not built)
 
@@ -108,8 +108,8 @@ counterweight is round 4.3 exemplars.
   dispatch rule); flow execution never blocks.
 - **Corrective-error-only reaction at pre-flow** and **prompt-only strengthening**: both rejected
   in round-1 planning — they miss text-only turns, which are the dominant failure.
-- **Per-step replanning** (§S-1), **multi-active concurrency** (§S-2): deferred per step_5.
-- **LATS decomposition search**: dropped in step_5.
+- **Per-step replanning** (§S-1), **multi-active concurrency** (§S-2): deferred per round_5_plan.
+- **LATS decomposition search**: dropped in round_5_plan.
 
 ## Build list
 

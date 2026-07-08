@@ -1,6 +1,6 @@
-# Round 4.3 Spec — Exemplar raise + cap on repeated read actions
+# Round 2.3 Spec — Exemplar raise + cap on repeated read actions
 
-Source: `_specs/_review/step_4_pex.md` §4.3 (8b). Traces to the live-gate failure buckets:
+Source: `_specs/_review/round_2_pex.md` §2.3 (8b). Traces to the live-gate failure buckets:
 (a) NLU flow-**detection** errors, (b) repeated read-only tool calls sinking `tool_match` and latency.
 
 ## Baselines (8-scenario gate: B01.C01, B01.C04, B02.C01, B02.C02, B03.C01, B04.C01, B05.C01, B06.C01)
@@ -19,7 +19,7 @@ Source: `_specs/_review/step_4_pex.md` §4.3 (8b). Traces to the live-gate failu
 
 ---
 
-## Part A — PEX skill exemplar raise (§4.3, priority propose → 2-count → 3-count)
+## Part A — PEX skill exemplar raise (§2.3, priority propose → 2-count → 3-count)
 
 Verified current counts (opening `### Example` blocks per file under `prompts/pex/skills/`):
 propose **1**; chat/cite/compose/promote/release/schedule **2**; audit/brainstorm/browse/find/
@@ -55,7 +55,7 @@ New exemplars to author: propose +4, each 2-count skill +3 (×6 = 18), each 3-co
 documented target's floor. Con: ~60 exemplars; churns files whose depth is not the current
 bottleneck.
 **Alternative 2 — raise only propose (→5), defer the rest.** Pro: smallest diff. Con: leaves the
-2-count skills one exemplar above the worst; ignores §4.3's explicit 3-group priority.
+2-count skills one exemplar above the worst; ignores §2.3's explicit 3-group priority.
 
 ### Authoring rules (NON-NEGOTIABLE — apply to every new exemplar)
 - No **"Kitty Hawk"** anywhere (held-out manual test topic).
@@ -138,7 +138,7 @@ already reads via `config['limits'][...]`).
 ## Part C — DECISION 3: does NLU **detection** need exemplar work? YES — fold it in.
 
 The gate's binding failure bucket (a) is flow **detection** (e.g. detecting `rework` where the
-label says `write`). §4.3 as written only covers PEX skill exemplars, which are a **trajectory**
+label says `write`). §2.3 as written only covers PEX skill exemplars, which are a **trajectory**
 surface, not a detection surface — raising them cannot fix bucket (a). Verified NLU exemplar state:
 
 - **Intent stage** (`for_experts.py` `INTENT_EXAMPLES`): **21** inline exemplars — healthy, no work.
@@ -165,9 +165,9 @@ existing `<positive_example>` / `<edge_case>` block shape with a `reasoning` + `
 
 - **Pro:** attacks the gate's actual binding constraint; contrastive pairs are the highest-leverage
   exemplar type for a boundary the model keeps crossing.
-- **Con:** more surface than a pure §4.3 read; but §4.3's PEX-only scope cannot move completion
+- **Con:** more surface than a pure §2.3 read; but §2.3's PEX-only scope cannot move completion
   while detection is the ceiling, so this is the load-bearing part of the round.
-- **Alternative — defer detection to a later round.** Pro: keeps the round to §4.3's literal PEX
+- **Alternative — defer detection to a later round.** Pro: keeps the round to §2.3's literal PEX
   scope. Con: leaves completion pinned by bucket (a); the PEX exemplar raise alone would show
   little gate movement, making the round look inert. **Rejected.**
 
@@ -193,7 +193,7 @@ Every acceptance criterion maps to a named check with an expected result.
 - **AC-4 (detection boundary):** a model unit test over the new `write`/`rework` contrastive
   utterances asserts the flow-detection stage returns the labeled flow. Expected: the medium-scope
   boundary utterances resolve to their intended flow. (Detection is a behavior surface — diff
-  detection scores before/after per §4.3's "diff detection/trajectory scores after.")
+  detection scores before/after per §2.3's "diff detection/trajectory scores after.")
 
 ### 3. Live 8-scenario gate (the round's success bar)
 Run B01.C01, B01.C04, B02.C01, B02.C02, B03.C01, B04.C01, B05.C01, B06.C01.
