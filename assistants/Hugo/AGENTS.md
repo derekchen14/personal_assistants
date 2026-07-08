@@ -117,13 +117,13 @@ Any non-trivial task begins with a plan. While designing the plan, default to **
 - Sub-flows pushed via `flow_stack.stackon()` or `fallback()` exit to the user for review unless `state.has_plan` is set — no silent chaining outside a plan.
 - A Converse turn that consumes accept/decline yields to the underlying flow when `flow_stack.stack_size() > 1` — it sets `state.keep_going=True` and returns an empty frame instead of running its chit-chat skill. See `_specs/checklist/flow_authoring.md § Transitions` (yield-when-stacked).
 - One `SourceSlot` per flow maximum. Hugo entity parts: `post`, `sec`, `snip`, `chl`, `ver`.
-- 48 flows across Research(7) / Draft(7) / Revise(7) / Publish(7) / Converse(7) / Plan(6) / Internal(7). Catalog: `flow_stack/flows.py`.
+- 48 flows across Research(7) / Draft(7) / Revise(7) / Publish(7) / Converse(7) / Plan(6) / Internal(7). Ontology: `flow_stack/flows.py`.
 
 ## Boundaries — ✅ / ⚠️ / 🚫
 
 - ✅ Edit policies, skill prompts, templates, slot definitions, existing tool implementations freely.
 - ✅ Reuse helpers from the 7 components + `BasePolicy` + `pex._tools`.
-- ⚠️ Ask before adding: a new tool to PEX registry, a new slot type, a new flow, a new `TaskArtifact` attribute, a new entry in `FLOW_CATALOG`.
+- ⚠️ Ask before adding: a new tool to PEX registry, a new slot type, a new flow, a new `TaskArtifact` attribute, a new entry in `FLOW_ONTOLOGY`.
 - ⚠️ Ask before a migration touching `database/content/metadata.json` or `database/tables.py`.
 - 🚫 Never create new components, concepts, directories, or utility modules. The 7 components already cover ~80% of what's needed.
 - 🚫 Never `pip install` — use `uv pip install`.

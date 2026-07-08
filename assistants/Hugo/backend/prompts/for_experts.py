@@ -11,9 +11,9 @@ the same hybrid XML + Markdown shell used by slot-filling
     ## Instructions    — per-stage (intent) or per-intent (flow)
     ## Rules           — per-stage (intent) or per-intent (flow)
   </task>
-  <flow_catalog>                  (flow stage only)
+  <flow_ontology>                  (flow stage only)
     ## Candidate Flows — flat `### name (dax)` list; in-intent + edge flows
-  </flow_catalog>
+  </flow_ontology>
   <example_scenarios>
     <positive_example>...</positive_example>
     <edge_case>...</edge_case>
@@ -303,7 +303,7 @@ User: "start a new post about remote work tips"
 JSON_ONLY_REMINDER = 'Reply with the JSON object only. No prose, no markdown fences around the object.'
 
 
-# ── Flow catalog rendering ───────────────────────────────────────────────
+# ── Flow ontology rendering ───────────────────────────────────────────────
 
 def _slots_desc(cls) -> str:
     if not cls:
@@ -312,13 +312,13 @@ def _slots_desc(cls) -> str:
     return ', '.join(f'{name} ({slot.priority})' for name, slot in inst.slots.items())
 
 
-def render_flow_catalog(candidate_names:list[str], flow_catalog:dict,
+def render_flow_ontology(candidate_names:list[str], flow_ontology:dict,
                         flow_classes:dict) -> str:
     """Flat `### name (dax=...)` list of candidate flows. In-intent and edge
     flows sit in the same list — no separation."""
     blocks = ['## Candidate Flows', '']
     for name in candidate_names:
-        cat = flow_catalog.get(name, {})
+        cat = flow_ontology.get(name, {})
         dax = cat.get('dax', '')
         desc = cat.get('description', '')
         cls = flow_classes.get(name)
@@ -373,7 +373,7 @@ def build_intent_prompt(user_text:str, convo_history:str,
 
 
 def build_flow_prompt(user_text:str, intent:str, convo_history:str,
-                       candidate_catalog:str, active_post:dict=None) -> str:
+                       candidate_ontology:str, active_post:dict=None) -> str:
     prompt_fields = get_prompt(intent)
     instructions = prompt_fields['instructions'].strip()
     rules = prompt_fields['rules'].strip()
@@ -389,7 +389,7 @@ def build_flow_prompt(user_text:str, intent:str, convo_history:str,
     parts = [
         f'<role>{ROLE_FLOW}</role>',
         f'<task>\n{task_body}\n</task>',
-        f'<flow_catalog>\n{candidate_catalog}\n</flow_catalog>',
+        f'<flow_ontology>\n{candidate_ontology}\n</flow_ontology>',
         f'<example_scenarios>\n{examples}\n</example_scenarios>',
         JSON_ONLY_REMINDER,
         f'<current_scenario>\n{current}\n</current_scenario>',

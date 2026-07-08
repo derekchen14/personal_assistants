@@ -16,7 +16,7 @@ plus deleting the two RES-era test tombstones (6.11).
 - `schemas/config.py`: `load_config` (`:56-64`) → `_validate` (`:41-54`) checks sections present +
   `persona.{name,tone,response_style}` + `models.default`. `_REQUIRED_SECTIONS` (`:14-18`) does **not**
   include `compression` or `content_validation` (both are read elsewhere but unvalidated). `_deep_freeze`
-  (`:21-26`). `config.flows` is **never** populated from `ontology.FLOW_CATALOG`.
+  (`:21-26`). `config.flows` is **never** populated from `ontology.FLOW_ONTOLOGY`.
 - `schemas/tools.yaml`: `content_validation` (`:62-65`) = `[compose, rework, write]` (a flow allowlist),
   consumed at `pex.py:236` (the `_llm_quality_check` is commented at `pex.py:240`). `response_constraints`
   (`shared_defaults.yaml:140-149`) is required by config but has **no consumer**.
@@ -42,7 +42,7 @@ plus deleting the two RES-era test tombstones (6.11).
 **Locked (this step implements):**
 - **Validating config loader + ontology merge.** Refuse to start on bad config (warn in dev, fail in prod);
   add `compression` / `content_validation` to the required sections; populate `config.flows` from
-  `FLOW_CATALOG`. (§6.1)
+  `FLOW_ONTOLOGY`. (§6.1)
 - **Enforce `max_turns`.** A cheap backend runaway guard at turn entry; `max_flow_depth` is Round 5 §5.3;
   `idle_timeout_ms` is noted and deferred. (§6.3)
 - **Block-type registry sync.** Add `grid` to `VALID_BLOCK_TYPES` — emitted but unlisted, a latent bug. (§6.5)
@@ -101,8 +101,8 @@ def _validate(config:dict):
     _stage(errors, config['environment'])            # dev → log.warning; prod → raise ValueError
 
 def _merge_ontology(config:dict) -> dict:
-    from schemas.ontology import FLOW_CATALOG
-    return {**config, 'flows': dict(FLOW_CATALOG)}    # the step-4 merge Hugo currently skips
+    from schemas.ontology import FLOW_ONTOLOGY
+    return {**config, 'flows': dict(FLOW_ONTOLOGY)}    # the step-4 merge Hugo currently skips
 
 # load_config: merge ontology, validate, then freeze (order matters — validate the merged shape)
 merged = _merge_ontology(_merge_configs(shared, domain))

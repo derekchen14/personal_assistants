@@ -58,31 +58,31 @@ def _single_flow(turn:dict):
 @lru_cache(maxsize=1)
 def _flow_menu() -> tuple:
     """The static flow-detection grounding shared by every provider, so the comparison is fair: the 18
-    candidate names, the full rendered catalog (each flow's dax + description + slots — the definitions
+    candidate names, the full rendered ontology (each flow's dax + description + slots — the definitions
     the LLM reads), and the authored exemplars aggregated across intents (the production flow-detection
     examples, not the scored corpus — no leakage). Built once per run."""
-    from schemas.ontology import FLOW_CATALOG
+    from schemas.ontology import FLOW_ONTOLOGY
     from backend.components.flow_stack import flow_classes
-    from backend.prompts.for_experts import render_flow_catalog
+    from backend.prompts.for_experts import render_flow_ontology
     from backend.prompts.experts import PROMPTS
-    names = list(FLOW_CATALOG)                                    # all 18 candidates
-    catalog = render_flow_catalog(names, FLOW_CATALOG, flow_classes)
+    names = list(FLOW_ONTOLOGY)                                    # all 18 candidates
+    ontology = render_flow_ontology(names, FLOW_ONTOLOGY, flow_classes)
     examples = '\n\n'.join(fields['examples'].strip() for fields in PROMPTS.values()
                            if fields.get('examples'))
-    return names, catalog, examples
+    return names, ontology, examples
 
 
 def _predict_flow(agent, user_text:str, provider:str|None=None) -> tuple[str, float]:
     """Single-hop flow detection — no intent classification. The model picks one flow from the full
     18-flow menu (the 16 policy flows + the two non-policy flows, plan {29D} and clarify {09F}), given
     the conversation so far. Returns `(flow_name, confidence)`. Both providers get the SAME grounding
-    (full catalog + exemplars, `_flow_menu`): TypeSafe as one Choice returning calibrated confidence,
+    (full ontology + exemplars, `_flow_menu`): TypeSafe as one Choice returning calibrated confidence,
     the LLM via NLU's shared prompt shell + detection schema (a self-reported confidence)."""
     convo_history = agent.world.context.compile_history()         # default look_back=5
     active_post = agent.nlu._active_post_dict()
-    names, catalog, examples = _flow_menu()
+    names, ontology, examples = _flow_menu()
     if provider == 'typesafe':
-        return typesafe_predict_flow(convo_history, user_text, active_post, catalog, examples)
+        return typesafe_predict_flow(convo_history, user_text, active_post, ontology, examples)
     from backend.prompts.for_experts import (BACKGROUND_STATIC, PRECEDENCE_NOTE, JSON_ONLY_REMINDER,
                                              _render_current_scenario)
     from backend.modules.nlu import _flow_detection_schema
@@ -94,7 +94,7 @@ def _predict_flow(agent, user_text:str, provider:str|None=None) -> tuple[str, fl
             f'commit to any flow.\n\n## Rules\n\n{PRECEDENCE_NOTE}')
     current = _render_current_scenario(user_text, convo_history, active_post)
     prompt = '\n\n'.join([f'<role>{role}</role>', f'<task>\n{task}\n</task>',
-                          f'<flow_catalog>\n{catalog}\n</flow_catalog>',
+                          f'<flow_ontology>\n{ontology}\n</flow_ontology>',
                           f'<example_scenarios>\n{examples}\n</example_scenarios>', JSON_ONLY_REMINDER,
                           f'<current_scenario>\n{current}\n</current_scenario>'])
     schema = _flow_detection_schema(names)

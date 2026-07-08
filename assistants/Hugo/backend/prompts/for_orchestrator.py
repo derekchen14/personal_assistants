@@ -6,8 +6,8 @@ Tiers:
 
   1. Stable   — Hugo persona (`build_system(engineer.persona)`), the 7-intent taxonomy,
                 tool-use policy and loop discipline.
-  2. Context  — the 10-step blog workflow (README.md), a flow catalog summary rendered from
-                FLOW_CATALOG, and the OUTLINE_LEVELS constants.
+  2. Context  — the 10-step blog workflow (README.md), a flow ontology summary rendered from
+                FLOW_ONTOLOGY, and the OUTLINE_LEVELS constants.
   3. Volatile — L2 User Preferences snapshot read from MemoryManager at build time, plus the
                 session line (conversation_id / username / date passed in by the caller).
 
@@ -18,7 +18,7 @@ parameter, so the same inputs always produce the same bytes.
 
 from backend.components.flow_stack.flows import OUTLINE_LEVELS
 from backend.prompts.general import build_system
-from schemas.ontology import FLOW_CATALOG
+from schemas.ontology import FLOW_ONTOLOGY
 
 
 # ── Tier 1: stable ───────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ TOOL_POLICY = (
     'that pick is what triggers a flow. Act on the intent NLU wrote:\n'
     "- **Research / Draft / Revise / Publish** → stack on and run that intent's default flow, at "
     'its universal dax: {001} `find`, {002} `outline`, {003} `write`, {004} `release` (resolve a '
-    'dax through the flow catalog).\n'
+    'dax through the flow ontology).\n'
     '- **Converse** → run the `chat` flow.\n'
     '- **Clarify** → the request is underspecified. Like Plan, wait on NLU: call `read_state` '
     'first (the pending ambiguity and predicted state land there), then relay the pending '
@@ -194,13 +194,13 @@ WORKFLOW = (
 )
 
 
-def _render_flow_catalog() -> str:
-    """One line per intent family, flows in catalog order. NLU detects the specific flow; the
+def _render_flow_ontology() -> str:
+    """One line per intent family, flows in ontology order. NLU detects the specific flow; the
     orchestrator only needs the map of what exists per intent."""
     by_intent: dict[str, list[str]] = {}
-    for name, cat in FLOW_CATALOG.items():
+    for name, cat in FLOW_ONTOLOGY.items():
         by_intent.setdefault(cat['intent'], []).append(name)
-    lines = [f'## Flow Catalog ({len(FLOW_CATALOG)} flows)', '',
+    lines = [f'## Flow Ontology ({len(FLOW_ONTOLOGY)} flows)', '',
              'NLU detects the flow in detail; this is the map of what exists per intent:', '']
     for intent, names in by_intent.items():
         lines.append(f"- **{intent} ({len(names)})**: {', '.join(names)}")
@@ -240,7 +240,7 @@ def build_orchestrator_prompt(engineer, memory, conversation_id:str, username:st
         f'<intents>\n{INTENT_TAXONOMY}\n</intents>',
         f'<tool_policy>\n{TOOL_POLICY}\n\n{LOOP_DISCIPLINE}\n</tool_policy>',
         f'<workflow>\n{WORKFLOW}\n</workflow>',
-        f'<flow_catalog>\n{_render_flow_catalog()}\n</flow_catalog>',
+        f'<flow_ontology>\n{_render_flow_ontology()}\n</flow_ontology>',
         f'<outline_levels>\n{_render_outline_levels()}\n</outline_levels>',
         f'<workflow_planner>\n{engineer.load_skill("plan")}\n</workflow_planner>',
         f'<preferences>\n{_render_preferences(memory)}\n</preferences>',

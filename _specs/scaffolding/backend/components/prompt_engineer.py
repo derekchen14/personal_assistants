@@ -14,7 +14,7 @@ import anthropic
 # from backend.prompts.for_res import build_naturalize_prompt, build_clarification
 # from backend.prompts.for_contemplate import build_contemplate_prompt
 
-from schemas.ontology import FLOW_CATALOG, Intent
+from schemas.ontology import FLOW_ONTOLOGY, Intent
 from backend.modules.templates import get_template as _get_template
 
 log = logging.getLogger(__name__)
@@ -207,7 +207,7 @@ class PromptEngineer:
 
         if intent is None:
             groups: dict[str, list[str]] = {}
-            for name, flow in FLOW_CATALOG.items():
+            for name, flow in FLOW_ONTOLOGY.items():
                 fi = flow['intent']
                 if fi == Intent.INTERNAL:
                     continue
@@ -229,7 +229,7 @@ class PromptEngineer:
             candidates = '\n'.join(parts)
         else:
             candidate_lines = []
-            for name, flow in FLOW_CATALOG.items():
+            for name, flow in FLOW_ONTOLOGY.items():
                 flow_intent = flow['intent'].value if hasattr(flow['intent'], 'value') else str(flow['intent'])
                 if flow_intent == intent or name in _get_edge_flows_for_intent(intent):
                     slots_desc = ', '.join(
@@ -263,7 +263,7 @@ class PromptEngineer:
     def build_slot_filling_prompt(
         self, user_text: str, flow_name: str, history: list[dict],
     ) -> tuple[str, list[dict]]:
-        flow_info = FLOW_CATALOG.get(flow_name, {})
+        flow_info = FLOW_ONTOLOGY.get(flow_name, {})
         slot_schema = _describe_slot_schema(flow_info.get('slots', {}))
         history_text = self._format_history(history, 5)
 
@@ -358,7 +358,7 @@ class PromptEngineer:
 
         candidate_lines = []
         for name in candidates:
-            flow = FLOW_CATALOG.get(name, {})
+            flow = FLOW_ONTOLOGY.get(name, {})
             candidate_lines.append(f'- {name}: {flow.get("description", "")}')
         candidates_text = '\n'.join(candidate_lines)
 
@@ -399,7 +399,7 @@ class PromptEngineer:
 
 def _get_edge_flows_for_intent(intent: str) -> set[str]:
     edge_flows = set()
-    for name, flow in FLOW_CATALOG.items():
+    for name, flow in FLOW_ONTOLOGY.items():
         flow_intent = flow['intent'].value if hasattr(flow['intent'], 'value') else str(flow['intent'])
         if flow_intent == intent:
             for ef in flow.get('edge_flows', []):

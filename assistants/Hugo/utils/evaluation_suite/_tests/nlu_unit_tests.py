@@ -17,9 +17,7 @@ from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.world import World
 from backend.components.session_scratchpad import SessionScratchpad
 from backend.components.dialogue_state import DialogueState, rehydrate_flow
-from schemas.ontology import FLOW_CATALOG
-
-from schemas.ontology import FLOW_CATALOG
+from schemas.ontology import FLOW_ONTOLOGY
 
 
 # ==============================================================================
@@ -153,8 +151,8 @@ class TestPredictDispatch:
         nlu.engineer = MagicMock(return_value={'reasoning': 'improving', 'intent': 'Revise'})
         assert nlu._classify_intent('polish the intro') == 'Revise'
 
-    def test_candidate_names_empty_hint_is_full_catalog(self, nlu):
-        assert nlu._flow_candidate_names('') == list(FLOW_CATALOG)
+    def test_candidate_names_empty_hint_is_full_ontology(self, nlu):
+        assert nlu._flow_candidate_names('') == list(FLOW_ONTOLOGY)
 
     def test_candidate_names_hint_narrows_to_intent(self, nlu):
         names = set(nlu._flow_candidate_names('Draft'))
@@ -163,7 +161,7 @@ class TestPredictDispatch:
 
     def test_generic_flow_prompt_used_when_no_hint(self):
         from backend.prompts.for_experts import build_flow_prompt
-        prompt = build_flow_prompt('publish it', '', 'history', 'catalog')
+        prompt = build_flow_prompt('publish it', '', 'history', 'ontology')
         assert 'across ALL' in prompt
 
 
@@ -178,10 +176,10 @@ class TestNLUSpecificRegressions:
     test_nlu_module.py — these test specific historical bugs, not module contracts."""
 
     def test_all_action_dax_codes_resolve(self):
-        """FLOW_CATALOG dax codes must round-trip through dax2flow. Catches catalog
+        """FLOW_ONTOLOGY dax codes must round-trip through dax2flow. Catches ontology
         drift where a flow's dax doesn't match the dax2flow lookup."""
         from utils.helper import dax2flow
-        for flow_name, cat in FLOW_CATALOG.items():
+        for flow_name, cat in FLOW_ONTOLOGY.items():
             dax = cat['dax']
             resolved = dax2flow(dax)
             assert resolved == flow_name, \

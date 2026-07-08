@@ -58,7 +58,7 @@ Spec: `modules/nlu.md`; `components/{dialogue_state,ambiguity_handler,session_sc
 
 **Target (`nlu.md:108-138`):** coarse intent is **PEX's System-1** in-reasoning guess (no extra model call);
 **NLU flow-detection is the authoritative write** — detecting a flow implicitly classifies the intent via
-`FLOW_CATALOG[flow]['intent']`. PEX's hint *narrows* detection; it never writes belief.
+`FLOW_ONTOLOGY[flow]['intent']`. PEX's hint *narrows* detection; it never writes belief.
 
 ### 3.1.1 — Stop the automatic pre-pass; keep `classify_intent` as a callable
 The pre-pass is dropped from the **default** path, but `_classify_intent` is **not deleted** — it stays a
@@ -87,12 +87,12 @@ def predict(self, user_text:str, hint:str='') -> dict:
 def _intent_split(self, detection:dict) -> bool:
     """True when the ranked flows in pred_flows belong to more than one intent — the signal that a
     coarse-intent tie-break is worth a call. Single-round, fixed cost: at most one extra call."""
-    intents = {FLOW_CATALOG[f['flow_name']]['intent'] for f in detection['pred_flows']}
+    intents = {FLOW_ONTOLOGY[f['flow_name']]['intent'] for f in detection['pred_flows']}
     return len(intents) > 1 and detection['confidence'] < self.ambiguity.confidence_min
 ```
 
 `pred_intent` still derives from the detected flow (`_write_belief` `nlu.py:489-500` already sets
-`pred_intent = FLOW_CATALOG[flow]['intent']`; `validate` `nlu.py:138-155` re-asserts it). No separate intent
+`pred_intent = FLOW_ONTOLOGY[flow]['intent']`; `validate` `nlu.py:138-155` re-asserts it). No separate intent
 write remains on the default path.
 
 **Keep** `_classify_intent` (`nlu.py:311-320`), `build_intent_prompt`, and `_intent_schema`. Only the
@@ -124,23 +124,23 @@ def _detect_flow(self, user_text:str, hint:str='') -> dict:
     ...
 
 def _flow_candidate_names(self, hint:str='') -> list[str]:
-    if not hint:                                   # no hint → full catalog (or active flow's intent)
+    if not hint:                                   # no hint → full ontology (or active flow's intent)
         active = self.flow_stack.get_flow()
         if active:
             return self._intent_candidates(active.intent)
-        return list(FLOW_CATALOG)
+        return list(FLOW_ONTOLOGY)
     return self._intent_candidates(hint)           # hint set → that intent's flows + edge flows
 
 def _intent_candidates(self, intent:str) -> list[str]:
     edges = _get_edge_flows_for_intent(intent)
-    return [n for n, cat in FLOW_CATALOG.items() if cat['intent'] == intent or n in edges]
+    return [n for n, cat in FLOW_ONTOLOGY.items() if cat['intent'] == intent or n in edges]
 ```
 
 PEX passes the hint when it re-invokes detection (e.g. a continuing turn where PEX already has a coarse
 sense). The Assistant threads it through `understand(op='think', hint=...)` → `think` → `predict(text, hint)`.
 
 **Sequencing nuance (prove via eval).** NLU's pre-hook `think` runs *before* PEX, so the first-pass detection
-has `hint=''` — full-catalog detection, which is the authoritative write. The hint only matters on
+has `hint=''` — full-ontology detection, which is the authoritative write. The hint only matters on
 **re-detection** (PEX dissatisfied, or a parallel refine). Confirm the pre-hook still produces a usable
 authoritative write and the hint only sharpens re-routes: **run all 10 trajectories before/after; require no
 trajectory-score regression past threshold.**

@@ -25,7 +25,7 @@ class AmbiguityLevel(str, Enum):
     CONFIRMATION = 'confirmation'
 
 
-DACT_CATALOG = {
+DACT_ONTOLOGY = {
     'chat':     {'hex': '0', 'pos': 'noun'},
     'find':     {'hex': '1', 'pos': 'verb'},
     'outline':  {'hex': '2', 'pos': 'verb'},
@@ -45,7 +45,7 @@ DACT_CATALOG = {
 }
 
 
-FLOW_CATALOG = {
+FLOW_ONTOLOGY = {
 
     # ── Research (4 flows) ─────────────────────────────────
 

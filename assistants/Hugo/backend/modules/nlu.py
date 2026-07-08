@@ -4,11 +4,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 log = logging.getLogger(__name__)
 
 from backend.components.flow_stack import flow_classes
-from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt, render_flow_catalog
+from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt, render_flow_ontology
 from backend.prompts.for_nlu import build_slot_filling_prompt
 from backend.prompts.for_contemplate import build_contemplate_prompt as _build_contemplate_prompt_text
 from backend.utilities.services import PostService
-from schemas.ontology import FLOW_CATALOG, Intent
+from schemas.ontology import FLOW_ONTOLOGY, Intent
 from utils.helper import _DAX_LOOKUP, edge_flows_for, dax2flow, flow2dax
 
 
@@ -21,7 +21,7 @@ _ENSEMBLE_VOTERS = [
 
 def _get_edge_flows_for_intent(intent:str) -> set[str]:
     edge = set()
-    for name, cat in FLOW_CATALOG.items():
+    for name, cat in FLOW_ONTOLOGY.items():
         if cat['intent'] == intent:
             for ef in cat.get('edge_flows', []):
                 edge.add(ef)
@@ -137,7 +137,7 @@ class NLU:
                                   [{'flow_name': flow_name, 'confidence': 0.99, 'votes': 1}], flow)
 
     def validate(self, state):
-        cat = FLOW_CATALOG.get(state.flow_name(string=True))
+        cat = FLOW_ONTOLOGY.get(state.flow_name(string=True))
         if not cat:
             state.pred_intent = 'Converse'
             state.pred_flow = flow2dax('chat')
@@ -145,9 +145,9 @@ class NLU:
             state.confidence = 0.3
             return state
 
-        catalog_intent = cat['intent']
-        if state.pred_intent != catalog_intent:
-            state.pred_intent = catalog_intent
+        ontology_intent = cat['intent']
+        if state.pred_intent != ontology_intent:
+            state.pred_intent = ontology_intent
 
         flow = self.flow_stack.find_by_name(state.flow_name(string=True))
         if flow:
@@ -274,15 +274,15 @@ class NLU:
         the one case a coarse-intent tie-break is worth a call. Under D1-A the span clause is almost
         always true, so the confidence clause is the real trigger. At most one extra classify + one
         extra detect per turn."""
-        intents = {FLOW_CATALOG[f['flow_name']]['intent'] for f in detection['pred_flows']}
+        intents = {FLOW_ONTOLOGY[f['flow_name']]['intent'] for f in detection['pred_flows']}
         return len(intents) > 1 and detection['confidence'] < self.ambiguity.confidence_min
 
     def _detect_flow_prompt(self, user_text:str, hint:str, convo_history:str) -> str:
         candidate_names = self._flow_candidate_names(hint)
-        catalog = render_flow_catalog(candidate_names, FLOW_CATALOG, flow_classes)
+        ontology = render_flow_ontology(candidate_names, FLOW_ONTOLOGY, flow_classes)
         active_post = self._active_post_dict()
         return build_flow_prompt(user_text, hint, convo_history,
-                                 catalog, active_post=active_post)
+                                 ontology, active_post=active_post)
 
     def _active_post_dict(self) -> dict | None:
         state = self.world.current_state()
@@ -308,7 +308,7 @@ class NLU:
                              candidates:list[str], convo_history:str) -> str:
         candidate_lines = []
         for name in candidates:
-            cat = FLOW_CATALOG.get(name, {})
+            cat = FLOW_ONTOLOGY.get(name, {})
             candidate_lines.append(f'- {name}: {cat.get("description", "")}')
         candidates_text = '\n'.join(candidate_lines)
         return _build_contemplate_prompt_text(
@@ -358,7 +358,7 @@ class NLU:
             ]
             for future in as_completed(futures):
                 result = future.result()
-                if result and result.get('flow_name') in FLOW_CATALOG:
+                if result and result.get('flow_name') in FLOW_ONTOLOGY:
                     votes.append(result)
 
         if not votes:
@@ -371,9 +371,9 @@ class NLU:
 
     def _flow_candidate_names(self, hint:str='') -> list[str]:
         if not hint:
-            return list(FLOW_CATALOG)
+            return list(FLOW_ONTOLOGY)
         edges = _get_edge_flows_for_intent(hint)
-        return [name for name, cat in FLOW_CATALOG.items() if cat['intent'] == hint or name in edges]
+        return [name for name, cat in FLOW_ONTOLOGY.items() if cat['intent'] == hint or name in edges]
 
     def _fill_slots(self, flow, payload:dict={}):
         last_turn = self.world.context.last_user_turn
@@ -473,7 +473,7 @@ class NLU:
         try:
             parsed = self.engineer(prompt, 'contemplate', max_tokens=512,
                                    schema=_flow_detection_schema(candidates))
-            if parsed['flow_name'] in FLOW_CATALOG:
+            if parsed['flow_name'] in FLOW_ONTOLOGY:
                 return {'flow_name': parsed['flow_name'], 'confidence': float(parsed['confidence'])}
         except Exception as ecp:
             log.warning('contemplate routing failed: %s', ecp)
@@ -508,7 +508,7 @@ class NLU:
         truth for predictions. Mutates current_state; never inserts a new per-turn state and
         never pushes a flow (PEX stages and activates)."""
         state = self.world.current_state()
-        cat = FLOW_CATALOG.get(flow_name, {})
+        cat = FLOW_ONTOLOGY.get(flow_name, {})
         state.pred_intent = cat.get('intent', Intent.CONVERSE)
         state.pred_flow = flow2dax(flow_name)
         state.confidence = confidence

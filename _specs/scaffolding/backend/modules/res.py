@@ -8,7 +8,7 @@ from backend.components.dialogue_state import DialogueState
 from backend.components.task_artifact import TaskArtifact
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
-from schemas.ontology import FLOW_CATALOG, Intent
+from schemas.ontology import FLOW_ONTOLOGY, Intent
 
 if TYPE_CHECKING:
     from backend.components.world import World
@@ -134,7 +134,7 @@ class RES:
             return None
 
         flow_name = state.flow_name
-        flow_info = FLOW_CATALOG.get(flow_name, {})
+        flow_info = FLOW_ONTOLOGY.get(flow_name, {})
         output_type = flow_info.get('output', 'card')
 
         template_data = self.engineer.get_template(flow_name, state.intent)

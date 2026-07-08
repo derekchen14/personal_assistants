@@ -5,13 +5,13 @@ Defines:
   - Intent         — top-level intent categories (universal + domain-specific)
   - FlowLifecycle  — states a flow moves through on the stack
   - AmbiguityLevel — how specific a user's intent is
-  - DACT_CATALOG   — all 16 dialogue act token primitives (hex 0–F)
-  - FLOW_CATALOG   — one entry per flow: dax, intent, slots, output, edges
+  - DACT_ONTOLOGY   — all 16 dialogue act token primitives (hex 0–F)
+  - FLOW_ONTOLOGY   — one entry per flow: dax, intent, slots, output, edges
   - KEY_ENTITIES   — the domain's primary grounding entities (domain-specific)
 
 DACT primitive system:
   Every flow has a DAX code: a 3-hex-digit string like '{1AD}'.
-  Each digit is one primitive from DACT_CATALOG.  The code encodes what the
+  Each digit is one primitive from DACT_ONTOLOGY.  The code encodes what the
   flow DOES (verb) and what it ACTS ON (object/modifier).  Primitives compose
   semantically — '{5BD}' means insert(5) + part(B) + multiple(D).  Never assign
   arbitrary codes; derive them from the semantic composition.
@@ -79,7 +79,7 @@ class AmbiguityLevel(str, Enum):
     CONFIRMATION = 'confirmation'
 
 
-# ── DACT catalog — all 16 primitives ─────────────────────────────────────────
+# ── DACT ontology — all 16 primitives ─────────────────────────────────────────
 #
 # Primitives 0–9 are VERB primitives (what the flow does).
 # Primitives A–F are NOUN/MODIFIER primitives (what it acts on or how).
@@ -93,7 +93,7 @@ class AmbiguityLevel(str, Enum):
 # specific meanings.  For example, B = 'section' in Hugo but B = 'row' in Dana.
 # The label here is the generic name; document domain overrides in domain.yaml.
 
-DACT_CATALOG = {
+DACT_ONTOLOGY = {
     # ── Verb primitives ─────────────────────────────────────────────────
     '0': {
         'label': 'chat',
@@ -184,11 +184,11 @@ DACT_CATALOG = {
 }
 
 
-# ── Flow catalog ──────────────────────────────────────────────────────────────
+# ── Flow ontology ──────────────────────────────────────────────────────────────
 #
-# FLOW_CATALOG is the authoritative reference for every flow in the domain.
+# FLOW_ONTOLOGY is the authoritative reference for every flow in the domain.
 # The actual flow class lives in backend/components/flow_stack/flows.py.
-# This catalog is used for documentation, DAX validation, and flow discovery.
+# This ontology is used for documentation, DAX validation, and flow discovery.
 #
 # Required fields per entry:
 #   dax          — 3-hex DAX code, must be unique across the domain
@@ -199,7 +199,7 @@ DACT_CATALOG = {
 #   edge_flows   — list of flows that naturally follow this one (for Plan chains)
 #   policy_path  — dotted module path to the policy handler
 
-FLOW_CATALOG = {
+FLOW_ONTOLOGY = {
 
     # ── Converse ──────────────────────────────────────────────────────────
 

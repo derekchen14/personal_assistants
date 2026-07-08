@@ -5,7 +5,7 @@ Each flow class:
   - Inherits from its domain parent (Intent1ParentFlow, etc.)
   - Sets flow_type (must match the key in flow_classes in __init__.py)
   - Sets dax (3-hex DAX code, unique per domain)
-  - Sets goal (one-line description matching FLOW_CATALOG entry)
+  - Sets goal (one-line description matching FLOW_ONTOLOGY entry)
   - Configures self.slots (zero or more slot instances)
   - Lists self.tools (tool names available for policy execution)
 

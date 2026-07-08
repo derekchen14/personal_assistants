@@ -41,7 +41,7 @@ class BaseFlow(object):
 
     Every flow class in flows.py inherits from a domain parent which inherits
     from BaseFlow.  The flow_type and parent_type strings must match the
-    FLOW_CATALOG keys in ontology.py.
+    FLOW_ONTOLOGY keys in ontology.py.
     """
 
     def __init__(self):

@@ -1,6 +1,6 @@
 # Phase 2 — Flow Selection
 
-Design the agent's compositional dact grammar and define all flows. This phase populates the flow catalog in `ontology.py` — the vocabulary the agent uses to understand and act on user requests.
+Design the agent's compositional dact grammar and define all flows. This phase populates the flow ontology in `ontology.py` — the vocabulary the agent uses to understand and act on user requests.
 
 ## Context
 
@@ -8,7 +8,7 @@ Flow selection is the most consequential design phase. Every flow becomes a poli
 
 **Prerequisites**: Phase 1 complete — intents, key entities, persona defined. `ontology.py` stub exists with Intent enum.
 
-**Outputs**: Fully populated `ontology.py` with flow catalog (target 48 flows), seed data file, helper utilities.
+**Outputs**: Fully populated `ontology.py` with flow ontology (target 48 flows), seed data file, helper utilities.
 
 **Spec references**: [flow_selection.md](../utilities/flow_selection.md), [dialogue_state.md § Predicted State](../components/dialogue_state.md), [dialogue_state.md § Slot-Filling](../components/dialogue_state.md)
 
@@ -63,7 +63,7 @@ Combine 2–3 core dacts to form composite flows. The dax code is the sorted hex
 - Draft: 3 flows per intent (21 total)
 - v1: 32 flows (good starting point)
 - Full: 48 flows (16 below 64 max, leaving room for expansion)
-- Distribution: 5–10 flows per intent in the full catalog (minimum 5, target 7)
+- Distribution: 5–10 flows per intent in the full ontology (minimum 5, target 7)
 
 **Beam search expansion process**:
 1. Start with 21 initial flows (3 per intent)
@@ -103,7 +103,7 @@ Combine 2–3 core dacts to form composite flows. The dax code is the sorted hex
 
 ### Iteration Lessons from Dana & Hugo
 
-The flow catalog is never right on the first pass. Below are patterns observed across two full domain builds (Data Analysis, Blogging), organized by the round of iteration in which they emerged. Use these to shortcut future builds.
+The flow ontology is never right on the first pass. Below are patterns observed across two full domain builds (Data Analysis, Blogging), organized by the round of iteration in which they emerged. Use these to shortcut future builds.
 
 **Round 1 — Establish cross-domain patterns first**
 
@@ -224,7 +224,7 @@ Each flow belongs to exactly one intent. Assignment rules:
 - Universal verbs (insert/update/delete) take standard intent unless a domain verb overrides
 - Nouns and adjectives specialize but don't override
 
-**Balance check**: Each intent should have 5–10 flows in the full 48-flow catalog (minimum 5, target 7).
+**Balance check**: Each intent should have 5–10 flows in the full 48-flow ontology (minimum 5, target 7).
 
 ### Step 4 — Select Edge Flows
 
@@ -281,10 +281,10 @@ Plus 4 domain-specific types: 2 common options (ProbabilitySlot, ScoreSlot) + 2 
 
 ### Step 6 — Populate Ontology and Seed Data
 
-Update `ontology.py` with the full flow catalog:
+Update `ontology.py` with the full flow ontology:
 
 ```python
-FLOW_CATALOG = {
+FLOW_ONTOLOGY = {
     'browse': {
         'dax': '{02A}',
         'intent': Intent.READ,          # browse is a read-type flow; rename to the domain's read intent
@@ -320,7 +320,7 @@ Create `utils/helper.py` with:
 
 | Action | File | Description |
 |---|---|---|
-| Modify | `<domain>/schemas/ontology.py` | Full flow catalog, slot type hierarchy, type hierarchy |
+| Modify | `<domain>/schemas/ontology.py` | Full flow ontology, slot type hierarchy, type hierarchy |
 | Create | `<domain>/database/seed_data.json` | Intents, dialogue acts, flow definitions |
 | Create | `<domain>/utils/helper.py` | dax2dact, flow2dax, entity matching, serialization |
 
@@ -341,7 +341,7 @@ Create `utils/helper.py` with:
 - [ ] Plan flows produce `list` output
 - [ ] Delete flows produce `confirmation` output
 - [ ] 1–3 edge flows selected per flow
-- [ ] `FLOW_CATALOG` in `ontology.py` has all 48 entries
+- [ ] `FLOW_ONTOLOGY` in `ontology.py` has all 48 entries
 - [ ] `seed_data.json` has all intents and flows
 - [ ] `helper.py` has dax2dact, flow2dax, and utility functions
 - [ ] 16 slot types defined (12 universal + 4 domain-specific)

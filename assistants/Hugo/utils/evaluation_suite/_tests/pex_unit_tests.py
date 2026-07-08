@@ -24,7 +24,7 @@ from backend.components.prompt_engineer import PromptEngineer
 from backend.components.session_scratchpad import SessionScratchpad
 from backend.prompts.for_orchestrator import build_orchestrator_prompt
 from schemas.config import load_config
-from schemas.ontology import FLOW_CATALOG
+from schemas.ontology import FLOW_ONTOLOGY
 
 _HOT_PATH_TOOLS = ('read_state', 'write_state', 'activate_flow', 'understand',
                    'append_to_scratchpad', 'store_preference', 'read_scratchpad')
@@ -410,12 +410,12 @@ class TestOrchestratorPrompt:
 
     def test_three_tier_sections_present(self, prompt_inputs):
         prompt = self._build(prompt_inputs)
-        for tag in ('persona', 'intents', 'tool_policy', 'workflow', 'flow_catalog',
+        for tag in ('persona', 'intents', 'tool_policy', 'workflow', 'flow_ontology',
                     'outline_levels', 'preferences', 'session'):
             assert f'<{tag}>' in prompt and f'</{tag}>' in prompt
         assert 'Session: conversation_id=conv-42 | user=writer | date=2026-06-11' in prompt
         assert '10. **Release and syndicate**' in prompt  # README workflow ported
-        assert f'## Flow Catalog ({len(FLOW_CATALOG)} flows)' in prompt
+        assert f'## Flow Ontology ({len(FLOW_ONTOLOGY)} flows)' in prompt
 
 
 # ═══════════════════════════════════════════════════════════════════

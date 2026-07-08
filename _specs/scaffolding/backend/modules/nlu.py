@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from backend.components.dialogue_state import DialogueState
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.prompt_engineer import PromptEngineer
-from schemas.ontology import FLOW_CATALOG, Intent
+from schemas.ontology import FLOW_ONTOLOGY, Intent
 
 if TYPE_CHECKING:
     from backend.components.world import World
@@ -23,7 +23,7 @@ _SHORTCUTS: list[tuple[re.Pattern, str]] = [
 ]
 
 _DAX_LOOKUP: dict[str, str] = {}
-for _fn, _flow in FLOW_CATALOG.items():
+for _fn, _flow in FLOW_ONTOLOGY.items():
     _dax_raw = _flow['dax'].strip('{}').upper()
     _DAX_LOOKUP[_dax_raw] = _fn
 
@@ -79,7 +79,7 @@ class NLU:
             dax_code = match.group(1).upper()
             flow_name = _DAX_LOOKUP.get(dax_code)
             if flow_name:
-                flow = FLOW_CATALOG[flow_name]
+                flow = FLOW_ONTOLOGY[flow_name]
                 return self._build_state(
                     intent=flow['intent'].value,
                     dax=flow['dax'],
@@ -90,7 +90,7 @@ class NLU:
 
         for pattern, flow_name in _SHORTCUTS:
             if pattern.search(text):
-                flow = FLOW_CATALOG.get(flow_name)
+                flow = FLOW_ONTOLOGY.get(flow_name)
                 if flow:
                     return self._build_state(
                         intent=flow['intent'].value,
@@ -124,7 +124,7 @@ class NLU:
         detection = self._check_routing(user_text, failed_flow, failure_reason)
         flow_name = detection['flow_name']
 
-        flow = FLOW_CATALOG.get(flow_name, {})
+        flow = FLOW_ONTOLOGY.get(flow_name, {})
         flow_intent = flow.get('intent', Intent.CONVERSE).value
 
         if flow_intent not in ('Converse', 'Plan') and flow.get('slots'):
@@ -149,7 +149,7 @@ class NLU:
         )
 
     def validate(self, state: DialogueState) -> DialogueState:
-        flow = FLOW_CATALOG.get(state.flow_name)
+        flow = FLOW_ONTOLOGY.get(state.flow_name)
         if not flow:
             state.intent = 'Converse'
             state.dax = '{000}'
@@ -158,9 +158,9 @@ class NLU:
             state.slots = {}
             return state
 
-        catalog_intent = flow['intent'].value
-        if state.intent != catalog_intent:
-            state.intent = catalog_intent
+        ontology_intent = flow['intent'].value
+        if state.intent != ontology_intent:
+            state.intent = ontology_intent
 
         state.dax = flow['dax']
 
@@ -252,7 +252,7 @@ class NLU:
         values: dict[str, list[str]] = {}
         # Domain-specific: add static valid values per assistant
 
-        for flow_info in FLOW_CATALOG.values():
+        for flow_info in FLOW_ONTOLOGY.values():
             for slot_info in flow_info.get('slots', {}).values():
                 slot_type = slot_info.get('type', 'FreeTextSlot')
                 if slot_type == 'CategorySlot' and 'options' in slot_info:
@@ -269,7 +269,7 @@ class NLU:
         detection = self._detect_flow(user_text, intent)
         flow_name = detection['flow_name']
 
-        flow = FLOW_CATALOG.get(flow_name, {})
+        flow = FLOW_ONTOLOGY.get(flow_name, {})
         flow_intent = flow.get('intent', Intent.CONVERSE).value
         skip_slots = flow_intent in ('Converse', 'Plan')
 
@@ -317,7 +317,7 @@ class NLU:
             futures = [pool.submit(_call_voter) for _ in range(_NUM_VOTERS)]
             for future in as_completed(futures):
                 result = future.result()
-                if result and result.get('flow_name') in FLOW_CATALOG:
+                if result and result.get('flow_name') in FLOW_ONTOLOGY:
                     votes.append(result)
 
         if not votes:
@@ -351,7 +351,7 @@ class NLU:
         )
         response = self.engineer.call(system, messages, tier='high', max_tokens=512)
         parsed = self._parse_json(self._extract_text(response))
-        if parsed and parsed.get('flow_name') in FLOW_CATALOG:
+        if parsed and parsed.get('flow_name') in FLOW_ONTOLOGY:
             return {
                 'flow_name': parsed['flow_name'],
                 'confidence': float(parsed.get('confidence', 0.5)),
@@ -362,7 +362,7 @@ class NLU:
     def _get_contemplate_candidates(self, failed_flow: str | None) -> list[str]:
         candidates = set()
         if failed_flow:
-            flow = FLOW_CATALOG.get(failed_flow, {})
+            flow = FLOW_ONTOLOGY.get(failed_flow, {})
             for ef in flow.get('edge_flows', []):
                 candidates.add(ef)
         active = self.world.flow_stack.get_active_flow()
@@ -375,7 +375,7 @@ class NLU:
     def _process_action(self, user_text: str) -> dict:
         active = self.world.flow_stack.get_active_flow()
         if active:
-            flow = FLOW_CATALOG.get(active.flow_name, {})
+            flow = FLOW_ONTOLOGY.get(active.flow_name, {})
             return {
                 'intent': flow.get('intent', Intent.CONVERSE).value,
                 'dax': flow.get('dax', '{000}'),
@@ -442,7 +442,7 @@ class NLU:
         best_vote = max(best_votes, key=lambda v: float(v.get('confidence', 0)))
         slots = best_vote.get('slots', {})
 
-        flow = FLOW_CATALOG[best_flow]
+        flow = FLOW_ONTOLOGY[best_flow]
         return {
             'intent': flow['intent'].value,
             'dax': flow['dax'],
@@ -452,7 +452,7 @@ class NLU:
         }
 
     def _resolve_gold_dax(self, gold_dax: str, user_text: str) -> DialogueState:
-        for flow_name, flow in FLOW_CATALOG.items():
+        for flow_name, flow in FLOW_ONTOLOGY.items():
             if flow['dax'] == gold_dax:
                 return self._build_state(intent=flow['intent'].value, dax=gold_dax,
                     flow_name=flow_name, confidence=0.99

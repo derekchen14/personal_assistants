@@ -8,7 +8,7 @@ Every domain assistant starts with a clear scope. An assistant is a **job role**
 
 **Prerequisites**: None — this is the starting phase.
 
-**Outputs**: `ontology.py` (stub with intents and empty flow catalog), `<domain>.yaml` (persona and guardrails), scoping document.
+**Outputs**: `ontology.py` (stub with intents and empty flow ontology), `<domain>.yaml` (persona and guardrails), scoping document.
 
 **Spec references**: [architecture.md](../architecture.md), [flow_selection.md § Agent Scoping](../utilities/flow_selection.md), [configuration.md § Domain Config Schema](../utilities/configuration.md)
 
@@ -147,7 +147,7 @@ Every domain must define both sections in its YAML config. The persona sets the 
 
 ### Step 5 — Create Ontology Stub
 
-Create `ontology.py` with the intent enum and an empty flow catalog. This file will be fully populated in Phase 2.
+Create `ontology.py` with the intent enum and an empty flow ontology. This file will be fully populated in Phase 2.
 
 ```python
 from enum import Enum
@@ -175,9 +175,9 @@ class AmbiguityLevel(str, Enum):
     SPECIFIC = 'specific'
     CONFIRMATION = 'confirmation'
 
-# Flow catalog — populated in Phase 2 (Flow Selection)
+# Flow ontology — populated in Phase 2 (Flow Selection)
 # Each entry: {dact_name: {dax, intent, description, slots, output, edge_flows, policy_path}}
-FLOW_CATALOG = {}
+FLOW_ONTOLOGY = {}
 
 # Key entities for this domain
 KEY_ENTITIES = []  # e.g., ['dataset', 'column', 'chart']
@@ -231,7 +231,7 @@ Also verify that `shared/shared_defaults.yaml` exists with baseline config for a
 
 | Action | File | Description |
 |---|---|---|
-| Create | `<domain>/schemas/ontology.py` | Intent enum, lifecycle states, slot categories, empty flow catalog |
+| Create | `<domain>/schemas/ontology.py` | Intent enum, lifecycle states, slot categories, empty flow ontology |
 | Create | `<domain>/schemas/<domain>.yaml` | Persona, guardrails, key_entities |
 | Create | `shared/shared_defaults.yaml` | Baseline config (if not already present) |
 

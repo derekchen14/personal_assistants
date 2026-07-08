@@ -242,4 +242,4 @@ Before proposing a new tool, grep for the capability here first.
 - `output_for_flow(flow_name) -> str` (:57)
 - `required_slots(flow_name) -> list[str]` (:62)
 
-`FLOW_CATALOG`, `DACT_CATALOG`, `Intent`, `FlowLifecycle`, `AmbiguityLevel` all live in `schemas/ontology.py`.
+`FLOW_ONTOLOGY`, `DACT_ONTOLOGY`, `Intent`, `FlowLifecycle`, `AmbiguityLevel` all live in `schemas/ontology.py`.
