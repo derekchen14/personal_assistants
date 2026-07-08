@@ -39,10 +39,11 @@ _TASK_SUFFIXES = {
 # resolved against ACTIVE_FAMILY. Provider-specific keys are retained for explicit overrides / testing only.
 ACTIVE_FAMILY = 'gemini'
 FAMILY_TIERS = {
-    'claude':   ('claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-7'),
-    'gemini':   ('gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-3.1-pro-preview'),
+    'claude':   ('claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-4-7'),
+    'gemini':   ('gemini-3.1-flash-lite-preview', 'gemini-3.5-flash', 'gemini-3.1-pro-preview'),
     'gpt':      ('gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4'),
     'together': ('Qwen/Qwen3.6-35B-A3B-FP8', 'Qwen/Qwen3.5-397B-A17B', 'moonshotai/Kimi-K2.6'),
+    'typesafe': ('noul', 'score', 'choice'),   # TypeSafe question types stand in for the tier ladder
 }
 
 _low, _med, _high = FAMILY_TIERS[ACTIVE_FAMILY]
