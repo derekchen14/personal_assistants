@@ -2,7 +2,18 @@
 
 Status: **signed off 2026-07-08** — Derek picked D1-A, D2-A, D3-A (the recommendations). Implements
 §3.1 (3.1.1 / 3.1.2 / 3.1.3) of `round_3_nlu.md`. Base commit: `a2445f6` (all line numbers below
-refer to it).
+refer to it). Shipped in `942bb79`.
+
+**Amendments (2026-07-08, after ship):**
+1. **D3-A superseded — the hint now has a real caller.** The `understand` orchestrator tool gained
+   an `intent` parameter and op `'think'`: PEX passes its first-pass intent selection on every
+   consult. `_dispatch_understand` maps it to NLU's hint — Research / Draft / Revise / Publish pass
+   through (they narrow detection); Plan / Clarify / Converse blank out (PEX's guidance offers no
+   real signal there, so NLU detects over the full ontology). The hint threads
+   `understand(..., hint='') → think(..., hint='') → _detect_flow(text, hint)`.
+2. **`predict()` folded into `think()`** (Derek): the detect-first + tie-break logic lives directly
+   in `think`; there is no separate `predict` method. Tests renamed `TestPredictDispatch` →
+   `TestThinkDispatch` and drive `think()` with the fill/repair steps stubbed.
 
 Scope is **only §3.1**. Ambiguity binding (§3.2), the scratchpad contract (§3.3), and the flag
 cleanup (§3.4) are separate sub-rounds and are not touched here.

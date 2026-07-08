@@ -82,30 +82,38 @@ class NLU:
         self.scratchpad = world.scratchpad
         self._posts = PostService()
 
-    def understand(self, op:str, user_text:str='', dax:str|None=None, payload:dict|None=None):
-        """The single NLU entry the Assistant calls. The Assistant picks the op — `react` (a
+    def understand(self, op:str, user_text:str='', dax:str|None=None, payload:dict|None=None,
+                   hint:str=''):
+        """The single NLU entry the Assistant and PEX call. The caller picks the op — `react` (a
         click; the dax names the flow), `think` (an utterance; ensemble detection), or
         `contemplate` (a failed-flow re-route). Each mode detects + fills a TRANSIENT flow and
         writes the detection onto the session state's belief (pred_intent / pred_flows /
-        confidence / pred_slots). NLU never touches the flow stack — PEX stages and activates."""
+        confidence / pred_slots). `hint` is PEX's first-pass intent selection: a domain intent
+        narrows think's candidates; blank (Plan/Clarify/Converse carry no real signal) means
+        detect over the full ontology. NLU never touches the flow stack — PEX stages and
+        activates."""
         if op == 'react':
             state = self.react(dax, payload or {})
         elif op == 'contemplate':
             state = self.contemplate(user_text)
         else:
-            state = self.think(user_text, payload or {})
+            state = self.think(user_text, payload or {}, hint)
         return self.validate(state)
 
     # ── Public operational modes ──────────────────────────────────────
 
-    def think(self, user_text:str, payload:dict={}):
-        result = self.predict(user_text)
-        flow_name = result['flow_name']
-
+    def think(self, user_text:str, payload:dict={}, hint:str=''):
+        detection = self._detect_flow(user_text, hint)      # hint='' on the pre-hook first pass
+        if self._intent_split(detection):                   # low-confidence AND spans >1 intent
+            intent = self._classify_intent(user_text)       # the retained tie-break call
+            detection = self._detect_flow(user_text, hint=intent)
+        
+        flow_name = detection['flow_name']
         flow = flow_classes[flow_name]()            # transient — detection writes belief, no push
         self._fill_slots(flow, payload)
         self._repair_entities(self.world.current_state(), flow)
-        state = self._write_belief(flow_name, result['confidence'], result['pred_flows'], flow)
+        predicted_flows = detection.get('pred_flows', [])
+        state = self._write_belief(flow_name, detection['confidence'], predicted_flows, flow)
 
         if self.ambiguity.needs_clarification(state.confidence):
             self.ambiguity.declare(
@@ -257,17 +265,6 @@ class NLU:
         return values
 
     # ── Prediction ────────────────────────────────────────────────────
-
-    def predict(self, user_text:str, hint:str='') -> dict:
-        detection = self._detect_flow(user_text, hint)      # hint='' on the pre-hook first pass
-        if self._intent_split(detection):                   # low-confidence AND spans >1 intent
-            intent = self._classify_intent(user_text)       # the retained tie-break call
-            detection = self._detect_flow(user_text, hint=intent)
-        return {
-            'flow_name': detection['flow_name'],
-            'confidence': detection['confidence'],
-            'pred_flows': detection.get('pred_flows', []),
-        }
 
     def _intent_split(self, detection:dict) -> bool:
         """True only when the ranked flows span >1 intent AND top-1 is under the confidence floor —

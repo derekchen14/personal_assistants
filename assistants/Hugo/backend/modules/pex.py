@@ -712,12 +712,19 @@ class PEX:
         return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
 
     def _dispatch_understand(self, params:dict) -> dict:
-        """Re-consult NLU mid-turn. The orchestrator calls this with op='contemplate' when a flow it
-        dispatched stalled on a missing entity (a partial ambiguity): NLU re-routes over the failed
-        flow and rewrites belief. The stale ambiguity is cleared (the re-route supersedes it) and the
-        corrected detection is returned so the orchestrator can stack the right flow."""
+        """Re-consult NLU mid-turn. op='think' re-runs detection; op='contemplate' re-routes over a
+        flow that stalled on a missing entity (a partial ambiguity) and rewrites belief. The
+        orchestrator passes its first-pass `intent` selection: a domain intent (Research / Draft /
+        Revise / Publish) becomes NLU's candidate-narrowing hint; Plan / Clarify / Converse carry no
+        real signal, so the hint stays blank and NLU detects over the full ontology. The stale
+        ambiguity is cleared (the re-consult supersedes it) and the corrected detection is returned
+        so the orchestrator can stack the right flow."""
         self._check_nlu()
-        state = self.nlu.understand(op=params['op'], user_text=self.world.context.last_user_text)
+        hint = params.get('intent', '')
+        if hint not in (Intent.RESEARCH, Intent.DRAFT, Intent.REVISE, Intent.PUBLISH):
+            hint = ''
+        state = self.nlu.understand(op=params['op'], user_text=self.world.context.last_user_text,
+                                    hint=hint)
         self.ambiguity.resolve()
         top = state.pred_flows[0]
         return {'_success': True, 'intent': state.pred_intent,
@@ -1027,7 +1034,7 @@ class PEX:
                     'type': 'object',
                     'properties': {
                         'flow_name': {'type': 'string',
-                                      'description': 'catalog name of the flow to run'},
+                                      'description': 'ontology name of the flow to run'},
                     },
                     'required': ['flow_name'],
                 },
@@ -1035,18 +1042,25 @@ class PEX:
             {
                 'name': 'understand',
                 'description': (
-                    "Re-consult NLU when a flow you dispatched stalled on a missing entity (a "
-                    "`partial` ambiguity — it needs a post/section that isn't grounded). Call with "
-                    "op='contemplate': NLU re-routes over the failed flow and returns a corrected "
-                    "`flow_name`. Use it BEFORE relaying a partial-ambiguity clarification — the "
-                    "stall often means the first flow pick was wrong (e.g. `refine`/`audit` on a "
-                    "post that doesn't exist yet, when the user is starting a fresh post → "
-                    "`outline`). Stack the returned flow and run it; only relay a clarification if "
-                    "the re-route still cannot proceed."
+                    "Re-consult NLU. op='think' re-runs flow detection over the latest turn; "
+                    "op='contemplate' re-routes when a flow you dispatched stalled on a missing "
+                    "entity (a `partial` ambiguity — it needs a post/section that isn't grounded) "
+                    "and returns a corrected `flow_name`. Use contemplate BEFORE relaying a "
+                    "partial-ambiguity clarification — the stall often means the first flow pick "
+                    "was wrong (e.g. `refine`/`audit` on a post that doesn't exist yet, when the "
+                    "user is starting a fresh post → `outline`). Stack the returned flow and run "
+                    "it; only relay a clarification if the re-route still cannot proceed. Always "
+                    "pass `intent`: your current intent selection. Research/Draft/Revise/Publish "
+                    "narrow NLU's detection; Plan/Clarify/Converse offer no real signal and are "
+                    "ignored (NLU searches the full flow ontology)."
                 ),
                 'input_schema': {
                     'type': 'object',
-                    'properties': {'op': {'type': 'string', 'enum': ['contemplate']}},
+                    'properties': {
+                        'op': {'type': 'string', 'enum': ['think', 'contemplate']},
+                        'intent': {'type': 'string',
+                                   'description': 'your first-pass intent selection'},
+                    },
                     'required': ['op'],
                 },
             },

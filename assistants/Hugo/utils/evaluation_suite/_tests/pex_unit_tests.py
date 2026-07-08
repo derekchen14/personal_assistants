@@ -152,6 +152,21 @@ class TestOrchestratorDispatch:
         result = pex._dispatch_tool('read_scratchpad', {'writer': 'orchestrator'})
         assert result['entries'] == [{'finding': 'intro is weak', 'writer': 'orchestrator'}]
 
+    def test_understand_domain_intent_becomes_hint(self, mock_agent):
+        """The orchestrator's first-pass intent selection reaches NLU as the hint — but only the
+        four domain intents; Plan/Clarify/Converse carry no real signal and blank out."""
+        pex = mock_agent.pex
+        state = mock_agent.world.current_state()
+        state.pred_intent, state.pred_flows = 'Draft', [{'flow_name': 'outline', 'confidence': 0.9}]
+        pex.nlu = MagicMock()
+        pex.nlu.understand.return_value = state
+        pex._dispatch_tool('understand', {'op': 'think', 'intent': 'Draft'})
+        assert pex.nlu.understand.call_args.kwargs['hint'] == 'Draft'
+        pex._dispatch_tool('understand', {'op': 'think', 'intent': 'Plan'})
+        assert pex.nlu.understand.call_args.kwargs['hint'] == ''
+        pex._dispatch_tool('understand', {'op': 'contemplate'})   # intent omitted → blank
+        assert pex.nlu.understand.call_args.kwargs['hint'] == ''
+
 
 
 

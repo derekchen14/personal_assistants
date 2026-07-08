@@ -116,27 +116,39 @@ def _detection(pairs, confidence):
     return {'flow_name': pairs[0][0], 'confidence': confidence, 'pred_flows': pred_flows}
 
 
-class TestPredictDispatch:
-    """predict() detects first and only pays for a classify + narrowed re-detect on a low-confidence
-    cross-intent tie (§3.1.1). _intent_split is the boolean that governs that escalation."""
+def _stub_think_internals(nlu, detection):
+    """Stub everything think() touches besides detection, so the dispatch logic runs alone."""
+    nlu._detect_flow = MagicMock(**detection)
+    nlu._classify_intent = MagicMock(return_value='Draft')
+    nlu._fill_slots = MagicMock()
+    nlu._repair_entities = MagicMock()
 
-    def test_predict_skips_classify_on_confident_detection(self, nlu):
-        nlu._detect_flow = MagicMock(return_value=_detection([('outline', 0.9)], 0.9))
-        nlu._classify_intent = MagicMock()
-        result = nlu.predict('draft me an outline')
+
+class TestThinkDispatch:
+    """think() detects first and only pays for a classify + narrowed re-detect on a low-confidence
+    cross-intent tie (§3.1.1; predict() was folded into think 2026-07-08). _intent_split is the
+    boolean that governs that escalation; `hint` is PEX's first-pass intent selection."""
+
+    def test_think_skips_classify_on_confident_detection(self, nlu):
+        _stub_think_internals(nlu, {'return_value': _detection([('outline', 0.9)], 0.9)})
+        state = nlu.think('draft me an outline')
         nlu._classify_intent.assert_not_called()
-        assert result['flow_name'] == 'outline'
+        assert state.pred_flows[0]['flow_name'] == 'outline'
 
-    def test_predict_escalates_on_low_conf_cross_intent(self, nlu):
+    def test_think_escalates_on_low_conf_cross_intent(self, nlu):
         low = _detection([('outline', 0.5), ('find', 0.5)], 0.4)
         high = _detection([('compose', 0.8)], 0.8)
-        nlu._detect_flow = MagicMock(side_effect=[low, high])
-        nlu._classify_intent = MagicMock(return_value='Draft')
-        result = nlu.predict('do the thing')
+        _stub_think_internals(nlu, {'side_effect': [low, high]})
+        state = nlu.think('do the thing')
         nlu._classify_intent.assert_called_once()
         assert nlu._detect_flow.call_count == 2
         assert nlu._detect_flow.call_args.kwargs['hint'] == 'Draft'
-        assert result['flow_name'] == 'compose'
+        assert state.pred_flows[0]['flow_name'] == 'compose'
+
+    def test_think_passes_hint_to_detection(self, nlu):
+        _stub_think_internals(nlu, {'return_value': _detection([('rework', 0.9)], 0.9)})
+        nlu.think('polish the intro', hint='Revise')
+        assert nlu._detect_flow.call_args.args == ('polish the intro', 'Revise')
 
     def test_intent_split_true_when_flows_span_intents_and_low_conf(self, nlu):
         assert nlu._intent_split(_detection([('outline', 0.5), ('find', 0.5)], 0.4)) is True
