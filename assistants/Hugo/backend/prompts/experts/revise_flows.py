@@ -14,7 +14,7 @@ User: "revise the whole post — it needs work"
 ## Output
 
 ```json
-{"reasoning": "Major revision needed.", "flow_name": "rework", "confidence": 0.90}
+{"reasoning": "Major revision needed.", "flow_name": "rework"}
 ```
 </positive_example>
 
@@ -25,7 +25,7 @@ User: "edit the second paragraph — tighten the phrasing"
 ## Output
 
 ```json
-{"reasoning": "Sentence-level edit within one paragraph.", "flow_name": "write", "confidence": 0.90}
+{"reasoning": "Sentence-level edit within one paragraph.", "flow_name": "write"}
 ```
 </positive_example>
 
@@ -36,7 +36,7 @@ User: "make the tone more professional"
 ## Output
 
 ```json
-{"reasoning": "Voice and tone shift across the post.", "flow_name": "audit", "confidence": 0.85}
+{"reasoning": "Voice and tone shift across the post.", "flow_name": "audit"}
 ```
 </positive_example>
 
@@ -47,7 +47,7 @@ User: "fill in the placeholder in the intro with a couple of options"
 ## Output
 
 ```json
-{"reasoning": "Generate alternatives for a placeholder gap.", "flow_name": "propose", "confidence": 0.88}
+{"reasoning": "Generate alternatives for a placeholder gap.", "flow_name": "propose"}
 ```
 </positive_example>
 
@@ -58,7 +58,7 @@ User: "The middle three sections keep restating the same idea. Reorganize them s
 ## Output
 
 ```json
-{"reasoning": "Restructuring the argument across several sections is post-level rework, not a single-section edit.", "flow_name": "rework", "confidence": 0.82}
+{"reasoning": "Restructuring the argument across several sections is post-level rework, not a single-section edit.", "flow_name": "rework"}
 ```
 </edge_case>
 
@@ -69,7 +69,7 @@ User: "The opening of the pricing section reads flat. Rework just those couple o
 ## Output
 
 ```json
-{"reasoning": "Despite the word rework, the scope is a few sentences inside one section, so this is a sentence-level edit.", "flow_name": "write", "confidence": 0.80}
+{"reasoning": "Despite the word rework, the scope is a few sentences inside one section, so this is a sentence-level edit.", "flow_name": "write"}
 ```
 </edge_case>'''
 

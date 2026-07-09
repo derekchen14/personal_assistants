@@ -35,34 +35,17 @@ _TASK_SUFFIXES = {
     'clarify': '',
 }
 
-# Single-token provider swap. Callers pass abstract tiers (`low` / `med` / `high`) while the concrete model is
-# resolved against ACTIVE_FAMILY. Provider-specific keys are retained for explicit overrides / testing only.
+# Single-token provider swap. Callers pass an abstract tier (`low` / `med` / `high`) and optionally
+# a family; the concrete model is FAMILY_TIERS[family][tier], with ACTIVE_FAMILY as the default.
 ACTIVE_FAMILY = 'gemini'
 FAMILY_TIERS = {
-    'claude':   ('claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-4-7'),
+    'claude':   ('claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-4-8'),
     'gemini':   ('gemini-3.1-flash-lite-preview', 'gemini-3.5-flash', 'gemini-3.1-pro-preview'),
     'gpt':      ('gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4'),
     'together': ('Qwen/Qwen3.6-35B-A3B-FP8', 'Qwen/Qwen3.5-397B-A17B', 'moonshotai/Kimi-K2.6'),
     'typesafe': ('noul', 'score', 'choice'),   # TypeSafe question types stand in for the tier ladder
 }
-
-_low, _med, _high = FAMILY_TIERS[ACTIVE_FAMILY]
-_MODEL_IDS = {
-    'low': _low, 'med': _med, 'high': _high,
-    # Provider-specific overrides for explicit testing.
-    'flash': 'gemini-3-flash-preview',
-    'pro':   'gemini-3.1-pro-preview',
-    'qwen':  'Qwen/Qwen3.5-397B-A17B',
-    'kimi':  'moonshotai/Kimi-K2.6',
-    'mini':  'gpt-5.4-mini',
-    'gpt':   'gpt-5.4',
-}
-
-_CLAUDE_MODELS    = set()
-_GEMINI_MODELS    = {'flash', 'pro'}
-_TOGETHER_MODELS  = {'qwen', 'kimi'}
-_GPT_MODELS       = {'mini', 'gpt'}
-_TIER_KEYS        = {'low', 'med', 'high'}
+_TIER_IDX = {'low': 0, 'med': 1, 'high': 2}
 
 class PromptEngineer:
 
@@ -107,19 +90,13 @@ class PromptEngineer:
     # ── Model resolution ─────────────────────────────────────────────
 
     @staticmethod
-    def _resolve_model(model:str) -> str:
-        if model not in _MODEL_IDS:
-            raise ValueError(f'Unknown model: {model!r}')
-        return _MODEL_IDS[model]
-
-    @staticmethod
-    def _model_family(model:str) -> str:
-        if model in _TIER_KEYS:       return ACTIVE_FAMILY
-        if model in _CLAUDE_MODELS:   return 'claude'
-        if model in _GEMINI_MODELS:   return 'gemini'
-        if model in _TOGETHER_MODELS: return 'together'
-        if model in _GPT_MODELS:      return 'gpt'
-        raise ValueError(f'Unknown model family for: {model!r}')
+    def _resolve_model(tier:str, family:str='') -> str:
+        family = family or ACTIVE_FAMILY
+        if family not in FAMILY_TIERS:
+            raise ValueError(f'Unknown model family: {family!r}')
+        if tier not in _TIER_IDX:
+            raise ValueError(f'Unknown model tier: {tier!r}')
+        return FAMILY_TIERS[family][_TIER_IDX[tier]]
 
     def _get_temperature(self, task:str='skill') -> float:
         overrides = self._models.get('overrides', {})
@@ -143,13 +120,15 @@ class PromptEngineer:
         suffix = _TASK_SUFFIXES.get(task, '')
         return f'{base}\n\n{suffix}'.strip() if suffix else base
 
-    def __call__(self, prompt:str, task:str='skill', model:str='med', max_tokens:int=1024, schema=None):
+    def __call__(self, prompt:str, task:str='skill', tier:str='med', max_tokens:int=1024,
+                 schema=None, family:str=''):
         messages = [{'role': 'user', 'content': prompt}]
         system = self._system_for_task(task)
-        model_id = self._resolve_model(model)
+        family = family or ACTIVE_FAMILY
+        model_id = self._resolve_model(tier, family)
         log.info('  task=%s  model=%s', task, model_id)
         schema_dict = self._to_json_schema(schema) if schema is not None else None
-        match self._model_family(model):
+        match family:
             case 'claude':
                 response = self._call_claude(system, messages, model_id, max_tokens=max_tokens, schema_dict=schema_dict)
                 text = ''.join(block.text for block in response.content if block.type == 'text')
@@ -178,15 +157,15 @@ class PromptEngineer:
 
     def flow_reply(self, flow, convo_history:str, scratchpad:dict, skill_name:str|None=None,
                    flow_prompt:str|None=None, resolved:dict|None=None, max_tokens:int=1024,
-                   user_text:str|None=None, model:str='med') -> str:
+                   user_text:str|None=None, tier:str='med') -> str:
         """Flow sub-agent turn WITHOUT tool use. Sibling of flow_execute."""
         if flow_prompt is None:
             flow_prompt = self.load_flow_prompt(skill_name or flow.name())
         base_system = build_system(self.persona)
         system = build_flow_system(base_system, flow, flow_prompt)
         messages = list(build_flow_messages(flow, convo_history, user_text, resolved))
-        model_id = self._resolve_model(model)
-        match self._model_family(model):
+        model_id = self._resolve_model(tier)
+        match ACTIVE_FAMILY:
             case 'claude':
                 r = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
                 return ''.join(b.text for b in r.content if b.type == 'text')
@@ -197,10 +176,10 @@ class PromptEngineer:
     def flow_execute(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], tool_dispatcher,
                   skill_name:str|None=None, flow_prompt:str|None=None, resolved:dict|None=None,
                   max_tokens:int=4096, user_text:str|None=None,
-                  model:str='med', schema:dict|None=None) -> tuple[str, list[dict]]:
+                  tier:str='med', schema:dict|None=None) -> tuple[str, list[dict]]:
         """Flow sub-agent turn WITH tool use. Sibling of flow_reply.
 
-        Pass `model='high'` for flows that need stronger reasoning (e.g. brainstorm). Pass
+        Pass `tier='high'` for flows that need stronger reasoning (e.g. brainstorm). Pass
         `schema=<json-schema dict>` to force a schema-constrained final emit — applied as a
         no-tools follow-up call when the tool loop terminates with empty text."""
         if flow_prompt is None:
@@ -208,12 +187,12 @@ class PromptEngineer:
         base_system = build_system(self.persona)
         system = build_flow_system(base_system, flow, flow_prompt)
         msgs = list(build_flow_messages(flow, convo_history, user_text, resolved))
-        model_id = self._resolve_model(model)
+        model_id = self._resolve_model(tier)
 
         extended = flow.name() in self._limits['extended_call_flows']
         max_num_calls = self._limits['extended_tool_calls' if extended else 'max_tool_calls']
 
-        family = self._model_family(model)
+        family = ACTIVE_FAMILY
         adapted = self._adapt_tool_defs(family, tool_defs)
         match family:
             case 'claude':   return self._call_claude_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
@@ -250,13 +229,13 @@ class PromptEngineer:
             msgs.append({'role': 'user', 'content': tool_results})
         return '\n'.join(text_parts), tool_log
 
-    async def stream(self, prompt:str, task:str='skill', model:str='med', max_tokens:int=4096):
+    async def stream(self, prompt:str, task:str='skill', tier:str='med', max_tokens:int=4096):
         """Token streaming. Same routing as __call__, yields text chunks."""
         messages = [{'role': 'user', 'content': prompt}]
         system = self._system_for_task(task)
-        model_id = self._resolve_model(model)
+        model_id = self._resolve_model(tier)
         log.info('  task=%s  model=%s  stream=true', task, model_id)
-        match self._model_family(model):
+        match ACTIVE_FAMILY:
             case 'claude':
                 with self._get_client('anthropic').messages.stream(
                     model=model_id, max_tokens=max_tokens,
@@ -265,7 +244,7 @@ class PromptEngineer:
                     for text in stm.text_stream:
                         yield text
             case _:
-                text = self(prompt, task=task, model=model, max_tokens=max_tokens)
+                text = self(prompt, task=task, tier=tier, max_tokens=max_tokens)
                 yield text
 
     # ── Private provider methods ──────────────────────────────────────

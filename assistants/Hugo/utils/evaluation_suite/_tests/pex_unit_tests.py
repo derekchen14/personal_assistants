@@ -632,22 +632,21 @@ class TestOrchestratorLoop:
         every other flow gets max_tool_calls."""
         captured = []
 
-        def fake_call(system, msgs, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):
+        def fake_call(system, msgs, model_id, tool_defs, tool_dispatcher, max_tokens,
+                      max_num_calls, schema_dict=None):
             captured.append(max_num_calls)
             return ('', [])
-        monkeypatch.setattr(engineer, '_model_family', lambda model: 'claude')
-        monkeypatch.setattr(engineer, '_call_claude_with_tools', fake_call)
+        monkeypatch.setattr(engineer, '_call_gemini_with_tools', fake_call)
         engineer.flow_execute(flow_classes['audit'](), '', {}, [], None, flow_prompt='')
         engineer.flow_execute(flow_classes['find'](), '', {}, [], None, flow_prompt='')
         assert captured == [16, 8]  # extended cap for audit, base cap for find
 
     def test_flow_reply_honors_model_tier(self, engineer, monkeypatch):
-        """flow_reply routes its per-call model tier to _resolve_model, defaulting to 'med'."""
+        """flow_reply routes its per-call tier to _resolve_model, defaulting to 'med'."""
         seen = []
-        monkeypatch.setattr(engineer, '_resolve_model', lambda model: seen.append(model))
-        monkeypatch.setattr(engineer, '_model_family', lambda model: 'gemini')
+        monkeypatch.setattr(engineer, '_resolve_model', lambda tier: seen.append(tier))
         monkeypatch.setattr(engineer, '_call_gemini', lambda *args, **kwargs: '')
-        engineer.flow_reply(flow_classes['find'](), '', {}, flow_prompt='', model='high')
+        engineer.flow_reply(flow_classes['find'](), '', {}, flow_prompt='', tier='high')
         engineer.flow_reply(flow_classes['find'](), '', {}, flow_prompt='')
         assert seen == ['high', 'med']  # explicit tier honored, then the default
 

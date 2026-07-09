@@ -90,39 +90,39 @@ class TestEnsembleVoting:
 
     def test_two_agree_one_dissents(self, nlu):
         votes = [
-            {'flow_name': 'chat', '_model': 'haiku', '_weight': 0.20},
-            {'flow_name': 'brainstorm', '_model': 'sonnet', '_weight': 0.45},
-            {'flow_name': 'brainstorm', '_model': 'gemini_flash', '_weight': 0.35},
+            {'flow_name': 'chat', '_model': 'claude', '_tier': 'med'},
+            {'flow_name': 'brainstorm', '_model': 'gemini', '_tier': 'med'},
+            {'flow_name': 'brainstorm', '_model': 'gpt', '_tier': 'med'},
         ]
         result = nlu._tally_votes(votes)
         assert result['flow_name'] == 'brainstorm'
-        assert result['confidence'] == pytest.approx(0.80)
+        assert result['confidence'] == pytest.approx(0.7)    # majority, not unanimous
 
     def test_graceful_two_voter_degradation(self, nlu):
         votes = [
-            {'flow_name': 'chat', '_model': 'haiku', '_weight': 0.20},
-            {'flow_name': 'chat', '_model': 'sonnet', '_weight': 0.45},
+            {'flow_name': 'chat', '_model': 'claude', '_tier': 'med'},
+            {'flow_name': 'chat', '_model': 'gemini', '_tier': 'med'},
         ]
         result = nlu._tally_votes(votes)
         assert result['flow_name'] == 'chat'
-        assert result['confidence'] == pytest.approx(1.0)
+        assert result['confidence'] == pytest.approx(0.9)    # all remaining voters agree
 
     # -- _detect_flow (mocked LLM) -----------------------------------------
 
     def test_one_voter_fails(self, nlu):
-        def mock_call(prompt, task='skill', model='med', max_tokens=1024, schema=None):
-            if model == 'low':
+        def mock_call(prompt, task='skill', family='', tier='med', max_tokens=1024, schema=None):
+            if family == 'claude':
                 raise RuntimeError('voter down')
-            return {'flow_name': 'chat', 'confidence': 0.8}
+            return {'flow_name': 'chat'}
 
         nlu.engineer = MagicMock(side_effect=mock_call)
         result = nlu._detect_flow('hello', hint='Converse')
 
         assert result['flow_name'] == 'chat'
-        assert result['confidence'] == pytest.approx(1.0)
+        assert result['confidence'] == pytest.approx(0.9)
 
     def test_all_voters_fail(self, nlu):
-        def mock_call(prompt, task='skill', model='med', max_tokens=1024, schema=None):
+        def mock_call(prompt, task='skill', family='', tier='med', max_tokens=1024, schema=None):
             raise RuntimeError('All down')
 
         nlu.engineer = MagicMock(side_effect=mock_call)
@@ -131,17 +131,21 @@ class TestEnsembleVoting:
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == 0.3
 
-    def test_disagreement_weighted(self, nlu):
-        def mock_call(prompt, task='skill', model='med', max_tokens=1024, schema=None):
-            if model == 'low':
-                return {'flow_name': 'chat'}
-            return {'flow_name': 'brainstorm'}
+    def test_split_escalates_to_high_voters(self, nlu):
+        """The three mediums all disagree → round 2 fires and the tally reruns over 5 votes."""
+        flows = {('claude', 'med'): 'chat', ('gemini', 'med'): 'brainstorm',
+                 ('gpt', 'med'): 'outline',
+                 ('gemini', 'high'): 'brainstorm', ('claude', 'high'): 'brainstorm'}
+
+        def mock_call(prompt, task='skill', family='', tier='med', max_tokens=1024, schema=None):
+            return {'flow_name': flows[(family, tier)]}
 
         nlu.engineer = MagicMock(side_effect=mock_call)
         result = nlu._detect_flow('give me ideas', hint='Draft')
 
         assert result['flow_name'] == 'brainstorm'
-        assert result['confidence'] == pytest.approx(0.70)   # med voter alone (D6 two-voter ensemble)
+        # 3 of 5 across 2 intents (Converse/Draft) = 0.7, +0.1 for the high pair agreeing.
+        assert result['confidence'] == pytest.approx(0.8)
 
 
 def _detection(pairs, confidence):

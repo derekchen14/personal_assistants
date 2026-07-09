@@ -13,7 +13,7 @@ User: "publish it"
 ## Output
 
 ```json
-{"reasoning": "Publishing to the primary blog.", "flow_name": "release", "confidence": 0.90}
+{"reasoning": "Publishing to the primary blog.", "flow_name": "release"}
 ```
 </positive_example>
 
@@ -24,7 +24,7 @@ User: "schedule it for next Friday at 9am"
 ## Output
 
 ```json
-{"reasoning": "Scheduling for later.", "flow_name": "schedule", "confidence": 0.90}
+{"reasoning": "Scheduling for later.", "flow_name": "schedule"}
 ```
 </positive_example>
 
@@ -35,7 +35,7 @@ User: "add a citation for that statistic"
 ## Output
 
 ```json
-{"reasoning": "Adding a source citation.", "flow_name": "cite", "confidence": 0.88}
+{"reasoning": "Adding a source citation.", "flow_name": "cite"}
 ```
 </positive_example>
 
@@ -46,7 +46,7 @@ User: "get it ready to go live, but hold it until Monday morning"
 ## Output
 
 ```json
-{"reasoning": "A release timed for the future rather than immediately.", "flow_name": "schedule", "confidence": 0.85}
+{"reasoning": "A release timed for the future rather than immediately.", "flow_name": "schedule"}
 ```
 </edge_case>
 
@@ -57,7 +57,7 @@ User: "the stats in the second section need sources before this goes out"
 ## Output
 
 ```json
-{"reasoning": "Adding citations is the blocking step, even though publishing is the eventual goal.", "flow_name": "cite", "confidence": 0.82}
+{"reasoning": "Adding citations is the blocking step, even though publishing is the eventual goal.", "flow_name": "cite"}
 ```
 </edge_case>
 
@@ -68,7 +68,7 @@ User: "once it's up, also push it out to the newsletter and LinkedIn"
 ## Output
 
 ```json
-{"reasoning": "Cross-posting to secondary channels is part of releasing the post.", "flow_name": "release", "confidence": 0.80}
+{"reasoning": "Cross-posting to secondary channels is part of releasing the post.", "flow_name": "release"}
 ```
 </edge_case>'''
 

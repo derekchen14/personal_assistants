@@ -14,7 +14,7 @@ User: "browse topic ideas"
 ## Output
 
 ```json
-{"reasoning": "Browsing available topics.", "flow_name": "browse", "confidence": 0.90}
+{"reasoning": "Browsing available topics.", "flow_name": "browse"}
 ```
 </positive_example>
 
@@ -25,7 +25,7 @@ User: "find my posts about machine learning"
 ## Output
 
 ```json
-{"reasoning": "Finding and listing posts by keyword.", "flow_name": "find", "confidence": 0.95}
+{"reasoning": "Finding and listing posts by keyword.", "flow_name": "find"}
 ```
 </positive_example>
 
@@ -36,7 +36,7 @@ User: "give me a quick summary of my remote-work draft"
 ## Output
 
 ```json
-{"reasoning": "Summarizing a draft's content.", "flow_name": "summarize", "confidence": 0.90}
+{"reasoning": "Summarizing a draft's content.", "flow_name": "summarize"}
 ```
 </positive_example>
 
@@ -47,7 +47,7 @@ User: "how do these two posts compare structurally?"
 ## Output
 
 ```json
-{"reasoning": "Comparing structure across posts.", "flow_name": "compare", "confidence": 0.90}
+{"reasoning": "Comparing structure across posts.", "flow_name": "compare"}
 ```
 </positive_example>
 
@@ -58,7 +58,7 @@ User: "what actually changed between this draft and yesterday's version?"
 ## Output
 
 ```json
-{"reasoning": "A version-to-version comparison of one post, not a plain summary.", "flow_name": "compare", "confidence": 0.84}
+{"reasoning": "A version-to-version comparison of one post, not a plain summary.", "flow_name": "compare"}
 ```
 </edge_case>
 
@@ -69,7 +69,7 @@ User: "what have I already got saved on API design patterns?"
 ## Output
 
 ```json
-{"reasoning": "Locating existing saved posts by topic, not brainstorming new topics.", "flow_name": "find", "confidence": 0.83}
+{"reasoning": "Locating existing saved posts by topic, not brainstorming new topics.", "flow_name": "find"}
 ```
 </edge_case>'''
 

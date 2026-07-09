@@ -17,8 +17,8 @@ Modules import `build_*_prompt` helpers directly from `backend/prompts/`.
 Use `raw_output` before parsing, with meaningful name (`parsed`, `pred_slots`, `verdict`, `cleaned`, `repaired`, etc.) after.
 
 Special LLM calls:
-2. `flow_reply(flow, convo_history, scratchpad, skill_name=None, flow_prompt=None, resolved=None, max_tokens=1024, user_text=None, model='med') -> str`  →  flow sub-agent turn WITHOUT tools (sibling of flow_execute). Loads `prompts/pex/flows/<skill_name or flow.name()>.md`, builds `[system, user]`, returns LLM text. Pass `flow_prompt=` to override the loaded prompt.
-3. `flow_execute(flow, convo_history, scratchpad, tool_defs, tool_dispatcher, skill_name=None, flow_prompt=None, resolved=None, max_tokens=4096, user_text=None, model='med', schema=None) -> tuple[str, list[dict]]`  →  flow sub-agent turn WITH tools (sibling of flow_reply). Same assembly API; adds `tool_defs` and `tool_dispatcher` for the agentic loop; `schema=` forces a schema-constrained final emit.
+2. `flow_reply(flow, convo_history, scratchpad, skill_name=None, flow_prompt=None, resolved=None, max_tokens=1024, user_text=None, tier='med') -> str`  →  flow sub-agent turn WITHOUT tools (sibling of flow_execute). Loads `prompts/pex/flows/<skill_name or flow.name()>.md`, builds `[system, user]`, returns LLM text. Pass `flow_prompt=` to override the loaded prompt.
+3. `flow_execute(flow, convo_history, scratchpad, tool_defs, tool_dispatcher, skill_name=None, flow_prompt=None, resolved=None, max_tokens=4096, user_text=None, tier='med', schema=None) -> tuple[str, list[dict]]`  →  flow sub-agent turn WITH tools (sibling of flow_reply). Same assembly API; adds `tool_defs` and `tool_dispatcher` for the agentic loop; `schema=` forces a schema-constrained final emit.
 4. `stream(prompt:str, task='skill', model='sonnet', max_tokens=4096)`  →  async token streaming (future scaffolding).
 
 Output parsing (dispatched via `apply_guardrails`):

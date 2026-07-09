@@ -14,7 +14,7 @@ User: "hello"
 ## Output
 
 ```json
-{"reasoning": "Simple greeting.", "flow_name": "chat", "confidence": 0.95}
+{"reasoning": "Simple greeting.", "flow_name": "chat"}
 ```
 </positive_example>
 
@@ -25,7 +25,7 @@ User: "what's a good way to think about audience engagement on technical blogs?"
 ## Output
 
 ```json
-{"reasoning": "Open-ended question about writing.", "flow_name": "chat", "confidence": 0.90}
+{"reasoning": "Open-ended question about writing.", "flow_name": "chat"}
 ```
 </positive_example>
 
@@ -36,7 +36,7 @@ User: "how long should a technical tutorial run before it starts losing people?"
 ## Output
 
 ```json
-{"reasoning": "Open-ended question about writing, not tied to a specific post action.", "flow_name": "chat", "confidence": 0.88}
+{"reasoning": "Open-ended question about writing, not tied to a specific post action.", "flow_name": "chat"}
 ```
 </positive_example>
 
@@ -47,7 +47,7 @@ User: "Not really sure what to do next with any of this. Where would you even st
 ## Output
 
 ```json
-{"reasoning": "Vague reflection with no action verb belongs in conversation, not a specific flow.", "flow_name": "chat", "confidence": 0.80}
+{"reasoning": "Vague reflection with no action verb belongs in conversation, not a specific flow.", "flow_name": "chat"}
 ```
 </edge_case>
 
@@ -58,7 +58,7 @@ User: "I've got a rough idea about API versioning rattling around. Throw out a f
 ## Output
 
 ```json
-{"reasoning": "The casual framing carries a concrete ask for new angles, which is the Draft brainstorm flow.", "flow_name": "brainstorm", "confidence": 0.82}
+{"reasoning": "The casual framing carries a concrete ask for new angles, which is the Draft brainstorm flow.", "flow_name": "brainstorm"}
 ```
 </edge_case>
 
@@ -69,7 +69,7 @@ User: "Didn't I write something about container security last year? Pull it up s
 ## Output
 
 ```json
-{"reasoning": "Locating a past post by topic is the Research find edge flow, not open conversation.", "flow_name": "find", "confidence": 0.82}
+{"reasoning": "Locating a past post by topic is the Research find edge flow, not open conversation.", "flow_name": "find"}
 ```
 </edge_case>'''
 

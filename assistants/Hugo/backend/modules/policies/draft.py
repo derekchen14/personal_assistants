@@ -252,13 +252,13 @@ class DraftPolicy(BasePolicy):
         schema = _BRAINSTORM_SNIPPET_SCHEMA if snippet else _BRAINSTORM_TOPIC_SCHEMA
 
         if flow.slots['topic'].check_if_filled():
-            text, _ = self.llm_execute(flow, state, context, tools, model='high', schema=schema)
+            text, _ = self.llm_execute(flow, state, context, tools, tier='high', schema=schema)
         elif flow.slots['source'].check_if_filled():
             post_id, _, error = self.resolve_source_ids(flow, state, tools)
             if error: return error
             post_title = tools('read_metadata', {'post_id': post_id})['title']
             flow.slots['topic'].add_one(post_title) # use the title as a pseudo-topic
-            text, _ = self.llm_execute(flow, state, context, tools, model='high', schema=schema)
+            text, _ = self.llm_execute(flow, state, context, tools, tier='high', schema=schema)
         else:
             convo_history = context.compile_history(look_back=3)
             prompt = f'{convo_history}\n\nExtract the topic the user wants to brainstorm about. Reply with JSON: {{"topic": "..."}}.'
@@ -269,7 +269,7 @@ class DraftPolicy(BasePolicy):
                 self.ambiguity.recognize('specific', metadata={'missing': 'topic'})
                 return TaskArtifact(flow.name())
             else:
-                text, _ = self.llm_execute(flow, state, context, tools, model='high', schema=schema)
+                text, _ = self.llm_execute(flow, state, context, tools, tier='high', schema=schema)
 
         self.complete_flow(flow, state, context, f'Brainstormed ideas on "{flow.slots["topic"].term}".')
         parsed = self.engineer.apply_guardrails(text)

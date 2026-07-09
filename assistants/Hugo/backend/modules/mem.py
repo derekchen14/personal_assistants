@@ -57,7 +57,7 @@ class MemoryExtensionModule:
         """The auxiliary middle-summarizer — the cheap aux model is PromptEngineer's LOW tier.
         The prompt lives in backend/prompts/for_compressor.py."""
         prompt = build_compression_prompt(middle, previous_summary, budget)
-        return self.engineer(prompt, task='compress', model='low', max_tokens=int(budget * 1.3))
+        return self.engineer(prompt, task='compress', tier='low', max_tokens=int(budget * 1.3))
 
     def recap(self, n_turns:int|None=None, filter:str|None=None) -> str:
         """L1 — recent session events as formatted history."""

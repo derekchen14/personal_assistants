@@ -37,7 +37,7 @@ User: "find my posts about onboarding"
 ## Output
 
 ```json
-{"reasoning": "Locating existing posts.", "flow_name": "find", "confidence": 0.92}
+{"reasoning": "Locating existing posts.", "flow_name": "find"}
 ```
 </positive_example>
 
@@ -48,7 +48,7 @@ User: "outline a post about remote work"
 ## Output
 
 ```json
-{"reasoning": "Generating an outline.", "flow_name": "outline", "confidence": 0.92}
+{"reasoning": "Generating an outline.", "flow_name": "outline"}
 ```
 </positive_example>
 
@@ -59,7 +59,7 @@ User: "restructure the draft, the sections are out of order"
 ## Output
 
 ```json
-{"reasoning": "Reworking the draft structure.", "flow_name": "rework", "confidence": 0.90}
+{"reasoning": "Reworking the draft structure.", "flow_name": "rework"}
 ```
 </positive_example>
 
@@ -70,7 +70,7 @@ User: "publish it to the blog"
 ## Output
 
 ```json
-{"reasoning": "Releasing the post.", "flow_name": "release", "confidence": 0.92}
+{"reasoning": "Releasing the post.", "flow_name": "release"}
 ```
 </positive_example>
 
@@ -81,7 +81,7 @@ User: "hi there"
 ## Output
 
 ```json
-{"reasoning": "Simple greeting.", "flow_name": "chat", "confidence": 0.95}
+{"reasoning": "Simple greeting.", "flow_name": "chat"}
 ```
 </positive_example>'''
 

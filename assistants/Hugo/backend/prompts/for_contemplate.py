@@ -14,7 +14,6 @@ CONTEMPLATE_OUTPUT_SHAPE = (
     '{{\n'
     '  "thought": "<reasoning about the re-route>",\n'
     '  "flow_name": "<flow_name>",\n'
-    '  "confidence": <0.0-1.0>\n'
     '}}\n'
     '```'
 )
@@ -26,7 +25,7 @@ User: "what posts do I have?"
 Candidates: find, browse, chat
 _Output_
 ```json
-{{"thought": "User wants to list existing posts — find is correct.", "flow_name": "find", "confidence": 0.85}}
+{{"thought": "User wants to list existing posts — find is correct.", "flow_name": "find"}}
 ```
 ---
 Failed flow: outline (missing required slots)
@@ -35,7 +34,7 @@ History: Agent asked "What topic should the outline cover?"
 Candidates: outline, chat
 _Output_
 ```json
-{{"thought": "User is continuing the outline flow but 'yes' alone doesn't provide the topic. Route to chat for clarification.", "flow_name": "chat", "confidence": 0.70}}
+{{"thought": "User is continuing the outline flow but 'yes' alone doesn't provide the topic. Route to chat for clarification.", "flow_name": "chat"}}
 ```
 ---
 Failed flow: write (ambiguous target)
@@ -44,7 +43,7 @@ History: Agent showed multiple outline options
 Candidates: write, propose, chat
 _Output_
 ```json
-{{"thought": "User is reacting to shown options but the target is ambiguous — route to chat to confirm which one.", "flow_name": "chat", "confidence": 0.70}}
+{{"thought": "User is reacting to shown options but the target is ambiguous — route to chat to confirm which one.", "flow_name": "chat"}}
 ```
 ---
 Failed flow: summarize (tool error)
@@ -52,7 +51,7 @@ User: "tell me about content calendars"
 Candidates: browse, chat
 _Output_
 ```json
-{{"thought": "General knowledge question, not about a specific post — route to chat.", "flow_name": "chat", "confidence": 0.80}}
+{{"thought": "General knowledge question, not about a specific post — route to chat.", "flow_name": "chat"}}
 ```
 ---
 Failed flow: brainstorm (low confidence)
@@ -61,7 +60,7 @@ History: User was just reviewing a draft
 Candidates: brainstorm, chat
 _Output_
 ```json
-{{"thought": "User is asking for new topic ideas — brainstorm is correct.", "flow_name": "brainstorm", "confidence": 0.85}}
+{{"thought": "User is asking for new topic ideas — brainstorm is correct.", "flow_name": "brainstorm"}}
 ```
 ---
 Failed flow: rework (no prior draft)
@@ -69,7 +68,7 @@ User: "revise the introduction"
 Candidates: write, rework, chat
 _Output_
 ```json
-{{"thought": "No prior draft to rework. Route to write to create content first.", "flow_name": "write", "confidence": 0.75}}
+{{"thought": "No prior draft to rework. Route to write to create content first.", "flow_name": "write"}}
 ```
 ---
 Failed flow: refine (post not found)
@@ -77,7 +76,7 @@ User: "a backyard-composting post I want reading as one piece"
 Candidates: outline, compose, brainstorm, chat
 _Output_
 ```json
-{{"thought": "There is no post to refine yet — the user is starting a fresh post. Route to outline to build its structure first.", "flow_name": "outline", "confidence": 0.85}}
+{{"thought": "There is no post to refine yet — the user is starting a fresh post. Route to outline to build its structure first.", "flow_name": "outline"}}
 ```
 ---
 Failed flow: release (prerequisites not met)
@@ -85,7 +84,7 @@ User: "publish everything"
 Candidates: release, schedule, find
 _Output_
 ```json
-{{"thought": "No single post is grounded for release — route to find so the user can pick which post to publish.", "flow_name": "find", "confidence": 0.75}}
+{{"thought": "No single post is grounded for release — route to find so the user can pick which post to publish.", "flow_name": "find"}}
 ```
 ---
 Failed flow: audit (missing post reference)
@@ -94,7 +93,7 @@ History: User was just reviewing an outline
 Candidates: audit, write, chat
 _Output_
 ```json
-{{"thought": "User wants a tone shift — audit handles voice and tone but needs a post reference.", "flow_name": "audit", "confidence": 0.80}}
+{{"thought": "User wants a tone shift — audit handles voice and tone but needs a post reference.", "flow_name": "audit"}}
 ```
 ---
 Failed flow: schedule (no post selected)
@@ -102,7 +101,7 @@ User: "schedule it for tomorrow"
 Candidates: schedule, find, chat
 _Output_
 ```json
-{{"thought": "No post selected to schedule. Route to find to pick one first.", "flow_name": "find", "confidence": 0.75}}
+{{"thought": "No post selected to schedule. Route to find to pick one first.", "flow_name": "find"}}
 ```
 ---
 Failed flow: chat (tool error)
@@ -110,7 +109,7 @@ User: "how should I structure a listicle?"
 Candidates: outline, chat
 _Output_
 ```json
-{{"thought": "General writing-advice question — answer directly via chat.", "flow_name": "chat", "confidence": 0.85}}
+{{"thought": "General writing-advice question — answer directly via chat.", "flow_name": "chat"}}
 ```
 '''
 

@@ -36,9 +36,7 @@ def _set_family(family:str):
     import backend.components.prompt_engineer as pe
     if family not in pe.FAMILY_TIERS:
         raise SystemExit(f'unknown provider {family!r}; pick from {list(pe.FAMILY_TIERS)}')
-    low, med, high = pe.FAMILY_TIERS[family]
     pe.ACTIVE_FAMILY = family
-    pe._MODEL_IDS.update({'low': low, 'med': med, 'high': high})
 
 
 def _sample_cases(labels:int, seed=None) -> list:
@@ -97,9 +95,14 @@ def _predict_flow(agent, user_text:str, provider:str|None=None) -> tuple[str, fl
                           f'<flow_ontology>\n{ontology}\n</flow_ontology>',
                           f'<example_scenarios>\n{examples}\n</example_scenarios>', JSON_ONLY_REMINDER,
                           f'<current_scenario>\n{current}\n</current_scenario>'])
+    # Production detection dropped self-reported confidence (ensemble agreement replaced it), but
+    # this scorer's calibration report still probes it — re-add the field on a local schema copy.
     schema = _flow_detection_schema(names)
-    parsed = agent.engineer(prompt, 'detect_flow', model='med', schema=schema)
-    return parsed['flow_name'], parsed['confidence']
+    schema['properties']['confidence'] = {'type': 'string',
+                                          'enum': ['0.1', '0.3', '0.5', '0.7', '0.9']}
+    schema['required'] = schema['required'] + ['confidence']
+    parsed = agent.engineer(prompt, 'detect_flow', schema=schema)
+    return parsed['flow_name'], float(parsed['confidence'])
 
 
 def score_nlu(labels:int=0, seed=None, provider:str|None=None) -> tuple:
@@ -218,7 +221,7 @@ def main():
         _set_family(args.provider)
     import backend.components.prompt_engineer as pe
     tier = 'high' if pe.ACTIVE_FAMILY == 'typesafe' else 'med'   # typesafe scores with choice (high)
-    print(f'provider={pe.ACTIVE_FAMILY}  detect-flow model={pe._MODEL_IDS[tier]}')
+    print(f'provider={pe.ACTIVE_FAMILY}  detect-flow model={pe.PromptEngineer._resolve_model(tier)}')
 
     picked = list(SCORERS) if 'all' in args.module else \
         [name.strip() for name in args.module.split(',') if name.strip()]

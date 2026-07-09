@@ -39,7 +39,7 @@ class _FakeEngineer:
         self.response = response
         self.last_prompt = None
 
-    def __call__(self, prompt, task='skill', schema=None, model='med', max_tokens=1024):
+    def __call__(self, prompt, task='skill', schema=None, tier='med', max_tokens=1024, family=''):
         self.last_prompt = prompt
         return self.response
 

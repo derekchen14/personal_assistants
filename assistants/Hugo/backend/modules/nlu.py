@@ -15,14 +15,6 @@ from backend.utilities.services import PostService
 from schemas.ontology import FLOW_ONTOLOGY, Intent
 from utils.helper import _DAX_LOOKUP, edge_flows_for, dax2flow, flow2dax
 
-
-# D6 trim (round E1): the high voter (Gemini Pro, auto thinking budget) was the ensemble's
-# latency floor and truncated its JSON at max_tokens often enough to crash turns in debug mode.
-_ENSEMBLE_VOTERS = [
-    {'model': 'low',  'label': 'low',  'weight': 0.30},
-    {'model': 'med',  'label': 'med',  'weight': 0.70},
-]
-
 def _get_edge_flows_for_intent(intent:str) -> set[str]:
     edge = set()
     for name, cat in FLOW_ONTOLOGY.items():
@@ -53,10 +45,9 @@ def _flow_detection_schema(candidate_flow_names:list[str]) -> dict:
                 'type': 'string',
                 'description': 'Terse rationale (<100 tokens) naming the key signals that separate the top candidates.',
             },
-            'flow_name': {'type': 'string', 'enum': list(candidate_flow_names)},
-            'confidence': {'type': 'number'},
+            'flow_name': {'type': 'string', 'enum': list(candidate_flow_names)}
         },
-        'required': ['reasoning', 'flow_name', 'confidence'],
+        'required': ['reasoning', 'flow_name'],
         'additionalProperties': False,
     }
 
@@ -395,38 +386,45 @@ class NaturalLanguageUnderstanding:
         candidate_names = self._flow_candidate_names(hint)
         schema = _flow_detection_schema(candidate_names)
 
-        def _call_voter(voter:dict) -> dict | None:
-            try:
-                parsed = self.engineer(prompt, 'detect_flow', model=voter['model'],
-                                       max_tokens=1024, schema=schema)
-                parsed['_model'] = voter['label']
-                parsed['_weight'] = voter['weight']
-                return parsed
-            except Exception as ecp:
-                log.warning('NLU vote error (%s): %s', voter['label'], ecp)
-                # Provider quota/rate-limit loss (e.g. Gemini 429 RESOURCE_EXHAUSTED) degrades
-                # the ensemble by design — debug re-raise is for schema/code bugs, not outages.
-                if 'RESOURCE_EXHAUSTED' not in str(ecp) and '429' not in str(ecp):
-                    self._raise_if_debug(ecp)
-                return None
-
-        votes: list[dict] = []
-        with ThreadPoolExecutor(max_workers=len(_ENSEMBLE_VOTERS)) as pool:
-            futures = [
-                pool.submit(_call_voter, voter) for voter in _ENSEMBLE_VOTERS
-            ]
-            for future in as_completed(futures):
-                result = future.result()
-                if result and result.get('flow_name') in FLOW_ONTOLOGY:
-                    votes.append(result)
-
+        votes = self._collect_votes(('claude', 'gemini', 'gpt'), 'med', prompt, schema)
         if not votes:
             return {
                 'flow_name': 'chat', 'confidence': 0.3,
                 'pred_flows': [{'flow_name': 'chat', 'confidence': 0.3, 'votes': 0}],
             }
+        detection = self._tally_votes(votes)
+        if detection['confidence'] < self.ambiguity_handler.confidence_min:
+            votes += self._collect_votes(('gemini', 'claude'), 'high', prompt, schema)
+            detection = self._tally_votes(votes)
+        return detection
 
-        return self._tally_votes(votes)
+    def _collect_votes(self, families:tuple, level:str, prompt:str, schema:dict) -> list[dict]:
+        def _call_voter(family:str) -> dict | None:
+            try:
+                parsed = self.engineer(prompt, 'detect_flow', family=family, tier=level,
+                                       max_tokens=1024, schema=schema)
+                parsed['_model'] = family
+                parsed['_tier'] = level
+                return parsed
+            except Exception as ecp:
+                log.warning('NLU vote error (%s %s): %s', family, level, ecp)
+                # Provider-side losses degrade the ensemble by design — debug re-raise is for
+                # schema/code bugs, not outages: quota loss (429 RESOURCE_EXHAUSTED) or output
+                # the provider truncated/mangled into unparseable JSON.
+                recoverable = ('RESOURCE_EXHAUSTED' in str(ecp) or '429' in str(ecp)
+                               or 'unparseable JSON' in str(ecp))
+                if not recoverable:
+                    self._raise_if_debug(ecp)
+                return None
+
+        votes: list[dict] = []
+        with ThreadPoolExecutor(max_workers=len(families)) as pool:
+            futures = [pool.submit(_call_voter, family) for family in families]
+            for future in as_completed(futures):
+                result = future.result()
+                if result and result.get('flow_name') in FLOW_ONTOLOGY:
+                    votes.append(result)
+        return votes
 
     def _flow_candidate_names(self, hint:str='') -> list[str]:
         if not hint:
@@ -534,7 +532,8 @@ class NaturalLanguageUnderstanding:
             parsed = self.engineer(prompt, 'contemplate', max_tokens=512,
                                    schema=_flow_detection_schema(candidates))
             if parsed['flow_name'] in FLOW_ONTOLOGY:
-                return {'flow_name': parsed['flow_name'], 'confidence': float(parsed['confidence'])}
+                # Single re-route call, no ensemble to agree — score it as a majority vote (0.7).
+                return {'flow_name': parsed['flow_name'], 'confidence': 0.7}
         except Exception as ecp:
             log.warning('contemplate routing failed: %s', ecp)
             self._raise_if_debug(ecp)
@@ -577,29 +576,39 @@ class NaturalLanguageUnderstanding:
         return state
 
     def _tally_votes(self, votes:list[dict]) -> dict:
-        flow_weights: dict[str, float] = {}
-        flow_votes: dict[str, int] = {}
+        counts: dict[str, int] = {}
         for vote in votes:
-            name = vote['flow_name']
-            weight = vote.get('_weight', 1.0 / len(votes))
-            flow_weights[name] = flow_weights.get(name, 0.0) + weight
-            flow_votes[name] = flow_votes.get(name, 0) + 1
+            counts[vote['flow_name']] = counts.get(vote['flow_name'], 0) + 1
 
-        total_weight = sum(flow_weights.values())
-        best_flow = max(flow_weights, key=flow_weights.get)
-        final_confidence = flow_weights[best_flow] / total_weight
+        best_flow = max(counts, key=counts.get)
+        ranked = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+        pred_flows = [{'flow_name': name, 'confidence': count / len(votes), 'votes': count}
+                      for name, count in ranked]
+        return {'flow_name': best_flow, 'confidence': self._score_votes(votes, best_flow),
+                'pred_flows': pred_flows}
 
-        ranked = sorted(flow_weights.items(), key=lambda x: x[1], reverse=True)
-        pred_flows = [
-            {'flow_name': name, 'confidence': weight / total_weight, 'votes': flow_votes[name]}
-            for name, weight in ranked
-        ]
+    def _score_votes(self, votes:list[dict], best_flow:str) -> float:
+        """Confidence is voter AGREEMENT, never a self-reported score (models can't calibrate
+        their own confidence). Round 1 (the 3 medium voters): all agree 0.9, majority 0.7, full
+        split 0.5/0.3 by whether the split stays within one intent. Round 2 (5 votes): the
+        (agreement, intent-spread) ladder, +0.1 when the two high voters agree with each other.
+        4-of-5 can't happen — round 2 only fires after the mediums all split."""
+        agree = sum(1 for vote in votes if vote['flow_name'] == best_flow)
+        intents = len({FLOW_ONTOLOGY[vote['flow_name']]['intent'] for vote in votes})
 
-        return {
-            'flow_name': best_flow,
-            'confidence': final_confidence,
-            'pred_flows': pred_flows,
-        }
+        if len(votes) <= 3:   # round 1: only the medium voters have voted
+            if agree == len(votes):
+                return 0.9
+            return 0.7 if agree > 1 else (0.5 if intents == 1 else 0.3)
+
+        ladder = {(3, 1): 0.8, (3, 2): 0.7, (3, 3): 0.5,
+                  (2, 1): 0.6, (2, 2): 0.4, (2, 3): 0.3,
+                  (1, 1): 0.2, (1, 2): 0.2, (1, 3): 0.1}
+        confidence = ladder[(agree, min(intents, 3))]
+        high = [vote['flow_name'] for vote in votes if vote['_tier'] == 'high']
+        if len(high) == 2 and high[0] == high[1]:
+            confidence += 0.1
+        return confidence
 
 # Module alias — the module is NLU; the class name spells it out.
 NLU = NaturalLanguageUnderstanding

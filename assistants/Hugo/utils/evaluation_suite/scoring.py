@@ -108,7 +108,7 @@ def judge_response(engineer, history:str, user_text:str, reference:str, actual:s
               "Given the conversation so far, does the actual reply convey the same substance and "
               "serve the user as well as the reference? Ignore wording differences; judge the "
               "substance. Answer exactly 'pass' or 'fail: <short reason>'.")
-    verdict = engineer(prompt, task='quality_check', model='low', max_tokens=64).strip().lower()
+    verdict = engineer(prompt, task='quality_check', tier='low', max_tokens=64).strip().lower()
     return verdict.startswith('pass')
 
 

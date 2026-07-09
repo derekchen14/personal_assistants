@@ -22,7 +22,6 @@ _NUDGE_MESSAGE = ('Your last response had no visible text and no tool calls. Rep
                   'final response to the user, or call a tool.')
 _WRAP_UP_MESSAGE = ('Stop calling tools. Reply to the user now in 1-2 sentences of plain text: '
                     'summarize what was accomplished this turn, or ask what they need.')
-_DOMAIN_INTENTS = {'Research', 'Draft', 'Revise', 'Publish'}
 
 
 @dataclass
@@ -267,7 +266,7 @@ class PolicyExecutor:
             f'User request: {last_user}\n\nAgent output:\n{content}'
         )
         try:
-            raw_output = self.engineer(prompt, 'quality_check', model='low', max_tokens=128)
+            raw_output = self.engineer(prompt, 'quality_check', tier='low', max_tokens=128)
             verdict = raw_output.strip().lower()
             if verdict.startswith('pass'):
                 return ArtifactCheck(passed=True)
@@ -341,7 +340,6 @@ class PolicyExecutor:
         model_id = self.config['models']['overrides']['orchestrator']['model_id']
 
         nudged = False
-        lifecycle_nudged = False
         errors = 0
         last_call = None
         for round_idx in range(self.max_rounds):
@@ -354,11 +352,6 @@ class PolicyExecutor:
 
             if not tool_uses:
                 if text:
-                    lifecycle_note = self._domain_turn_blocker()
-                    if lifecycle_note and not lifecycle_nudged:
-                        lifecycle_nudged = True
-                        context.append_message({'role': 'user', 'content': lifecycle_note})
-                        continue
                     context.append_message({'role': 'assistant', 'content': text})
                     note = self.inject_belief_state()  # ⑤: text-only turn whose detection landed
                     if note:
@@ -406,39 +399,6 @@ class PolicyExecutor:
             if errors >= self.max_corrective:
                 break  # the model keeps failing tool calls — stop burning rounds
         return self._final_emit(system_prompt, model_id)
-
-    def _domain_turn_blocker(self) -> str:
-        """One corrective nudge when the model tries to end a domain turn before running NLU's
-        detected flow. This enforces the commit rule without choosing tool arguments on the
-        model's behalf."""
-        state = self.world.state
-        if self.world.ambiguity.present or state.pred_intent not in _DOMAIN_INTENTS:
-            return ''
-        flow_name = state.top_pred_flow()
-        if flow_name not in flow_classes:
-            return ''
-        terminal_match = next((entry for entry in self.flow_stack.to_list()
-                               if entry['flow_name'] == flow_name
-                               and entry['status'] in ('Completed', 'Invalid')), None)
-        if terminal_match:
-            return (
-                "[system] A domain flow finished or became invalid. Call `manage_flows` "
-                "with op='pop' before replying to the user."
-            )
-        if flow_name in self._completed_this_turn:
-            return ''
-        flow = self.flow_stack.find_by_name(flow_name)
-        if flow:
-            return (
-                f"[system] Domain turn is not complete: NLU detected `{flow_name}` and that "
-                f"flow is `{flow.status}` on the stack. Call `manage_flows` with "
-                f"op='activate' and flow_name='{flow_name}' before replying to the user."
-            )
-        return (
-            f"[system] Domain turn is not complete: NLU detected `{flow_name}`. Call "
-            f"`manage_flows` with op='stackon', flow_name='{flow_name}', and active=true "
-            "before replying to the user."
-        )
 
     def _final_emit(self, system_prompt:str, model_id:str) -> str:
         """Round budget or corrective cap exhausted: one last no-tools call forces a plain-text

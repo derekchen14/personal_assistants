@@ -60,7 +60,7 @@ class BasePolicy:
 
     def llm_execute(self, flow, state, context, tools, include_preview:bool=False,
                     extra_resolved:dict|None=None, exclude_tools:tuple=(),
-                    model:str='med', schema:dict|None=None):
+                    tier:str='med', schema:dict|None=None):
         """Agentic tool-use loop for multi-tool flows. Returns (text, tool_log).
 
         Pass include_preview=True to preload per-section previews in the resolved-entities block,
@@ -68,7 +68,7 @@ class BasePolicy:
         data (e.g. the current outline) into the resolved-entities block so the skill skips a
         redundant tool call. Pass exclude_tools to hard-strip tool names from the skill's tool
         registry for this call (e.g. forbid `generate_outline` in propose mode). The tool call
-        will error on the model side if it tries anyway. Pass `model='high'` to swap the skill
+        will error on the model side if it tries anyway. Pass `tier='high'` to swap the skill
         onto a stronger tier; pass `schema=<json-schema dict>` to force a schema-constrained
         terminal emit when the tool loop would otherwise return empty text."""
         self.run_hook('pre_llm', flow, state)  # ① intercept any pending signal before the loop
@@ -83,7 +83,7 @@ class BasePolicy:
             flow, convo_history, self.scratchpad.read(),
             tool_defs, tools, resolved=resolved,
             user_text=context.last_user_text,
-            model=model, schema=schema,
+            tier=tier, schema=schema,
         )
         self.run_hook('post_llm', flow, state)  # ⑤ intercept after the sub-agent completes
         return result
