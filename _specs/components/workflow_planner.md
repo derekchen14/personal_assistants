@@ -152,10 +152,84 @@ Each flow on the stack is in exactly one of four states:
 
 | State | Description |
 |-------|-------------|
-| **Pending** | Stacked but not yet active — waiting its turn (e.g., queued in a plan). |
-| **Active** | Top of the stack; currently being executed by the policy. |
+| **Pending** | Stacked but not yet started — waiting its turn (e.g., queued in a plan). |
+| **Active** | Claimed the conversation: executing now, OR stalled awaiting the user's answer. Top region of the stack. |
 | **Completed** | Successfully finished; will be popped by the Workflow Planner (`pop`). |
 | **Invalid** | Incorrectly detected or encountered a hard failure; will be popped during fallback. |
+
+## Stack Invariants — Turn-Boundary Discipline (round 3.3)
+
+The stack is only useful if every turn starts from a known shape. These invariants define that shape;
+NLU's bind pass (round 3.3, `round_3.3_spec.md`) and PEX's pop discipline both depend on them. This
+section is the current best understanding — where the code deviates, the gap is named at the end.
+
+### What Active and Pending actually mean
+
+- **Active is a claim on the conversation, not a CPU state.** The Active flow on top is the flow the
+  next user turn is interpreted against (NLU binds the reply to its unfilled slots before running
+  fresh detection), whether or not a policy is executing at this instant. A flow that asked a
+  clarification question and is waiting for the answer is still Active.
+- **Pending means queued and not yet started**: plan steps awaiting their turn, or a parent that
+  yielded to a prerequisite. A Pending flow never talks to the user and never receives a bind.
+
+### The turn-boundary invariant
+
+At the END of every turn (equivalently, the start of the next), exactly one of two shapes holds:
+
+1. **Empty stack** — all work completed and popped; the next turn starts with fresh detection.
+2. **Active-incomplete top** — an Active flow on top waiting on the user (missing slot, confirmation,
+   plan checkpoint), with only Pending flows beneath it.
+
+Corollaries:
+
+- **No Pending flow is ever on top at turn start.** PEX pops Completed/Invalid flows and activates
+  the next Pending as long as there is work to do — it never ends a turn leaving runnable work
+  unclaimed. That is what makes "Active on top" the complete trigger condition for the bind pass.
+- **No Completed or Invalid entry survives a turn.** They exist only transiently, between a policy's
+  `complete_flow` and the planner's `pop`, inside a single turn.
+- The legal shape is always `[bottom: Pending…, top: Active(s)]` — Actives contiguous on top. With
+  parallel same-type batches, the planner should still end the turn with at most ONE stalled Active
+  (the batch either finishes in-turn or its open question is a single question); the bind pass only
+  ever addresses the one flow on top.
+
+### Turn-start decision table — who gets the utterance
+
+| Stack top at turn start | The turn is read as | Stack op |
+|---|---|---|
+| empty | a fresh task | detection → `stackon` the detected flow |
+| Active with unfilled slots | first, an answer to the open question (bind pass) | none — fill the EXISTING flow; PEX resumes it |
+| Active, bind came back empty, user detoured | a side task the user will return from | `stackon` the detour flow ABOVE the stalled one |
+| Active, user explicitly abandons the task | a replacement task | `fallback` — stalled goes Invalid, replacement takes its place |
+
+The detour row is what makes the stack a stack: the stalled flow keeps its position, its filled
+slots, and its open question (still unresolved in the AmbiguityHandler); the detour runs above it;
+`pop` after the detour completes re-surfaces the stalled flow and its question gets re-asked.
+Nothing about the original task is re-derived.
+
+**Detour vs. abandonment is a judgment call, and the default is `stackon`** — it is reversible (an
+abandoned flow beneath eventually gets popped or replaced), while `fallback` destroys the stalled
+flow's slot state. Reserve `fallback` for an explicit signal: "forget the outline", or a
+contradicting intent on the same entity. Never `stackon` a duplicate of the Active top — the active
+flow IS that task (the FlowStack's same-type dedupe enforces this mechanically).
+
+### Three writers, one owner
+
+- **NLU stages**: detection stackons a flow so PEX can see the belief as a real stack entry, and the
+  bind pass fills the existing top — NLU never activates, pops, or falls back.
+- **Policies self-report**: a policy stackons its own prerequisites and marks itself Completed
+  (`complete_flow`) — it never touches flows other than itself and its prereqs.
+- **PEX (the Workflow Planner) owns the lifecycle**: activate, pop, fallback, and the judgment calls
+  in the decision table. Nobody else changes a flow's status.
+
+### Where the code deviates today (known gaps)
+
+- `NLU._stack_detected_flow` still stackons every fresh detection even when the top is Active — the
+  detour/abandonment distinction is not yet enforced in code (comment in place; the same-type dedupe
+  blunts the worst case). Revisit after round 3.3 settles.
+- Nothing asserts the turn-end shape. When PEX's prompt discipline slips (a Pending left on top, a
+  Completed never popped), the error surfaces one turn later as a mis-bind. A post-turn invariant
+  check that LOGS the violation (post-hooks validate, they never mutate) would localize the failure
+  to the turn that caused it.
 
 ## Concurrency Model
 
@@ -301,6 +375,152 @@ it."* → Plan, 3 different-type sub-flows run in order.
 Mid-Plan PEX keeps going across all three on one turn (Plan = the sanctioned chaining path). The contrast with
 example 3 pins down both `activate` rules: **same type → activate together; different types → one at a
 time, top first.**
+
+## Planner Scenario Matrix — Push, Pop, Fallback, Update
+
+These scenarios are the cases the Workflow Planner skill should explicitly reason through. They are written
+against the current FlowStack implementation as the starting point, but the behavioral contract is the more
+important part: keep a single clear owner for lifecycle decisions, preserve unresolved work under detours, and
+avoid re-deriving state that is already on the stack.
+
+Stacks are shown **bottom → top**.
+
+**1 — Fresh single-flow request: push, activate, pop.** If the stack is empty and NLU detects a flow, PEX should
+`stackon(flow, active=true)` or `stackon` then `activate`. If the policy completes, PEX calls `pop` before
+responding. The next turn starts from an empty stack, so NLU can do fresh detection.
+
+```
+[] → stackon(outline) → [outline·pending] → activate → [outline·active]
+policy complete_flow → [outline·completed] → pop → []
+```
+
+**2 — Reply to an active clarification: update the existing top, do not push.** If the top flow is Active and
+waiting on a missing slot, the next user utterance is first interpreted as an answer to that flow. NLU's bind
+pass fills the existing top; PEX resumes that same flow. A second `stackon` would lose the single source of
+truth for the open question.
+
+```
+[outline·active missing topic] + user: "tide-pool ecology"
+→ update top slots
+→ [outline·active topic=tide-pool ecology]
+→ activate(outline)
+```
+
+**3 — Same-flow repeat while in flight: update or resume, never duplicate.** If the user repeats or elaborates
+on the active flow ("actually make the outline deeper"), the planner keeps the existing flow and updates its
+slots or stage. The current code also dedupes this mechanically: `stackon(outline)` returns the existing
+non-terminal top when it is already `outline`.
+
+```
+[outline·active depth=brief] + user: "make it detailed"
+→ manage_flows(update, slots={depth: detailed})
+→ [outline·active depth=detailed]
+```
+
+**4 — Detour from a stalled flow: stack on above it.** If a flow is waiting on the user but the user asks for a
+side task they likely intend to return from, PEX should `stackon` the detour above the stalled flow. The stalled
+flow remains below with its filled slots and unresolved ambiguity intact. After the detour completes, `pop`
+re-surfaces the stalled flow.
+
+```
+[outline·active missing source] + user: "first find my posts about oceans"
+→ stackon(find, active=true)
+→ [outline·active, find·active]
+find complete_flow → [outline·active, find·completed]
+pop → [outline·active]
+```
+
+Default to detour when abandonment is unclear. `stackon` is reversible; `fallback` discards the old flow's
+lifecycle state.
+
+**5 — Explicit abandonment or wrong intent: fallback.** If the user clearly switches tasks and does not intend
+to return ("forget the outline, publish the current post"), PEX should replace the active top with the detected
+flow via `fallback`. The old flow becomes Invalid; matching slot names transfer best-effort into the new flow.
+The new flow starts Active because it is taking over the conversation now.
+
+```
+[outline·active topic=ocean ecology] + user: "forget that, publish the current post"
+→ fallback(release)
+→ [outline·invalid, release·active]
+→ pop eventually discards outline·invalid
+```
+
+Use `fallback` for replacement, not for tool errors. Tool failures return error artifacts; ambiguity returns
+clarification.
+
+**6 — Prerequisite discovered by a policy: stack on and yield.** A policy may discover that another flow must
+run first. It should stack the prerequisite above itself and yield control. The parent stays below and resumes
+after the prerequisite completes and `pop` exposes it again.
+
+```
+[release·active missing releasable draft]
+→ release policy marks itself pending, stackon(compose), and yields
+→ [release·pending, compose·pending]
+→ activate(compose) → complete_flow → [release·pending, compose·completed]
+→ pop → [release·active]
+```
+
+The resumed flow should read produced context from the scratchpad instead of assuming the child mutated its
+slots directly. Mechanically, `FlowStack.stackon()` only pushes the child; it does not demote the parent. If a
+policy yields to a prerequisite, that parent-status change is explicit planner/policy responsibility.
+
+**7 — Multi-step plan: stack in reverse execution order, activate top.** For a planned sequence, PEX stacks
+later steps first so the first executable step is on top. Different-type flows run one at a time. After each
+completion, `pop` exposes the next Pending flow and the planner activates it if the plan should keep going.
+
+```
+goal: research → outline → compose → release
+stackon(release), stackon(compose), stackon(outline), stackon(browse)
+→ [release·pending, compose·pending, outline·pending, browse·pending]
+→ activate(browse) → complete → pop
+→ [release·pending, compose·pending, outline·active]
+```
+
+Inside a Plan, PEX may continue across steps in the same turn; outside a Plan, it may stop for review after a
+stacked sub-flow finishes.
+
+**8 — Completed and Invalid entries are transient: pop before the next turn.** `pop` removes every Completed
+and Invalid flow in one sweep, returns the Completed flows, and promotes the newly exposed Pending top to
+Active. PEX should not leave terminal entries on the stack at turn end; otherwise the next NLU bind may target
+stale stack state.
+
+```
+[release·pending, compose·completed, find·invalid]
+→ pop
+→ [release·active]
+```
+
+Completed/Invalid tops are also stale for slot transfer: `stackon` does not inherit slots from terminal flows.
+
+**9 — Slot transfer is opportunistic, not a grounding contract.** `stackon` and `fallback` copy filled slots
+with matching names from the old in-flight top to the new flow. This is useful for natural transitions like
+`write → release` on the same source, but it is only a convenience. If the user names a new entity, NLU or PEX
+must update the new flow explicitly; do not rely on inherited slots when the utterance contradicts them.
+
+```
+[write·active source=post-A] + planner stacks release
+→ [write·active source=post-A, release·pending source=post-A]
+
+but:
+[write·active source=post-A] + user: "now publish post B"
+→ fallback or update release with source=post-B explicitly
+```
+
+**10 — Ambiguity is not lifecycle failure.** If a policy cannot proceed because a required grounding entity,
+topic, source, confirmation, or other slot is missing, it should declare ambiguity and leave the flow Active.
+PEX asks the clarification and stops. It should not `pop` the flow, because no work has completed; it should not
+`fallback` unless the clarification revealed the wrong intent.
+
+```
+[release·active source missing]
+→ policy declares partial ambiguity
+→ [release·active source missing]
+→ user answer binds to release on the next turn
+```
+
+This is especially important for entity-grounded flows: code-side completion validation rejects Completed when
+the active post grounding is missing, but the planner behavior is to ask for the missing entity, not to invent a
+new lifecycle state.
 
 ## Failure Recovery
 

@@ -23,15 +23,25 @@ class MemoryExtensionModule:
         self.business_knowledge = BusinessKnowledge(engineer)    # L3 — business knowledge / FAQs
         self.world = None  # attached by the Assistant after World construction
 
-    def store_turn(self, utterance:str, prompt_tokens:int=0):
+    def store_turn(self, utterance:str, prompt_tokens:int=0, completed:tuple=()):
         """The end-of-turn store (take_turn step 5): record the agent turn, bump the turn count,
         snapshot the stack onto the state and save state.json — the record of what actually
         happened this turn, MEM's per the time rule — then run the compression check.
-        `prompt_tokens` is PEX's real acting-loop usage, passed by the Assistant (the World holds
-        components, not modules). Promotion beyond explicit saves (PEX's store_preference tool
-        writes L2 during the turn) is designed-not-built."""
+        `prompt_tokens` is PEX's real acting-loop usage and `completed` the flows that reached
+        Completed this turn, both passed by the Assistant (the World holds components, not
+        modules). Promotion beyond explicit saves (PEX's store_preference tool writes L2 during
+        the turn) is designed-not-built."""
         self.context_coordinator.add_turn('Agent', utterance, turn_type='utterance')
         state = self.world.state
+        # Round 3.3 (D5): a completed flow other than the choices' writer has consumed them —
+        # the chosen value now lives in that flow's slots and completion record, so the
+        # candidates clear. Converse detours don't clear (a stalled question may still need
+        # its candidates when the user comes back).
+        choices = state.grounding['choices']
+        sources = {choice['source'] for choice in choices if isinstance(choice, dict)}
+        if choices and any(flow.name() not in sources and flow.intent != 'Converse'
+                           for flow in completed):
+            state.grounding['choices'] = []
         state.turn_count += 1
         state.flow_stack = self.world.flows.to_list()  # refresh the saved copy, then save
         state.save(self.world.state_file())

@@ -143,8 +143,8 @@ class PolicyExecutor:
         # check reads it in the end-of-turn store (MEM.store_turn).
         self.last_prompt_tokens = 0
         # Flows that reached Completed during the current turn — reset per execute(), read by the
-        # end-of-turn checkpoint.
-        self._completed_this_turn = []
+        # end-of-turn checkpoint and passed to MEM.store_turn (round 3.3 choices lifecycle).
+        self.completed_this_turn = []
         self._injected = False  # belief injected once per turn; reset in execute()
         self._reads = 0  # per-turn count of successful read-only domain-tool calls; reset in execute()
         # Orchestrator hot-path tools — wiring only; the implementations live in
@@ -283,7 +283,7 @@ class PolicyExecutor:
         orchestrator loop reads belief (understand) and decides by intent per the system prompt,
         dispatching tool calls through `_dispatch_tool`. Returns the spoken utterance."""
         state, context = self.world.state, self.world.context
-        self._completed_this_turn = []
+        self.completed_this_turn = []
         self._injected = False  # belief injected once per turn (whether or not it matches)
         self._reads = 0  # per-turn read-only lookup budget
         if dax and not text.strip():
@@ -305,7 +305,7 @@ class PolicyExecutor:
         which flows completed this turn, which flow is still active, and the grounded entity. A
         record of what just happened — distinct from the forward-looking active-flow pointer."""
         active = self.flow_stack.get_flow(status='Active')
-        parts = [f"completed: {', '.join(self._completed_this_turn) or 'none'}",
+        parts = [f"completed: {', '.join(flow.name() for flow in self.completed_this_turn) or 'none'}",
                  f"active: {active.name() if active else 'none'}"]
         active_post = state.get_active_post()
         if active_post:
@@ -685,7 +685,7 @@ class PolicyExecutor:
             question = self.world.ambiguity.ask(flow.name()) if self.world.ambiguity.present else ''
             return {'_success': True, 'status': flow.status, 'thoughts': artifact.thoughts,
                     'question': question, 'blocks': blocks}
-        self._completed_this_turn.append(flow.name())  # for the end-of-turn checkpoint
+        self.completed_this_turn.append(flow)  # for the end-of-turn checkpoint + MEM's store
         if record is None:  # policy completed without calling complete_flow — synthesize a record
             summary = artifact.thoughts or f'{flow.name()} completed'
             record = {'version': 1, 'turn_number': self.world.context.turn_id, 'used_count': 0,

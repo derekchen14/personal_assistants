@@ -245,6 +245,31 @@ def _render_filled_slots(flow) -> list[str]:
     return lines
 
 
+def build_bind_guidance(question:str, choices:list) -> str:
+    """Bind-before-detect (round 3.3): appended to the slot-filling prompt when the active flow
+    is stalled on an open question. Conservative-fill contract — an empty fill means the reply
+    was not an answer, and NLU falls through to fresh flow detection."""
+    import json
+    lines = ['<pending_question>']
+    if question:
+        lines.append(f'The assistant is waiting on an answer to: "{question}"')
+    else:
+        lines.append('The assistant is waiting on an answer to its last question (see the history).')
+    records = [choice for choice in choices if isinstance(choice, dict)]
+    if records:
+        lines.append('Candidates already shown to the user:')
+        for choice in records:
+            entity = {key: val for key, val in choice['entity'].items() if val and key != 'ver'}
+            lines.append(f'- {choice["label"]} — {json.dumps(entity)}')
+    lines.append(
+        'Fill slots ONLY if the latest user message actually answers this question. Picking a '
+        "candidate (by name, position, or paraphrase) fills the slot with that candidate's entity "
+        'values. If the message changes tasks, asks for another search, or does not address the '
+        'question, return null for EVERY slot — a wrong fill is worse than a null.')
+    lines.append('</pending_question>')
+    return '\n'.join(lines)
+
+
 def build_slot_filling_prompt(flow, convo_block:str, active_post:dict) -> str:
     prompt_fields = get_prompt(flow.name())
     instructions = prompt_fields['instructions'].strip()

@@ -108,6 +108,13 @@ class ResearchPolicy(BasePolicy):
         list_data = {'items': items, 'page': page}
         if items and len(items) <= 8:
             list_data['expanded_ids'] = [it['post_id'] for it in items]
+            # Round 3.3: a pick-one-sized list also writes candidate records for NLU's bind
+            # pass — replaced, not appended, so choices always mirror the latest shown list.
+            state.grounding['choices'] = [
+                {'kind': 'post', 'label': it['title'],
+                 'entity': {'post': it['post_id'], 'sec': '', 'snip': '', 'chl': '', 'ver': True},
+                 'source': flow.name(), 'turn_number': context.turn_id}
+                for it in items]
 
         # Scratchpad write — downstream audit can reference matches.
         self.scratchpad.append_entry(flow.name(), {

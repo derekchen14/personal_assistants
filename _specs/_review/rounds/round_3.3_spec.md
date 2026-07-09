@@ -31,8 +31,8 @@ Examples:
 - Hugo asks whether to create a new post or use an existing draft, and the next turn supplies a vague but
   contextually meaningful answer.
 
-In these cases, the next turn should be processed as an **answer to a pending grounding/clarification frame**
-before normal intent/flow detection. Instead, Hugo may:
+In these cases, the next turn should be processed as an **answer to the pending question** before normal
+intent/flow detection. Instead, Hugo may:
 
 - run normal flow detection and choose the wrong flow;
 - create or stack a flow with no usable source;
@@ -42,31 +42,27 @@ before normal intent/flow detection. Instead, Hugo may:
 
 ---
 
-## Root Cause Hypothesis
+## Root Cause
 
-The issue is not primarily a missing regex for phrases like "this one" or "second." The root cause is that
-Hugo has no explicit, durable **pending clarification frame** that says:
+The issue is not a missing regex for phrases like "this one" or "second," and it is not a missing data
+structure either. Every piece of a would-be "pending clarification frame" already lives in an existing
+component:
 
-- what question was asked;
-- what kind of answer is expected;
-- what candidate entities or options are available;
-- which flow/slot should receive the answer;
-- whether the answer should resume an existing flow, replace it, or start a different flow.
+| Frame field | Where it already lives |
+| --- | --- |
+| question asked | `ambiguity_handler.observation` — persists across turns; `ask()` returns it verbatim |
+| level / missing / expected | `ambiguity_handler.metadata` + `counts` — also persists |
+| target flow / target slot | the flow stack — the Active/Pending flow with the unfilled slot IS the target |
+| candidates | `grounding.choices` — exists; `_fill_slices` already writes into it |
+| resolver + schema | `_fill_slots` Phase 3 with `_fill_slots_schema(flow)` — already a schema-constrained resolver over convo_history, which already contains Hugo's question and the shown candidates |
 
-The current state surfaces are close but incomplete:
-
-- `grounding.entities` stores the active entity, not the unresolved choice set.
-- `grounding.choices` exists, but is overloaded: proposal clicks already use numeric choices, and it does not
-  currently carry an explicit "answer this question" contract.
-- `AmbiguityHandler` records level/metadata/observation, but the metadata does not consistently include
-  candidate entities, target flow id, target slot, or expected answer type.
-- `SessionScratchpad` can store findings, but scratchpad entries are not the active clarification contract.
-- PEX prompt/lifecycle instructions can ask questions, but the system does not reliably force the next NLU pass
-  to bind the reply to the pending question before classifying it as a fresh task.
-
-So the failed behavior is expected: if the state does not encode "the next turn may answer this specific
-question," NLU has no robust basis for deciding whether "that title's good" means selecting an existing post,
-approving a new title, continuing an outline, or just chatting.
+The root cause is control flow in NLU. `think()` (`nlu.py:100-123`) unconditionally runs fresh
+`_detect_flow`, instantiates a **new** transient flow, and pushes it via `_stack_detected_flow` → `stackon`.
+It never looks at the top of the stack. So when Hugo asked "which draft should I outline?" last turn, the
+outline flow is sitting on the stack Active with its `source` slot unfilled, the question is sitting in
+`observation`, and NLU ignores both and classifies "that title's good" from scratch. That is the whole
+failure in all three traces — B06.C12's flow pileup is `stackon` being called every turn while the original
+flow's slot never fills.
 
 ---
 
@@ -81,50 +77,83 @@ approving a new title, continuing an outline, or just chatting.
 
 ---
 
-## Option A — Candidate Records in `grounding.choices`
+## Solution — Bind Before Detecting
 
-This was the initial proposed direction: when Hugo shows candidate posts, store typed candidate records in
-`grounding.choices`; before fresh detection, NLU tries to resolve the user reply against those candidates.
+No new data model. Three changes, all against existing surfaces:
 
-Sketch:
+1. **Bind before detecting.** At the top of `think()`: if there is an Active flow on top of the stack —
+   not just when `ambiguity_handler.present` — run the existing `_fill_slots` pass against that **existing
+   flow** (the one with the unfilled or possibly incorrect slot), not a fresh instance.
+   - The missing slot fills → proceed as normal through PEX.
+   - It does not fill (the reply is not an answer, or the user changed tasks) → fall through to normal
+     detection, which is today's behavior.
+2. **Write shown candidates to `grounding.choices`** when a policy displays them — typed records like
+   `{'kind': 'post', 'label': ..., 'entity': {post, sec, snip, chl, ver}, 'source': 'find',
+   'turn_number': 3}` — so the fill prompt can offer them as the options for the source slot. This is the
+   only new *write*, and it is a write to a field that already exists.
+3. **Prompt work rides along.** PEX asking questions through `recognize()` consistently is what keeps the
+   pending question in `observation`; that is prompt/skill wording, not new mechanics.
 
-```python
-{
-  'kind': 'post',
-  'label': 'Prompt Injection Has No Fix, Only Blast Radius',
-  'entity': {'post': 'a6f7d276', 'sec': '', 'snip': '', 'chl': '', 'ver': True},
-  'source': 'find',
-  'turn_number': 3,
-}
-```
+### The four reply outcomes
 
-Pros:
+After "Which draft should I outline?", the next turn resolves one of four ways. The fill call itself
+decides which — `_fill_slots_schema` already permits returning nothing for a slot, so the rule is a
+sentence of fill-prompt guidance, not a classifier:
 
-- Makes visible candidates inspectable in dialogue state.
-- Connects list/search results to later grounding.
-- Useful for UI clicks and explicit ordinal selections.
-- Small surface area if limited to find/list artifacts.
+- **Clear answer** ("the prompt injection one") — fill the `source` slot, resolve the ambiguity, done.
+- **Vague answer** ("that title's good") — still an answer; the fill call binds it using convo history and
+  `grounding.choices`. This is also where NLU having `attempt_recovery()` is powerful: preferences and
+  scratchpad can supply the referent when the words alone cannot.
+- **Task change** ("actually, when did I last publish anything?") — the fill returns empty; detection
+  proposes the new flow and `stackon` places it above the outline flow. Record why in the ambiguity
+  observation and in the SessionScratchpad, so every agent can see the detour. The ambiguity stays
+  **unresolved** — the grounding goal was never met.
+- **On-task but non-selecting** ("neither is right, look again") — also a `stackon`, because searching
+  again is a different flow (`find`). Flows continue: when `find` completes, PEX pops it, sees the still
+  Pending `outline`, and carries on. The ambiguity again stays **unresolved**.
 
-Cons:
+The errors are not symmetric — a false bind makes Hugo act on the wrong post (visible damage), a false
+pass just re-runs detection (annoying, recoverable) — so the fill guidance leans conservative: when
+unsure, do not fill. Known cost: a real task change pays the fill call and then the detection ensemble,
+one extra LLM call on a minority of turns.
 
-- `choices` is already overloaded by proposal-selection flows.
-- Candidate storage alone does not say what question is pending or which slot should be filled.
-- Easy to drift into brittle phrase matching: "that one", "this", "go ahead", "that title's good."
-- Does not handle non-candidate clarifications, such as create-new-vs-use-existing.
-- Risks binding when the user is actually changing tasks.
+### Stack invariants this leans on
 
-Assessment:
-
-Useful as a supporting representation, but not sufficient as the main solution. It records options, not the
-clarification contract.
+- **No Pending flow is ever on top of the stack at the start of a turn.** PEX continually pops completed
+  flows and continues onto the next as long as there is work to do; a turn can only end with an Active
+  (but incomplete) flow that needs more information, or an empty stack. So "Active flow on top" is the
+  complete trigger condition for the bind pass.
+- **An Active top should never be stacked onto by fresh detection** — we are mid-task; at most a
+  `fallback` says we are changing tasks. This nuance is out of scope for the current error; mark it with
+  a comment in `_stack_detected_flow` and revisit later.
 
 ---
 
-## Option B — Pending Clarification Frame in Ambiguity State
+## Decisions (settled 2026-07-09)
 
-Extend ambiguity metadata into a typed, explicit frame whenever Hugo asks a clarification question.
+- **D1 — Answer vs. task-change:** the slot-fill call itself decides; empty fill = not an answer. See the
+  four reply outcomes above.
+- **D2 — Bind target:** always the top of the stack. That is what makes the stack useful to begin with.
+  Naming a target flow in ambiguity metadata would be the Rejected Direction in miniature.
+- **D3 — Belief written on a bind:** `think()` writes the latest intent and flow to dialogue state — the
+  same values already there, so effectively a no-op. A bit of extra work, not dangerous.
+- **D4 — Ambiguity across a detour:** the per-turn `counts` reset (new turn), but the ambiguity remains
+  **unresolved** until grounding completes. An ambiguity that lives across turns and across tasks is
+  exactly why the Handler is a separate object from the Flow Stack.
+- **D5 — `grounding.choices` lifecycle:** policies that display a pick-one list write. When the flow
+  completes, MEM stores the result (including the slots) and tells NLU to clear `choices` — the chosen
+  value already lives in the flow's slots, so nothing else needs saving. Proposal clicks keep working
+  because they resolve through `react`, not the bind pass.
+- **D6 — Confirmation ambiguities** ("Did you mean *Guardrails*?", slot already filled): same bind pass —
+  on "yes" the slot keeps its value and the ambiguity resolves; on "no" the slot resets and the ambiguity
+  stands. If expressing this through the fill schema gets too complicated, ship without it and revisit.
 
-Sketch:
+---
+
+## Rejected Direction — the Pending Clarification Frame (kept as a reminder)
+
+The earlier draft of this spec surveyed five options and recommended introducing a typed "pending
+clarification frame" in ambiguity metadata:
 
 ```python
 {
@@ -141,138 +170,19 @@ Sketch:
 }
 ```
 
-At the next user turn, NLU first runs a **clarification-resolution pass** against this frame:
+The described *behavior* was right; the data model was wrong. Per the Root Cause table, every field is a
+copy of state another component already owns — `question` is `observation`, `target_flow`/`target_slot` are
+the stack top, `candidates` fits `grounding.choices`. The frame is a shadow copy of the flow stack plus the
+ambiguity handler: the "second dialogue state" the Non-Goals forbid, with all the drift and
+double-bookkeeping that implies.
 
-- resolved: fill target slot/entity, clear ambiguity, and continue or activate the target flow;
-- not resolved: either keep ambiguity and ask again, or clear it if the user clearly changed tasks;
-- ambiguous answer: ask a more specific follow-up.
-
-Pros:
-
-- Directly models the real missing concept: "the next reply may answer this question."
-- Works for entity choices, yes/no confirmations, missing slots, and create-new-vs-existing decisions.
-- Avoids regex as the primary mechanism; the resolver can be LLM-judged with a schema.
-- Keeps responsibility in NLU/AmbiguityHandler, where Round 3 says it belongs.
-- Gives PEX a clear prompt contract: ask via ambiguity frames, then let NLU bind the answer.
-
-Cons:
-
-- Requires tightening all places that declare ambiguity so metadata is well-formed.
-- Needs a small resolver prompt/schema and careful failure behavior.
-- More invasive than simply storing candidates.
-- Requires deciding how PEX should resume after an ambiguity is resolved.
-
-Assessment:
-
-This is the most coherent direction. It solves the root cause instead of a symptom.
+The lesson: when a design wants a new object whose fields are all pointers into existing components, the
+missing piece is code that *reads* those components, not a new place to copy them.
 
 ---
 
-## Option C — Scratchpad-Based Candidate Memory
+## Smallest Proof
 
-Use `SessionScratchpad` as the durable place where find/list results and pending questions are written. NLU's
-turn-point review reads the scratchpad and resolves answers from there.
-
-Pros:
-
-- Reuses an existing cross-agent memory surface.
-- Can store rich context without bloating dialogue state.
-- Search/find results already have scratchpad write paths in some policies.
-
-Cons:
-
-- Scratchpad is an open-ended ledger, not an active state contract.
-- Harder to know which entry is the current question versus stale context.
-- Adds indirection: NLU must infer active clarification from notes.
-- The failure mode becomes "wrong scratchpad note" instead of "missing pending frame."
-
-Assessment:
-
-Good as supporting evidence for the resolver, not as the primary source of truth.
-
----
-
-## Option D — Prompt-Only PEX Repair
-
-Strengthen the orchestrator prompt and relevant flow skills so PEX asks better questions and references prior
-candidate lists more explicitly.
-
-Pros:
-
-- No new data model.
-- Aligns with the principle that PEX lifecycle is agent-managed, not guarded in code.
-- Can improve language quality quickly.
-
-Cons:
-
-- Does not give NLU a durable frame for the next turn.
-- Fails when the next turn enters through NLU before PEX can reason over it.
-- Prompt compliance is variable; traces already show PEX can ask plausible questions while state remains
-  unresolved.
-
-Assessment:
-
-Necessary but not sufficient. Prompt improvements should accompany, not replace, an explicit clarification
-frame.
-
----
-
-## Option E — UI/Action-First Binding
-
-Lean into clickable list/selection UI: when Hugo shows candidate posts, the UI sends `dax + payload` with the
-chosen entity. Free-text replies remain ambiguous and may be clarified.
-
-Pros:
-
-- Robust when the user clicks.
-- Uses existing `react`/payload pathway.
-- Avoids natural-language binding complexity for the happy path.
-
-Cons:
-
-- Does not solve free-text replies like "that title's good."
-- Depends on UI behavior and user interaction style.
-- Still needs a fallback clarification-resolution path.
-
-Assessment:
-
-Useful product affordance, but not enough for conversational continuity.
-
----
-
-## Recommendation
-
-Build **Option B: Pending Clarification Frame in Ambiguity State**, with Option A as a subordinate data shape
-only when the pending question has candidate entities.
-
-The central change should be:
-
-1. When Hugo asks a clarification, it records a typed ambiguity frame with `expected`, `target_flow`,
-   `target_slot`, optional `candidates`, and `question`.
-2. On the next `understand(op='think')`, NLU first attempts to resolve the user's reply against that frame via
-   a schema-constrained resolver.
-3. Only if the reply is not an answer does NLU proceed to normal flow detection.
-4. If resolved, NLU fills the target slot/entity and clears ambiguity; PEX then resumes through prompt/skill
-   lifecycle, not code guards.
-
-This keeps the design aligned with Round 3:
-
-- ambiguity handling belongs to NLU/AmbiguityHandler;
-- PEX remains the lifecycle agent;
-- dialogue state remains single-source;
-- grounding stays in `{'choices': [], 'notes': [], 'entities': [...]}`;
-- no brittle regex-based binding is needed.
-
----
-
-## Next Spec Revision Needed
-
-Before implementation, revise this spec into an execution plan that answers:
-
-- What exact ambiguity-frame schema should be allowed?
-- Which existing ambiguity declarations need to be upgraded first?
-- Should `candidates` live inside ambiguity metadata, `grounding.choices`, or both?
-- What should the resolver schema return?
-- When a clarification resolves, should NLU activate/resume the target flow indirectly by updating stack slots,
-  or should PEX decide from the resolved belief on its next loop?
-- What are the smallest trace cases that prove improvement without running broad live evals?
+Replay the three trace cases (`B05.C09`, `B06.C12`, `B05.C06`) after the `think()` change: the reply turn
+should fill the stacked flow's slot and resolve the ambiguity instead of stacking a new flow. No broad live
+evals needed.

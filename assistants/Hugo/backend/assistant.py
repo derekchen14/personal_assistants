@@ -62,9 +62,10 @@ class Assistant:
             self.world.context.add_turn('User', text, turn_type=turn_type)
             log.info('USER (%s): %s', turn_type, text)
 
-            # 0. A lingering ambiguity from last turn: the new user turn is the answer.
-            if self.world.ambiguity.present:
-                self.world.ambiguity.resolve()
+            # 0. Round 3.3: an open ambiguity persists across turns (and task detours) until
+            # grounding completes — NLU's bind pass resolves it. Only the per-turn ask counts
+            # reset on a new user turn.
+            self.world.ambiguity.counts = dict.fromkeys(self.world.ambiguity.counts, 0)
 
             if dax:      # click or action+text: react fills belief from the dax/payload
                 self.nlu.understand(op='react', dax=dax, payload=payload)
@@ -75,7 +76,7 @@ class Assistant:
             utterance = self.pex.execute(self.system_prompt, dax=dax, payload=payload, text=text)
 
             # 5. Store the turn into memory.
-            self.mem.store_turn(utterance, self.pex.last_prompt_tokens)
+            self.mem.store_turn(utterance, self.pex.last_prompt_tokens, self.pex.completed_this_turn)
             log.info('AGENT: %s', utterance[:256])
             return self._build_payload(utterance, self.world.latest_artifact())
         except Exception as ecp:  # noqa: BLE001 — top-level safety net
