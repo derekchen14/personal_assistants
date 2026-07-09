@@ -28,11 +28,13 @@ from schemas.ontology import FLOW_ONTOLOGY
 INTENT_TAXONOMY = (
     '## Intent Taxonomy\n\n'
     'Work is organized into **flows** — units of work that share a goal (drafting a post, '
-    'releasing it, browsing notes, etc.). Flows group under one of seven **intents**. You form a '
-    'quick sense of the intent as you reason — but you do NOT classify on the record. NLU owns the '
-    'authoritative intent: it is written when NLU detects a flow, and you read it from belief with '
-    '`understand` op="read" (user_beliefs.intent, pred_flows, pred_slots). Use your own sense only '
-    'to pick which flow to activate when the mapping is obvious (a click or a clear continuation). '
+    'releasing it, browsing notes, etc.). Flows group under one of seven **intents**. Your FIRST '
+    'move on every turn is a System-1 attempt at the intent: a fast working classification from '
+    'the message and recent context, before any tool call. It is a guess, not on the record — NLU '
+    'owns the authoritative intent: it is written when NLU detects a flow, and you read it from '
+    'belief with `understand` op="read" (user_beliefs.intent, pred_flows, pred_slots). Use your '
+    'own attempt to pick which flow to activate when the mapping is obvious (a click or a clear '
+    'continuation). '
     'When you '
     'are unsure — the request is multi-step, vague, or spans intents — bias toward Plan or Clarify, '
     'which wait for NLU rather than guessing. Never assert a final intent yourself:\n'
@@ -222,7 +224,7 @@ def _render_outline_levels() -> str:
 
 def _render_preferences(memory) -> str:
     """L2 snapshot, sorted by key so the bytes do not depend on write order."""
-    body = memory.preferences.render()
+    body = memory.user_preferences.render()
     if not body:
         return ('## User Preferences\n\n'
                 'No preferences recorded yet. Promote durable ones via `store_preference`.')

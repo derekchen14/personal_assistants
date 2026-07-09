@@ -43,12 +43,6 @@ _SPECIFIC_REASON = {'invalid_value', 'unclear_value', 'wrong_slot'}
 READ_ONLY_DOMAIN_TOOLS = ('find_posts', 'read_metadata', 'read_section', 'search_notes',
                           'list_channels', 'channel_status')
 
-# The four intents whose flows act on domain data. A flow of one of these on the stack top is
-# PEX's first-pass selection and becomes NLU's candidate-narrowing hint; Plan/Clarify/Converse
-# carry no real signal, so they never hint.
-_DOMAIN_INTENTS = (Intent.RESEARCH, Intent.DRAFT, Intent.REVISE, Intent.PUBLISH)
-
-
 def _block_summaries(artifact) -> list:
     """Compact view of the artifact blocks for the activate_flow tool result, so the
     orchestrator knows what the frontend will render (it must reference blocks, never
@@ -145,15 +139,14 @@ class PolicyExecutor:
             'channel_status':    (self._platform_service, 'channel_status'),
         }
 
-        # Real prompt-token usage off the last acting-loop API response — Agent's compression
-        # check reads it in the end-of-turn work (Agent._epilogue).
+        # Real prompt-token usage off the last acting-loop API response — MEM's compression
+        # check reads it in the end-of-turn store (MEM.store_turn).
         self.last_prompt_tokens = 0
         # Flows that reached Completed during the current turn — reset per execute(), read by the
         # end-of-turn checkpoint.
         self._completed_this_turn = []
         self._injected = False  # belief injected once per turn; reset in execute()
         self._reads = 0  # per-turn count of successful read-only domain-tool calls; reset in execute()
-        self._nlu_thread = None  # this turn's parallel NLU think thread; joined+cleared by _check_nlu
         # Orchestrator hot-path tools — wiring only; the implementations live in
         # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
         self._orchestrator_toolset = {
@@ -229,18 +222,6 @@ class PolicyExecutor:
 
         return None
 
-    def _check_nlu(self, wait:bool=True):
-        # Join this turn's parallel NLU think thread so belief reads see THIS turn's detection,
-        # then clear it — later calls are no-ops. Plan/Clarify turns are REQUIRED to wait (their
-        # understand read blocks); flow execution passes wait=False and continues if NLU is still
-        # running — it only reaps a finished thread so belief reads pick up a landed detection.
-        if self._nlu_thread is None:
-            return
-        if not wait and self._nlu_thread.is_alive():
-            return
-        self._nlu_thread.join()
-        self._nlu_thread = None
-
     # -- Validation -------------------------------------------------------
 
     def _validate_artifact(self, artifact, flow):
@@ -296,12 +277,12 @@ class PolicyExecutor:
 
     # -- Acting loop (the Assistant's single PEX entry) -------------------
 
-    def execute(self, state, context, system_prompt, *, dax=None, payload=None, text='', nlu_thread=None) -> str:
+    def execute(self, system_prompt, *, dax=None, payload=None, text='') -> str:
         """The acting loop the Assistant calls once per turn, after NLU has written belief. A
         pure click (dax, no text) is resolved deterministically — no LLM. Otherwise the bounded
         orchestrator loop reads belief (understand) and decides by intent per the system prompt,
         dispatching tool calls through `_dispatch_tool`. Returns the spoken utterance."""
-        self._nlu_thread = nlu_thread
+        state, context = self.world.state, self.world.context
         self._completed_this_turn = []
         self._injected = False  # belief injected once per turn (whether or not it matches)
         self._reads = 0  # per-turn read-only lookup budget
@@ -404,7 +385,6 @@ class PolicyExecutor:
                 # next round re-reads it. PEX never invokes the NLU module (modules don't call
                 # modules); a contemplate re-detection is the Assistant's move on the next turn.
                 if tool_use.name == 'manage_flows' and result.get('_error') == 'execution_error':
-                    self._check_nlu()
                     self._injected = False
                 errors = errors + 1 if not result['_success'] else 0
                 log.info('  orch round=%d tool=%s ok=%s', round_idx + 1, tool_use.name,
@@ -463,7 +443,7 @@ class PolicyExecutor:
         return result, (call, result['_success'])
 
     def _track_usage(self, response):
-        """Record real prompt-token usage off an acting-loop API response (Agent's compression
+        """Record real prompt-token usage off an acting-loop API response (MEM's compression
         trigger reads it, never estimates). Cache reads/writes count toward the window."""
         usage = response.usage
         if usage:
@@ -593,7 +573,6 @@ class PolicyExecutor:
     # try/except and returned as corrective tool errors for the orchestrator loop to retry on.
 
     def read_state(self, params:dict) -> dict:
-        self._check_nlu()
         state = self.world.state
         state.flow_stack = self.flow_stack.to_list()  # saved copy tracks the one stack
         return {'_success': True, 'state': state.read_state()}
@@ -625,9 +604,7 @@ class PolicyExecutor:
         if params['op'] == 'stackon' and params.get('active'):
             # Single-call stack-on (the user 2026-07-03): stackon handed over matching slots; fold
             # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
-            self._check_nlu(wait=False)
-            if self._nlu_thread is None:  # fold only a landed detection — never a mid-write belief
-                self._apply_belief_slots(state, params['flow_name'])
+            self._apply_belief_slots(state, params['flow_name'])
             return self.activate_flow({'flow_name': params['flow_name']})
         return {'_success': True, 'state': document}
 
@@ -644,15 +621,14 @@ class PolicyExecutor:
                               stack=self.flow_stack, slots=slots)
 
     def inject_belief_state(self) -> str | None:
-        """Once per turn, format NLU's landed detection as a `[belief]` note for the orchestrator
-        context — regardless of whether it matches the active flow. Never blocks: reap a finished
-        NLU thread (wait=False); if detection has not landed yet, skip and retry at the next hook.
-        Flow-only difference is left to the orchestrator (the prompt rule). An INTENT difference is
-        forced in code here as a FALLBACK: the active flow is marked Invalid (we are not coming
-        back to it) and NLU's flow takes over as Active (the user 2026-07-03)."""
-        self._check_nlu(wait=False)
+        """Once per turn, format NLU's detection as a `[belief]` note for the orchestrator
+        context — regardless of whether it matches the active flow. NLU runs before the loop, so
+        the detection is always this turn's. Flow-only difference is left to the orchestrator
+        (the prompt rule). An INTENT difference is forced in code here as a FALLBACK: the active
+        flow is marked Invalid (we are not coming back to it) and NLU's flow takes over as Active
+        (the user 2026-07-03)."""
         state = self.world.state
-        if self._injected or self._nlu_thread is not None or not state.pred_flows:
+        if self._injected or not state.pred_flows:
             return None
         self._injected = True
         top = state.pred_flows[0]
@@ -679,7 +655,6 @@ class PolicyExecutor:
         around the policy run. On completion the flow's completion record is written to the
         session scratchpad and returned as the tool result. State-file persistence stays with
         write_state."""
-        self._check_nlu(wait=False)  # flow execution never blocks on NLU — only Plan/Clarify wait
         state = self.world.state
         name = params['flow_name']
         flow = self.flow_stack.find_by_name(name) or self.flow_stack.stackon(name)
@@ -721,10 +696,9 @@ class PolicyExecutor:
         return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
 
     def _dispatch_understand(self, params:dict) -> dict:
-        """The orchestrator's belief READ — invokes the Dialogue State component directly (joining
-        the parallel NLU thread first, so Plan/Clarify wait here). PEX never invokes the NLU module:
-        think/react/contemplate are the Assistant's calls; PEX only reads the belief they wrote."""
-        self._check_nlu()
+        """The orchestrator's belief READ — invokes the Dialogue State component directly. NLU
+        writes the belief before the loop runs, so every read sees this turn's detection. PEX
+        never invokes the NLU module: think/react are the Assistant's calls."""
         return self.read_state(params)
 
     def _dispatch_read_scratchpad(self, params:dict) -> dict:

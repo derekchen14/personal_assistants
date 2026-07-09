@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
-from threading import Thread
 
 from schemas.config import load_config
 from backend.modules.nlu import NaturalLanguageUnderstanding
@@ -12,7 +11,6 @@ from backend.components.memory_manager import MemoryExtensionModule
 from backend.components.task_artifact import TaskArtifact
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.world import World
-from backend.prompts.for_compressor import build_compression_prompt
 from backend.prompts.for_orchestrator import build_orchestrator_prompt
 
 log = logging.getLogger(__name__)
@@ -42,9 +40,10 @@ class Assistant:
     def take_turn(self, text:str, dax:str|None=None, payload:dict|None=None) -> dict:
         """ Process
         0. Resolve any lingering ambguity, go straight to nlu.react() if user action was taken, then straight to step 3.
-        1. PEX takes System 1 attempt at classifying intent.
+        1. PEX takes System 1 attempt at classifying intent — the first move of its agent loop,
+           per the orchestrator prompt. Never a separate call.
         2a. If the intent is clear (Research, Draft, Revise, Publish), PEX proceeds.
-            NLU runs in parallel to detects the flow and derives the intent from the detected flow.
+            NLU detects the flow and derives the intent from the detected flow.
             If the intents match, we just let PEX proceed. Otherwise, we must intervene at next hook point.
         2b. If the intent is potentially complex (Plan, Clarify, Converse), then PEX awaits nlu.understand(op='read')
         3. PEX agent decides the complexity of the request:
@@ -54,34 +53,31 @@ class Assistant:
                 * stackon a new flow, activated immediately, and start policy execution
             - advanced: lean on the Workflow Planner to breakdown a complex task or kick-off a Pending flow
         4. Pass the agent response back to the user
-        5. Store results into memory, MEM agent decides if it wants to promote any thoughts to L2 or L3
+        5. Store results into memory, MEM decides if it wants to promote any thoughts to L2 or L3
         """
-        
+
         try:
             self._ensure_session()
             turn_type = 'action' if dax else 'utterance'
             self.world.context.add_turn('User', text, turn_type=turn_type)
             log.info('USER (%s): %s', turn_type, text)
 
+            # 0. A lingering ambiguity from last turn: the new user turn is the answer.
             if self.world.ambiguity.present:
                 self.world.ambiguity.resolve()
 
-            state = self.world.state
-            thread = None
-            if dax:                          # click or action+text: react fills from the dax/payload
+            if dax:      # click or action+text: react fills belief from the dax/payload
                 self.nlu.understand(op='react', dax=dax, payload=payload)
-            elif state.grounding['post']:    # utterance, active entity: think in parallel with PEX
-                thread = Thread(target=self.nlu.understand,
-                                kwargs={'op': 'think', 'user_text': text, 'payload': payload})
-                thread.start()
-            else:                            # utterance, no active entity: think, awaited
+            else:        # utterance: detection writes belief before PEX's loop runs
                 self.nlu.understand(op='think', user_text=text, payload=payload)
 
-            utterance = self.pex.execute(state, self.world.context, self.system_prompt,
-                                            dax=dax, payload=payload, text=text, nlu_thread=thread)
-            if thread:
-                thread.join()                # join the parallel detection at the turn boundary
-            return self._epilogue(utterance)
+            # 1-4. PEX's agent loop: System-1 intent attempt first, then act, then reply.
+            utterance = self.pex.execute(self.system_prompt, dax=dax, payload=payload, text=text)
+
+            # 5. Store the turn into memory.
+            self.mem.store_turn(utterance, self.pex.last_prompt_tokens)
+            log.info('AGENT: %s', utterance[:256])
+            return self._build_payload(utterance, self.world.latest_artifact())
         except Exception as ecp:  # noqa: BLE001 — top-level safety net
             log.exception('take_turn crashed: %s', ecp)
             return self._fallback_response("Something went wrong on my end. Please try again.")
@@ -104,39 +100,6 @@ class Assistant:
         self.system_prompt = build_orchestrator_prompt(
             self.engineer, self.mem, self.world.conversation_id, self.username,
             datetime.now().strftime('%Y-%m-%d'))
-
-    def _epilogue(self, utterance:str) -> dict:
-        """POST-HOOK: record the agent turn, persist the state file, run the compression
-        check, build the frontend payload."""
-        self.world.context.add_turn('Agent', utterance, turn_type='utterance')
-        state = self.world.state
-        state.turn_count += 1
-        state.flow_stack = self.pex.flow_stack.to_list()  # refresh the saved copy, then save
-        state.save(self.world.state_file())  # _ensure_session guarantees a bound session
-        self._compression_check()
-        log.info('AGENT: %s', utterance[:256])
-        return self._build_payload(utterance, self.world.latest_artifact())
-
-    def _compression_check(self):
-        """Compactor trigger: real prompt-token usage from PEX's last acting-loop API response
-        against the configured threshold, checked in the post-hook epilogue, never mid-loop. A
-        summarizer failure aborts the compaction — the message list stays unchanged and the
-        turn's reply still goes out."""
-        compression = self.config['compression']
-        if self.pex.last_prompt_tokens < compression['threshold_tokens']:
-            return
-        try:
-            self.world.context.compress_messages(self._summarize_middle,
-                                                 compression['protect_tail'],
-                                                 self.pex.last_prompt_tokens)
-        except Exception as ecp:  # noqa: BLE001 — aux-LLM failure must not eat the reply
-            log.warning('compression aborted, messages unchanged: %s', ecp)
-
-    def _summarize_middle(self, middle:list[dict], previous_summary:str|None, budget:int) -> str:
-        """The auxiliary middle-summarizer — the cheap aux model is PromptEngineer's
-        LOW tier. The prompt lives in backend/prompts/for_compressor.py."""
-        prompt = build_compression_prompt(middle, previous_summary, budget)
-        return self.engineer(prompt, task='compress', model='low', max_tokens=int(budget * 1.3))
 
     def _fallback_response(self, message: str) -> dict:
         self.world.context.add_turn('Agent', message, turn_type='agent_response')
