@@ -7,7 +7,6 @@ from backend.prompts.for_compressor import build_compression_prompt
 
 log = logging.getLogger(__name__)
 
-
 class MemoryExtensionModule:
     """MEM, the Head — code-only module over the three memory tiers (no agent, no tool-calling).
     Constructs and owns its components; the World holds the shared references. Exposes one read
@@ -16,11 +15,11 @@ class MemoryExtensionModule:
 
     The continuous background MEM loop (auto-promotion, proactive push) is designed-not-built."""
 
-    def __init__(self, config, engineer):
+    def __init__(self, config, engineer, username:str):
         self.config = config
         self.engineer = engineer
         self.context_coordinator = ContextCoordinator(config)   # L1 — append-only event stream
-        self.user_preferences = UserPreferences(config)         # L2 — per-account defaults
+        self.user_preferences = UserPreferences(config, username)         # L2 — per-account defaults
         self.business_knowledge = BusinessKnowledge(engineer)    # L3 — business knowledge / FAQs
         self.world = None  # attached by the Assistant after World construction
 
@@ -36,6 +35,8 @@ class MemoryExtensionModule:
         state.turn_count += 1
         state.flow_stack = self.world.flows.to_list()  # refresh the saved copy, then save
         state.save(self.world.state_file())
+        # artifact long-term storage (append world.latest_artifact() to artifacts.jsonl in the
+        # session dir) # designed-not-built
         self._compression_check(prompt_tokens)
 
     def _compression_check(self, prompt_tokens:int):

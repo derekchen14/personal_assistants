@@ -307,8 +307,9 @@ class PolicyExecutor:
         active = self.flow_stack.get_flow(status='Active')
         parts = [f"completed: {', '.join(self._completed_this_turn) or 'none'}",
                  f"active: {active.name() if active else 'none'}"]
-        if state.grounding['post']:
-            parts.append(f"post: {state.grounding['post']}")
+        active_post = state.get_active_post()
+        if active_post:
+            parts.append(f"post: {active_post}")
         context.add_turn('System', f"[checkpoint] {' | '.join(parts)}", turn_type='checkpoint')
 
     def _execute_click(self, state, context, dax:str, payload:dict) -> str:
@@ -666,14 +667,10 @@ class PolicyExecutor:
             return {'_success': False, '_error': 'approval_required',
                     '_message': approval.blocks[0].data['prompt']}
 
-        if state.grounding['post']:
-            state.active_post = state.grounding['post']
         policy = self._policies[flow.intent]
         artifact = policy.execute(state, self.world.context, self._dispatch_tool)
         record = policy.pop_completion()  # set when the policy completed via complete_flow
         self.world.insert_artifact(artifact)
-        if state.active_post:  # the grounding block stays authoritative
-            state.grounding['post'] = state.active_post
 
         # hook: post-flow
         check = self._validate_artifact(artifact, flow)

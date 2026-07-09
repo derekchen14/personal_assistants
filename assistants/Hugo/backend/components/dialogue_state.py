@@ -4,7 +4,8 @@ from pathlib import Path
 from backend.components.flow_stack import flow_classes
 from utils.helper import dax2flow
 
-GROUNDING_PARTS = ('post', 'sec', 'snip', 'chl', 'ver')
+ENTITY_PARTS = ('post', 'sec', 'snip', 'chl', 'ver')
+GROUNDING_PARTS = ('choices', 'notes', 'entities', *ENTITY_PARTS)
 _BELIEF_FIELDS = ('username', 'goal', 'confirmed', 'rejected', 'workflow_step',
                   'turn_count', 'has_issues')
 _GROUNDED_SLOT_TYPES = ('source', 'target', 'removal', 'channel')
@@ -67,18 +68,17 @@ class DialogueState:
         self.keep_going: bool = False
         self.has_issues: bool = False
         self.natural_birth: bool = True
-        self.active_post: str | None = None
 
-        self.slices = {'choices': [], 'channels': [], 'campaigns': []}
+        # each entity for the blog domain is {post, sec, snip, chl, ver}
+        # in most cases, there is only on active entity in the list
+        self.grounding = {'choices': [], 'notes': [], 'entities': []}
 
-        # Per-session, file-backed form.
         self.conversation_id: str = ''
         self.username: str = ''
         self.goal: str = ''
         self.confirmed: list = []
         self.rejected: list = []
         self.workflow_step: int = 0
-        self.grounding: dict = {'post': '', 'sec': '', 'snip': '', 'chl': '', 'ver': False}
         self.flow_stack: list[dict] = []  # saved copy of the FlowStack component (see write_state)
 
     def flow_name(self, string=False):
@@ -105,7 +105,6 @@ class DialogueState:
             'keep_going': self.keep_going,
             'has_issues': self.has_issues,
             'natural_birth': self.natural_birth,
-            'active_post': self.active_post,
         }
 
     def save(self, path):
@@ -137,6 +136,28 @@ class DialogueState:
 
     # ── read_state / write_state tool surfaces ─────────
     # These methods are the callable surface for the tool catalog.
+
+    def get_active_post(self) -> str:
+        return self.get_active_entity().get('post', '')
+
+    def get_active_entity(self) -> dict:
+        entities = self.grounding.get('entities') or []
+        if not entities:
+            return {}
+        return {part: entities[0].get(part, False if part == 'ver' else '') for part in ENTITY_PARTS}
+
+    def set_active_entity(self, **parts) -> dict:
+        entity = self.get_active_entity() or {part: False if part == 'ver' else '' for part in ENTITY_PARTS}
+        for part, value in parts.items():
+            if part not in ENTITY_PARTS:
+                raise KeyError(f'Unknown entity part: {part!r}')
+            entity[part] = value
+        entities = self.grounding.setdefault('entities', [])
+        if entities:
+            entities[0] = entity
+        else:
+            entities.append(entity)
+        return entity
 
     def read_state(self) -> dict:
         """The read_state tool surface and the per-session state.json document: user beliefs,
@@ -187,7 +208,10 @@ class DialogueState:
                 for part, val in value.items():
                     if part not in GROUNDING_PARTS:
                         raise KeyError(f'Unknown grounding part: {part!r}')
-                    self.grounding[part] = val
+                    if part in ENTITY_PARTS:
+                        self.set_active_entity(**{part: val})
+                    else:
+                        self.grounding[part] = val
             elif key in _BELIEF_FIELDS:
                 setattr(self, key, value)
             else:
@@ -210,7 +234,7 @@ class DialogueState:
         empty — write_state validates, it does not patch."""
         if status != 'Completed' or flow.intent == 'Converse':
             return
-        if flow.slots[flow.entity_slot].slot_type in _GROUNDED_SLOT_TYPES and not self.grounding['post']:
+        if flow.slots[flow.entity_slot].slot_type in _GROUNDED_SLOT_TYPES and not self.get_active_post():
             raise ValueError(f'write_state: entity-grounded flow {flow.name()!r} cannot '
                              f'reach Completed while grounding.post is empty')
 
@@ -227,5 +251,4 @@ class DialogueState:
         state.keep_going = data.get('keep_going', False)
         state.has_issues = data.get('has_issues', False)
         state.natural_birth = data.get('natural_birth', True)
-        state.active_post = data.get('active_post')
         return state

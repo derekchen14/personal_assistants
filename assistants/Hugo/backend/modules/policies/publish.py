@@ -116,8 +116,8 @@ class PublishPolicy(BasePolicy):
         # Cite may proceed url-only without a grounded post, so an unresolvable reference is
         # not an early-return here — fall back to the prior active post and skip the snapshot.
         post_id, sec_id, _ = self.resolve_source_ids(flow, state, tools)
-        if not post_id and state.active_post:
-            post_id, sec_id = state.active_post, None
+        if not post_id and state.get_active_post():
+            post_id, sec_id = state.get_active_post(), None
         if post_id:
             self.record_snapshot(self.content, flow, context, post_id,
                 sec_ids=[sec_id] if sec_id else None)

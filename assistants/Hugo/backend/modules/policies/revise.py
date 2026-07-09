@@ -252,7 +252,7 @@ class RevisePolicy(BasePolicy):
         rendered as a clickable selection — the flow stays Active in stage 'discovery'. Phase 2 (the
         pick click, an action turn carrying {39B} + choices): the chosen candidate fills the gap via
         revise_content, then the flow completes."""
-        if flow.stage == 'discovery' and state.slices['choices']:
+        if flow.stage == 'discovery' and state.grounding.get('choices'):
             return self._propose_insert(flow, state, context, tools)
         return self._propose_generate(flow, state, context, tools)
 
@@ -303,8 +303,8 @@ class RevisePolicy(BasePolicy):
             return TaskArtifact(flow.name())
 
         candidates, post_id, sec_id = saved['candidates'], saved['post_id'], saved['sec_id']
-        # Slices accumulate across the session's single state, so the just-clicked pick is last.
-        idx = list(state.slices['choices'])[-1]
+        # Choices accumulate across the session's grounding block, so the just-clicked pick is last.
+        idx = list(state.grounding.get('choices', []))[-1]
         chosen = candidates[idx] if idx < len(candidates) else candidates[0]
 
         self.record_snapshot(self.content, flow, context, post_id, sec_ids=[sec_id])

@@ -157,7 +157,7 @@ class BasePolicy:
         """Extract (post_id, sec_id, error) from the state file's grounding block — the single source
         of truth for the active entity. A user-typed reference in the entity slot (this turn's
         utterance) still resolves through the fuzzy _resolve_post_id; resolved ids are written back to
-        the grounding block (state.active_post mirrors it). The third return is a missing-reference
+        the grounding block. The third return is a missing-reference
         error artifact when the slot was filled with a title/id that doesn't resolve to a real post;
         callers early-return via `post_id, _, error = self.resolve_source_ids(...); if error: return error`."""
         slot = flow.slots[flow.entity_slot]
@@ -166,7 +166,8 @@ class BasePolicy:
         if slot.values:
             vals = next((ent for ent in slot.values if ent['post'] and (not part or ent[part])),
                         slot.values[0])
-        reference = vals['post'] if vals and vals['post'] else state.grounding['post']
+        active_entity = state.get_active_entity()
+        reference = vals['post'] if vals and vals['post'] else active_entity.get('post', '')
         if not reference:
             return None, None, None
         post_id = self._resolve_post_id(reference, tools)
@@ -174,11 +175,9 @@ class BasePolicy:
             error = self.error_artifact(flow, 'missing_reference',
                 thoughts='Could not find the specified post.', missing_entity='post')
             return None, None, error
-        sec_ref = vals['sec'] if vals else state.grounding['sec']
+        sec_ref = vals['sec'] if vals else active_entity.get('sec', '')
         sec_id = self._resolve_sec_id(sec_ref, tools, post_id)
-        state.grounding['post'] = post_id
-        state.grounding['sec'] = sec_id or ''
-        state.active_post = post_id
+        state.set_active_entity(post=post_id, sec=sec_id or '')
         return post_id, sec_id, None
 
     def _build_resolved_context(self, flow, state, tools, include_preview:bool=False) -> dict|None:
@@ -187,11 +186,10 @@ class BasePolicy:
         When include_preview=True, also fetches a per-section preview (title +
         first 3 lines) so skills don't need a follow-up read_metadata call.
         Substrate-aware through resolve_source_ids: under the orchestrator the ids come
-        from the grounding block (state.active_post mirrors it, so the fallback below
-        serves both substrates)."""
+        from the grounding block."""
         post_id, sec_id, _ = self.resolve_source_ids(flow, state, tools)
-        if not post_id and state.active_post:
-            post_id = state.active_post
+        if not post_id:
+            post_id = state.get_active_post()
         if not post_id:
             return None
         meta = tools('read_metadata', {'post_id': post_id, 'include_preview': include_preview})

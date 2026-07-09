@@ -130,6 +130,5 @@ def seed_active_post(agent, case:dict, seeded:list):
     source = (first.get('slots') or {}).get('source') or {}
     want = source.get('post', '').lower() if isinstance(source, dict) else ''
     post_id = next((pid for pid, title in seeded if title.lower() == want), seeded[0][0])
-    state = agent.world.current_state()
-    state.active_post = post_id
-    state.grounding['post'] = post_id
+    state = agent.world.state
+    state.set_active_entity(post=post_id, ver=True)

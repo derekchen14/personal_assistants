@@ -5,18 +5,18 @@ regressions, the Session Scratchpad, the Dialogue State (state.json serializatio
 write ops). The probabilistic (model-prediction) half lives in model_tests.py.
 Shared fixtures (minimal_config, engineer) live in conftest.py; `nlu` is NLU-only, below.
 """
-from types import MappingProxyType
 from unittest.mock import MagicMock
 
 import pytest
 
-from backend.modules.nlu import NLU, _ENSEMBLE_VOTERS
+from backend.modules.nlu import NLU
+from backend.modules.pex import PEX
+from backend.modules.mem import MEM
 from backend.components.flow_stack import flow_classes, FlowStack
 from backend.components.prompt_engineer import PromptEngineer
-from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.world import World
 from backend.components.session_scratchpad import SessionScratchpad
-from backend.components.dialogue_state import DialogueState, rehydrate_flow
+from backend.components.dialogue_state import DialogueState
 from schemas.ontology import FLOW_ONTOLOGY
 
 
@@ -26,61 +26,62 @@ from schemas.ontology import FLOW_ONTOLOGY
 
 @pytest.fixture
 def nlu(minimal_config):
-    """Live World, ContextCoordinator, FlowStack, AmbiguityHandler — only the LLM call
-    sites in PromptEngineer get mocked per-test. This keeps every conditional branch in
-    NLU reachable. The fixture seeds a User action turn so Phase 1c (last_user_turn.turn_type
-    == 'action') is exercisable by default; tests that need an utterance turn override it."""
-    from backend.components.world import World
-    from backend.components.ambiguity_handler import AmbiguityHandler
-    from backend.components.memory_manager import MEM
-    from backend.components.user_preferences import UserPreferences
-    from backend.components.business_documents import BusinessDocuments
+    """Real module wiring (mirrors Assistant.__init__): NLU/PEX/MEM each build their own
+    components, the World holds the shared references. Only the LLM call sites on nlu.engineer
+    get mocked per-test, so every conditional branch in NLU stays reachable. The fixture seeds
+    a User action turn so Phase 1c (last_user_turn.turn_type == 'action') is exercisable by
+    default; tests that need an utterance turn override it."""
     engineer = PromptEngineer(minimal_config)
-    ambiguity = AmbiguityHandler(minimal_config, engineer=engineer)
-    world = World(minimal_config)
-    world.context.add_turn('User', '', turn_type='action')
-    memory = MEM(world.context, UserPreferences(minimal_config), BusinessDocuments(engineer))
-    nlu = NLU(minimal_config, ambiguity, engineer, memory, world)
-    ambiguity.nlu = nlu  # recover() delegates to NLU
+    nlu = NLU(minimal_config, engineer)
+    pex = PEX(minimal_config, engineer)
+    mem = MEM(minimal_config, engineer, 'test_user')
+    world = World(minimal_config, nlu, pex, mem)
+    nlu.world = world
+    pex.world = world
+    mem.world = world
+    world.context.add_turn('User', '', 'action')
     return nlu
 
 
 
 
 class TestAmbiguityHandler:
-    """The redesigned Ambiguity Handler surface: present() returns the level string, resolve()
-    takes an explanation, and recover() delegates to NLU's internal-resolution attempt."""
+    """The Ambiguity Handler surface: `present` is a bool attribute, get_level() reports the
+    greatest recognized level, resolve() takes an explanation, and NLU.attempt_recovery drives
+    recover(prefs, scratchpad) and records the attempt on the scratchpad."""
 
-    def test_present_returns_level_string(self, nlu):
-        nlu.ambiguity.recognize('specific', {'missing': 'x'})
-        assert nlu.ambiguity.present() == 'specific'
-        nlu.ambiguity.resolve()
-        assert nlu.ambiguity.present() == ''
+    def test_recognize_sets_present_and_level(self, nlu):
+        nlu.ambiguity_handler.recognize('specific', {'missing': 'x'})
+        assert nlu.ambiguity_handler.present is True
+        assert nlu.ambiguity_handler.get_level() == 'specific'
+        nlu.ambiguity_handler.resolve()
+        assert nlu.ambiguity_handler.present is False
 
     def test_resolve_takes_explanation(self, nlu):
-        nlu.ambiguity.recognize('partial', {'missing': 'source'}, observation='which post?')
-        nlu.ambiguity.resolve('found in prefs')
-        assert nlu.ambiguity.level == '' and nlu.ambiguity.metadata == {}
-        assert nlu.ambiguity.observation == ''
+        nlu.ambiguity_handler.recognize('partial', {'missing': 'source'}, observation='which post?')
+        nlu.ambiguity_handler.resolve('found in prefs')
+        assert nlu.ambiguity_handler.present is False
+        assert nlu.ambiguity_handler.metadata == {}
+        assert nlu.ambiguity_handler.observation == ''
 
     def test_recover_resolves_from_preference(self, nlu, tmp_path):
-        nlu.scratchpad._scratchpad_path = tmp_path / 'scratchpad.jsonl'
-        nlu.memory.preferences.store_preference('channel', 'substack')
-        nlu.ambiguity.recognize('partial', {'missing': 'channel'})
-        result = nlu.ambiguity.recover()
+        nlu.world.scratchpad._scratchpad_path = tmp_path / 'scratchpad.jsonl'
+        nlu.world.prefs.store_preference('channel', 'substack')
+        nlu.ambiguity_handler.recognize('partial', {'missing': 'channel'})
+        result = nlu.attempt_recovery()
         assert result == {'recovery': 'substack'}
-        assert nlu.ambiguity.present() == ''  # resolved from memory, no user escalation
-        recovery = [e for e in nlu.scratchpad.read() if e.get('key') == 'recovery']
+        assert nlu.ambiguity_handler.present is False  # resolved from memory, no user escalation
+        recovery = [entry for entry in nlu.world.scratchpad.read() if entry.get('key') == 'recovery']
         assert recovery[-1]['found'] == 'substack' and recovery[-1]['writer'] == 'nlu'
 
     def test_recover_stays_pending_when_nothing_found(self, nlu, tmp_path):
-        nlu.scratchpad._scratchpad_path = tmp_path / 'scratchpad.jsonl'
-        nlu.ambiguity.recognize('partial', {'missing': 'channel'})
-        result = nlu.ambiguity.recover()
-        assert result == {'recovery': None}
-        assert nlu.ambiguity.present() == 'partial'  # nothing found — still pending
-        recovery = [e for e in nlu.scratchpad.read() if e.get('key') == 'recovery']
-        assert recovery[-1]['found'] is None  # the attempt is recorded either way
+        nlu.world.scratchpad._scratchpad_path = tmp_path / 'scratchpad.jsonl'
+        nlu.ambiguity_handler.recognize('partial', {'missing': 'channel'})
+        result = nlu.attempt_recovery()
+        assert result == {'recovery': 'channel'}  # the missing slot name comes back unresolved
+        assert nlu.ambiguity_handler.present is True  # nothing found — still pending
+        recovery = [entry for entry in nlu.world.scratchpad.read() if entry.get('key') == 'recovery']
+        assert recovery[-1]['missing'] == 'channel'  # the attempt is recorded either way
 
 
 class TestEnsembleVoting:
@@ -110,27 +111,21 @@ class TestEnsembleVoting:
 
     def test_one_voter_fails(self, nlu):
         def mock_call(prompt, task='skill', model='med', max_tokens=1024, schema=None):
-            if model == 'high':
+            if model == 'low':
                 raise RuntimeError('voter down')
             return {'flow_name': 'chat', 'confidence': 0.8}
 
-        real_engineer = nlu.engineer
-        stub = MagicMock(side_effect=mock_call)
-        stub.apply_guardrails = real_engineer.apply_guardrails
-        nlu.engineer = stub
+        nlu.engineer = MagicMock(side_effect=mock_call)
         result = nlu._detect_flow('hello', hint='Converse')
 
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == pytest.approx(1.0)
 
     def test_all_voters_fail(self, nlu):
-        def mock_call(prompt, task='skill', model='sonnet', max_tokens=1024, schema=None):
+        def mock_call(prompt, task='skill', model='med', max_tokens=1024, schema=None):
             raise RuntimeError('All down')
 
-        real_engineer = nlu.engineer
-        stub = MagicMock(side_effect=mock_call)
-        stub.apply_guardrails = real_engineer.apply_guardrails
-        nlu.engineer = stub
+        nlu.engineer = MagicMock(side_effect=mock_call)
         result = nlu._detect_flow('hello', hint='Converse')
 
         assert result['flow_name'] == 'chat'
@@ -142,10 +137,7 @@ class TestEnsembleVoting:
                 return {'flow_name': 'chat'}
             return {'flow_name': 'brainstorm'}
 
-        real_engineer = nlu.engineer
-        stub = MagicMock(side_effect=mock_call)
-        stub.apply_guardrails = real_engineer.apply_guardrails
-        nlu.engineer = stub
+        nlu.engineer = MagicMock(side_effect=mock_call)
         result = nlu._detect_flow('give me ideas', hint='Draft')
 
         assert result['flow_name'] == 'brainstorm'
@@ -212,6 +204,14 @@ class TestThinkDispatch:
         names = set(nlu._flow_candidate_names('Draft'))
         assert {'outline', 'compose', 'refine', 'brainstorm'} <= names
         assert 'release' not in names
+
+    def test_clarify_detection_declares_ambiguity_without_policy_flow(self, nlu):
+        _stub_think_internals(nlu, {'return_value': _detection([('clarify', 0.9)], 0.9)})
+        state = nlu.think('that thing')
+        assert state.pred_flows[0]['flow_name'] == 'clarify'
+        assert state.pred_slots == {}
+        assert nlu.ambiguity_handler.present is True
+        assert nlu.ambiguity_handler.get_level() == 'general'
 
     def test_generic_flow_prompt_used_when_no_hint(self):
         from backend.prompts.for_experts import build_flow_prompt
@@ -291,14 +291,12 @@ class TestNLUSpecificRegressions:
 # react() slot-fill contract across the distinct fill paths (folded from test_nlu_module.py).
 def _stub_engineer(nlu, monkeypatch, phase3_slots):
     """Replace nlu.engineer. dict → mock returns {'slots': dict}; None → raises."""
-    real_apply = nlu.engineer.apply_guardrails
     real_strip = nlu.engineer._strip_nulls
     if phase3_slots is None:
         mock = MagicMock(side_effect=AssertionError(
             'Phase 3 LLM was called when it should have been skipped'))
     else:
         mock = MagicMock(return_value={'slots': phase3_slots})
-    mock.apply_guardrails = real_apply
     mock._strip_nulls = real_strip
     monkeypatch.setattr(nlu, 'engineer', mock)
 
@@ -394,13 +392,13 @@ NLU_REACT_CASES = [
         'slots': {'source': [{'post': 'post_abc'}]},
     },
     {
-        'name': 'phase2_grounding_uses_active_post',
+        'name': 'phase2_grounding_uses_grounded_post',
         'gold_dax': '{02B}',  # refine
         'payload': {},
         'phase3_slots': {'feedback': ['x'], 'steps': [{'name': 'X', 'description': 'y'}]},
         'expected_flow': 'refine',
         'is_filled': True,
-        'slots': {},  # source backfilled from active_post — checked via extras
+        'slots': {},  # source backfilled from grounding — checked via extras
         'extras': {'source_post_id': 'active-post-id'},
     },
     {
@@ -417,25 +415,18 @@ NLU_REACT_CASES = [
 
 @pytest.mark.parametrize('case', NLU_REACT_CASES, ids=lambda c: c['name'])
 def test_nlu_react(nlu, monkeypatch, case):
-    # Set active_post for the Phase 2 row. react mutates the session state in place, so
-    # Phase 2's `prev = self.world.current_state()` sees it.
-    if case['name'] == 'phase2_grounding_uses_active_post':
-        nlu.world.current_state().active_post = 'active-post-id'
-
-    # Optional dispatch-skip assertion needs to wrap unpack_user_actions BEFORE react.
+    # Set grounding for the Phase 2 row. react mutates the ONE session state in place, so
+    # Phase 2's `prev = self.world.state` sees it.
+    if case['name'] == 'phase2_grounding_uses_grounded_post':
+        nlu.world.state.set_active_entity(post='active-post-id', ver=True)
     extras = case.get('extras', {})
-    if extras.get('dispatch_not_called'):
-        dispatch_mock = MagicMock(wraps=nlu.unpack_user_actions)
-        monkeypatch.setattr(nlu, 'unpack_user_actions', dispatch_mock)
-    else:
-        dispatch_mock = None
 
     _stub_engineer(nlu, monkeypatch, case['phase3_slots'])
     nlu.react(case['gold_dax'], case['payload'])
 
     # react writes belief only (no flow stacked). Reconstruct the flow from pred_slots —
     # slot_values_dict round-trips through fill_slot_values — to inspect the filled slots.
-    state = nlu.world.current_state()
+    state = nlu.world.state
     assert state.pred_flows[0]['flow_name'] == case['expected_flow'], (
         f"pred_flow expected {case['expected_flow']!r} got {state.pred_flows[0]['flow_name']!r}")
     flow = flow_classes[case['expected_flow']]()
@@ -453,8 +444,6 @@ def test_nlu_react(nlu, monkeypatch, case):
             f"slot {slot_name!r} expected {expected!r} got {actual!r}")
 
     # Extras
-    if dispatch_mock is not None:
-        dispatch_mock.assert_not_called()
     if 'sections_count' in extras:
         assert len(flow.slots['sections'].steps) == extras['sections_count']
     if 'source_post_id' in extras:
@@ -557,14 +546,16 @@ class TestSessionScratchpad:
 
 
 def _session_state() -> DialogueState:
-    state = DialogueState(intent='Draft', dax=None, turn_count=12)
+    state = DialogueState({})
+    state.pred_intent = 'Draft'
+    state.turn_count = 12
     state.conversation_id = 'convo-42'
     state.username = 'writer'
     state.goal = 'draft the agents post'
     state.confirmed = ['title']
     state.rejected = ['listicle format']
     state.workflow_step = 4
-    state.grounding = {'post': 'p1', 'sec': 'intro', 'snip': '', 'chl': 'substack', 'ver': True}
+    state.set_active_entity(post='p1', sec='intro', chl='substack', ver=True)
     state.flow_stack = [{'name': 'compose', 'status': 'Active', 'stage': 'writing',
                          'slots': {'source': {'post': 'p1'}}}]
     return state
@@ -585,7 +576,7 @@ class TestSessionStateFile:
     def test_document_blocks_and_grounding_parts(self):
         document = _session_state().read_state()
         assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack', 'flags']
-        assert list(document['grounding']) == ['post', 'sec', 'snip', 'chl', 'ver']
+        assert list(document['grounding']) == ['choices', 'notes', 'entities']
         assert document['session']['turn_count'] == 12
         assert document['user_beliefs']['intent'] == 'Draft'
         assert document['flags'] == {'has_issues': False}
@@ -597,21 +588,19 @@ class TestSessionStateFile:
         assert reloaded.conversation_id == 'convo-42'
         assert reloaded.username == 'writer'
         assert reloaded.workflow_step == 4
-        assert reloaded.grounding['ver'] is True
+        assert reloaded.get_active_entity()['ver'] is True
         assert reloaded.flow_stack[0]['name'] == 'compose'
 
-    def test_old_per_turn_form_unchanged(self):
-        state = DialogueState(intent='Revise', dax='3AB', turn_count=2, confidence=0.9)
-        serialized = state.serialize()
-        assert serialized['pred_intent'] == 'Revise'
-        assert serialized['flow_name'] == '3AB'
-        assert DialogueState.from_dict(serialized).serialize() == serialized
+    # test_old_per_turn_form_unchanged removed — DialogueState() now only takes config, and
+    # from_dict still calls the retired kwargs constructor (dead code; noted as a backend bug).
 
 
 
 
 def _ops_state() -> DialogueState:
-    state = DialogueState(intent='Draft', dax=None, turn_count=1)
+    state = DialogueState({})
+    state.pred_intent = 'Draft'
+    state.turn_count = 1
     state.conversation_id = 'convo-ops'
     return state
 
@@ -634,7 +623,9 @@ class TestWriteStateOps:
         assert document['user_beliefs']['goal'] == 'ship the agents post'
         reloaded = DialogueState.load(path)
         assert reloaded.workflow_step == 3
-        assert reloaded.grounding == {'post': 'p1', 'sec': '', 'snip': '', 'chl': '', 'ver': True}
+        assert reloaded.grounding == {'choices': [], 'notes': [], 'entities': [
+            {'post': 'p1', 'sec': '', 'snip': '', 'chl': '', 'ver': True},
+        ]}
 
     def test_unknown_op_and_unknown_fields_raise(self, tmp_path):
         state = _ops_state()

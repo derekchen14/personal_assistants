@@ -109,7 +109,8 @@ def _run_case(case:dict, domain_tools:set) -> tuple[int, int, list, list]:
         turn_secs.append(time.time() - start)
         actual = [name for name in tool_log[mark:] if name in domain_tools]
         expected = case['turns'][idx + 1]['actions']   # the following agent turn holds the actions
-        ok, reason = is_completed(result, turn, agent.ambiguity.level)
+        ambiguity_level = agent.world.ambiguity.get_level() if agent.world.ambiguity.present else ''
+        ok, reason = is_completed(result, turn, ambiguity_level)
         sim = tool_similarity(actual, expected)
         completed += ok
         sims.append(sim)

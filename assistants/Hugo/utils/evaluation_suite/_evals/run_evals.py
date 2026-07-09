@@ -95,7 +95,8 @@ def _score_convo(case:dict, domain_tools:set, judge:bool=False) -> dict:
         result = _run_turn(agent, turn['utterance'])
         actual = [name for name in tool_log[mark:] if name in domain_tools]
 
-        ok, _ = is_completed(result, turn, agent.ambiguity.level)
+        ambiguity_level = agent.world.ambiguity.get_level() if agent.world.ambiguity.present else ''
+        ok, _ = is_completed(result, turn, ambiguity_level)
         completion.append(1.0 if ok else 0.0)
         reference = _reference_turn(turns, idx)           # the labelled agent turn (actions + reply)
         correctness.append(tool_similarity(actual, reference['actions']))
@@ -112,10 +113,10 @@ def _score_convo(case:dict, domain_tools:set, judge:bool=False) -> dict:
 
         expected_flow = _single_flow(turn)                # 4: belief detected the right flow
         if expected_flow is not None:
-            pred = agent.world.current_state().pred_flows
+            pred = agent.world.state.pred_flows
             state.append(1.0 if pred and pred[0]['flow_name'] == expected_flow else 0.0)
         if turn['ambiguity'] is not None:                 # 6: declare when present
-            ambiguity.append(1.0 if agent.ambiguity.level else 0.0)
+            ambiguity.append(1.0 if ambiguity_level else 0.0)
         if len(turn['labels']['stack']) > 1:              # 7: plan turn completes
             planning.append(1.0 if ok else 0.0)
     agent.close()

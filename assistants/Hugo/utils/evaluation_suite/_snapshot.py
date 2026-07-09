@@ -54,7 +54,7 @@ def project_state(agent, result:dict, tool_log:list) -> dict:
     Captures shape (slot fill state, value-count, value key-sets, flow_stack composition,
     artifact structure, tool sequence) — NOT the LLM-generated text values that vary turn-to-turn.
     This is what catches Bugs #2-#5 without flaking on legitimate LLM variance."""
-    state = agent.world.current_state()
+    state = agent.world.state
     artifact_data = result.get('artifact') or {}
     parts = artifact_data.get('parts') or []
     blocks = artifact_data.get('blocks') or []
@@ -104,7 +104,7 @@ def _project_state_obj(state) -> dict:
         'keep_going': state.keep_going,
         'has_issues': state.has_issues,
         'natural_birth': state.natural_birth,
-        'active_post_set': state.active_post is not None,
+        'active_post_set': bool(state.get_active_post()),
     }
 
 

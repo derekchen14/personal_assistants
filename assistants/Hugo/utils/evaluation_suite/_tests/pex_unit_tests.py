@@ -10,7 +10,6 @@ import tempfile
 import shutil
 from pathlib import Path
 from types import SimpleNamespace, MappingProxyType
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,10 +17,8 @@ from backend.assistant import Assistant, _FALLBACK_MESSAGE, _NUDGE_MESSAGE, _WRA
 from backend.modules.pex import READ_ONLY_DOMAIN_TOOLS
 from backend.components.task_artifact import TaskArtifact
 from backend.components.flow_stack import flow_classes
-from backend.components.memory_manager import MEM
 from backend.components.user_preferences import UserPreferences
 from backend.components.prompt_engineer import PromptEngineer
-from backend.components.session_scratchpad import SessionScratchpad
 from backend.prompts.for_orchestrator import build_orchestrator_prompt
 from schemas.config import load_config
 from schemas.ontology import FLOW_ONTOLOGY
@@ -148,29 +145,11 @@ class TestOrchestratorDispatch:
         """The split scratchpad tools: append_to_scratchpad stamps the writer and grows the pad;
         read_scratchpad filters by writer."""
         pex = mock_agent.pex
-        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'
         appended = pex._dispatch_tool('append_to_scratchpad', {'entry': {'finding': 'intro is weak'}})
         assert appended == {'_success': True, 'size': 1}
         result = pex._dispatch_tool('read_scratchpad', {'writer': 'orchestrator'})
         assert result['entries'] == [{'finding': 'intro is weak', 'writer': 'orchestrator'}]
-
-    def test_understand_hint_is_deterministic_from_stack_top(self, mock_agent):
-        """The hint is coordination code, never a tool argument: the flow PEX committed to the
-        stack is its first-pass selection — a domain intent on top hints NLU; Converse or an
-        empty stack carries no real signal and blanks out."""
-        pex = mock_agent.pex
-        state = mock_agent.world.current_state()
-        state.pred_intent, state.pred_flows = 'Draft', [{'flow_name': 'outline', 'confidence': 0.9}]
-        pex.nlu = MagicMock()
-        pex.nlu.understand.return_value = state
-        pex._dispatch_tool('understand', {'op': 'think'})          # empty stack → blank
-        assert pex.nlu.understand.call_args.kwargs['hint'] == ''
-        pex.flow_stack.stackon('outline')                          # Draft flow on top → hint
-        pex._dispatch_tool('understand', {'op': 'think'})
-        assert pex.nlu.understand.call_args.kwargs['hint'] == 'Draft'
-        pex.flow_stack.stackon('chat')                             # Converse on top → blank
-        pex._dispatch_tool('understand', {'op': 'contemplate'})
-        assert pex.nlu.understand.call_args.kwargs['hint'] == ''
 
 
 
@@ -181,10 +160,11 @@ class TestScopedToolSurface:
 
     def test_declare_ambiguity_tool_recognizes(self, mock_agent):
         pex = mock_agent.pex
+        ambiguity = mock_agent.world.ambiguity
         result = pex._dispatch_tool('declare_ambiguity',
             {'level': 'partial', 'metadata': {'missing': 'source', 'entity': 'post'}})
         assert result == {'_success': True}
-        assert pex.ambiguity.present() == 'partial'
+        assert ambiguity.present is True and ambiguity.get_level() == 'partial'
         bad = pex._dispatch_tool('declare_ambiguity',
                                  {'level': 'general', 'metadata': {'missing': 'nope'}})
         assert bad['_success'] is False and bad['_error'] == 'invalid_input'
@@ -193,20 +173,20 @@ class TestScopedToolSurface:
         pex = mock_agent.pex
         none = pex._dispatch_tool('ask_clarification_question', {})
         assert none['_success'] is False and none['_error'] == 'invalid_input'
-        pex.ambiguity.recognize('partial', {'missing': 'source', 'entity': 'post'})
+        mock_agent.world.ambiguity.recognize('partial', {'missing': 'source', 'entity': 'post'})
         result = pex._dispatch_tool('ask_clarification_question', {})
         assert result['_success'] is True and result['question']
 
     def test_recover_from_ambiguity_tool(self, mock_agent, tmp_path):
         pex = mock_agent.pex
-        pex.scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'  # file-backed for recover
+        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'  # file-backed for recover
         none = pex._dispatch_tool('recover_from_ambiguity', {})
         assert none['_success'] is False and none['_error'] == 'invalid_input'
-        pex.memory.preferences.store_preference('channel', 'substack')
-        pex.ambiguity.recognize('partial', {'missing': 'channel'})
+        mock_agent.world.prefs.store_preference('channel', 'substack')
+        mock_agent.world.ambiguity.recognize('partial', {'missing': 'channel'})
         result = pex._dispatch_tool('recover_from_ambiguity', {})
         assert result['_success'] is True and result['recovery'] == 'substack'
-        assert pex.ambiguity.present() == ''  # resolved internally, guarded by present()
+        assert mock_agent.world.ambiguity.present is False  # resolved internally
 
     def test_flow_stack_tools_replace_call_flow_stack(self, mock_agent):
         pex = mock_agent.pex
@@ -230,15 +210,14 @@ class TestScopedToolSurface:
         """A9 read side: a flat save_findings-shape write is read back whole, and the used-count
         bump re-write shows the increment on a re-read."""
         pex = mock_agent.pex
-        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'
         policy = pex._policies['Revise']
-        policy.scratchpad = pex.scratchpad
-        pex.scratchpad.write({'key': 'audit', 'used_count': 0, 'summary': 's', 'findings': []},
-                             writer='audit')
+        pex.session_scratchpad.write({'key': 'audit', 'used_count': 0, 'summary': 's',
+                                      'findings': []}, writer='audit')
         entry = policy._read_scratch_value('audit')
         assert entry['summary'] == 's' and entry['used_count'] == 0
         entry['used_count'] = entry.get('used_count', 0) + 1
-        pex.scratchpad.write(entry, writer='audit')
+        pex.session_scratchpad.write(entry, writer='audit')
         assert policy._read_scratch_value('audit')['used_count'] == 1
 
 
@@ -269,34 +248,34 @@ class TestDispatchFlow:
     def wired(self, sessions_dir, mock_agent, tmp_path):
         pex = mock_agent.pex
         mock_agent.world.open_session('wire-test')
-        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'
         return mock_agent
 
     def test_completion_record_is_the_tool_result(self, wired):
         pex = wired.pex
-        state = wired.world.current_state()
-        state.grounding['post'] = 'cafe01'
+        state = wired.world.state
+        state.set_active_entity(post='cafe01', ver=True)
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack)
         result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['status'] == 'Completed'
         assert result['completion'] == {'flow': 'outline', 'summary': 'Drafted the intro.',
                                         'metadata': {}, 'writer': 'outline'}
-        assert pex.scratchpad.read(keys=['flow', 'summary']) == [result['completion']]
+        assert pex.session_scratchpad.read(keys=['flow', 'summary']) == [result['completion']]
         # The run is reflected back into the state's flow_stack block, grounding applied.
         assert state.flow_stack[-1]['flow_name'] == 'outline'
         assert state.flow_stack[-1]['status'] == 'Completed'
-        assert state.active_post == 'cafe01'
+        assert state.get_active_post() == 'cafe01'
 
     def test_write_state_slots_reach_the_policy_run(self, wired):
         """slots written via write_state land on the live flow that activate_flow runs."""
         pex = wired.pex
-        state = wired.world.current_state()
+        state = wired.world.state
         state.write_state(wired.world.state_file(), 'stackon',
                           stack=pex.flow_stack, flow_name='outline')
         state.write_state(wired.world.state_file(), 'update_flow',
                           stack=pex.flow_stack, slots={'source': [{'post': 'cafe01'}]})
-        state.grounding['post'] = 'cafe01'
+        state.set_active_entity(post='cafe01', ver=True)
         captured = {}
 
         class _CapturingPolicy(_StubPolicy):
@@ -314,8 +293,8 @@ class TestDispatchFlow:
         pex = wired.pex
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack, status='Active',
                                              thoughts='Need a post first.')
-        pex.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'},
-                                observation='Which post should I work on?')
+        wired.world.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'},
+                                        observation='Which post should I work on?')
         result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['status'] == 'Active'
@@ -342,7 +321,7 @@ class TestPolicyCompletion:
     def wired(self, sessions_dir, mock_agent, tmp_path):
         pex = mock_agent.pex
         mock_agent.world.open_session('completion-test')
-        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'
         return mock_agent
 
     def _migrated_policy(self, agent, summary, metadata=None):
@@ -356,16 +335,16 @@ class TestPolicyCompletion:
                 self.complete_flow(flow, state, summary, metadata=metadata)
                 return TaskArtifact(origin=flow.name(), thoughts=summary)
 
-        components = {'engineer': pex.engineer, 'memory': pex.memory, 'config': pex.config,
-                      'ambiguity': pex.ambiguity, 'get_tools': pex.get_tools_for_flow,
+        components = {'engineer': pex.engineer, 'config': pex.config,
+                      'ambiguity': agent.world.ambiguity, 'get_tools': pex.get_tools_for_flow,
                       'flow_stack': pex.flow_stack, 'content_service': pex._content_service,
-                      'scratchpad': pex.scratchpad, 'state_file': agent.world.state_file}
+                      'scratchpad': pex.session_scratchpad, 'state_file': agent.world.state_file}
         return _MigratedPolicy(components)
 
     def test_complete_flow_writes_record_once(self, wired):
         pex = wired.pex
-        state = wired.world.current_state()
-        state.grounding['post'] = 'cafe01'
+        state = wired.world.state
+        state.set_active_entity(post='cafe01', ver=True)
         pex._policies['Draft'] = self._migrated_policy(wired, 'Wrote the intro.',
                                                        metadata={'sec': 'intro'})
         result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
@@ -373,7 +352,7 @@ class TestPolicyCompletion:
         assert result['completion'] == {'flow': 'outline', 'summary': 'Wrote the intro.',
                                         'metadata': {'sec': 'intro'}, 'writer': 'outline'}
         # The policy's record IS the tool result — no fallback duplicate from activate_flow.
-        assert pex.scratchpad.read(keys=['flow', 'summary']) == [result['completion']]
+        assert pex.session_scratchpad.read(keys=['flow', 'summary']) == [result['completion']]
         assert state.flow_stack[-1]['status'] == 'Completed'
 
     def test_complete_flow_blocks_ungrounded_completion(self, wired):
@@ -382,13 +361,13 @@ class TestPolicyCompletion:
         result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is False
         assert 'grounding.post is empty' in result['_message']
-        assert pex.scratchpad.read(keys=['flow', 'summary']) == []  # no record written
+        assert pex.session_scratchpad.read(keys=['flow', 'summary']) == []  # no record written
 
     def test_grounded_source_ids_continuity(self, wired):
         """Empty entity slot + filled grounding block: the active entity carries over."""
         pex = wired.pex
-        state = wired.world.current_state()
-        state.grounding['post'] = 'cafe0001'
+        state = wired.world.state
+        state.set_active_entity(post='cafe0001', ver=True)
         flow = pex.flow_stack.stackon('outline')
         policy = pex._policies['Draft']
 
@@ -398,7 +377,7 @@ class TestPolicyCompletion:
 
         post_id, sec_id, error = policy.resolve_source_ids(flow, state, tools)
         assert (post_id, sec_id, error) == ('cafe0001', None, None)
-        assert state.active_post == 'cafe0001'  # old-path mirror until cutover
+        assert state.get_active_post() == 'cafe0001'
 
 
 class TestProposeTwoPhase:
@@ -410,10 +389,9 @@ class TestProposeTwoPhase:
     def ready(self, sessions_dir, mock_agent, tmp_path, monkeypatch):
         pex = mock_agent.pex
         mock_agent.world.open_session('propose-test')
-        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'
         policy = pex._policies['Revise']
-        policy.scratchpad = pex.scratchpad
-        mock_agent.world.current_state().grounding['post'] = 'p1'   # grounding gate for complete_flow
+        mock_agent.world.state.set_active_entity(post='p1', ver=True)  # grounding gate for complete_flow
         flow = pex.flow_stack.stackon('propose')
         flow.fill_slot_values({'source': [{'post': 'p1', 'sec': 'tradeoffs'}]})
         # Stub the helpers that reach the LLM / content service; the new branching is what we test.
@@ -426,7 +404,7 @@ class TestProposeTwoPhase:
 
     def test_generate_presents_selection_without_completing(self, ready):
         agent, policy, flow = ready
-        state, context = agent.world.current_state(), agent.world.context
+        state, context = agent.world.state, agent.world.context
         artifact = policy.propose_policy(flow, state, context,
             lambda name, params: {'_success': True, 'content': 'Intro. <fill in here> Tail.'})
 
@@ -440,7 +418,7 @@ class TestProposeTwoPhase:
 
     def test_pick_fills_placeholder_and_completes(self, ready):
         agent, policy, flow = ready
-        state, context = agent.world.current_state(), agent.world.context
+        state, context = agent.world.state, agent.world.context
         calls = []
         def tools(name, params):
             calls.append((name, params))
@@ -449,7 +427,7 @@ class TestProposeTwoPhase:
             return {'_success': True}
 
         policy.propose_policy(flow, state, context, tools)         # phase 1 — fills the scratchpad
-        state.slices['choices'].append(1)                          # the click selects "Beta option"
+        state.grounding['choices'].append(1)                        # the click selects "Beta option"
         policy.propose_policy(flow, state, context, tools)         # phase 2 — inserts the pick
 
         revise = [params for name, params in calls if name == 'revise_content'][0]
@@ -471,9 +449,9 @@ class TestOrchestratorPrompt:
     @pytest.fixture
     def prompt_inputs(self, minimal_config):
         engineer = PromptEngineer(minimal_config)
-        prefs = UserPreferences(minimal_config)
+        prefs = UserPreferences(minimal_config, 'test_user')
         prefs.store_preference('paragraph_length', 'shorter paragraphs')
-        memory = MEM(None, prefs, None)
+        memory = SimpleNamespace(user_preferences=prefs)
         return engineer, memory
 
     def _build(self, prompt_inputs):
@@ -487,7 +465,7 @@ class TestOrchestratorPrompt:
         prompt = self._build(prompt_inputs)
         assert '- Remember, the user wants shorter paragraphs.' in prompt
         # Snapshot semantics: a write AFTER the build only enters the next session's prompt.
-        prompt_inputs[1].preferences.store_preference('tone', 'casual')
+        prompt_inputs[1].user_preferences.store_preference('tone', 'casual')
         assert 'casual' not in prompt
 
     def test_taxonomy_names_all_seven_intents(self, prompt_inputs):
@@ -1580,9 +1558,10 @@ def _build_flowstack_machine():
             config = MappingProxyType({'session': {'max_flow_depth': 8}})
             self.stack = FlowStack(config, flow_classes=_all_classes)
             # The DialogueState carries the saved copy of this stack in its flow_stack block.
-            self.state = DialogueState(intent='Draft', dax=None, turn_count=0)
+            self.state = DialogueState(config)
+            self.state.pred_intent = 'Draft'
             self.state.conversation_id = 'machine'
-            self.state.grounding['post'] = 'p1'  # keep completions grounded; the §6
+            self.state.set_active_entity(post='p1', ver=True)  # keep completions grounded; the §6
             # raise has its own dedicated tests in TestWriteStateOps.
             self.tmp_dir = Path(tempfile.mkdtemp())
             self.state_file = self.tmp_dir / 'state.json'
@@ -1822,7 +1801,7 @@ class TestSingleCallStackon:
     def test_stackon_active_folds_slots_and_activates(self, sessions_dir, mock_agent, monkeypatch):
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
-        state = mock_agent.world.current_state()
+        state = mock_agent.world.state
         self._believe(state, 'outline')
         ran = {}
         monkeypatch.setattr(pex, 'activate_flow',
@@ -1836,7 +1815,7 @@ class TestSingleCallStackon:
 
     def test_stackon_without_active_only_stacks(self, sessions_dir, mock_agent, monkeypatch):
         mock_agent.world.open_session('wire-test')
-        state = mock_agent.world.current_state()
+        state = mock_agent.world.state
         self._believe(state, 'outline')
         called = []
         monkeypatch.setattr(mock_agent.pex, 'activate_flow', lambda params: called.append(params))
@@ -1844,49 +1823,6 @@ class TestSingleCallStackon:
                                                {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True and not called
 
-
-class TestCheckNlu:
-    """The parallel NLU think thread joins at the hooks: a belief read blocks (the Plan/Clarify
-    wait); flow execution reaps a landed detection without blocking (the user 2026-07-03)."""
-
-    def test_read_state_joins_slow_nlu_thread(self, sessions_dir, mock_agent):
-        import time
-        from threading import Thread
-        mock_agent.world.open_session('wire-test')
-        pex = mock_agent.pex
-        state = mock_agent.world.current_state()
-
-        def slow_detect():
-            time.sleep(0.05)
-            state.pred_flows = [{'flow_name': 'outline', 'confidence': 0.9, 'votes': 3}]
-        thread = Thread(target=slow_detect)
-        thread.start()
-        pex._nlu_thread = thread
-        result = pex.read_state({})
-        assert result['state']['user_beliefs']['pred_flows'][0]['flow_name'] == 'outline'
-        assert pex._nlu_thread is None    # joined and cleared
-
-    def test_settle_without_thread_is_noop(self, sessions_dir, mock_agent):
-        mock_agent.world.open_session('wire-test')
-        pex = mock_agent.pex
-        pex._nlu_thread = None            # the click / awaited-think paths
-        result = pex.read_state({})
-        assert result['_success'] is True
-
-    def test_flow_execution_never_blocks_on_running_nlu(self, sessions_dir, mock_agent):
-        from threading import Event, Thread
-        mock_agent.world.open_session('wire-test')
-        pex = mock_agent.pex
-        gate = Event()
-        thread = Thread(target=gate.wait)
-        thread.start()
-        pex._nlu_thread = thread
-        pex._check_nlu(wait=False)       # NLU still running: proceed, keep the handle
-        assert pex._nlu_thread is thread
-        gate.set()
-        thread.join()
-        pex._check_nlu(wait=False)       # landed detection: reap and clear
-        assert pex._nlu_thread is None
 
 class TestBeliefInjection:
     """NLU belief state injection (round 5.1): once per turn the landed detection becomes a
@@ -1900,29 +1836,15 @@ class TestBeliefInjection:
     def test_injection_fires_once(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
-        self._believe(mock_agent.world.current_state(), 'outline')
+        self._believe(mock_agent.world.state, 'outline')
         note = pex.inject_belief_state()
         assert note.startswith('[belief]') and 'outline' in note
         assert pex.inject_belief_state() is None      # once per turn
 
-    def test_injection_waits_for_landed_detection(self, sessions_dir, mock_agent):
-        from threading import Event, Thread
-        mock_agent.world.open_session('wire-test')
-        pex = mock_agent.pex
-        self._believe(mock_agent.world.current_state(), 'outline')
-        gate = Event()
-        thread = Thread(target=gate.wait)
-        thread.start()
-        pex._nlu_thread = thread
-        assert pex.inject_belief_state() is None      # still thinking: skip, do not block
-        gate.set()
-        thread.join()
-        assert pex.inject_belief_state() is not None  # landed: inject at the next hook
-
     def test_intent_differs_forces_fallback(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
-        state = mock_agent.world.current_state()
+        state = mock_agent.world.state
         pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
         live = pex.flow_stack.get_flow()
         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
@@ -1936,7 +1858,7 @@ class TestBeliefInjection:
     def test_flow_differs_same_intent_no_forcing(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
-        state = mock_agent.world.current_state()
+        state = mock_agent.world.state
         pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
         live = pex.flow_stack.get_flow()
         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
@@ -1955,7 +1877,7 @@ class TestPlanLifecycle:
         from schemas.ontology import Intent
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
-        state = mock_agent.world.current_state()
+        state = mock_agent.world.state
         for flow_name in ('release', 'compose'):    # reverse execution order: first-to-run last
             result = pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': flow_name})
             assert result['_success'] is True

@@ -112,10 +112,13 @@ class NaturalLanguageUnderstanding:
             detection = self._detect_flow(user_text, hint=intent)
         
         flow_name = detection['flow_name']
+        predicted_flows = detection.get('pred_flows', [])
+        if flow_name not in flow_classes:
+            return self._write_non_policy_belief(flow_name, detection['confidence'], predicted_flows)
+
         flow = flow_classes[flow_name]()            # transient — detection writes belief, no push
         self._fill_slots(flow, payload)
         self._repair_entities(self.world.state, flow)
-        predicted_flows = detection.get('pred_flows', [])
         state = self._write_belief(flow_name, detection['confidence'], predicted_flows, flow)
 
         if self.ambiguity_handler.needs_clarification(state.confidence):
@@ -123,6 +126,16 @@ class NaturalLanguageUnderstanding:
                 'general',
                 metadata={'top_detection': flow_name},
                 observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"',
+            )
+        return state
+
+    def _write_non_policy_belief(self, flow_name:str, confidence:float, pred_flows:list):
+        state = self._write_belief(flow_name, confidence, pred_flows, flow=None)
+        if flow_name == 'clarify':
+            self.ambiguity_handler.recognize(
+                'general',
+                metadata={'missing': 'intent', 'top_detection': flow_name},
+                observation="I'm not sure what you'd like to do yet — could you clarify the task?",
             )
         return state
 
@@ -294,12 +307,13 @@ class NaturalLanguageUnderstanding:
 
     def _active_post_dict(self) -> dict | None:
         state = self.world.state
-        if not state.active_post:
+        post_id = state.get_active_post()
+        if not post_id:
             return None
-        title = self._posts.get_title(state.active_post)
+        title = self._posts.get_title(post_id)
         if not title:
             return None
-        return {'id': state.active_post, 'title': title}
+        return {'id': post_id, 'title': title}
 
     def _fill_slices(self, state, payload):
         filtered = {}
@@ -307,7 +321,7 @@ class NaturalLanguageUnderstanding:
             if key in ['choices', 'channels', 'campaigns']:
                 for slice_value in val:
                     # if value > 0: // can add guardrails in this line if desired
-                    state.slices[key].append(slice_value)
+                    state.grounding.setdefault(key, []).append(slice_value)
             else:
                 filtered[key] = val
         return state, filtered
@@ -398,10 +412,11 @@ class NaturalLanguageUnderstanding:
         # Phase 2: Transfer entity grounding from previous flow to active flow. Gate on `slot.values` (not `slot.filled`)
         # so a slot already partially populated from a prior turn isn't double-grounded into a duplicate entity.
         prev = self.world.state
-        if prev.active_post:
+        active_post = prev.get_active_post()
+        if active_post:
             for slot in flow.slots.values():
                 if slot.slot_type in ('source', 'target') and not slot.values:
-                    slot.add_one(post=prev.active_post)
+                    slot.add_one(post=active_post)
 
         # Phase 3: Standard LLM slot-filling. Only targets unfilled slots, enforced by `_fill_slots_schema`
         if not flow.is_filled():
@@ -511,7 +526,7 @@ class NaturalLanguageUnderstanding:
             return [str(v)[:80] for v in slot.values]
         return None
 
-    def _write_belief(self, flow_name:str, confidence:float, pred_flows:list, flow):
+    def _write_belief(self, flow_name:str, confidence:float, pred_flows:list, flow=None):
         """Write the detection onto the session state's belief IN PLACE — the single source of
         truth for predictions. Mutates current_state; never inserts a new per-turn state and
         never pushes a flow (PEX stages and activates)."""
@@ -521,7 +536,7 @@ class NaturalLanguageUnderstanding:
         state.pred_flow = flow2dax(flow_name)
         state.confidence = confidence
         state.pred_flows = pred_flows
-        state.pred_slots = flow.slot_values_dict()
+        state.pred_slots = flow.slot_values_dict() if flow else {}
         return state
 
     def _tally_votes(self, votes:list[dict]) -> dict:

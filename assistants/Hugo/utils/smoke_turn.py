@@ -19,6 +19,7 @@ TURNS = [
     "Can you find my draft titled 'Roman Concrete Heals Itself; Ours Just Crumbles'?",
     "Great, put together an outline for it.",
     "Looks good, release it to the blog.",
+    "Remember that I always publish to Substack first.",
 ]
 
 
@@ -35,6 +36,14 @@ def main():
         print(f"belief: intent={state.pred_intent} flow={top.get('flow_name')} "
               f"confidence={top.get('confidence')}")
         print(f"stack:  {stack}")
+
+    # L2 persistence beat: a FRESH Assistant must see the stored preference from disk and
+    # render it into its frozen session prompt.
+    reborn = Assistant('smoke')
+    reborn._ensure_session()
+    print("\n== reborn assistant (new instance, same account) ==")
+    print(f"L2 store: {reborn.world.prefs.read()}")
+    print(f"prompt renders it: {'substack' in reborn.system_prompt.lower()}")
 
 
 if __name__ == '__main__':

@@ -5,17 +5,32 @@ skills facade and the L1 Context-Coordinator compaction + its post-hook trigger.
 Shared fixtures (minimal_config, sessions_dir, orch_agent) live in conftest.py.
 """
 import json
-from types import SimpleNamespace
-from unittest.mock import MagicMock
+from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
 from backend.components.world import World
 from backend.components.user_preferences import UserPreferences
-from backend.components.business_documents import BusinessDocuments
-from backend.components.memory_manager import MEM
+from backend.components.prompt_engineer import PromptEngineer
+from backend.modules.nlu import NLU
+from backend.modules.pex import PEX
+from backend.modules.mem import MEM
 from backend.components.context_coordinator import ContextCoordinator
 from backend.prompts.for_compressor import SUMMARY_PREFIX
+
+
+def _make_world(config):
+    """Mirror backend/assistant.py's wiring: modules construct their components, the World
+    holds the shared references, and each module gets the world attached afterwards."""
+    engineer = PromptEngineer(config)
+    nlu = NLU(config, engineer)
+    pex = PEX(config, engineer)
+    mem = MEM(config, engineer, 'test_user')
+    world = World(config, nlu, pex, mem)
+    nlu.world = world
+    pex.world = world
+    mem.world = world
+    return world, mem
 
 
 class _FakeEngineer:
@@ -56,26 +71,25 @@ def _script(agent, responses):
 
 
 class TestMEMFacade:
-    """The MEM facade delegates each read skill to its tier (recap→L1, recall→L2, retrieve→L3)."""
+    """The MEM module delegates each read skill to its tier (recap→L1, recall→L2, retrieve→L3).
+    MEM constructs and owns its three components, so the tests reach them through the module."""
 
     def test_recall_returns_stored_preferences(self, minimal_config):
-        prefs = UserPreferences(minimal_config)
-        prefs.store_preference('tone', 'casual')
-        memory = MEM(None, prefs, None)
+        memory = MEM(minimal_config, None, 'test_user')
+        memory.user_preferences.store_preference('tone', 'casual')
         assert memory.recall('tone') == {'tone': 'casual'}
 
     def test_retrieve_faq_shortcut(self, minimal_config):
-        business = BusinessDocuments(_FakeEngineer({'matches': [{'idx': 0, 'score': 0.9}]}))
-        business._corpus = [{'question': 'What is X?', 'answer': 'X is Y.'}]
-        memory = MEM(None, None, business)
+        memory = MEM(minimal_config, _FakeEngineer({'matches': [{'idx': 0, 'score': 0.9}]}),
+                     'test_user')
+        memory.business_knowledge._corpus = [{'question': 'What is X?', 'answer': 'X is Y.'}]
         result = memory.retrieve('what is x', documents=['faq'])
         assert result['_success'] is True
         assert result['matches'][0]['question'] == 'What is X?'
 
     def test_recap_returns_recent_history(self, minimal_config):
-        world = World(minimal_config)
-        world.context.add_turn('User', 'draft a post about otters', 'utterance')
-        memory = MEM(world.context, None, None)
+        memory = MEM(minimal_config, None, 'test_user')
+        memory.context_coordinator.add_turn('User', 'draft a post about otters', 'utterance')
         assert 'otters' in memory.recap()
 
 
@@ -217,16 +231,10 @@ class TestCompression:
         assert record[0]['previous'] == 'summary #1'
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Eval system — P1 completion gate + scorer (step_1_evals.md)
-# Red-green spine: the folded-baseline gate logic and the completion detector, both pure (no LLM).
-# ═══════════════════════════════════════════════════════════════════
-
-
-
 class TestCompressionTrigger:
-    """The post-hook trigger (changes.md §5.6): real usage off response.usage against the
-    configured threshold; the protected tail size rides in from config."""
+    """The end-of-turn trigger (MEM._compression_check, run by store_turn): real usage off
+    response.usage against the configured threshold; the protected tail size rides in from
+    config."""
 
     @staticmethod
     def _usage_response(text, prompt_tokens, cached=0):
@@ -256,7 +264,7 @@ class TestCompressionTrigger:
         _script(orch_agent, [self._usage_response('big turn', 64000)])
         orch_agent.take_turn('hello')
         summarize, protect_tail, prompt_tokens = calls[0]
-        assert summarize == orch_agent._summarize_middle
+        assert summarize == orch_agent.mem._summarize_middle
         assert protect_tail == 20  # schemas/tools.yaml compression.protect_tail
         assert prompt_tokens == 64000
 
@@ -270,24 +278,21 @@ class TestCompressionTrigger:
 
 
 
-from types import MappingProxyType
-from backend.components.dialogue_state import DialogueState
+class TestStoreTurn:
+    """MEM.store_turn — the end-of-turn store: records the agent turn to L1, bumps the turn
+    count, and saves state.json to the session dir."""
 
-def _session_state() -> DialogueState:
-    state = DialogueState(intent='Draft', dax=None, turn_count=12)
-    state.conversation_id = 'convo-42'
-    state.username = 'writer'
-    state.goal = 'draft the agents post'
-    state.confirmed = ['title']
-    state.rejected = ['listicle format']
-    state.workflow_step = 4
-    state.grounding = {'post': 'p1', 'sec': 'intro', 'snip': '', 'chl': 'substack', 'ver': True}
-    state.flow_stack = [{'flow_id': 'compose01', 'flow_name': 'compose', 'dax': '{3AD}',
-                         'intent': 'Draft', 'status': 'Active', 'stage': 'writing',
-                         'slots': {'source': [{'post': 'p1', 'sec': '', 'snip': '',
-                                               'chl': '', 'ver': False}]},
-                         'turn_ids': []}]
-    return state
+    def test_store_turn_records_bumps_and_saves(self, sessions_dir, minimal_config):
+        config = dict(minimal_config)
+        config['compression'] = {'threshold_tokens': 64000, 'protect_tail': 20}
+        world, memory = _make_world(MappingProxyType(config))
+        world.open_session('convo-store')
+        before = world.state.turn_count
+        memory.store_turn('Drafted the otter post.')
+        assert world.state.turn_count == before + 1
+        assert 'Drafted the otter post.' in memory.recap()
+        saved = json.loads(world.state_file().read_text())
+        assert saved['session']['turn_count'] == before + 1
 
 
 
@@ -304,15 +309,15 @@ def tmp_faq_db(tmp_db):
 
 
 
-class TestBusinessDocuments:
+class TestBusinessKnowledge:
     def test_search_returns_top_matches(self, tmp_faq_db):
         (tmp_faq_db / 'faqs.json').write_text(json.dumps([
             {'question': 'What can Hugo do?', 'answer': 'Help write blog posts.', 'tags': ['cap']},
             {'question': 'Who built Hugo?', 'answer': 'Soleda.', 'tags': ['origin']},
         ]))
-        from backend.components.business_documents import BusinessDocuments
+        from backend.components.business_knowledge import BusinessKnowledge
         engineer = _FakeEngineer({'matches': [{'idx': 0, 'score': 0.92}]})
-        svc = BusinessDocuments(engineer)
+        svc = BusinessKnowledge(engineer)
         result = svc.search_documents(query='what can it do', top_k=3)
         assert result['_success'] is True
         assert len(result['matches']) == 1
@@ -321,8 +326,8 @@ class TestBusinessDocuments:
 
     def test_search_empty_corpus(self, tmp_faq_db):
         # No faqs.json written — corpus loads empty.
-        from backend.components.business_documents import BusinessDocuments
-        svc = BusinessDocuments(_FakeEngineer({'matches': []}))
+        from backend.components.business_knowledge import BusinessKnowledge
+        svc = BusinessKnowledge(_FakeEngineer({'matches': []}))
         result = svc.search_documents(query='anything')
         assert result['_success'] is False
         assert result['_error'] == 'empty_corpus'
@@ -331,10 +336,10 @@ class TestBusinessDocuments:
         (tmp_faq_db / 'faqs.json').write_text(json.dumps([
             {'question': 'Q1', 'answer': 'A1', 'tags': []},
         ]))
-        from backend.components.business_documents import BusinessDocuments
+        from backend.components.business_knowledge import BusinessKnowledge
         engineer = _FakeEngineer({'matches': [{'idx': 0, 'score': 0.8},
             {'idx': 99, 'score': 0.2}]})
-        svc = BusinessDocuments(engineer)
+        svc = BusinessKnowledge(engineer)
         result = svc.search_documents(query='q')
         # Out-of-range idx (99) silently dropped; valid one kept.
         assert len(result['matches']) == 1
@@ -353,39 +358,31 @@ def session_config(minimal_config):
 
 
 class TestWorldSessions:
-    """World as session container (changes.md §5.4, decisions 10, 11, 15)."""
+    """World as session container: lazy dirs, in-place reset, close-time pruning."""
 
     def test_fresh_session_is_lazy(self, sessions_dir, minimal_config):
-        world = World(minimal_config)
+        world, memory = _make_world(minimal_config)
         assert world.open_session('fresh-id') is None
         assert not (sessions_dir / 'fresh-id').exists()  # nothing on disk until first use
         assert world.session_dir() == sessions_dir / 'fresh-id'
         assert (sessions_dir / 'fresh-id').is_dir()
 
-    def test_open_session_rehydrates(self, sessions_dir, minimal_config):
-        (sessions_dir / 'convo-42').mkdir(parents=True)
-        _session_state().save(sessions_dir / 'convo-42' / 'state.json')
-        world = World(minimal_config)
-        state = world.open_session('convo-42')
-        assert world.current_state() is state
-        assert state.read_state() == _session_state().read_state()
-
     def test_reset_deletes_and_recreates_session_dir(self, sessions_dir, minimal_config):
-        world = World(minimal_config)
+        world, memory = _make_world(minimal_config)
         world.open_session('convo-42')
-        world.current_state().save(world.state_file())
+        world.state.save(world.state_file())
         world.reset()
         assert (sessions_dir / 'convo-42').is_dir()
         assert list((sessions_dir / 'convo-42').iterdir()) == []
-        # In-memory reset still re-seeds the old pipeline's substrate.
-        assert world.current_state().turn_count == 0
+        # In-place reset re-seeds the session substrate.
+        assert world.state.turn_count == 0
         assert world.latest_artifact() is not None
 
     def test_reset_without_session_still_works(self, sessions_dir, minimal_config):
-        world = World(minimal_config)
+        world, memory = _make_world(minimal_config)
         world.reset()
         assert not sessions_dir.exists()
-        assert world.current_state().turn_count == 0
+        assert world.state.turn_count == 0
 
     def test_close_prunes_to_most_recent_n(self, sessions_dir, session_config):
         import os
@@ -394,13 +391,14 @@ class TestWorldSessions:
             (sessions_dir / convo).mkdir()
             stamp = 1_700_000_000 + idx * 1000
             os.utime(sessions_dir / convo, (stamp, stamp))
-        world = World(session_config)
+        world, memory = _make_world(session_config)
         world.close()
         survivors = sorted(path.name for path in sessions_dir.iterdir())
         assert survivors == ['middle', 'newest']
 
     def test_close_with_no_sessions_dir(self, sessions_dir, session_config):
-        World(session_config).close()  # nothing on disk yet — must not crash
+        world, memory = _make_world(session_config)
+        world.close()  # nothing on disk yet — must not crash
         assert not sessions_dir.exists()
 
 
@@ -490,32 +488,9 @@ class TestMessageList:
         (sessions_dir / 'convo-42').mkdir(parents=True)
         lines = [json.dumps(message) for message in _tool_call_messages()]
         (sessions_dir / 'convo-42' / 'messages.jsonl').write_text('\n'.join(lines) + '\n')
-        world = World(minimal_config)
+        world, memory = _make_world(minimal_config)
         world.open_session('convo-42')
         assert world.context.messages == _tool_call_messages()
-
-    def test_open_session_rebuilds_flow_stack(self, sessions_dir, minimal_config):
-        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
-        state = DialogueState(intent='Draft', dax=None, turn_count=1)
-        state.conversation_id = 'convo-43'
-        (sessions_dir / 'convo-43').mkdir(parents=True)
-        state.write_state(sessions_dir / 'convo-43' / 'state.json', 'stackon',
-                          stack=stack, flow_name='outline')
-        world = World(minimal_config)
-        world.open_session('convo-43')
-        top = world.flow_stack.get_flow()
-        assert top.flow_type == 'outline' and top.status == 'Pending'
-        assert top.flow_id == stack.get_flow().flow_id
-
-
-# ═══════════════════════════════════════════════════════════════════
-# write_state ops + flow rehydration (changes.md §4.1, §5.2, §6)
-# ═══════════════════════════════════════════════════════════════════
-
-from backend.components.dialogue_state import rehydrate_flow
-from backend.components.flow_stack import FlowStack, flow_classes
-
-
 
 
 # ==============================================================================
@@ -527,17 +502,18 @@ from backend.components.user_preferences import Preference
 
 
 class TestUserPreferences:
-    """MEM L2 store: bare-string degenerate records, typed records, endorsed-vs-guessed render."""
+    """MEM L2 store: bare-string degenerate records, typed records, endorsed-vs-guessed render,
+    and the per-account disk round trip (conftest patches _MEMORY_DIR to a tmp dir)."""
 
     def test_bare_string_stores_endorsed_full_confidence(self, minimal_config):
-        prefs = UserPreferences(minimal_config)
+        prefs = UserPreferences(minimal_config, 'test_user')
         prefs.store_preference('verbosity', 'terse')
         assert prefs.get_preference('verbosity') == 'terse'
         record = prefs._preferences['verbosity']
         assert record.endorsed is True and record.confidence == 1.0
 
     def test_dict_stores_typed_record(self, minimal_config):
-        prefs = UserPreferences(minimal_config)
+        prefs = UserPreferences(minimal_config, 'test_user')
         prefs.store_preference('tone', {'value': 'wry', 'endorsed': False,
                                         'confidence': 0.6, 'triggers': ['humor']})
         record = prefs._preferences['tone']
@@ -545,19 +521,28 @@ class TestUserPreferences:
         assert record.confidence == 0.6 and record.triggers == ['humor']
 
     def test_get_preference_missing_returns_default(self, minimal_config):
-        prefs = UserPreferences(minimal_config)
+        prefs = UserPreferences(minimal_config, 'test_user')
         assert prefs.get_preference('nope', 'fallback') == 'fallback'
 
     def test_read_returns_flat_key_value_view(self, minimal_config):
-        prefs = UserPreferences(minimal_config)
+        prefs = UserPreferences(minimal_config, 'test_user')
         prefs.store_preference('a', 'one')
         prefs.store_preference('b', {'value': 'two', 'endorsed': False})
         assert prefs.read() == {'a': 'one', 'b': 'two'}
 
     def test_render_distinguishes_endorsed_from_guessed(self, minimal_config):
-        prefs = UserPreferences(minimal_config)
+        prefs = UserPreferences(minimal_config, 'test_user')
         prefs.store_preference('a_endorsed', 'short posts')
         prefs.store_preference('b_guessed', {'value': 'a casual tone', 'endorsed': False})
         assert prefs.render() == (
             '- Remember, the user wants short posts.\n'
             "- If the user hasn't said otherwise, assume a casual tone — but confirm if it matters.")
+
+    def test_persistence_round_trip(self, minimal_config):
+        first = UserPreferences(minimal_config, 'writer')
+        first.store_preference('tone', {'value': 'wry', 'endorsed': False,
+                                        'confidence': 0.6, 'triggers': ['humor']})
+        second = UserPreferences(minimal_config, 'writer')
+        record = second._preferences['tone']
+        assert record.value == 'wry' and record.endorsed is False
+        assert record.confidence == 0.6 and record.triggers == ['humor']

@@ -1,13 +1,15 @@
-# MEM — Memory Manager (the Head)
+# MEM — Memory Extension Module (the Head)
 
-MEM holds the agent's **persistent** information — typically uploaded or provided by the user. Its goal is to
-**remember facts and retrieve them at the right time** for **pro-active resolution**, so it does **more reads
-than writes**.
+MEM holds the assistant's **persistent** information — typically uploaded or provided by the user. Its goal
+is to **remember facts and retrieve them at the right time** for **pro-active resolution**, so it does **more
+reads than writes**.
 
-MEM is one of three continuous LLM-loops, a peer to [NLU](nlu.md) (the Heart) and [PEX](pex.md) (the Hands),
-running underneath the deterministic main Agent (see [architecture](../architecture.md)). It runs **in
-parallel** with the other loops — [PEX](pex.md) consults it on demand, so retrieval can run ahead of need and
-compaction stays off the turn's critical path.
+MEM is a **code-only module** (`backend/modules/mem.py`, class `MemoryExtensionModule`, alias `MEM`), a peer
+to [NLU](nlu.md) (the Heart) and [PEX](pex.md) (the Hands) underneath the deterministic Assistant (see
+[architecture](../architecture.md)). It has no agent loop — only PEX runs an agent. MEM constructs and owns
+its three tier components; the World holds the shared references (`world.context`, `world.prefs`,
+`world.knowledge`). The continuous background MEM loop (retrieval running ahead of need, off-turn
+compaction) is designed-not-built; today MEM runs synchronously at the end of each turn via `store_turn`.
 
 MEM owns three tiers, a cache hierarchy by scope and durability:
 
@@ -15,7 +17,7 @@ MEM owns three tiers, a cache hierarchy by scope and durability:
 |---|---|---|---|
 | **L1** | [Context Coordinator](../components/context_coordinator.md) | this session | the append-only event stream of everything that happened |
 | **L2** | [User Preferences](../components/user_preferences.md) | per-account | good defaults — conventions, verbosity, style |
-| **L3** | [Business Context](../components/business_context.md) | per-client | unstructured uploaded knowledge, retrieved on demand |
+| **L3** | [Business Knowledge](../components/business_context.md) | per-client | unstructured uploaded knowledge, retrieved on demand |
 
 ## L1 — Context Coordinator
 
@@ -53,33 +55,41 @@ its store needs:
 |---|---|---|---|
 | `recap` | L1 | `recap(n_turns=10, filter=None)` | the Context Coordinator — recent session events |
 | `recall` | L2 | `recall(query=None, flow_name=None)` | the User Preferences component — matching preferences for the `query` |
-| `retrieve` | L3 | `retrieve(query, top_k=10)` | the Business Context skill — vector-DB retrieval + re-rank |
+| `retrieve` | L3 | `retrieve(query, top_k=10, documents=[])` | Business Knowledge — candidate retrieval + re-rank (`documents=['faq']` takes the FAQ shortcut) |
+
+Today these are module methods without tool wiring: the orchestrator reaches L1 through
+`coordinate_context`, L3 through the `search_documents` tool, and L2 through the frozen prompt snapshot
+plus the ambiguity recover path. They get tool surfaces when a flow demonstrably needs them.
 
 ## Writing to memory
 
-MEM is **read-mostly**, but L2 has a durable write path with two triggers:
+MEM is **read-mostly**, with three write paths:
 
+- **`store_turn(utterance, prompt_tokens)`** — the end-of-turn store (`take_turn` step 5): record the
+  agent turn, bump the turn count, snapshot the stack onto the state and save `state.json` (the record of
+  what actually happened — MEM owns the past), then run the compression check.
+- **Explicit `store_preference(key, value)`** — writes a preference when the user asks ("remember that I
+  prefer X") or onboarding / config seeds one, reached as `world.prefs.store_preference` (PEX has the tool).
+  Every write saves to the per-account store `database/memory/<username>.json`, loaded back at construction
+  (MEM takes the username in its `__init__`), so L2 survives the session. L3 business knowledge is **not**
+  written this way — it arrives by ingestion, manual `agent.md` upload, or promotion.
 - **Auto-promotion** — MEM promotes a [Session Scratchpad](../components/session_scratchpad.md) entry to
   L2/L3 via a frequency counter (entry read by ≥N flows, tracked by `used_count`) plus a low-tier LLM-judge
-  scoring salience / surprisal. This runs as a **background MEM task**, off the turn's critical path — no tool
-  call.
-- **Explicit `store_preference(content, key=None)`** — writes a preference directly when the user asks
-  ("remember that I prefer X") or onboarding / config seeds one. L3 business context is **not** written this
-  way — it arrives by ingestion, manual `agent.md` upload, or promotion.
+  scoring salience / surprisal, off the turn's critical path. # designed-not-built
 
-MEM never writes the agent's belief: the Dialogue State and its writer tools (`classify_intent` / `detect_flow`
-/ `fill_slots`) belong to [NLU](nlu.md), and the `flow_stack` structure belongs to PEX's Workflow Planner.
+MEM never writes the agent's belief: the Dialogue State belongs to [NLU](nlu.md) (code-only; `understand`
+writes it), and the `flow_stack` structure belongs to PEX.
 
 ## Long-term artifact storage
 
-Each turn produces a [Task Artifact](../components/task_artifact.md). The main Agent hands a copy to MEM
-(through the World object) for long-term storage, so the agent's outputs become part of the durable record
-alongside the event stream.
+Each turn produces a [Task Artifact](../components/task_artifact.md). `store_turn` will append it to the
+session dir (`artifacts.jsonl`) so the agent's outputs become part of the durable record alongside the
+event stream. # designed-not-built
 
 ## Pro-active resolution
 
-Because MEM is a continuous loop rather than a stage, retrieval can run ahead of need — surfacing the right
-preference or document *before* the user asks. The **push channel** is twofold: MEM **prefetches** likely-needed
+When the background MEM loop exists (# designed-not-built), retrieval can run ahead of need — surfacing the
+right preference or document *before* the user asks. The **push channel** is twofold: MEM **prefetches** likely-needed
 entries into its cache so the eventual `recall` / `retrieve` returns instantly, and when it judges an entry
 highly relevant it **appends a note to the [Session Scratchpad](../components/session_scratchpad.md)** — the
 existing swarm channel — so PEX sees it without a dedicated pull. There is no separate injection path into

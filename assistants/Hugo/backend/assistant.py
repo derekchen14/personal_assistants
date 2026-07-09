@@ -7,7 +7,7 @@ from datetime import datetime
 from schemas.config import load_config
 from backend.modules.nlu import NaturalLanguageUnderstanding
 from backend.modules.pex import PolicyExecutor, _FALLBACK_MESSAGE, _NUDGE_MESSAGE, _WRAP_UP_MESSAGE
-from backend.components.memory_manager import MemoryExtensionModule
+from backend.modules.mem import MemoryExtensionModule
 from backend.components.task_artifact import TaskArtifact
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.world import World
@@ -30,7 +30,7 @@ class Assistant:
         self.engineer = PromptEngineer(self.config)
         self.nlu = NaturalLanguageUnderstanding(self.config, self.engineer)
         self.pex = PolicyExecutor(self.config, self.engineer)
-        self.mem = MemoryExtensionModule(self.config, self.engineer)
+        self.mem = MemoryExtensionModule(self.config, self.engineer, username)
 
         self.world = World(self.config, self.nlu, self.pex, self.mem)
         self.nlu.world = self.world

@@ -14,8 +14,11 @@ MODEL_NAME = 'all-MiniLM-L6-v2'
 def _model():
     global _MODEL
     if _MODEL is None:
+        from pathlib import Path
         from sentence_transformers import SentenceTransformer
-        _MODEL = SentenceTransformer(MODEL_NAME)
+        weights_dir = Path(__file__).resolve().parents[4] / 'shared' / 'weights' / 'sentence-transformers'
+        weights_dir.mkdir(parents=True, exist_ok=True)
+        _MODEL = SentenceTransformer(MODEL_NAME, cache_folder=str(weights_dir))
     return _MODEL
 
 

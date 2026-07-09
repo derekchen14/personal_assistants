@@ -127,6 +127,16 @@ def sessions_dir(tmp_path, monkeypatch):
     return path
 
 
+@pytest.fixture(autouse=True)
+def memory_dir(tmp_path, monkeypatch):
+    """Redirect the per-account L2 store root to a tmp dir so no test (or Assistant construction)
+    reads or writes the real database/memory/."""
+    from backend.components import user_preferences as prefs_mod
+    path = tmp_path / 'memory'
+    monkeypatch.setattr(prefs_mod, '_MEMORY_DIR', path)
+    return path
+
+
 @pytest.fixture
 def orch_agent(sessions_dir, monkeypatch):
     """Agent with a tmp sessions root and scripted LLM calls. NLU.understand is stubbed to a

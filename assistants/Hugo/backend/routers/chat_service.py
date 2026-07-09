@@ -74,7 +74,7 @@ async def create_post(body:dict, queue:asyncio.Queue):
 async def read_post(body:dict, agent, queue:asyncio.Queue):
     post_id = body.get('read_post')
     # The ONE DialogueState — mutate in place, never rebind (world.state always exists).
-    agent.world.state.active_post = post_id
+    agent.world.state.set_active_entity(post=post_id, ver=True)
     if not body.get('view'):
         return
     post_service = PostService()

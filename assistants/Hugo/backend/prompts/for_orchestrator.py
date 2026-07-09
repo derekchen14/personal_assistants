@@ -8,7 +8,7 @@ Tiers:
                 tool-use policy and loop discipline.
   2. Context  — the 10-step blog workflow (README.md), a flow ontology summary rendered from
                 FLOW_ONTOLOGY, and the OUTLINE_LEVELS constants.
-  3. Volatile — L2 User Preferences snapshot read from MemoryManager at build time, plus the
+  3. Volatile — L2 User Preferences snapshot read from MEM at build time, plus the
                 session line (conversation_id / username / date passed in by the caller).
 
 Mid-session preference writes land in L2 immediately but only enter the prompt at the next
