@@ -237,18 +237,3 @@ class DialogueState:
         if flow.slots[flow.entity_slot].slot_type in _GROUNDED_SLOT_TYPES and not self.get_active_post():
             raise ValueError(f'write_state: entity-grounded flow {flow.name()!r} cannot '
                              f'reach Completed while grounding.post is empty')
-
-    @classmethod
-    def from_dict(cls, data: dict):
-        state = cls(
-            intent=data.get('pred_intent'),
-            dax=data.get('flow_name'),
-            turn_count=data.get('turn_count', 0),
-            confidence=data.get('confidence', 0.5),
-        )
-        state.pred_flows = data.get('pred_flows', [])
-        state.pred_slots = data.get('pred_slots', {})
-        state.keep_going = data.get('keep_going', False)
-        state.has_issues = data.get('has_issues', False)
-        state.natural_birth = data.get('natural_birth', True)
-        return state
