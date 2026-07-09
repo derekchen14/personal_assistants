@@ -20,7 +20,6 @@ latency ideals in evaluation_suite.md (TTFT <= 5s | turn <= 10s | convo <= 60s |
 latency metric is mean_turn_seconds (red past baseline +20%).
 """
 import argparse
-import json
 import re
 import sys
 import time
@@ -37,6 +36,9 @@ from utils.evaluation_suite.harness import (
     seed_active_post)
 from utils.evaluation_suite.scoring import is_completed, tool_similarity
 from utils.evaluation_suite import scoring as gates
+from utils.evaluation_suite.trace_writer import (
+    ambiguity_snapshot, belief_snapshot, diagnosis_counts, diagnose_turn, flow_stack_snapshot,
+    grounding_snapshot, make_report_path, trace_record, write_record)
 
 
 def _domain_tools() -> set:
@@ -47,13 +49,24 @@ def _domain_tools() -> set:
 
 
 def _install_tool_logger(agent) -> list:
-    """Record every dispatched tool NAME by wrapping pex._dispatch_tool. Returns the shared log."""
+    """Record every dispatched tool call by wrapping pex._dispatch_tool. Returns the shared log."""
     log = []
     original = agent.pex._dispatch_tool
 
     def logging_dispatch(tool_name, tool_input):
-        log.append(tool_name)
-        return original(tool_name, tool_input)
+        entry = {'name': tool_name, 'input': tool_input}
+        log.append(entry)
+        try:
+            result = original(tool_name, tool_input)
+        except Exception as exc:
+            entry['result_success'] = False
+            entry['result_error'] = type(exc).__name__
+            entry['result_message'] = str(exc)
+            raise
+        entry['result_success'] = result.get('_success') if isinstance(result, dict) else None
+        entry['result_error'] = result.get('_error') if isinstance(result, dict) else ''
+        entry['result_message'] = result.get('_message') if isinstance(result, dict) else ''
+        return result
 
     agent.pex._dispatch_tool = logging_dispatch
     return log
@@ -85,9 +98,29 @@ def _normalize_post(post) -> dict:
             'status': post.get('status', 'draft'), 'sections': sections}
 
 
-def _run_case(case:dict, domain_tools:set) -> tuple[int, int, list, list]:
+def _reference_turn(turns:list, idx:int) -> dict:
+    for turn in turns[idx + 1:]:
+        if turn.get('role') == 'agent':
+            return turn
+        if turn.get('role') == 'user':
+            break
+    return {}
+
+
+def _single_flow(turn:dict):
+    stack = turn['labels']['stack']
+    return stack[0]['flow'] if len(stack) == 1 and stack[0].get('flow') else None
+
+
+def _top_pred_flow(agent):
+    pred = agent.world.state.pred_flows
+    return pred[0]['flow_name'] if pred else None
+
+
+def _run_case(case:dict, domain_tools:set, report_path:Path) -> tuple[int, int, list, list, list]:
     """Seed declared posts, run the user turns, score completion + tool similarity per turn. Returns
-    (completed_user_turns, total_user_turns, per_turn_tool_similarities, per_turn_seconds)."""
+    (completed_user_turns, total_user_turns, per_turn_tool_similarities, per_turn_seconds,
+    trace_records)."""
     seeded = []
     for entry in case.get('available_data', {}).get('posts', []):
         post = _normalize_post(entry)
@@ -98,42 +131,63 @@ def _run_case(case:dict, domain_tools:set) -> tuple[int, int, list, list]:
     seed_active_post(agent, case, seeded)
     tool_log = _install_tool_logger(agent)
     completed = total = 0
-    sims, turn_secs = [], []
+    sims, turn_secs, records = [], [], []
     for idx, turn in enumerate(case['turns']):
         if turn.get('role') != 'user':
             continue
         total += 1
         mark = len(tool_log)
+        belief_before = belief_snapshot(agent)
         start = time.time()
         result = _run_turn(agent, turn['utterance'])
-        turn_secs.append(time.time() - start)
-        actual = [name for name in tool_log[mark:] if name in domain_tools]
-        expected = case['turns'][idx + 1]['actions']   # the following agent turn holds the actions
-        ambiguity_level = agent.world.ambiguity.get_level() if agent.world.ambiguity.present else ''
+        elapsed = time.time() - start
+        turn_secs.append(elapsed)
+        turn_tools = tool_log[mark:]
+        all_tools = [entry['name'] for entry in turn_tools]
+        actual = [entry['name'] for entry in turn_tools if entry['name'] in domain_tools]
+        expected = _reference_turn(case['turns'], idx).get('actions', [])
+        ambiguity_after = ambiguity_snapshot(agent)
+        ambiguity_level = ambiguity_after['level']
         ok, reason = is_completed(result, turn, ambiguity_level)
         sim = tool_similarity(actual, expected)
         completed += ok
         sims.append(sim)
-        print(f"  {case['convo_id']} turn {total}: {'ok' if ok else reason} | "
-              f"tools {sim:.2f} (exp {expected} got {actual}) | {turn_secs[-1]:.1f}s")
+        belief_after = belief_snapshot(agent)
+        stack_after = flow_stack_snapshot(agent)
+        diagnosis = diagnose_turn(
+            ok, result, _single_flow(turn), _top_pred_flow(agent), ambiguity_after, expected,
+            actual, sim, stack_after)
+        record = trace_record(
+            case, idx, total, turn, result, expected, actual, all_tools, ok, reason, sim, elapsed,
+            belief_before, belief_after, stack_after, grounding_snapshot(agent), ambiguity_after,
+            diagnosis)
+        write_record(report_path, record)
+        records.append(record)
+        belief_label = f"{_top_pred_flow(agent) or '-'} / {agent.world.state.confidence:.2f}"
+        print(f"  {case['convo_id']} t{total}: {diagnosis} | complete={'yes' if ok else 'no'} "
+              f"| tools={sim:.2f} | belief={belief_label} | {elapsed:.1f}s")
     agent.close()
 
     for post_id, title in seeded:
         _clean_leftovers(post_id, title)
-    return completed, total, sims, turn_secs
+    return completed, total, sims, turn_secs, records
 
 
-def _score_corpus(ids:list|None=None) -> dict:
+def _score_corpus(ids:list|None=None, report_path:Path|None=None) -> dict:
     domain_tools = _domain_tools()
     cases = load_cases(ids)
+    report_path = report_path or make_report_path('traces')
     sweep_start = time.time()
-    results = [_run_case(case, domain_tools) for case in cases]
+    results = [_run_case(case, domain_tools, report_path) for case in cases]
     done = sum(r[0] for r in results)
     total = sum(r[1] for r in results)
     sims = [sim for r in results for sim in r[2]]
     turn_secs = [sec for r in results for sec in r[3]]
+    records = [record for r in results for record in r[4]]
     for case, result in zip(cases, results):
-        print(f"{case['convo_id']}: {result[0]}/{result[1]} completed in {sum(result[3]):.0f}s")
+        transcript = f"database/sessions/{case['convo_id']}/messages.jsonl"
+        print(f"{case['convo_id']}: {result[0]}/{result[1]} completed in "
+              f"{sum(result[3]):.0f}s | transcript {transcript}")
     sweep_secs = time.time() - sweep_start
     # Latency ideals are measured, never gated (evaluation_suite.md: TTFT <= 5s, turn <= 10s,
     # convo <= 60s, 8-scenario gate <= 10 min). mean_turn_seconds alone gates, at baseline +20%.
@@ -145,6 +199,7 @@ def _score_corpus(ids:list|None=None) -> dict:
         'completion_rate': round(done / total, 4) if total else 0.0,
         'tool_match_rate': round(sum(sims) / len(sims), 4) if sims else 0.0,
         'mean_turn_seconds': round(sum(turn_secs) / len(turn_secs), 2) if turn_secs else 0.0,
+        '_diagnoses': diagnosis_counts(records),
     }
 
 
@@ -154,6 +209,9 @@ def main():
     parser.add_argument('--record', action='store_true', help='stamp the run into the baseline')
     parser.add_argument('--ids', default='', help='comma-separated convo_ids (a chosen set)')
     parser.add_argument('--all', action='store_true', help='the whole train split (gated); default is a dev sample of 8')
+    parser.add_argument('--sample', type=int, default=8, help='fresh sample size when no --ids given')
+    parser.add_argument('--seed', default=None, help='seed for reproducible samples')
+    parser.add_argument('--jsonl', action='store_true', help='accepted for compatibility; JSONL is always written')
     args = parser.parse_args()
 
     explicit = [cid.strip() for cid in args.ids.split(',') if cid.strip()]
@@ -162,11 +220,17 @@ def main():
     elif args.all:
         ids, subset = None, False                 # whole train split → gated
     else:
-        ids, subset = sample(), True              # dev = a fresh random 8
-    metrics = _score_corpus(ids)
-    print(f"completion_rate = {metrics['completion_rate']}   "
-          f"tool_match_rate = {metrics['tool_match_rate']}   "
-          f"mean_turn_seconds = {metrics['mean_turn_seconds']}")
+        ids, subset = sample(args.sample, seed=args.seed), True
+    report_path = make_report_path(args.level)
+    print(f"trace ids: {','.join(ids) if ids is not None else 'ALL'}")
+    print(f"trace report: {report_path.relative_to(_HUGO_ROOT)}")
+    metrics = _score_corpus(ids, report_path)
+    diagnoses = metrics.pop('_diagnoses')
+    print(f"completion_rate={metrics['completion_rate']} "
+          f"tool_match_rate={metrics['tool_match_rate']} "
+          f"mean_turn_seconds={metrics['mean_turn_seconds']}")
+    if diagnoses:
+        print(f"diagnoses: {diagnoses}")
     if subset:
         return  # dev / chosen subsets are read by a human, not graded against the train baseline
 

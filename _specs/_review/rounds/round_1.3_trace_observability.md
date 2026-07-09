@@ -8,7 +8,7 @@ round.
 
 ## Why this round
 
-The latest 3-conversation E2E sample completed without crashing after the grounding cleanup and
+The recent E2E sample completed without crashing after the grounding cleanup and
 the `clarify` NLU fix, but the aggregate scores still do not explain the failure:
 
 ```text
@@ -30,7 +30,9 @@ Today `run_traces.py` prints a useful per-turn line, but it is not enough for de
 - it does not record belief / stack / ambiguity snapshots per user turn;
 - it still needs to be kept aligned with the new Dialogue State grounding shape.
 
-This round makes traces the primary observability tool for task-completion failures.
+This round makes traces the primary observability tool for task-completion failures. It does
+**not** define a fixed trace set. The default trace run stays a representative sample of 8
+conversations; chosen IDs are a debugging override only.
 
 ## Scope
 
@@ -41,7 +43,9 @@ In scope:
 - Add deterministic sample controls.
 - Add per-turn diagnostic snapshots from the current `world.state`, `world.flows`, and
   `world.ambiguity`.
-- Keep traces runnable for a chosen 3-case subset.
+- Add a shared trace-artifact writer that E2E evals can use as diagnostic side output.
+- Make `run_suite.py --evals` run traces alongside evals by default.
+- Keep traces runnable for a chosen subset when debugging a known failure.
 
 Out of scope:
 
@@ -51,21 +55,40 @@ Out of scope:
 - Re-baselining the full train trace gate.
 - Building a UI trace viewer.
 
+## Runner semantics
+
+Direct tier runners remain narrow:
+
+- `utils/evaluation_suite/_evals/run_evals.py` runs **E2E evals only**.
+- `utils/evaluation_suite/_traces/run_traces.py` runs **traces only**.
+
+The suite entrypoint composes tiers:
+
+- `utils/evaluation_suite/run_suite.py --sample 8` runs deterministic code tests, then E2E evals
+  once, and writes trace JSONL from that same eval pass.
+- `run_suite.py --evals` narrows the live run to evals only.
+- `run_suite.py --traces` still runs traces alone.
+- `run_suite.py --tests nlu` narrows the run to deterministic tests only.
+
+Why: direct runners and live-tier flags are useful for targeted local work, but the default
+suite-level command should leave enough observability to debug broken evals without requiring a
+second manual run.
+
 ## Target command shape
 
 Keep existing commands working:
 
 ```bash
 python utils/evaluation_suite/_traces/run_traces.py
-python utils/evaluation_suite/_traces/run_traces.py --ids B04.C16,B04.C01,B02.C04
+python utils/evaluation_suite/_traces/run_traces.py --ids B01.C01,B01.C08
 python utils/evaluation_suite/_traces/run_traces.py --all
 ```
 
 Add:
 
 ```bash
-python utils/evaluation_suite/_traces/run_traces.py --sample 3 --seed 1
-python utils/evaluation_suite/_traces/run_traces.py --sample 3 --seed 1 --jsonl
+python utils/evaluation_suite/_traces/run_traces.py --sample 8 --seed 1
+python utils/evaluation_suite/_traces/run_traces.py --sample 8 --seed 1 --jsonl
 ```
 
 Behavior:
@@ -73,8 +96,23 @@ Behavior:
 - `--ids` wins over `--all`, `--sample`, and `--seed`.
 - `--all` runs the full train split and remains the only gated mode.
 - No `--ids` and no `--all` uses `sample(args.sample, seed=args.seed)`.
-- Default remains sample size 8 with no seed, preserving current behavior.
+- Default remains sample size **8** with no seed, preserving current behavior.
 - The runner prints selected IDs before any live model calls.
+
+## Sample selection
+
+Trace samples should be useful, not fixed. The selection policy is:
+
+1. **Default:** random sample of 8 from `train.jsonl`, using `harness.sample(8)`.
+2. **Reproducible debug:** random sample of N with a supplied seed (`--sample N --seed S`).
+3. **Known failure drill-down:** explicit `--ids`, supplied by the developer after seeing a bad
+   eval or trace run.
+4. **Future intelligent sampling:** optional stratified sampler that balances intent/flow,
+   ambiguity presence, and prior failure diagnoses. This is allowed only if it remains dynamic and
+   transparent by printing the selected IDs and the reason each was selected.
+
+Do **not** bake any recent E2E sample into traces. A previous failed run may be useful as a one-off
+debug command via `--ids`, but it is not a default, a baseline, or a standing gate.
 
 ## Trace output
 
@@ -83,6 +121,16 @@ Each run should write one JSONL file:
 ```text
 utils/evaluation_suite/report/traces_<timestamp>.jsonl
 ```
+
+When invoked through the default `run_suite.py` path, the eval pass writes metrics and trace schema
+while scoring:
+
+```text
+utils/evaluation_suite/report/evals_<timestamp>.json
+utils/evaluation_suite/report/evals_trace_<timestamp>.jsonl
+```
+
+Direct `run_evals.py` stays eval-only unless a future explicit flag is added.
 
 Each line is one user turn:
 
@@ -200,6 +248,26 @@ full log:
 The full log should not dump large result payloads into JSONL; record `result_success`,
 `result_error`, and `result_message` only.
 
+## Shared Trace Writer
+
+Move trace-record creation into a small shared helper module, for example:
+
+```text
+utils/evaluation_suite/trace_writer.py
+```
+
+Responsibilities:
+
+- build `_belief_snapshot`, `_ambiguity_snapshot`, `_artifact_snapshot`, and grounding snapshots;
+- build one trace record per user turn;
+- write JSONL lines;
+- classify the coarse `diagnosis`;
+- keep result payloads compact.
+
+`_traces/run_traces.py` and the suite-composed eval path both use this helper. The eval path should
+record traces during the same live pass that computes eval scores, not by running the conversations
+twice.
+
 ## Console output
 
 At run start:
@@ -241,7 +309,9 @@ Add deterministic tests under `utils/evaluation_suite/_tests/` where practical:
    - ambiguity present → `ambiguity_pending`
    - no domain tools when expected → `no_domain_tools`
 3. `_trace_record(...)` serializes with required keys and nested grounding.
-4. Existing deterministic suite remains green:
+4. `run_suite.py --evals` command construction includes traces before evals.
+5. Direct `_evals/run_evals.py` does not implicitly run the traces tier.
+6. Existing deterministic suite remains green:
 
 ```bash
 python utils/evaluation_suite/run_suite.py --tests nlu,pex,mem
@@ -249,34 +319,63 @@ python utils/evaluation_suite/run_suite.py --tests nlu,pex,mem
 
 ## Manual verification
 
-Use the three IDs from the latest completed E2E sample:
+Default smoke run:
 
 ```bash
 PYTHONPATH=/Users/derekchen/Documents/repos/personal_assistants \
 /opt/miniconda3/envs/env314/bin/python \
 assistants/Hugo/utils/evaluation_suite/_traces/run_traces.py \
---ids B04.C16,B04.C01,B02.C04
+--sample 8
 ```
 
 Expected:
 
 - command completes without crashing;
-- selected IDs print before live calls;
+- selected IDs print before live calls and are not hardcoded in the runner;
 - report JSONL path prints and exists;
 - each user turn has a JSONL record;
 - every failed turn has a non-`unknown` diagnosis unless genuinely surprising;
 - transcript paths exist under `assistants/Hugo/database/sessions/<convo_id>/messages.jsonl`;
 - deterministic suite stays green.
 
+Suite-level eval observability run:
+
+```bash
+PYTHONPATH=/Users/derekchen/Documents/repos/personal_assistants \
+/opt/miniconda3/envs/env314/bin/python \
+assistants/Hugo/utils/evaluation_suite/run_suite.py \
+--sample 8
+```
+
+Expected:
+
+- deterministic unit tests run before the live pass;
+- the sampled conversations are traversed once for eval scoring and trace recording;
+- E2E eval scores still print normally;
+- an `evals_trace_<timestamp>.jsonl` artifact is written and printed;
+- direct `run_evals.py --sample 8` does not run the traces tier implicitly.
+
+For a known failure, a developer may pass explicit IDs from an eval run:
+
+```bash
+python utils/evaluation_suite/_traces/run_traces.py --ids B04.C16,B04.C01,B02.C04
+```
+
+That command is diagnostic only; it must not become the default sample.
+
 ## Acceptance criteria
 
-- A developer can run a 3-case trace subset and answer, for each failed turn:
+- A developer can run the default 8-case trace sample, or an explicit debug subset, and answer
+  for each failed turn:
   - what NLU believed;
   - what domain tools were expected vs called;
   - whether ambiguity was pending;
   - what flow stack remained;
   - where the full transcript lives;
   - the coarse failure diagnosis.
-- `run_traces.py --sample 3 --seed 1` is reproducible.
+- `run_traces.py --sample 8 --seed 1` is reproducible.
 - `run_traces.py --ids ...` does not grade against the baseline; it is human-read diagnostics.
 - Full-train `--all` behavior and baseline gate remain unchanged.
+- `run_suite.py --evals` includes traces by default from the same eval pass so broken E2E evals
+  have trace artifacts without double-running conversations.
+- Direct `run_evals.py` remains eval-only.
