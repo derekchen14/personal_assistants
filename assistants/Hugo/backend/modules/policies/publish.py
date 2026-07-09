@@ -61,14 +61,14 @@ class PublishPolicy(BasePolicy):
             if 'level' in result:
                 toast['level'] = result['level']
             artifact.add_block({'type': 'toast', 'data': toast})
-            self.complete_flow(flow, state, f'Release attempted but {failed_tool} failed: {err_msg}',
+            self.complete_flow(flow, state, context, f'Release attempted but {failed_tool} failed: {err_msg}',
                 metadata={'post_id': post_id, 'failed_tool': failed_tool})
         else:
             self.retry_tool(tools, 'update_post',
                 {'post_id': post_id, 'updates': {'status': 'published'}})
             title = tools('read_metadata', {'post_id': post_id})['title']
             artifact.add_block({'type': 'toast', 'data': {'message': f'Published "{title}".', 'level': 'success'}})
-            self.complete_flow(flow, state, f'Published "{title}".',
+            self.complete_flow(flow, state, context, f'Published "{title}".',
                 metadata={'post_id': post_id, 'title': title})
         return artifact
 
@@ -93,7 +93,7 @@ class PublishPolicy(BasePolicy):
             artifact = self._clarify_with_steps(flow)
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools)
-            self.complete_flow(flow, state, text or 'Publication scheduled.')
+            self.complete_flow(flow, state, context, text or 'Publication scheduled.')
             artifact = TaskArtifact(flow.name(), thoughts=text)
             artifact.add_block({'type': 'toast', 'data': {'message': text}})
         return artifact
@@ -123,6 +123,6 @@ class PublishPolicy(BasePolicy):
                 sec_ids=[sec_id] if sec_id else None)
 
         text, tool_log = self.llm_execute(flow, state, context, tools)
-        self.complete_flow(flow, state, 'Added the requested citation.',
+        self.complete_flow(flow, state, context, 'Added the requested citation.',
             metadata={'post_id': post_id} if post_id else None)
         return TaskArtifact(origin='cite', thoughts=text)

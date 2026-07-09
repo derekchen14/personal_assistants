@@ -83,7 +83,7 @@ def _build_agent(session_id:str|None=None):
     database/sessions/<session_id>/messages.jsonl instead of an anonymous timestamp — that file is
     the per-turn observability trace (NLU belief, tool calls, flow dispatch) read back for diagnosis."""
     from schemas.config import load_config
-    import assistants.Hugo.backend.assistant as agent_mod
+    import backend.assistant as agent_mod
     orig_load = agent_mod.load_config
     agent_mod.load_config = lambda: load_config(overrides={'debug': True})
     agent = agent_mod.Assistant(username='trace_user')

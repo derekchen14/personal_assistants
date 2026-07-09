@@ -65,22 +65,22 @@ class TestAmbiguityHandler:
         assert nlu.ambiguity_handler.observation == ''
 
     def test_recover_resolves_from_preference(self, nlu, tmp_path):
-        nlu.world.scratchpad._scratchpad_path = tmp_path / 'scratchpad.jsonl'
+        nlu.world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
         nlu.world.prefs.store_preference('channel', 'substack')
         nlu.ambiguity_handler.recognize('partial', {'missing': 'channel'})
         result = nlu.attempt_recovery()
         assert result == {'recovery': 'substack'}
         assert nlu.ambiguity_handler.present is False  # resolved from memory, no user escalation
-        recovery = [entry for entry in nlu.world.scratchpad.read() if entry.get('key') == 'recovery']
-        assert recovery[-1]['found'] == 'substack' and recovery[-1]['writer'] == 'nlu'
+        recovery = nlu.world.scratchpad.read(origin='recovery')
+        assert recovery[-1]['found'] == 'substack' and recovery[-1]['version'] == 1
 
     def test_recover_stays_pending_when_nothing_found(self, nlu, tmp_path):
-        nlu.world.scratchpad._scratchpad_path = tmp_path / 'scratchpad.jsonl'
+        nlu.world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
         nlu.ambiguity_handler.recognize('partial', {'missing': 'channel'})
         result = nlu.attempt_recovery()
         assert result == {'recovery': 'channel'}  # the missing slot name comes back unresolved
         assert nlu.ambiguity_handler.present is True  # nothing found — still pending
-        recovery = [entry for entry in nlu.world.scratchpad.read() if entry.get('key') == 'recovery']
+        recovery = nlu.world.scratchpad.read(origin='recovery')
         assert recovery[-1]['missing'] == 'channel'  # the attempt is recorded either way
 
 
@@ -457,90 +457,109 @@ def test_nlu_react(nlu, monkeypatch, case):
 # NLU-owned components: Session Scratchpad + Dialogue State ------------------------
 
 class TestSessionScratchpad:
-    """The scratchpad in both modes: the in-memory dict (no path) and the append-only JSONL file
-    (path set — orchestrator substrate). Covers writer stamping, filtering, clear/truncate, and the
-    completion-record shape."""
+    """The scratchpad — one storage mode: the append-only JSONL file in the session dir. Covers
+    origin stamping, filtering, clear/truncate, and the completion-record shape."""
 
     @pytest.fixture
-    def file_memory(self, minimal_config, tmp_path):
-        return SessionScratchpad(minimal_config, scratchpad_path=str(tmp_path / 'scratchpad.jsonl'))
-
-    # ── in-memory mode ───────────────────────────────────────────────
+    def file_memory(self, tmp_path):
+        return SessionScratchpad(scratchpad_path=str(tmp_path / 'scratchpad.jsonl'))
 
     def test_append_and_read_newest_last(self, file_memory):
-        file_memory.write({'finding': 'first'})
-        file_memory.write({'finding': 'second'})
+        file_memory.append_entry('orchestrator', {'finding': 'first'})
+        file_memory.append_entry('orchestrator', {'finding': 'second'})
         entries = file_memory.read()
         assert [entry['finding'] for entry in entries] == ['first', 'second']
         assert file_memory.size == 2
 
     def test_entry_dict_is_stamped_and_appended(self, file_memory):
-        file_memory.write({'key': 'repair', 'note': 'bad outline'})
+        file_memory.append_entry('repair', {'note': 'bad outline'})
         entries = file_memory.read()
-        assert entries == [{'key': 'repair', 'note': 'bad outline', 'writer': 'orchestrator'}]
+        assert entries == [{'note': 'bad outline', 'origin': 'repair'}]
 
     def test_clear_truncates_file(self, file_memory):
-        file_memory.write({'finding': 'gone soon'})
+        file_memory.append_entry('orchestrator', {'finding': 'gone soon'})
         file_memory.clear()
         assert file_memory.read() == []
         assert file_memory.size == 0
 
-    def test_entries_persist_on_disk(self, minimal_config, tmp_path):
+    def test_entries_persist_on_disk(self, tmp_path):
         path = tmp_path / 'scratchpad.jsonl'
-        SessionScratchpad(minimal_config, scratchpad_path=str(path)).write({'note': 'kept'})
-        reopened = SessionScratchpad(minimal_config, scratchpad_path=str(path))
-        assert reopened.read() == [{'note': 'kept', 'writer': 'orchestrator'}]
+        SessionScratchpad(scratchpad_path=str(path)).append_entry('orchestrator', {'note': 'kept'})
+        reopened = SessionScratchpad(scratchpad_path=str(path))
+        assert reopened.read() == [{'note': 'kept', 'origin': 'orchestrator'}]
 
-    # ── writer stamping (decision 17) ────────────────────────────────
+    # ── origin stamping (decision 17) ────────────────────────────────
 
-    def test_writer_defaults_to_orchestrator(self, file_memory):
-        file_memory.write({'finding': 'x'})
-        assert file_memory.read()[0]['writer'] == 'orchestrator'
-
-    def test_writer_takes_flow_name(self, file_memory):
-        file_memory.write({'finding': 'x'}, writer='compose')
-        assert file_memory.read()[0]['writer'] == 'compose'
-
-    def test_forged_writer_is_overwritten(self, file_memory):
-        file_memory.write({'finding': 'x', 'writer': 'forged'}, writer='audit')
-        assert file_memory.read()[0]['writer'] == 'audit'
+    def test_forged_origin_is_overwritten(self, file_memory):
+        file_memory.append_entry('audit', {'finding': 'x', 'origin': 'forged'})
+        assert file_memory.read()[0]['origin'] == 'audit'
 
     # ── read filters ─────────────────────────────────────────────────
 
-    def test_filter_by_writer(self, file_memory):
-        file_memory.write({'finding': 'a'}, writer='compose')
-        file_memory.write({'finding': 'b'})
-        file_memory.write({'finding': 'c'}, writer='compose')
-        entries = file_memory.read(writer='compose')
+    def test_filter_by_origin(self, file_memory):
+        file_memory.append_entry('compose', {'finding': 'a'})
+        file_memory.append_entry('orchestrator', {'finding': 'b'})
+        file_memory.append_entry('compose', {'finding': 'c'})
+        entries = file_memory.read(origin='compose')
         assert [entry['finding'] for entry in entries] == ['a', 'c']
 
     def test_filter_by_keys_present(self, file_memory):
-        file_memory.write({'flow': 'compose', 'summary': 's', 'metadata': {}})
-        file_memory.write({'finding': 'loose note'})
-        entries = file_memory.read(keys=['flow', 'summary'])
+        file_memory.append_entry('compose', {'summary': 's', 'metadata': {}})
+        file_memory.append_entry('orchestrator', {'finding': 'loose note'})
+        entries = file_memory.read(keys=['summary', 'metadata'])
         assert len(entries) == 1
-        assert entries[0]['flow'] == 'compose'
+        assert entries[0]['origin'] == 'compose'
 
     def test_filters_combine(self, file_memory):
-        file_memory.write({'flow': 'compose', 'summary': 's'}, writer='compose')
-        file_memory.write({'flow': 'audit', 'summary': 's'}, writer='audit')
-        file_memory.write({'finding': 'x'}, writer='compose')
-        entries = file_memory.read(writer='compose', keys=['flow'])
-        assert entries == [{'flow': 'compose', 'summary': 's', 'writer': 'compose'}]
+        file_memory.append_entry('compose', {'summary': 's'})
+        file_memory.append_entry('audit', {'summary': 's'})
+        file_memory.append_entry('compose', {'finding': 'x'})
+        entries = file_memory.read(origin='compose', keys=['summary'])
+        assert entries == [{'summary': 's', 'origin': 'compose'}]
 
-    # ── completion record (decision 7) ───────────────────────────────
+    # ── NLU-only mutation: origin + turn_number is the unique ID ─────
 
-    def test_completion_record_shape(self, file_memory):
-        record = file_memory.write_completion('compose', 'Drafted the intro.', {'post': 'cafe01'})
-        expected = {'flow': 'compose', 'summary': 'Drafted the intro.',
-                    'metadata': {'post': 'cafe01'}, 'writer': 'compose'}
-        assert record == expected
-        assert file_memory.read() == [expected]
+    def test_update_entry_modifies_in_place(self, file_memory):
+        file_memory.append_entry('audit', {'version': 1, 'turn_number': 3, 'used_count': 0,
+                                           'note': 'v1'})
+        file_memory.append_entry('find', {'version': 1, 'turn_number': 5, 'used_count': 0})
+        entry = file_memory.read(origin='audit')[-1]
+        file_memory.update_entry('audit', 3, {**entry, 'note': 'v2'})
+        assert file_memory.size == 2  # modified in place — no extra line
+        assert file_memory.read(origin='audit') == [{'origin': 'audit', 'version': 1,
+                                                     'turn_number': 3, 'used_count': 0, 'note': 'v2'}]
 
-    def test_completion_record_default_metadata(self, file_memory):
-        record = file_memory.write_completion('audit', 'No issues found.')
-        assert record['metadata'] == {}
-        assert file_memory.read(keys=['flow', 'summary', 'metadata']) == [record]
+    def test_prune_entry_removes_by_id(self, file_memory):
+        file_memory.append_entry('audit', {'version': 1, 'turn_number': 3, 'used_count': 0})
+        file_memory.append_entry('find', {'version': 1, 'turn_number': 5, 'used_count': 0})
+        file_memory.prune_entry('audit', 3)
+        assert file_memory.read(origin='audit') == [] and file_memory.size == 1
+
+    def test_update_entry_unknown_id_raises(self, file_memory):
+        file_memory.append_entry('audit', {'version': 1, 'turn_number': 3, 'used_count': 0})
+        with pytest.raises(KeyError):
+            file_memory.update_entry('audit', 7, {'note': 'x'})
+
+
+class TestScratchpadReview:
+    """NLU.review_scratchpad — the synchronous review pass at NLU's turn point: repairs entries
+    missing the contract fields (version / turn_number / used_count) losslessly and reports
+    diagnostics; semantic review stays designed-not-built."""
+
+    def test_review_repairs_nonconforming_entry(self, nlu, tmp_path):
+        nlu.world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
+        nlu.world.scratchpad.append_entry('legacy', {'note': 'predates the contract'})
+        report = nlu.review_scratchpad()
+        assert report['reviewed'] is True and report['repaired'] == 1
+        newest = nlu.world.scratchpad.read(origin='legacy')[-1]
+        assert newest['version'] == 1 and newest['used_count'] == 0
+        assert newest['note'] == 'predates the contract'  # lossless repair
+
+    def test_review_leaves_conforming_pad_alone(self, nlu, tmp_path):
+        nlu.world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
+        nlu.world.scratchpad.append_entry('find', {'version': 1, 'turn_number': 1, 'used_count': 0})
+        report = nlu.review_scratchpad()
+        assert report == {'reviewed': True, 'size': 1, 'repaired': 0}
 
 
 

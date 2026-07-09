@@ -142,14 +142,19 @@ class TestOrchestratorDispatch:
         assert "'source'" in result['_message']  # valid slots are listed for the retry
 
     def test_read_and_append_scratchpad_tools(self, mock_agent, tmp_path):
-        """The split scratchpad tools: append_to_scratchpad stamps the writer and grows the pad;
-        read_scratchpad filters by writer."""
+        """The split scratchpad tools: append_to_scratchpad rejects an originless entry and stamps
+        the contract fields on the LLM-authored one; read_scratchpad filters by origin."""
         pex = mock_agent.pex
-        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'
-        appended = pex._dispatch_tool('append_to_scratchpad', {'entry': {'finding': 'intro is weak'}})
+        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
+        originless = pex._dispatch_tool('append_to_scratchpad', {'entry': {'finding': 'intro is weak'}})
+        assert originless['_success'] is False and originless['_error'] == 'invalid_input'
+        appended = pex._dispatch_tool('append_to_scratchpad',
+                                      {'entry': {'origin': 'audit', 'finding': 'intro is weak'}})
         assert appended == {'_success': True, 'size': 1}
-        result = pex._dispatch_tool('read_scratchpad', {'writer': 'orchestrator'})
-        assert result['entries'] == [{'finding': 'intro is weak', 'writer': 'orchestrator'}]
+        result = pex._dispatch_tool('read_scratchpad', {'origin': 'audit'})
+        assert result['entries'] == [{'origin': 'audit', 'finding': 'intro is weak', 'version': 1,
+                                      'turn_number': mock_agent.world.context.turn_id,
+                                      'used_count': 0}]
 
 
 
@@ -179,7 +184,7 @@ class TestScopedToolSurface:
 
     def test_recover_from_ambiguity_tool(self, mock_agent, tmp_path):
         pex = mock_agent.pex
-        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'  # file-backed for recover
+        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')  # file-backed for recover
         none = pex._dispatch_tool('recover_from_ambiguity', {})
         assert none['_success'] is False and none['_error'] == 'invalid_input'
         mock_agent.world.prefs.store_preference('channel', 'substack')
@@ -210,14 +215,14 @@ class TestScopedToolSurface:
         """A9 read side: a flat save_findings-shape write is read back whole, and the used-count
         bump re-write shows the increment on a re-read."""
         pex = mock_agent.pex
-        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'
+        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
         policy = pex._policies['Revise']
-        pex.session_scratchpad.write({'key': 'audit', 'used_count': 0, 'summary': 's',
-                                      'findings': []}, writer='audit')
+        pex.session_scratchpad.append_entry('audit', {'used_count': 0, 'summary': 's',
+                                                      'findings': []})
         entry = policy._read_scratch_value('audit')
         assert entry['summary'] == 's' and entry['used_count'] == 0
-        entry['used_count'] = entry.get('used_count', 0) + 1
-        pex.session_scratchpad.write(entry, writer='audit')
+        entry['used_count'] = entry['used_count'] + 1
+        pex.session_scratchpad.append_entry('audit', entry)
         assert policy._read_scratch_value('audit')['used_count'] == 1
 
 
@@ -248,7 +253,7 @@ class TestDispatchFlow:
     def wired(self, sessions_dir, mock_agent, tmp_path):
         pex = mock_agent.pex
         mock_agent.world.open_session('wire-test')
-        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'
+        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
         return mock_agent
 
     def test_completion_record_is_the_tool_result(self, wired):
@@ -259,9 +264,10 @@ class TestDispatchFlow:
         result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['status'] == 'Completed'
-        assert result['completion'] == {'flow': 'outline', 'summary': 'Drafted the intro.',
-                                        'metadata': {}, 'writer': 'outline'}
-        assert pex.session_scratchpad.read(keys=['flow', 'summary']) == [result['completion']]
+        assert result['completion'] == {'origin': 'outline', 'version': 1,
+                                        'turn_number': wired.world.context.turn_id, 'used_count': 0,
+                                        'summary': 'Drafted the intro.', 'metadata': {}}
+        assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == [result['completion']]
         # The run is reflected back into the state's flow_stack block, grounding applied.
         assert state.flow_stack[-1]['flow_name'] == 'outline'
         assert state.flow_stack[-1]['status'] == 'Completed'
@@ -321,7 +327,7 @@ class TestPolicyCompletion:
     def wired(self, sessions_dir, mock_agent, tmp_path):
         pex = mock_agent.pex
         mock_agent.world.open_session('completion-test')
-        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'
+        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
         return mock_agent
 
     def _migrated_policy(self, agent, summary, metadata=None):
@@ -332,7 +338,7 @@ class TestPolicyCompletion:
         class _MigratedPolicy(BasePolicy):
             def execute(self, state, context, tools):
                 flow = self.flow_stack.get_flow()
-                self.complete_flow(flow, state, summary, metadata=metadata)
+                self.complete_flow(flow, state, context, summary, metadata=metadata)
                 return TaskArtifact(origin=flow.name(), thoughts=summary)
 
         components = {'engineer': pex.engineer, 'config': pex.config,
@@ -349,10 +355,11 @@ class TestPolicyCompletion:
                                                        metadata={'sec': 'intro'})
         result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is True
-        assert result['completion'] == {'flow': 'outline', 'summary': 'Wrote the intro.',
-                                        'metadata': {'sec': 'intro'}, 'writer': 'outline'}
+        assert result['completion'] == {'origin': 'outline', 'version': 1,
+                                        'turn_number': wired.world.context.turn_id, 'used_count': 0,
+                                        'summary': 'Wrote the intro.', 'metadata': {'sec': 'intro'}}
         # The policy's record IS the tool result — no fallback duplicate from activate_flow.
-        assert pex.session_scratchpad.read(keys=['flow', 'summary']) == [result['completion']]
+        assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == [result['completion']]
         assert state.flow_stack[-1]['status'] == 'Completed'
 
     def test_complete_flow_blocks_ungrounded_completion(self, wired):
@@ -361,7 +368,7 @@ class TestPolicyCompletion:
         result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is False
         assert 'grounding.post is empty' in result['_message']
-        assert pex.session_scratchpad.read(keys=['flow', 'summary']) == []  # no record written
+        assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == []  # no record written
 
     def test_grounded_source_ids_continuity(self, wired):
         """Empty entity slot + filled grounding block: the active entity carries over."""
@@ -389,7 +396,7 @@ class TestProposeTwoPhase:
     def ready(self, sessions_dir, mock_agent, tmp_path, monkeypatch):
         pex = mock_agent.pex
         mock_agent.world.open_session('propose-test')
-        pex.session_scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'
+        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
         policy = pex._policies['Revise']
         mock_agent.world.state.set_active_entity(post='p1', ver=True)  # grounding gate for complete_flow
         flow = pex.flow_stack.stackon('propose')

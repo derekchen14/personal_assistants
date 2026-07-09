@@ -14,6 +14,7 @@ This skill edits a paragraph, sentence, or text snippet by rephrasing, adding, o
    - **Edit**: rephrase sentences, improve word choice, fix transitions, swap voice. Preserve technical content.
    - **Add**: compose a new sentence consistent with the surrounding prose's voice and content. Insert at the position the user named (e.g. "at the end" → append, "after sentence 2" → insert at index 3).
    - **Remove**: drop the named sentence/range via `remove_content`, or trim/shorten an over-long span by rewriting it with `revise_content`.
+   - For additions or replacement prose, you may call `write_text(instructions, seed_content, location)` to generate the candidate wording. `write_text` does not save anything; always persist the chosen text afterward with `revise_content`.
    - When a style hint or `suggestions` slot is provided in the resolved details, treat it as the priority signal — the user is telling you what they want.
    - When an `image` parameter is present, judge whether the image fits the section's main idea and replace or drop it via `revise_content` / `remove_content`.
 
@@ -41,6 +42,7 @@ Trim/shorten-only and image replace/remove requests are handled here directly �
 ### Task-specific tools
 
 - `read_section(post_id, sec_id, snip_id=None, include_sentence_ids=False)` required once per turn on the matched section. Pass `include_sentence_ids=True` so the returned content carries sentence indices you can later hand back as `snip_id`.
+- `write_text(instructions, seed_content, location='append')` drafts new wording from instructions and nearby context. Use it for a fresh sentence, transition, or replacement phrase when generation quality matters. It is not a save tool.
 - `revise_content(post_id, sec_id, content, snip_id=None)` is the primary save. Omit `snip_id` to replace the whole section. Pass an integer `snip_id` to insert at a sentence index (`-1` appends). Pass `[start, end]` to replace that end-exclusive slice of sentences. Compose the edited prose directly — preserve all technical content from the source span; only restructure phrasing and word choice.
 - `remove_content(post_id, sec_id, snip_id=...)` deletes a sentence/range or an image outright. Pass `snip_id` to scope the removal to a span; omit it only for a whole-section delete, which is rare here.
 
@@ -76,8 +78,8 @@ Resolved Details:
 
 Trajectory:
 1. `read_section(post_id=abcd0123, sec_id=hungry-for-power, include_sentence_ids=True)` → 5 sentences. Last sentence (idx 4) talks about hyperscale operators.
-2. Compose a closer that picks up the scale thread: e.g. "At grid scale, these dynamics turn from cost lines into siting decisions for entire regions."
-3. `revise_content(post_id=abcd0123, sec_id=hungry-for-power, content="At grid scale, these dynamics turn from cost lines into siting decisions for entire regions.", snip_id=-1)` — `-1` appends to the end.
+2. `write_text(instructions="Add a concluding sentence about what happens at scale.", seed_content=<section content>, location="append")` → a closer that picks up the scale thread.
+3. `revise_content(post_id=abcd0123, sec_id=hungry-for-power, content=<generated closer>, snip_id=-1)` — `-1` appends to the end.
 
 ### Example 3: Specific edit → direct edit
 
@@ -87,7 +89,8 @@ Resolved Details:
 
 Trajectory:
 1. `read_section(post_id=abcd0123, sec_id=the-need-for-data, include_sentence_ids=True)` → sentence 1 contains the phrase.
-2. `revise_content(post_id=abcd0123, sec_id=the-need-for-data, content=<sentence 1 with 'the way that we' → 'we'>, snip_id=1)`.
+2. `write_text(instructions="Replace 'the way that we' with 'we' and preserve the rest of the sentence.", seed_content=<sentence 1>, location="replace")` → edited sentence.
+3. `revise_content(post_id=abcd0123, sec_id=the-need-for-data, content=<edited sentence>, snip_id=1)`.
 
 ### Example 4: Informed edit with an audit finding
 

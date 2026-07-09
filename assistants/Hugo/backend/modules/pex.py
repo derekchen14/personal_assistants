@@ -22,6 +22,7 @@ _NUDGE_MESSAGE = ('Your last response had no visible text and no tool calls. Rep
                   'final response to the user, or call a tool.')
 _WRAP_UP_MESSAGE = ('Stop calling tools. Reply to the user now in 1-2 sentences of plain text: '
                     'summarize what was accomplished this turn, or ask what they need.')
+_DOMAIN_INTENTS = {'Research', 'Draft', 'Revise', 'Publish'}
 
 
 @dataclass
@@ -93,7 +94,7 @@ class PolicyExecutor:
         self.engineer = engineer
 
         self.flow_stack = FlowStack(config, flow_classes=flow_classes)
-        self.session_scratchpad = SessionScratchpad(config)
+        self.session_scratchpad = SessionScratchpad()
         self._world = None  # set via the `world` property once the Assistant builds the World
 
         self._post_service = PostService()
@@ -340,6 +341,7 @@ class PolicyExecutor:
         model_id = self.config['models']['overrides']['orchestrator']['model_id']
 
         nudged = False
+        lifecycle_nudged = False
         errors = 0
         last_call = None
         for round_idx in range(self.max_rounds):
@@ -352,6 +354,11 @@ class PolicyExecutor:
 
             if not tool_uses:
                 if text:
+                    lifecycle_note = self._domain_turn_blocker()
+                    if lifecycle_note and not lifecycle_nudged:
+                        lifecycle_nudged = True
+                        context.append_message({'role': 'user', 'content': lifecycle_note})
+                        continue
                     context.append_message({'role': 'assistant', 'content': text})
                     note = self.inject_belief_state()  # ⑤: text-only turn whose detection landed
                     if note:
@@ -399,6 +406,39 @@ class PolicyExecutor:
             if errors >= self.max_corrective:
                 break  # the model keeps failing tool calls — stop burning rounds
         return self._final_emit(system_prompt, model_id)
+
+    def _domain_turn_blocker(self) -> str:
+        """One corrective nudge when the model tries to end a domain turn before running NLU's
+        detected flow. This enforces the commit rule without choosing tool arguments on the
+        model's behalf."""
+        state = self.world.state
+        if self.world.ambiguity.present or state.pred_intent not in _DOMAIN_INTENTS:
+            return ''
+        flow_name = state.top_pred_flow()
+        if flow_name not in flow_classes:
+            return ''
+        terminal_match = next((entry for entry in self.flow_stack.to_list()
+                               if entry['flow_name'] == flow_name
+                               and entry['status'] in ('Completed', 'Invalid')), None)
+        if terminal_match:
+            return (
+                "[system] A domain flow finished or became invalid. Call `manage_flows` "
+                "with op='pop' before replying to the user."
+            )
+        if flow_name in self._completed_this_turn:
+            return ''
+        flow = self.flow_stack.find_by_name(flow_name)
+        if flow:
+            return (
+                f"[system] Domain turn is not complete: NLU detected `{flow_name}` and that "
+                f"flow is `{flow.status}` on the stack. Call `manage_flows` with "
+                f"op='activate' and flow_name='{flow_name}' before replying to the user."
+            )
+        return (
+            f"[system] Domain turn is not complete: NLU detected `{flow_name}`. Call "
+            f"`manage_flows` with op='stackon', flow_name='{flow_name}', and active=true "
+            "before replying to the user."
+        )
 
     def _final_emit(self, system_prompt:str, model_id:str) -> str:
         """Round budget or corrective cap exhausted: one last no-tools call forces a plain-text
@@ -551,10 +591,9 @@ class PolicyExecutor:
         summary = params.get('summary', '')
         references_used = params.get('references_used', [])
         flow = self.flow_stack.get_flow()
-        key = flow.name() if flow else 'findings'
-        self.session_scratchpad.write({
-            'key': key,
-            'version': '1',
+        origin = flow.name() if flow else 'findings'
+        self.session_scratchpad.append_entry(origin, {
+            'version': 1,
             'turn_number': self.world.context.turn_id,
             'used_count': 0,
             'summary': summary,
@@ -689,7 +728,10 @@ class PolicyExecutor:
         self._completed_this_turn.append(flow.name())  # for the end-of-turn checkpoint
         if record is None:  # policy completed without calling complete_flow — synthesize a record
             summary = artifact.thoughts or f'{flow.name()} completed'
-            record = self.session_scratchpad.write_completion(flow.name(), summary, metadata=artifact.data)
+            record = {'version': 1, 'turn_number': self.world.context.turn_id, 'used_count': 0,
+                      'summary': summary, 'metadata': artifact.data or {}}
+            self.session_scratchpad.append_entry(flow.name(), record)
+            record = {**record, 'origin': flow.name()}
         return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
 
     def _dispatch_understand(self, params:dict) -> dict:
@@ -699,11 +741,17 @@ class PolicyExecutor:
         return self.read_state(params)
 
     def _dispatch_read_scratchpad(self, params:dict) -> dict:
-        entries = self.session_scratchpad.read(writer=params.get('writer'), keys=params.get('keys'))
+        entries = self.session_scratchpad.read(origin=params.get('origin'), keys=params.get('keys'))
         return {'_success': True, 'entries': entries}
 
     def _dispatch_append_scratchpad(self, params:dict) -> dict:
-        self.session_scratchpad.write(params['entry'])  # `writer` stamped by code
+        if 'origin' not in params['entry']:
+            return {'_success': False, '_error': 'invalid_input',
+                    '_message': "entry needs a stable 'origin' to file it under."}
+        # LLM-authored entry — code stamps the contract fields it can't be trusted with.
+        entry = {'version': 1, **params['entry'],
+                 'turn_number': self.world.context.turn_id, 'used_count': 0}
+        self.session_scratchpad.append_entry(entry.pop('origin'), entry)
         return {'_success': True, 'size': self.session_scratchpad.size}
 
     def _dispatch_store_preference(self, params:dict) -> dict:
@@ -727,8 +775,9 @@ class PolicyExecutor:
             return {'_success': False, '_error': 'invalid_input',
                     '_message': 'No pending ambiguity to recover.'}
         result, success = self.world.ambiguity.recover(self.world.prefs, self.world.scratchpad)
-        entry = {'key': 'recovery', 'found' if success else 'missing': result}
-        self.world.scratchpad.write(entry)  # `writer` stamped by code
+        entry = {'version': 1, 'turn_number': self.world.context.turn_id,
+                 'used_count': 0, 'found' if success else 'missing': result}
+        self.world.scratchpad.append_entry('recovery', entry)
         return {'_success': True, 'recovery': result if success else None}
 
     # -- Tool definitions -------------------------------------------------
@@ -818,15 +867,15 @@ class PolicyExecutor:
             {
                 'name': 'read_scratchpad',
                 'description': (
-                    "Read session scratchpad entries, newest last. Optional filters: `writer` "
-                    "('orchestrator' or a flow name) and `keys` (only entries carrying every "
-                    "named key — e.g. ['flow', 'summary'] selects completion records). Pick up "
-                    "prerequisites left by earlier flows here."
+                    "Read session scratchpad entries, newest last. Optional filters: `origin` "
+                    "(a flow name, 'orchestrator', or a topic like 'recovery') and `keys` (only "
+                    "entries carrying every named key — e.g. ['summary', 'metadata'] selects "
+                    "completion records). Pick up prerequisites left by earlier flows here."
                 ),
                 'input_schema': {
                     'type': 'object',
                     'properties': {
-                        'writer': {'type': 'string'},
+                        'origin': {'type': 'string'},
                         'keys': {'type': 'array', 'items': {'type': 'string'}},
                     },
                     'required': [],
@@ -1019,8 +1068,8 @@ class PolicyExecutor:
                 'description': (
                     "Append one agent-belief entry to the session scratchpad (JSONL). `entry` is a "
                     "schema-free JSON object — intermediate findings, tool results worth keeping, "
-                    "working notes. The `writer` stamp is added by code; do not include a writer "
-                    "key yourself. Reads go through the read_scratchpad tool."
+                    "working notes — plus a stable `origin` (what the note is about) to file it "
+                    "under. Reads go through the read_scratchpad tool."
                 ),
                 'input_schema': {
                     'type': 'object',

@@ -45,7 +45,7 @@ class ResearchPolicy(BasePolicy):
         history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
         text = self.engineer.flow_reply(flow, history_with_data, self.scratchpad.read())
 
-        self.complete_flow(flow, state, summary, metadata={'tags': tags, 'target': target})
+        self.complete_flow(flow, state, context, summary, metadata={'tags': tags, 'target': target})
         artifact = TaskArtifact(flow.name(), thoughts=text)
         artifact.add_block({'type': 'list', 'data': {'items': items}})
         return artifact
@@ -74,7 +74,7 @@ class ResearchPolicy(BasePolicy):
                 flow, history_with_data, self.scratchpad.read(),
                 flow_prompt=flow_prompt,
             )
-            self.complete_flow(flow, state, f"Summarized '{flow_metadata['title']}'.",
+            self.complete_flow(flow, state, context, f"Summarized '{flow_metadata['title']}'.",
                 metadata={'post_id': post_id})
             artifact = TaskArtifact(flow.name(), thoughts=summary)
         return artifact
@@ -110,9 +110,8 @@ class ResearchPolicy(BasePolicy):
             list_data['expanded_ids'] = [it['post_id'] for it in items]
 
         # Scratchpad write — downstream audit can reference matches.
-        self.scratchpad.write({
-            'key': flow.name(),
-            'version': '1',
+        self.scratchpad.append_entry(flow.name(), {
+            'version': 1,
             'turn_number': context.turn_id,
             'used_count': 0,
             'query': query,
@@ -122,10 +121,10 @@ class ResearchPolicy(BasePolicy):
                 }
                 for it in items
             ],
-        }, writer=flow.name())
+        })
 
         found = f"Found {len(items)} post(s) matching '{query}'." if query else f'Listed {len(items)} post(s).'
-        self.complete_flow(flow, state, found, metadata={'query': query})
+        self.complete_flow(flow, state, context, found, metadata={'query': query})
         artifact = TaskArtifact(flow.name())
         artifact.add_block({'type': 'list', 'data': list_data, 'expand': True})
         return artifact
@@ -192,7 +191,7 @@ class ResearchPolicy(BasePolicy):
         if self.ambiguity.present:
             return TaskArtifact(flow.name())
 
-        self.complete_flow(flow, state, text or 'Compared the two posts.',
+        self.complete_flow(flow, state, context, text or 'Compared the two posts.',
             metadata={'post_ids': [posts[0]['post_id'], posts[1]['post_id']]})
         artifact = TaskArtifact(flow.name(), thoughts=text)
         artifact.add_block({'type': 'compare', 'data': {'left': posts[0], 'right': posts[1]}, 'expand': True})
@@ -210,6 +209,6 @@ class ResearchPolicy(BasePolicy):
         text, _ = self.llm_execute(flow, state, context, tools)
         if self.ambiguity.present:
             return TaskArtifact(flow.name())
-        self.complete_flow(flow, state, text or 'Diffed the section against a prior version.',
+        self.complete_flow(flow, state, context, text or 'Diffed the section against a prior version.',
             metadata={'post_id': post_id})
         return TaskArtifact(flow.name(), thoughts=text)

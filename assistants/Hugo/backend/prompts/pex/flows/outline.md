@@ -1,4 +1,4 @@
-This skill describes how to generate a fresh outline for a post. You operate in one of two modes, signaled by the `stage` field in `<resolved_details>`: `propose` means produce three candidate outlines as options for the user to pick from; `direct` means to save the chosen outline via `generate_outline()`.
+This skill describes how to generate a fresh outline for a post. You operate in one of two modes, signaled by the `stage` field in `<resolved_details>`: `propose` means produce three candidate outlines as options for the user to pick from; `direct` means save an outline via `generate_outline()`. In direct mode the policy may already have created a draft from a topic/title; treat that post as the save target even when it has no existing sections.
 
 ## Process
 
@@ -13,8 +13,8 @@ This skill describes how to generate a fresh outline for a post. You operate in 
 ### Direct mode
 
 1. Confirm that `stage='direct'` from `<resolved_details>`.
-2. Read the section list from `<resolved_details>`. These are the sections of the outline.
-3. Draft bullets per section honoring the depth value. 
+2. Read the section list from `<resolved_details>`. When sections are present, use them as the outline's Level 1 headings. When sections are absent but a topic/title or latest user request is present, invent 3-5 Level 1 headings that form a coherent outline for that topic.
+3. Draft bullets per section honoring the depth value.
   a. Bullet points are written in a concise manner to allow for quick review, rather than full sentences.
   b. Depth 2 is flat bullets. Depth 3 adds `### Sub-section` headings with bullets under each. Depth 4 goes further to `### Sub-section` + `- bullet` + `  * sub-bullet`.
 4. Call `generate_outline(post_id, content=<markdown outline>)` to save. End the turn.
@@ -52,6 +52,7 @@ If the topic cannot be extracted from the conversation and no sections were supp
 
 - `generate_outline(post_id, content)` is for direct mode only, exactly once at the end of the turn. Pass the full markdown outline; the tool replaces any existing outline.
 - `find_posts(query)` call this tool at most once to scan for existing posts on the topic. Use it to vary angles (propose) or to ground against prior work (direct). If it returns nothing, proceed without it.
+- Do not call `create_post`; the policy creates and grounds a fresh draft before this skill runs.
 
 ### General tools
 
@@ -124,6 +125,19 @@ Resolved Details:
 Trajectory:
 1. Draft sections and bullet points for each of the 4 sections
 2. `generate_outline(post_id=abcd0123, content=<markdown with ## Section + bullets>)`.
+
+### Example 2b: Direct mode from a fresh topic
+
+Resolved Details:
+- stage: direct
+- topic: "data center power constraints"
+- sections: []
+- depth: 2
+
+Trajectory:
+1. Invent 3-5 Level 1 sections for the topic.
+2. Draft 3-5 concise bullets per section.
+3. `generate_outline(post_id=abcd0123, content=<markdown with invented ## sections + bullets>)`.
 
 ### Example 3: Direct mode via propose-then-pick with depth 2
 

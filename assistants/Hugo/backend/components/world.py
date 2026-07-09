@@ -51,6 +51,7 @@ class World:
         self.conversation_id = conversation_id
         session_path = _SESSIONS_DIR / conversation_id
         self.context.attach_messages(session_path / 'messages.jsonl')
+        self.scratchpad.attach(session_path / 'scratchpad.jsonl')
 
     def session_dir(self) -> Path:
         """database/sessions/<conversation_id>/ — created lazily on first access."""

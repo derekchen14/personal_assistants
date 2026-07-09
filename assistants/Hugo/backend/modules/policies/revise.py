@@ -29,9 +29,9 @@ class RevisePolicy(BasePolicy):
             case _:
                 return TaskArtifact()
 
-    def _read_scratch_value(self, key):
-        """Newest scratchpad entry stored under `key` (flat single-dict shape)."""
-        entries = [entry for entry in self.scratchpad.read() if entry.get('key') == key]
+    def _read_scratch_value(self, origin):
+        """Newest scratchpad entry stored under `origin` (flat single-dict shape)."""
+        entries = self.scratchpad.read(origin=origin)
         return entries[-1] if entries else ''
 
     def rework_policy(self, flow, state, context, tools):
@@ -43,7 +43,7 @@ class RevisePolicy(BasePolicy):
         # outright. Section / paragraph / image removals fall through to the agentic path below.
         type_slot = flow.slots['type']
         if type_slot.check_if_filled() and type_slot.value in ('post', 'draft', 'note'):
-            return self._rework_delete(flow, state, post_id, tools)
+            return self._rework_delete(flow, state, context, post_id, tools)
 
         # Category dispatch: each option resolves deterministically (move, fallback, or ambiguity).
         if flow.slots['category'].check_if_filled():
@@ -64,14 +64,14 @@ class RevisePolicy(BasePolicy):
             for step_name in parsed['done']:
                 flow.slots['suggestions'].mark_as_complete(step_name)
 
-            self.complete_flow(flow, state, text[:200], metadata={'post_id': post_id})
+            self.complete_flow(flow, state, context, text[:200], metadata={'post_id': post_id})
             artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         else:
             artifact.set_artifact(new_data={'violation': 'failed_to_save'})
 
         return artifact
 
-    def _rework_delete(self, flow, state, post_id, tools):
+    def _rework_delete(self, flow, state, context, post_id, tools):
         """Whole-entity deletion. Published posts aren't deletable —
         confirm an unpublish intent first. delete_post runs through the dispatcher (not the skill's
         tool registry); the post is gone afterward, so emit a toast and skip any content readback.
@@ -88,7 +88,7 @@ class RevisePolicy(BasePolicy):
         if not result['_success']:
             return self.toast_error(flow, 'tool_error',
                 f"Couldn't delete the {kind}: {result.get('_error', 'delete_post failed')}")
-        self.complete_flow(flow, state, f'Deleted the {kind}.', metadata={'post_id': post_id})
+        self.complete_flow(flow, state, context, f'Deleted the {kind}.', metadata={'post_id': post_id})
         artifact = TaskArtifact(flow.name(), thoughts=f'Deleted the {kind}.')
         artifact.add_block({'type': 'toast', 'data': {'message': f'Deleted the {kind}.', 'level': 'success'}})
         return artifact
@@ -150,7 +150,7 @@ class RevisePolicy(BasePolicy):
             'section_title': b['title'], 'content': b['content']})
         tools('insert_section', {'post_id': post_id, 'sec_id': sec_b,
             'section_title': a['title'], 'content': a['content']})
-        self.complete_flow(flow, state, f'Swapped sections {sec_a} and {sec_b}.',
+        self.complete_flow(flow, state, context, f'Swapped sections {sec_a} and {sec_b}.',
             metadata={'post_id': post_id})
         artifact = TaskArtifact(flow.name(), thoughts=f'Swapped sections {sec_a} and {sec_b}.')
         artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
@@ -177,7 +177,7 @@ class RevisePolicy(BasePolicy):
         anchor = '' if where == 'to_top' else (remaining[-1] if remaining else '')
         tools('insert_section', {'post_id': post_id, 'sec_id': anchor,
             'section_title': body['title'], 'content': body['content']})
-        self.complete_flow(flow, state, f'Moved {sec} to {where}.', metadata={'post_id': post_id})
+        self.complete_flow(flow, state, context, f'Moved {sec} to {where}.', metadata={'post_id': post_id})
         artifact = TaskArtifact(flow.name(), thoughts=f'Moved {sec} to {where}.')
         artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return artifact
@@ -201,8 +201,8 @@ class RevisePolicy(BasePolicy):
             for key in parsed.get('used', []):
                 entry = self._read_scratch_value(str(key))
                 if isinstance(entry, dict):
-                    entry['used_count'] = entry.get('used_count', 0) + 1
-                    self.scratchpad.write(entry, writer=flow.name())
+                    entry['used_count'] = entry['used_count'] + 1
+                    self.scratchpad.append_entry(entry['origin'], entry)
 
         # Scope-mismatch fallback: if inspect_post flagged structural issues,
         # re-route to rework rather than committing the edit.
@@ -217,7 +217,7 @@ class RevisePolicy(BasePolicy):
             error_msg = 'Write flow did not persist any content; revise_content was not called or returned as failed.'
             return self.error_artifact(flow, 'failed_to_save', thoughts=error_msg, code=text)
 
-        self.complete_flow(flow, state, text[:200], metadata={'post_id': post_id})
+        self.complete_flow(flow, state, context, text[:200], metadata={'post_id': post_id})
         artifact = TaskArtifact(flow.name(), thoughts=text)
         artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return artifact
@@ -240,7 +240,7 @@ class RevisePolicy(BasePolicy):
         saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
         summary = text[:200] if text else (
             'Revised the post to match your voice.' if saved else 'Audited the post — no changes needed.')
-        self.complete_flow(flow, state, summary, metadata={'post_id': post_id})
+        self.complete_flow(flow, state, context, summary, metadata={'post_id': post_id})
         artifact = TaskArtifact('audit', thoughts=text)
         if saved:
             artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
@@ -281,9 +281,9 @@ class RevisePolicy(BasePolicy):
             return self.error_artifact(flow, 'empty_output',
                 thoughts='Propose produced no candidate alternatives.', code=text)
 
-        self.scratchpad.write(
-            {'key': 'propose', 'candidates': candidates, 'post_id': post_id, 'sec_id': sec_id},
-            writer='propose')
+        self.scratchpad.append_entry('propose',
+            {'version': 1, 'turn_number': context.turn_id, 'used_count': 0,
+             'candidates': candidates, 'post_id': post_id, 'sec_id': sec_id})
         flow.stage = 'discovery'
         block_options = [{'label': opt[:80], 'payload': idx, 'body': opt}
                          for idx, opt in enumerate(candidates)]
@@ -316,7 +316,7 @@ class RevisePolicy(BasePolicy):
             filled = f'{body}\n{chosen}' if body else chosen
         tools('revise_content', {'post_id': post_id, 'sec_id': sec_id, 'content': filled})
 
-        self.complete_flow(flow, state, f'Filled the gap in {sec_id}.',
+        self.complete_flow(flow, state, context, f'Filled the gap in {sec_id}.',
             metadata={'post_id': post_id, 'sec_id': sec_id})
         artifact = TaskArtifact(flow.name(), thoughts=f'Filled the gap with: {chosen}')
         artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})

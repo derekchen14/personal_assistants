@@ -93,14 +93,15 @@ class NaturalLanguageUnderstanding:
         writes the detection onto the session state's belief (pred_intent / pred_flows /
         confidence / pred_slots). `hint` is PEX's first-pass intent selection: a domain intent
         narrows think's candidates; blank (Plan/Clarify/Converse carry no real signal) means
-        detect over the full ontology. NLU never touches the flow stack — PEX stages and
-        activates."""
+        detect over the full ontology. For real policy flows, NLU also ensures the detected flow is
+        on the shared stack with the filled slots; PEX still owns activation and responses."""
         if op == 'react':
             state = self.react(dax, payload or {})
         elif op == 'contemplate':
             state = self.contemplate(user_text)
         else:
             state = self.think(user_text, payload or {}, hint)
+        self.review_scratchpad()      # NLU's turn point — reviews last turn's appends too
         return self.validate(state)
 
     # ── Public operational modes ──────────────────────────────────────
@@ -116,10 +117,11 @@ class NaturalLanguageUnderstanding:
         if flow_name not in flow_classes:
             return self._write_non_policy_belief(flow_name, detection['confidence'], predicted_flows)
 
-        flow = flow_classes[flow_name]()            # transient — detection writes belief, no push
+        flow = flow_classes[flow_name]()
         self._fill_slots(flow, payload)
         self._repair_entities(self.world.state, flow)
         state = self._write_belief(flow_name, detection['confidence'], predicted_flows, flow)
+        self._stack_detected_flow(flow, state)
 
         if self.ambiguity_handler.needs_clarification(state.confidence):
             self.ambiguity_handler.recognize(
@@ -145,20 +147,24 @@ class NaturalLanguageUnderstanding:
         detection = self._check_routing(user_text, failed_flow, self.ambiguity_handler.observation)
         flow_name = detection['flow_name']
 
-        flow = flow_classes[flow_name]()            # transient — belief-only, no push
+        flow = flow_classes[flow_name]()
         self._fill_slots(flow, {})
-        return self._write_belief(flow_name, detection['confidence'],
+        state = self._write_belief(flow_name, detection['confidence'],
             [{'flow_name': flow_name, 'confidence': detection['confidence'], 'votes': 1}], flow)
+        self._stack_detected_flow(flow, state)
+        return state
 
     def react(self, gold_dax:str, payload:dict={}):
         """A click resolved the flow via its dax — fill a transient flow and write belief."""
         flow_name = dax2flow(gold_dax)
-        flow = flow_classes[flow_name]()            # transient — belief-only, no push
+        flow = flow_classes[flow_name]()
         _, payload = self._fill_slices(self.world.state, payload)
         self._fill_slots(flow, payload)
         self._repair_entities(self.world.state, flow)
-        return self._write_belief(flow_name, 0.99,
+        state = self._write_belief(flow_name, 0.99,
                                   [{'flow_name': flow_name, 'confidence': 0.99, 'votes': 1}], flow)
+        self._stack_detected_flow(flow, state)
+        return state
 
     def validate(self, state):
         cat = FLOW_ONTOLOGY.get(state.flow_name(string=True))
@@ -179,13 +185,44 @@ class NaturalLanguageUnderstanding:
 
         return state
 
+    def _stack_detected_flow(self, flow, state):
+        """Make the NLU detection visible as a real flow-stack entry, without activating it.
+
+        PEX reads this stack and decides whether to activate, continue, pop, or respond. Slot values
+        are copied from NLU's transient flow into the shared FlowStack entry so the policy sees the
+        same belief NLU wrote to DialogueState.
+        """
+        if flow.name() not in flow_classes:
+            return None
+        stacked = self.world.flows.stackon(flow.name())
+        values = flow.slot_values_dict()
+        if values:
+            stacked.fill_slot_values(values)
+            stacked.is_filled()
+        state.flow_stack = self.world.flows.to_list()
+        return stacked
+
     def attempt_recovery(self):
         result, success = self.ambiguity_handler.recover(self.world.prefs, self.world.scratchpad)
-        if success:
-            self.world.scratchpad.write({'key': 'recovery', 'found': result}, writer='nlu')
-        else:
-            self.world.scratchpad.write({'key': 'recovery', 'missing': result}, writer='nlu')
+        entry = {'version': 1, 'turn_number': self.world.context.turn_id,
+                 'used_count': 0, 'found' if success else 'missing': result}
+        self.world.scratchpad.append_entry('recovery', entry)
         return {'recovery': result}
+
+    def review_scratchpad(self) -> dict:
+        """Synchronous review pass at NLU's turn point. Conservative for now: repair entries
+        missing the contract fields (version / turn_number / used_count) losslessly via the
+        NLU-only `update_entry`; semantic review — merging contradictions, pruning stale notes
+        via `prune_entry`, maintaining used_count — is designed-not-built."""
+        repaired = 0
+        for entry in self.world.scratchpad.read():
+            if all(field in entry for field in ('version', 'turn_number', 'used_count')):
+                continue
+            amended = {'version': 1, 'used_count': 0,
+                       'turn_number': self.world.context.turn_id, **entry}
+            self.world.scratchpad.update_entry(entry['origin'], entry.get('turn_number'), amended)
+            repaired += 1
+        return {'reviewed': True, 'size': self.world.scratchpad.size, 'repaired': repaired}
 
     # ── Entity repair ──────────────────────────────────────────────────
 

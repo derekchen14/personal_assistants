@@ -127,13 +127,13 @@ class OutlineFlow(DraftParentFlow):
     self.dax = '{002}'
     self.goal = 'generate an outline including section headings, key bullet points, estimated word counts, and suggested reading order'
     self.slots = {
-      'source': SourceSlot(1, priority='required'),
+      'source': SourceSlot(1, priority='elective'),
       'sections': ChecklistSlot(priority='elective'),
       'topic': ExactSlot(priority='elective'),
       'depth': LevelSlot(priority='optional', threshold=1),
       'proposals': ProposalSlot(priority='optional'),  # used internally, rather than filled by NLU
     }
-    self.tools = ['find_posts', 'brainstorm_ideas', 'generate_outline']
+    self.tools = ['find_posts', 'brainstorm_ideas', 'create_post', 'generate_outline']
 
   def fill_slot_values(self, values):
     for item in values.get('source', []):
@@ -242,7 +242,7 @@ class WriteFlow(ReviseParentFlow):
       'image': ImageSlot(priority='elective'),
       'suggestions': ChecklistSlot(priority='elective'),
     }
-    self.tools = ['read_metadata', 'read_section', 'revise_content', 'remove_content']
+    self.tools = ['read_metadata', 'read_section', 'write_text', 'revise_content', 'remove_content']
 
   def fill_slot_values(self, values):
     for item in values.get('source', []):

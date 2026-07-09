@@ -19,5 +19,5 @@ class ConversePolicy(BasePolicy):
     def chat_policy(self, flow, state, context, tools):
         text, _ = self.llm_execute(flow, state, context, tools)
         flow.stage = 'direct'
-        self.complete_flow(flow, state, text or 'Responded to the user directly.')
+        self.complete_flow(flow, state, context, text or 'Responded to the user directly.')
         return TaskArtifact(origin='chat', thoughts=text)

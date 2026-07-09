@@ -77,58 +77,79 @@ class DraftPolicy(BasePolicy):
             case _: raise ValueError(f"Unknown flow name: {flow.name()}")
 
     def outline_policy(self, flow, state, context, tools):
-        if not flow.slots['source'].check_if_filled():
-            self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
-            return TaskArtifact()
-
         depth_slot = flow.slots['depth']
         depth = int(depth_slot.level) if depth_slot.check_if_filled() else 2
 
-        if flow.slots['sections'].check_if_filled():
-            flow.stage = 'direct'
-            post_id, _, error = self.resolve_source_ids(flow, state, tools)
-            if error: return error
-
-            self.record_snapshot(self.content, flow, context, post_id)
-            text, tool_log = self.llm_execute(flow, state, context, tools,
-                extra_resolved={'depth': depth})
-            saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_outline')
-            if not saved:                       # the generate is flaky — one retry before giving up
-                text, tool_log = self.llm_execute(flow, state, context, tools,
-                    extra_resolved={'depth': depth})
-                saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_outline')
-
-            if not text or not saved:
-                failed = next((entry['result'] for entry in tool_log
-                    if entry['tool'] == 'generate_outline' and not entry['result']['_success']), None)
-                thoughts = failed['_message'] if failed else 'Sub-agent did not call generate_outline.'
-                artifact = self.error_artifact(flow, 'failed_to_save', thoughts=thoughts, code=text)
-            else:
-                for step in flow.slots['sections'].steps:
-                    flow.slots['sections'].mark_as_complete(step['name'])
-                self.complete_flow(flow, state, f'Generated and saved a depth-{depth} outline.',
-                    metadata={'post_id': post_id})
-                artifact = TaskArtifact(origin='outline', thoughts=text)
-                artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
-
-        elif flow.slots['topic'].check_if_filled():
-            flow.stage = 'discovery'
-            artifact = self._propose_outline(flow, state, context, tools, depth=depth)
-
-        else:
+        if not flow.slots['source'].check_if_filled() and not flow.slots['topic'].check_if_filled():
             convo_history = context.compile_history(look_back=3)
             prompt = f'{convo_history}\n\nExtract the topic the user wants to outline for the blog post or note. Reply with JSON: {{"topic": "..."}}.'
             parsed = self.engineer.apply_guardrails(self.engineer(prompt, 'fill_slots'))
             flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})
 
-            if flow.slots['topic'].filled:
-                flow.stage = 'discovery'
-                artifact = self._propose_outline(flow, state, context, tools)
-            else:
-                self.ambiguity.recognize('specific', metadata={'missing': 'topic'})
-                artifact = TaskArtifact(flow.name())
+        if not flow.slots['source'].check_if_filled() and not flow.slots['topic'].check_if_filled():
+            self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
+            return TaskArtifact(flow.name())
+
+        post_id, title, error = self._outline_post(flow, state, tools)
+        if error:
+            return error
+
+        flow.stage = 'direct'
+        self.record_snapshot(self.content, flow, context, post_id)
+        text, tool_log = self.llm_execute(flow, state, context, tools,
+            extra_resolved={'depth': depth, 'topic': title})
+        saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_outline')
+        if not saved:                       # the generate is flaky — one retry before giving up
+            text, tool_log = self.llm_execute(flow, state, context, tools,
+                extra_resolved={'depth': depth, 'topic': title})
+            saved, _ = self.engineer.tool_succeeded(tool_log, 'generate_outline')
+
+        if not text or not saved:
+            failed = next((entry['result'] for entry in tool_log
+                if entry['tool'] == 'generate_outline' and not entry['result']['_success']), None)
+            thoughts = failed['_message'] if failed else 'Sub-agent did not call generate_outline.'
+            artifact = self.error_artifact(flow, 'failed_to_save', thoughts=thoughts, code=text)
+        else:
+            for step in flow.slots['sections'].steps:
+                flow.slots['sections'].mark_as_complete(step['name'])
+            self.complete_flow(flow, state, context, f'Generated and saved a depth-{depth} outline.',
+                metadata={'post_id': post_id, 'title': title})
+            artifact = TaskArtifact(origin='outline', thoughts=text)
+            artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
 
         return artifact
+
+    def _outline_post(self, flow, state, tools):
+        """Return (post_id, title, error_artifact), creating a draft when outline starts a new post."""
+        source_slot = flow.slots['source']
+        topic_slot = flow.slots['topic']
+        reference = ''
+        if source_slot.values:
+            reference = next((ent.get('post', '') for ent in source_slot.values if ent.get('post')), '')
+        title = topic_slot.to_dict() if topic_slot.check_if_filled() else reference
+        post_id = self._resolve_post_id(reference, tools) if reference else None
+        if not post_id:
+            if not title:
+                return None, '', self.error_artifact(flow, 'missing_reference',
+                    thoughts='No post or topic was available for the outline.', missing_entity='post')
+            created = tools('create_post', {'title': title})
+            if not created['_success']:
+                return None, title, self.toast_error(flow, 'tool_error',
+                    created.get('_message', 'Could not create a draft for the outline.'))
+            post_id = created['post_id']
+            title = created.get('title') or title
+        else:
+            meta = tools('read_metadata', {'post_id': post_id})
+            title = meta.get('title', title) if meta.get('_success') else title
+        state.set_active_entity(post=post_id, sec='', ver=True)
+        if source_slot.values:
+            source_slot.values[0]['post'] = post_id
+            source_slot.values[0]['ver'] = True
+            source_slot._rebuild_keys()
+            source_slot.check_if_filled()
+        else:
+            source_slot.add_one(post=post_id, ver=True)
+        return post_id, title, None
 
     def _propose_outline(self, flow, state, context, tools, depth:int=2):
         # Defensive guard: Remove persistence tools from the skill's tool registry for Propose mode.
@@ -190,7 +211,7 @@ class DraftPolicy(BasePolicy):
                 thoughts='The refine skill did not save any changes (revise_content, insert_section, update_post, or remove_content).',
             )
 
-        self.complete_flow(flow, state, 'Refined the outline per the requested changes.',
+        self.complete_flow(flow, state, context, 'Refined the outline per the requested changes.',
             metadata={'post_id': post_id})
         artifact = TaskArtifact(origin='refine', thoughts=text)
         artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
@@ -218,7 +239,7 @@ class DraftPolicy(BasePolicy):
             return self.error_artifact(flow, 'failed_to_save',
                 thoughts='Compose did not persist prose (revise_content not called or failed).', code=text)
 
-        self.complete_flow(flow, state, 'Composed prose for the requested section(s).',
+        self.complete_flow(flow, state, context, 'Composed prose for the requested section(s).',
             metadata={'post_id': post_id})
         artifact = TaskArtifact(origin='compose', thoughts=text)
         artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
@@ -250,7 +271,7 @@ class DraftPolicy(BasePolicy):
             else:
                 text, _ = self.llm_execute(flow, state, context, tools, model='high', schema=schema)
 
-        self.complete_flow(flow, state, f'Brainstormed ideas on "{flow.slots["topic"].term}".')
+        self.complete_flow(flow, state, context, f'Brainstormed ideas on "{flow.slots["topic"].term}".')
         parsed = self.engineer.apply_guardrails(text)
         thoughts = _format_brainstorm(parsed) if isinstance(parsed, dict) else text
         return TaskArtifact(origin='brainstorm', thoughts=thoughts)

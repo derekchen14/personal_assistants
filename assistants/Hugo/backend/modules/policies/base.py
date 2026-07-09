@@ -218,20 +218,22 @@ class BasePolicy:
 
     # -- Flow completion ------------------------------------------------------
 
-    def complete_flow(self, flow, state, summary:str, metadata:dict|None=None) -> dict|None:
+    def complete_flow(self, flow, state, context, summary:str, metadata:dict|None=None) -> dict|None:
         """The single call a policy makes at the moment its flow finishes. The status change goes
         through write_state op='update_flow' (so the grounding validation fires and state.json is
-        rewritten) and the completion record {flow, summary, metadata} is appended to the session
-        scratchpad; activate_flow collects it via pop_completion and returns it as the tool
-        result. Call it before stacking any follow-up flow — the completing flow must be top of
-        stack."""
+        rewritten) and the completion record {summary, metadata} is appended to the session
+        scratchpad under the flow's origin; activate_flow collects it via pop_completion and
+        returns it as the tool result. Call it before stacking any follow-up flow — the completing
+        flow must be top of stack."""
         if self.flow_stack.get_flow().flow_id != flow.flow_id:
             raise ValueError(f'complete_flow: {flow.name()!r} is not top of stack — finish or '
                              f'pop the flows above it first')
         state.write_state(self._state_file(), 'update_flow', stack=self.flow_stack,
                           status='Completed')
-        self._completion = self.scratchpad.write_completion(flow.name(), summary,
-                                                            metadata=metadata)
+        record = {'version': 1, 'turn_number': context.turn_id, 'used_count': 0,
+                  'summary': summary, 'metadata': metadata or {}}
+        self.scratchpad.append_entry(flow.name(), record)
+        self._completion = {**record, 'origin': flow.name()}
         return self._completion
 
     def pop_completion(self) -> dict|None:
