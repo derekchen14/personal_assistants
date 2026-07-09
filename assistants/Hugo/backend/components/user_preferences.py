@@ -40,9 +40,6 @@ class UserPreferences:
         deferred (no vector store yet), so this returns every preference for now."""
         return {key: pref.value for key, pref in self._preferences.items()}
 
-    def read_all(self) -> dict:
-        return dict(self._preferences)
-
     def render(self) -> str:
         """Sorted-by-key (cache-stable) prompt fragment. Endorsed → a standing instruction;
         guessed → an overridable default the user can correct."""

@@ -22,7 +22,7 @@ class ResearchPolicy(BasePolicy):
     def browse_policy(self, flow, state, context, tools):
         query_slot = flow.slots['query']
         if not query_slot.check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing': 'query'})
+            self.ambiguity.recognize('partial', metadata={'missing': 'query'})
             return TaskArtifact(flow.name())
 
         target_slot = flow.slots['target']
@@ -110,7 +110,8 @@ class ResearchPolicy(BasePolicy):
             list_data['expanded_ids'] = [it['post_id'] for it in items]
 
         # Scratchpad write — downstream audit can reference matches.
-        self.scratchpad.write(flow.name(), {
+        self.scratchpad.write({
+            'key': flow.name(),
             'version': '1',
             'turn_number': context.turn_id,
             'used_count': 0,
@@ -170,7 +171,7 @@ class ResearchPolicy(BasePolicy):
         # Comparison kind drives both the metrics surfaced and the prose framing.
         # Ask before dispatching when none was named.
         if not flow.slots['category'].check_if_filled():
-            self.ambiguity.declare('specific',
+            self.ambiguity.recognize('specific',
                 observation='Should I compare metrics, metadata, or tone?',
                 metadata={'missing': 'category'})
             return TaskArtifact(flow.name())
@@ -188,7 +189,7 @@ class ResearchPolicy(BasePolicy):
 
         # Skill may declare ambiguity (e.g. missing category); leave flow Active so the
         # next turn can resolve rather than treating completion as final.
-        if self.ambiguity.present():
+        if self.ambiguity.present:
             return TaskArtifact(flow.name())
 
         self.complete_flow(flow, state, text or 'Compared the two posts.',
@@ -204,10 +205,10 @@ class ResearchPolicy(BasePolicy):
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         if not post_id:
-            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
+            self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
             return TaskArtifact(flow.name())
         text, _ = self.llm_execute(flow, state, context, tools)
-        if self.ambiguity.present():
+        if self.ambiguity.present:
             return TaskArtifact(flow.name())
         self.complete_flow(flow, state, text or 'Diffed the section against a prior version.',
             metadata={'post_id': post_id})

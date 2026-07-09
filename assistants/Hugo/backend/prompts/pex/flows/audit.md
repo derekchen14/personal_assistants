@@ -35,9 +35,9 @@ If the post already matches the user's voice and needs no edits, make no `revise
 ### General tools
 
 - `execution_error(violation, message)` for hard failures (total loss of metrics).
-- `handle_ambiguity(level, metadata)` rare in audit — the entity is the post, guaranteed by the policy guard.
-- `manage_memory(action, key, value)` to read prior `find` / `inspect` findings for this post.
-- `call_flow_stack(action='read', details='flows')` to see what follows audit.
+- `declare_ambiguity(level, metadata)` rare in audit — the entity is the post, guaranteed by the policy guard.
+- `read_scratchpad(action, key, value)` to read prior `find` / `inspect` findings for this post.
+- `read_flow_stack(details='flows')` to see what follows audit.
 
 ## Few-shot examples
 

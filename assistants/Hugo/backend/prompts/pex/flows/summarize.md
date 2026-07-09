@@ -11,7 +11,7 @@ This skill produces a standalone summary paragraph for a post. The policy preloa
 
 If the post body is empty or unreadable, call `execution_error(violation='empty_output', message='post body is empty')`.
 
-If the user named a section that doesn't exist, call `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
+If the user named a section that doesn't exist, call `declare_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
 
 ## Tools
 
@@ -24,9 +24,9 @@ If the user named a section that doesn't exist, call `handle_ambiguity(level='sp
 ### General tools
 
 - `execution_error(violation, message)`
-- `handle_ambiguity(**params)`
-- `manage_memory(**params)`
-- `call_flow_stack(action, details)`
+- `declare_ambiguity(**params)`
+- `read_scratchpad(**params)`
+- `read_flow_stack(details)`
 
 ## Few-shot examples
 
@@ -74,7 +74,7 @@ Resolved Details:
 
 Trajectory:
 1. The preloaded outline lists Motivation, Keys, and Failure Modes, with no Retries section.
-2. `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`. Name the sections that exist, then end turn.
+2. `declare_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`. Name the sections that exist, then end turn.
 
 ### Example 5: Read a section for extra detail
 

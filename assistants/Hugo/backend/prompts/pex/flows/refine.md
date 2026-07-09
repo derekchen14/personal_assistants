@@ -26,7 +26,7 @@ This skill describes how to refine outlines. The current outline is provided in 
 
 If the `<post_content>` looks malformed (missing `##` headings, bullets outside a section), do your best to fix visible structure while honoring the request. If truly unworkable, call `execution_error(violation='invalid_input', message=<short explanation>)` and do NOT save.
 
-If the user's request does not make sense given the actual outline content, call `handle_ambiguity(level=<partial|specific|confirmation>, ...)` with the supporting detail so Hugo can resolve it on the next turn.
+If the user's request does not make sense given the actual outline content, call `declare_ambiguity(level=<partial|specific|confirmation>, ...)` with the supporting detail so Hugo can resolve it on the next turn.
 
 ## Tools
 
@@ -43,9 +43,9 @@ If the user's request does not make sense given the actual outline content, call
 ### General tools
 
 - `execution_error(violation, message)`
-- `handle_ambiguity(**params)`
-- `manage_memory(**params)`
-- `call_flow_stack(action, details)`
+- `declare_ambiguity(**params)`
+- `read_scratchpad(**params)`
+- `read_flow_stack(details)`
 
 ## Few-shot examples
 

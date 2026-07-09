@@ -15,7 +15,7 @@ If a channel fails its `channel_status` check, surface the failure for that chan
 
 If `release_post` fails for a channel, retry ONCE; then `execution_error(violation='tool_error', message=<channel that failed>, failed_tool='release_post')`.
 
-If `datetime.start` is in the past, call `handle_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation=<parsed date>)`.
+If `datetime.start` is in the past, call `declare_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation=<parsed date>)`.
 
 ## Tools
 
@@ -29,9 +29,9 @@ If `datetime.start` is in the past, call `handle_ambiguity(level='specific', met
 ### General tools
 
 - `execution_error(violation, message)`
-- `handle_ambiguity(**params)`
-- `manage_memory(**params)`
-- `call_flow_stack(action, details)`
+- `declare_ambiguity(**params)`
+- `read_scratchpad(**params)`
+- `read_flow_stack(details)`
 
 ## Few-shot examples
 
@@ -77,7 +77,7 @@ Resolved Details:
 
 Trajectory:
 1. `datetime.start` is earlier than the current time, so the schedule cannot be set.
-2. `handle_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation='June 30 at 2:00 PM UTC has already passed; give me a future time')`. End turn.
+2. `declare_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation='June 30 at 2:00 PM UTC has already passed; give me a future time')`. End turn.
 
 ### Example 4: All channels
 

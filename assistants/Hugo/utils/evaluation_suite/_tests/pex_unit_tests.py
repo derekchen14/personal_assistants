@@ -14,11 +14,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.agent import Agent, _FALLBACK_MESSAGE, _NUDGE_MESSAGE, _WRAP_UP_MESSAGE
+from backend.assistant import Assistant, _FALLBACK_MESSAGE, _NUDGE_MESSAGE, _WRAP_UP_MESSAGE
 from backend.modules.pex import READ_ONLY_DOMAIN_TOOLS
 from backend.components.task_artifact import TaskArtifact
 from backend.components.flow_stack import flow_classes
-from backend.components.memory_manager import MemoryManager
+from backend.components.memory_manager import MEM
 from backend.components.user_preferences import UserPreferences
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.session_scratchpad import SessionScratchpad
@@ -26,7 +26,8 @@ from backend.prompts.for_orchestrator import build_orchestrator_prompt
 from schemas.config import load_config
 from schemas.ontology import FLOW_ONTOLOGY
 
-_HOT_PATH_TOOLS = ('manage_flows', 'understand', 'scratchpad', 'store_preference')
+_HOT_PATH_TOOLS = ('manage_flows', 'understand', 'append_to_scratchpad', 'store_preference',
+                   'ask_clarification_question', 'recover_from_ambiguity')
 
 
 # ==============================================================================
@@ -82,11 +83,12 @@ class TestOrchestratorToolDefs:
         names = [tool['name'] for tool in mock_agent.pex.get_tools_for_orchestrator()]
         for name in _HOT_PATH_TOOLS:
             assert name in names
-        for name in ('handle_ambiguity', 'coordinate_context', 'manage_memory'):
+        for name in ('coordinate_context', 'read_scratchpad'):  # borrowed from the component menu
             assert name in names
         for name in READ_ONLY_DOMAIN_TOOLS:
             assert name in names, f'allowlisted read-only tool {name} missing'
-        assert 'call_flow_stack' not in names  # retired on the orchestrator path
+        for name in ('handle_ambiguity', 'manage_memory', 'call_flow_stack'):
+            assert name not in names  # retired on the orchestrator path
         writes = {'create_post', 'update_post', 'delete_post', 'revise_content', 'release_post'}
         assert not writes & set(names)  # domain writes only via activate_flow
 
@@ -113,7 +115,7 @@ class TestOrchestratorDispatch:
         assert result['_success'] is True
         assert result['state']['flow_stack'][0]['flow_name'] == 'outline'
         assert (sessions_dir / 'wire-test' / 'state.json').exists()
-        assert mock_agent.pex.flow_stack.peek().flow_type == 'outline'
+        assert mock_agent.pex.flow_stack.get_flow().flow_type == 'outline'
 
     def test_manage_flows_pop_clears_the_stack(self, sessions_dir, mock_agent):
         """`pop` removes Completed and Invalid flows all at once; the saved document shows it."""
@@ -142,13 +144,14 @@ class TestOrchestratorDispatch:
         assert result['_error'] == 'invalid_input'
         assert "'source'" in result['_message']  # valid slots are listed for the retry
 
-    def test_scratchpad_tool_routes_to_memory(self, mock_agent, tmp_path):
+    def test_read_and_append_scratchpad_tools(self, mock_agent, tmp_path):
+        """The split scratchpad tools: append_to_scratchpad stamps the writer and grows the pad;
+        read_scratchpad filters by writer."""
         pex = mock_agent.pex
         pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
-        appended = pex._dispatch_tool('scratchpad',
-                                      {'op': 'append', 'entry': {'finding': 'intro is weak'}})
+        appended = pex._dispatch_tool('append_to_scratchpad', {'entry': {'finding': 'intro is weak'}})
         assert appended == {'_success': True, 'size': 1}
-        result = pex._dispatch_tool('scratchpad', {'op': 'read', 'writer': 'orchestrator'})
+        result = pex._dispatch_tool('read_scratchpad', {'writer': 'orchestrator'})
         assert result['entries'] == [{'finding': 'intro is weak', 'writer': 'orchestrator'}]
 
     def test_understand_hint_is_deterministic_from_stack_top(self, mock_agent):
@@ -170,6 +173,73 @@ class TestOrchestratorDispatch:
         assert pex.nlu.understand.call_args.kwargs['hint'] == ''
 
 
+
+
+class TestScopedToolSurface:
+    """The scoped tool surface (round 0.1): sub-agents declare_ambiguity + the three flat flow-stack
+    tools; the orchestrator asks/recovers; manage_memory is retired."""
+
+    def test_declare_ambiguity_tool_recognizes(self, mock_agent):
+        pex = mock_agent.pex
+        result = pex._dispatch_tool('declare_ambiguity',
+            {'level': 'partial', 'metadata': {'missing': 'source', 'entity': 'post'}})
+        assert result == {'_success': True}
+        assert pex.ambiguity.present() == 'partial'
+        bad = pex._dispatch_tool('declare_ambiguity',
+                                 {'level': 'general', 'metadata': {'missing': 'nope'}})
+        assert bad['_success'] is False and bad['_error'] == 'invalid_input'
+
+    def test_ask_clarification_question_tool(self, mock_agent):
+        pex = mock_agent.pex
+        none = pex._dispatch_tool('ask_clarification_question', {})
+        assert none['_success'] is False and none['_error'] == 'invalid_input'
+        pex.ambiguity.recognize('partial', {'missing': 'source', 'entity': 'post'})
+        result = pex._dispatch_tool('ask_clarification_question', {})
+        assert result['_success'] is True and result['question']
+
+    def test_recover_from_ambiguity_tool(self, mock_agent, tmp_path):
+        pex = mock_agent.pex
+        pex.scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'  # file-backed for recover
+        none = pex._dispatch_tool('recover_from_ambiguity', {})
+        assert none['_success'] is False and none['_error'] == 'invalid_input'
+        pex.memory.preferences.store_preference('channel', 'substack')
+        pex.ambiguity.recognize('partial', {'missing': 'channel'})
+        result = pex._dispatch_tool('recover_from_ambiguity', {})
+        assert result['_success'] is True and result['recovery'] == 'substack'
+        assert pex.ambiguity.present() == ''  # resolved internally, guarded by present()
+
+    def test_flow_stack_tools_replace_call_flow_stack(self, mock_agent):
+        pex = mock_agent.pex
+        pex.flow_stack.stackon('outline')
+        flows = pex._dispatch_tool('read_flow_stack', {'details': 'flows'})
+        assert flows['_success'] is True and flows['flows'][0]['flow_name'] == 'outline'
+        assert pex._dispatch_tool('stackon_flow', {'flow': 'compose'}) == \
+            {'_success': True, 'stacked': 'compose'}
+        assert pex._dispatch_tool('fallback_flow', {'flow': 'write'}) == \
+            {'_success': True, 'fell_back_to': 'write'}
+
+    def test_manage_memory_tool_is_gone(self, mock_agent):
+        pex = mock_agent.pex
+        orch_names = {tool['name'] for tool in pex.get_tools_for_orchestrator()}
+        comp_names = {tool['name'] for tool in pex._component_tool_definitions()}
+        assert 'manage_memory' not in orch_names and 'manage_memory' not in comp_names
+        result = pex._dispatch_tool('manage_memory', {'action': 'read_scratchpad'})
+        assert result['_success'] is False and 'Unknown tool' in result['_message']
+
+    def test_read_scratch_value_reads_flat_entry(self, mock_agent, tmp_path):
+        """A9 read side: a flat save_findings-shape write is read back whole, and the used-count
+        bump re-write shows the increment on a re-read."""
+        pex = mock_agent.pex
+        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+        policy = pex._policies['Revise']
+        policy.scratchpad = pex.scratchpad
+        pex.scratchpad.write({'key': 'audit', 'used_count': 0, 'summary': 's', 'findings': []},
+                             writer='audit')
+        entry = policy._read_scratch_value('audit')
+        assert entry['summary'] == 's' and entry['used_count'] == 0
+        entry['used_count'] = entry.get('used_count', 0) + 1
+        pex.scratchpad.write(entry, writer='audit')
+        assert policy._read_scratch_value('audit')['used_count'] == 1
 
 
 class _StubPolicy:
@@ -244,8 +314,8 @@ class TestDispatchFlow:
         pex = wired.pex
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack, status='Active',
                                              thoughts='Need a post first.')
-        pex.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'},
-                              observation='Which post should I work on?')
+        pex.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'},
+                                observation='Which post should I work on?')
         result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['status'] == 'Active'
@@ -403,7 +473,7 @@ class TestOrchestratorPrompt:
         engineer = PromptEngineer(minimal_config)
         prefs = UserPreferences(minimal_config)
         prefs.store_preference('paragraph_length', 'shorter paragraphs')
-        memory = MemoryManager(None, prefs, None)
+        memory = MEM(None, prefs, None)
         return engineer, memory
 
     def _build(self, prompt_inputs):
@@ -559,9 +629,9 @@ class TestOrchestratorLoop:
         limits = {'max_rounds': 1, 'max_corrective': 3, 'max_reads': 3, 'max_tool_calls': 8,
                   'extended_tool_calls': 16,
                   'extended_call_flows': ['audit', 'refine', 'rework', 'compose']}
-        monkeypatch.setattr('backend.agent.load_config',
+        monkeypatch.setattr('backend.assistant.load_config',
                             lambda: load_config(overrides={'debug': True, 'limits': limits}))
-        agent = Agent(username='test_user')
+        agent = Assistant(username='test_user')
         agent.nlu.understand = lambda *args, **kwargs: None
         queue = _script(agent, [_response(_tool_block('understand', {'op': 'read'})),
                                 _response(_text_block('Wrapped up after one round.'))])
@@ -791,10 +861,10 @@ class TestTemplateFill:
         return artifact
 
     def test_build_payload_serializes_frame(self, minimal_config):
-        from backend.agent import Agent
+        from backend.assistant import Assistant
         artifact = self._make_frame(minimal_config, block_type='card',
                                  content='Hello', origin='compose')
-        payload = Agent._build_payload(None, 'Some text', artifact)
+        payload = Assistant._build_payload(None, 'Some text', artifact)
         assert 'panel' not in payload
         assert payload['artifact']['blocks'][0]['type'] == 'card'
         assert payload['artifact']['blocks'][0]['panel'] == 'bottom'
@@ -1574,7 +1644,7 @@ def _build_flowstack_machine():
         @rule()
         def pop_completed(self):
             before_completed = [e for e in self.stack._stack if e.status == 'Completed']
-            self.state.write_state(self.state_file, 'pop_completed', stack=self.stack)
+            self.state.write_state(self.state_file, 'pop', stack=self.stack)
             for entry in self.stack._stack:
                 assert entry.status not in ('Completed', 'Invalid'), \
                     f'pop_completed left a {entry.status} flow on the stack'
@@ -1677,8 +1747,9 @@ from backend.prompts.for_pex import build_flow_system
 
 _FLOW_DIR = _Path(__file__).resolve().parents[3] / 'backend' / 'prompts' / 'pex' / 'flows'
 _TOOLS_YAML = _Path(__file__).resolve().parents[3] / 'schemas' / 'tools.yaml'
-_COMPONENT_TOOLS = {'handle_ambiguity', 'coordinate_context', 'manage_memory',
-                    'call_flow_stack', 'execution_error', 'save_findings'}
+_COMPONENT_TOOLS = {'declare_ambiguity', 'coordinate_context', 'read_scratchpad',
+                    'read_flow_stack', 'stackon_flow', 'fallback_flow',
+                    'execution_error', 'save_findings'}
 
 
 def _flow_files():
@@ -1760,7 +1831,7 @@ class TestSingleCallStackon:
                                     {'op': 'stackon', 'flow_name': 'outline', 'active': True})
         assert result['_success'] is True
         assert ran['flow_name'] == 'outline'   # policy ran with no separate activate_flow call
-        top = pex.flow_stack.peek()
+        top = pex.flow_stack.get_flow()
         assert top.slots['source'].values[0]['post'] == 'p1'   # belief slots folded in
 
     def test_stackon_without_active_only_stacks(self, sessions_dir, mock_agent, monkeypatch):
@@ -1853,7 +1924,7 @@ class TestBeliefInjection:
         pex = mock_agent.pex
         state = mock_agent.world.current_state()
         pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
-        live = pex.flow_stack.peek()
+        live = pex.flow_stack.get_flow()
         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
         self._believe(state, 'release', intent='Publish')
         note = pex.inject_belief_state()
@@ -1867,7 +1938,7 @@ class TestBeliefInjection:
         pex = mock_agent.pex
         state = mock_agent.world.current_state()
         pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
-        live = pex.flow_stack.peek()
+        live = pex.flow_stack.get_flow()
         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
         self._believe(state, 'refine', intent='Draft')
         note = pex.inject_belief_state()

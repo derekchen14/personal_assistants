@@ -78,7 +78,7 @@ class DraftPolicy(BasePolicy):
 
     def outline_policy(self, flow, state, context, tools):
         if not flow.slots['source'].check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
+            self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
             return TaskArtifact()
 
         depth_slot = flow.slots['depth']
@@ -125,7 +125,7 @@ class DraftPolicy(BasePolicy):
                 flow.stage = 'discovery'
                 artifact = self._propose_outline(flow, state, context, tools)
             else:
-                self.ambiguity.declare('specific', metadata={'missing': 'topic'})
+                self.ambiguity.recognize('specific', metadata={'missing': 'topic'})
                 artifact = TaskArtifact(flow.name())
 
         return artifact
@@ -157,9 +157,9 @@ class DraftPolicy(BasePolicy):
     def refine_policy(self, flow, state, context, tools):
         if not flow.is_filled():
             if not flow.slots['source'].filled:
-                self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
+                self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
             elif not flow.slots['feedback'].filled or not flow.slots['steps'].filled:
-                self.ambiguity.declare('specific', metadata={'missing': 'refine_details'})
+                self.ambiguity.recognize('specific', metadata={'missing': 'refine_details'})
             return TaskArtifact(flow.name())
 
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
@@ -198,7 +198,7 @@ class DraftPolicy(BasePolicy):
 
     def compose_policy(self, flow, state, context, tools):
         if not flow.slots['source'].check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
+            self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
             return TaskArtifact()
         post_id, _, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
@@ -245,7 +245,7 @@ class DraftPolicy(BasePolicy):
             parsed = self.engineer.apply_guardrails(raw_output)
             flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})
             if not flow.slots['topic'].filled:
-                self.ambiguity.declare('specific', metadata={'missing': 'topic'})
+                self.ambiguity.recognize('specific', metadata={'missing': 'topic'})
                 return TaskArtifact(flow.name())
             else:
                 text, _ = self.llm_execute(flow, state, context, tools, model='high', schema=schema)

@@ -196,8 +196,7 @@ Exposed Methods:
 
 **Sub-agents**:
   - can call `save_findings` tool which triggers `self.scratchpad.append()` with the structured
-  findings shape (`{findings, summary, references_used}`); the key is stamped from the flow's name
-  in code.
+  findings shape (`{findings, summary, references_used}`); the key is stamped from the flow's name in code.
   - can call `read_scratchpad` tool to pick up prerequisites left by earlier flows — the
   cross-invocation state channel (flows re-activate from scratch and resume from here).
   - completion records land via `complete_flow` → `write_completion` (code, not a tool). Append-only.

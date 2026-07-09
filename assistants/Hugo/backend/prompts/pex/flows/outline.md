@@ -44,7 +44,7 @@ If in propose mode you find yourself wanting to call `generate_outline`, stop: t
 
 If in direct mode `generate_outline` fails, the policy will retry once automatically. A second failure surfaces as a `tool_error` frame; do not attempt a third call from the skill.
 
-If the topic cannot be extracted from the conversation and no sections were supplied, call `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`.
+If the topic cannot be extracted from the conversation and no sections were supplied, call `declare_ambiguity(level='specific', metadata={'missing': 'topic'})`.
 
 ## Tools
 
@@ -56,9 +56,9 @@ If the topic cannot be extracted from the conversation and no sections were supp
 ### General tools
 
 - `execution_error(violation, message)` for hard failures.
-- `handle_ambiguity(level, metadata)` for cases where the user's request is genuinely unclear.
-- `manage_memory(action, key, value)` to read or write session scratchpad and user preferences.
-- `call_flow_stack(action='read')` to check whether a compose or refine is queued behind this outline so the generated bullets match what the next flow will consume.
+- `declare_ambiguity(level, metadata)` for cases where the user's request is genuinely unclear.
+- `read_scratchpad(action, key, value)` to read or write session scratchpad and user preferences.
+- `read_flow_stack()` to check whether a compose or refine is queued behind this outline so the generated bullets match what the next flow will consume.
 
 ## Output
 
@@ -157,4 +157,4 @@ Resolved Details:
 
 Trajectory:
 1. Neither a topic nor any sections are present, so there is nothing to outline.
-2. `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what the post should be about, then end turn.
+2. `declare_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what the post should be about, then end turn.

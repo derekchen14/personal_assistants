@@ -48,14 +48,21 @@ def rehydrate_flow(entry:dict):
     return flow
 
 class DialogueState:
+    """The ONE belief object, owned by NLU and shared through the World. It lives for the
+    Assistant's lifetime and is never rebound — a new session calls reset(); the history of past
+    predictions is MEM's record on disk, not a list of state objects."""
 
-    def __init__(self, intent, dax, turn_count, confidence=0.5):
-        self.pred_intent = intent
-        self.pred_flow = dax
-        self.confidence: float = confidence
+    def __init__(self, config):
+        self.config = config
+        self.reset()
+
+    def reset(self):
+        self.pred_intent = None
+        self.pred_flow = None
+        self.confidence: float = 0.0
         self.pred_flows: list[dict] = []
         self.pred_slots: dict = {}
-        self.turn_count: int = turn_count
+        self.turn_count: int = 0
 
         self.keep_going: bool = False
         self.has_issues: bool = False
@@ -87,19 +94,6 @@ class DialogueState:
             return self.pred_flows[0]['flow_name']
         return dax2flow(self.pred_flow) if self.pred_flow else None
 
-    def reset(self):
-        self.pred_intent = None
-        self.pred_flow = None
-        self.confidence = 0.0
-        self.pred_flows = []
-        self.pred_slots = {}
-        self.turn_count = 0
-        self.keep_going = False
-        self.has_issues = False
-        self.natural_birth = True
-        self.active_post = None
-        self.slices = {'choices': [], 'channels': [], 'campaigns': []}
-
     def serialize(self) -> dict:
         return {
             'pred_intent': self.pred_intent,
@@ -114,29 +108,19 @@ class DialogueState:
             'active_post': self.active_post,
         }
 
-    def serialize_session(self) -> dict:
-        """The per-session state.json document. Extends the serialize()
-        vocabulary: intent, turn_count, and has_issues keep their meanings."""
-        session = {'conversation_id': self.conversation_id, 'username': self.username,
-                   'turn_count': self.turn_count}
-        beliefs = {'intent': self.pred_intent, 'pred_flows': self.pred_flows,
-                   'confidence': self.confidence, 'pred_slots': self.pred_slots,
-                   'goal': self.goal, 'confirmed': self.confirmed,
-                   'rejected': self.rejected, 'workflow_step': self.workflow_step}
-        flags = {'has_issues': self.has_issues}
-        return {'session': session, 'user_beliefs': beliefs, 'grounding': dict(self.grounding),
-                'flow_stack': self.flow_stack, 'flags': flags}
-
     def save(self, path):
         """Rewrite state.json — the single document form, one write per write_state."""
-        Path(path).write_text(json.dumps(self.serialize_session(), indent=2), encoding='utf-8')
+        Path(path).write_text(json.dumps(self.read_state(), indent=2), encoding='utf-8')
 
     @classmethod
     def load(cls, path):
-        """Rehydrate a per-session state from its state.json."""
+        """Rehydrate a past session's state from its state.json — a MEM read of the disk record
+        (a throwaway view object), never a rebind of the live world.state."""
         data = json.loads(Path(path).read_text(encoding='utf-8'))
         session, beliefs = data['session'], data['user_beliefs']
-        state = cls(intent=beliefs['intent'], dax=None, turn_count=session['turn_count'])
+        state = cls(config={})
+        state.pred_intent = beliefs['intent']
+        state.turn_count = session['turn_count']
         state.pred_flows = beliefs['pred_flows']
         state.confidence = beliefs['confidence']
         state.pred_slots = beliefs['pred_slots']
@@ -155,8 +139,18 @@ class DialogueState:
     # These methods are the callable surface for the tool catalog.
 
     def read_state(self) -> dict:
-        """The read_state tool surface: user beliefs, grounding, flow stack, and flags."""
-        return self.serialize_session()
+        """The read_state tool surface and the per-session state.json document: user beliefs,
+        grounding, flow stack, and flags. Extends the serialize() vocabulary — intent, turn_count,
+        and has_issues keep their meanings."""
+        session = {'conversation_id': self.conversation_id, 'username': self.username,
+                   'turn_count': self.turn_count}
+        beliefs = {'intent': self.pred_intent, 'pred_flows': self.pred_flows,
+                   'confidence': self.confidence, 'pred_slots': self.pred_slots,
+                   'goal': self.goal, 'confirmed': self.confirmed,
+                   'rejected': self.rejected, 'workflow_step': self.workflow_step}
+        flags = {'has_issues': self.has_issues}
+        return {'session': session, 'user_beliefs': beliefs, 'grounding': dict(self.grounding),
+                'flow_stack': self.flow_stack, 'flags': flags}
 
     def write_state(self, path, op, stack=None, **kwargs) -> dict:
         """The write_state tool surface — the ONLY writer of state.json. Ops:
@@ -165,7 +159,7 @@ class DialogueState:
                         completion is grounding-validated),
         'stackon'       push flow_name= with FlowStack semantics,
         'fallback'      replace the top flow with flow_name=,
-        'pop_completed' remove Completed/Invalid flows, activating the next Pending one.
+        'pop'           remove Completed/Invalid flows, activating the next Pending one.
         `stack` is the FlowStack component — the one flow stack. Stack ops mutate it directly;
         self.flow_stack is only a saved copy, refreshed from stack.to_list() before the save."""
         if op == 'update':
@@ -176,14 +170,14 @@ class DialogueState:
             stack.stackon(kwargs['flow_name'])
         elif op == 'fallback':
             stack.fallback(kwargs['flow_name'])
-        elif op == 'pop_completed':
-            stack.pop_completed()
+        elif op == 'pop':
+            stack.pop()
         else:
             raise ValueError(f'Unknown write_state op: {op!r}')
         if stack is not None:
             self.flow_stack = stack.to_list()
         self.save(path)
-        return self.serialize_session()
+        return self.read_state()
 
     def _apply_update(self, fields:dict):
         for key, value in fields.items():
@@ -200,7 +194,7 @@ class DialogueState:
                 raise KeyError(f'write_state update does not accept field {key!r}')
 
     def _update_flow(self, stack, fields:dict):
-        flow = stack.peek()
+        flow = stack.get_flow()
         if 'status' in fields:  # validate first — a rejected write must not mutate the live flow
             self._check_grounding(flow, fields['status'])
         if 'slots' in fields:

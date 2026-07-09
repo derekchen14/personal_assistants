@@ -3,7 +3,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 log = logging.getLogger(__name__)
 
+
 from backend.components.flow_stack import flow_classes
+from backend.components.ambiguity_handler import AmbiguityHandler
+from backend.components.dialogue_state import DialogueState
+
 from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt, render_flow_ontology
 from backend.prompts.for_nlu import build_slot_filling_prompt
 from backend.prompts.for_contemplate import build_contemplate_prompt as _build_contemplate_prompt_text
@@ -71,15 +75,14 @@ def _fill_slots_schema(flow) -> dict:
         'additionalProperties': False,
     }
 
-class NLU:
+class NaturalLanguageUnderstanding:
 
-    def __init__(self, config, ambiguity, engineer, world):
+    def __init__(self, config, prompt_engineer):
         self.config = config
-        self.ambiguity = ambiguity
-        self.engineer = engineer
-        self.world = world
-        self.flow_stack = world.flow_stack
-        self.scratchpad = world.scratchpad
+        self.ambiguity_handler = AmbiguityHandler(config)
+        self.dialogue_state = DialogueState(config)
+        self.engineer = prompt_engineer
+        self.world = None
         self._posts = PostService()
 
     def understand(self, op:str, user_text:str='', dax:str|None=None, payload:dict|None=None,
@@ -111,12 +114,12 @@ class NLU:
         flow_name = detection['flow_name']
         flow = flow_classes[flow_name]()            # transient — detection writes belief, no push
         self._fill_slots(flow, payload)
-        self._repair_entities(self.world.current_state(), flow)
+        self._repair_entities(self.world.state, flow)
         predicted_flows = detection.get('pred_flows', [])
         state = self._write_belief(flow_name, detection['confidence'], predicted_flows, flow)
 
-        if self.ambiguity.needs_clarification(state.confidence):
-            self.ambiguity.declare(
+        if self.ambiguity_handler.needs_clarification(state.confidence):
+            self.ambiguity_handler.recognize(
                 'general',
                 metadata={'top_detection': flow_name},
                 observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"',
@@ -124,9 +127,9 @@ class NLU:
         return state
 
     def contemplate(self, user_text:str):
-        state = self.world.current_state()
+        state = self.world.state
         failed_flow = state.flow_name(string=True)
-        detection = self._check_routing(user_text, failed_flow, self.ambiguity.observation)
+        detection = self._check_routing(user_text, failed_flow, self.ambiguity_handler.observation)
         flow_name = detection['flow_name']
 
         flow = flow_classes[flow_name]()            # transient — belief-only, no push
@@ -138,9 +141,9 @@ class NLU:
         """A click resolved the flow via its dax — fill a transient flow and write belief."""
         flow_name = dax2flow(gold_dax)
         flow = flow_classes[flow_name]()            # transient — belief-only, no push
-        _, payload = self._fill_slices(self.world.current_state(), payload)
+        _, payload = self._fill_slices(self.world.state, payload)
         self._fill_slots(flow, payload)
-        self._repair_entities(self.world.current_state(), flow)
+        self._repair_entities(self.world.state, flow)
         return self._write_belief(flow_name, 0.99,
                                   [{'flow_name': flow_name, 'confidence': 0.99, 'votes': 1}], flow)
 
@@ -157,11 +160,19 @@ class NLU:
         if state.pred_intent != ontology_intent:
             state.pred_intent = ontology_intent
 
-        flow = self.flow_stack.find_by_name(state.flow_name(string=True))
+        flow = self.world.flows.find_by_name(state.flow_name(string=True))
         if flow:
             state = self._repair_entities(state, flow)
 
         return state
+
+    def attempt_recovery(self):
+        result, success = self.ambiguity_handler.recover(self.world.prefs, self.world.scratchpad)
+        if success:
+            self.world.scratchpad.write({'key': 'recovery', 'found': result}, writer='nlu')
+        else:
+            self.world.scratchpad.write({'key': 'recovery', 'missing': result}, writer='nlu')
+        return {'recovery': result}
 
     # ── Entity repair ──────────────────────────────────────────────────
 
@@ -198,7 +209,7 @@ class NLU:
                 matches = get_close_matches(value, candidates, n=1, cutoff=0.6)
                 if matches:
                     slot.value = matches[0]
-                    self.ambiguity.declare(
+                    self.ambiguity_handler.recognize(
                         'confirmation',
                         metadata={
                             'missing': slot_name,
@@ -212,7 +223,7 @@ class NLU:
                     )
                     if llm_result:
                         slot.value = llm_result
-                        self.ambiguity.declare(
+                        self.ambiguity_handler.recognize(
                             'confirmation',
                             metadata={
                                 'missing': slot_name,
@@ -225,7 +236,7 @@ class NLU:
         return state
 
     def _declare_slot_failure(self, slot, slot_name:str, value:str) -> None:
-        self.ambiguity.declare(
+        self.ambiguity_handler.recognize(
             'specific', metadata={'missing': slot_name, 'reason': 'invalid_value'},
         )
         slot.reset()
@@ -272,7 +283,7 @@ class NLU:
         always true, so the confidence clause is the real trigger. At most one extra classify + one
         extra detect per turn."""
         intents = {FLOW_ONTOLOGY[f['flow_name']]['intent'] for f in detection['pred_flows']}
-        return len(intents) > 1 and detection['confidence'] < self.ambiguity.confidence_min
+        return len(intents) > 1 and detection['confidence'] < self.ambiguity_handler.confidence_min
 
     def _detect_flow_prompt(self, user_text:str, hint:str, convo_history:str) -> str:
         candidate_names = self._flow_candidate_names(hint)
@@ -282,7 +293,7 @@ class NLU:
                                  ontology, active_post=active_post)
 
     def _active_post_dict(self) -> dict | None:
-        state = self.world.current_state()
+        state = self.world.state
         if not state.active_post:
             return None
         title = self._posts.get_title(state.active_post)
@@ -386,7 +397,7 @@ class NLU:
 
         # Phase 2: Transfer entity grounding from previous flow to active flow. Gate on `slot.values` (not `slot.filled`)
         # so a slot already partially populated from a prior turn isn't double-grounded into a duplicate entity.
-        prev = self.world.current_state()
+        prev = self.world.state
         if prev.active_post:
             for slot in flow.slots.values():
                 if slot.slot_type in ('source', 'target') and not slot.values:
@@ -482,7 +493,7 @@ class NLU:
         if failed_flow:
             for ef in edge_flows_for(failed_flow):
                 candidates.add(ef)
-        flow = self.flow_stack.get_flow()
+        flow = self.world.flows.get_flow()
         if flow and flow.name() != failed_flow:
             candidates.add(flow.name())
         candidates.add('chat')
@@ -504,7 +515,7 @@ class NLU:
         """Write the detection onto the session state's belief IN PLACE — the single source of
         truth for predictions. Mutates current_state; never inserts a new per-turn state and
         never pushes a flow (PEX stages and activates)."""
-        state = self.world.current_state()
+        state = self.world.state
         cat = FLOW_ONTOLOGY.get(flow_name, {})
         state.pred_intent = cat.get('intent', Intent.CONVERSE)
         state.pred_flow = flow2dax(flow_name)
@@ -537,3 +548,6 @@ class NLU:
             'confidence': final_confidence,
             'pred_flows': pred_flows,
         }
+
+# Module alias — the module is NLU; the class name spells it out.
+NLU = NaturalLanguageUnderstanding

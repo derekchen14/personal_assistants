@@ -19,7 +19,7 @@ If `channel_status` returns `_success=False`, do NOT call `release_post` for tha
 
 If `release_post` fails, surface the error in the output for that channel and continue with the remaining channels. Do not abort the whole flow.
 
-An empty channel list is never ambiguous — it defaults to `['mt1t']`, the primary blog. Only call `handle_ambiguity(level='specific', metadata={'missing': 'channel'})` when the user named a channel you cannot match to a known one.
+An empty channel list is never ambiguous — it defaults to `['mt1t']`, the primary blog. Only call `declare_ambiguity(level='specific', metadata={'missing': 'channel'})` when the user named a channel you cannot match to a known one.
 
 ## Tools
 
@@ -32,9 +32,9 @@ An empty channel list is never ambiguous — it defaults to `['mt1t']`, the prim
 ### General tools
 
 - `execution_error(violation, message)` when a tool fails in a way that should surface as a policy-layer error artifact rather than a per-channel failure row.
-- `handle_ambiguity(level, metadata)` when the user named a channel that does not match any known one. Never for an empty channel list — that defaults to `mt1t`.
-- `manage_memory(action, key, value)` to read a per-channel token when the user has stored authentication preferences there.
-- `call_flow_stack(action='read', details='flows')` to check whether another Publish flow (`schedule`, `cite`) is already queued behind this release, so the output notes what runs next.
+- `declare_ambiguity(level, metadata)` when the user named a channel that does not match any known one. Never for an empty channel list — that defaults to `mt1t`.
+- `read_scratchpad(action, key, value)` to read a per-channel token when the user has stored authentication preferences there.
+- `read_flow_stack(details='flows')` to check whether another Publish flow (`schedule`, `cite`) is already queued behind this release, so the output notes what runs next.
 
 ## Output Shape
 
@@ -133,7 +133,7 @@ Resolved Details:
 
 Trajectory:
 1. `Mastodon` matches none of the known channels (`mt1t`, `substack`, `linkedin`, `twitter`).
-2. `handle_ambiguity(level='specific', metadata={'missing': 'channel'})`. Name the channels you can publish to, then end turn.
+2. `declare_ambiguity(level='specific', metadata={'missing': 'channel'})`. Name the channels you can publish to, then end turn.
 
 ### Example 5: A schedule flow is queued behind the release
 
@@ -142,7 +142,7 @@ Resolved Details:
 - channel: ['Substack']
 
 Trajectory:
-1. `call_flow_stack(action='read', details='flows')` → a `schedule` flow is queued behind this release for the LinkedIn cross-post, so release only the named channel now.
+1. `read_flow_stack(details='flows')` → a `schedule` flow is queued behind this release for the LinkedIn cross-post, so release only the named channel now.
 2. `channel_status(post_id='4b90c1a2', platform='substack')` → ok.
 3. `release_post(post_id='4b90c1a2', platform='substack')` → `{_success: True, url: 'https://substack.com/p/migrating-a-monolith-to-services'}`.
 

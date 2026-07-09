@@ -30,9 +30,9 @@ class RevisePolicy(BasePolicy):
                 return TaskArtifact()
 
     def _read_scratch_value(self, key):
-        """Keyed scratchpad lookup: newest matching JSONL entry."""
-        entries = self.scratchpad.read(keys=[key])
-        return entries[-1][key] if entries else ''
+        """Newest scratchpad entry stored under `key` (flat single-dict shape)."""
+        entries = [entry for entry in self.scratchpad.read() if entry.get('key') == key]
+        return entries[-1] if entries else ''
 
     def rework_policy(self, flow, state, context, tools):
         if artifact := self._guard_entity(flow): return artifact
@@ -51,7 +51,7 @@ class RevisePolicy(BasePolicy):
 
         # Null-category agentic path: skill handles itemized changes via `suggestions` / `remove`.
         if not flow.slots['suggestions'].check_if_filled() and not flow.slots['remove'].check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing': 'category_or_suggestions'})
+            self.ambiguity.recognize('specific', metadata={'missing': 'category_or_suggestions'})
             return TaskArtifact(origin=flow.name())
 
         self.record_snapshot(self.content, flow, context, post_id)
@@ -79,7 +79,7 @@ class RevisePolicy(BasePolicy):
         grounding.post at completion — it does no existence check."""
         meta = tools('read_metadata', {'post_id': post_id})
         if meta['_success'] and meta['status'] == 'published':
-            self.ambiguity.declare('confirmation', metadata={
+            self.ambiguity.recognize('confirmation', metadata={
                 'missing': 'unpublish_intent',
                 'question': 'That post is already published — unpublish it first, or cancel?'})
             return TaskArtifact(flow.name())
@@ -108,7 +108,7 @@ class RevisePolicy(BasePolicy):
             state.keep_going = True
             return TaskArtifact(flow.name(), thoughts='Sharpening reads as Refine, rerouting.')
         # cat == 'reframe'
-        self.ambiguity.declare(
+        self.ambiguity.recognize(
             'confirmation',
             metadata={
                 'missing': 'rework_changes',
@@ -122,13 +122,13 @@ class RevisePolicy(BasePolicy):
     def _rework_swap(self, flow, state, context, post_id, tools):
         raw_secs = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if len(raw_secs) < 2:
-            self.ambiguity.declare('specific', metadata={'missing': 'second_section'})
+            self.ambiguity.recognize('specific', metadata={'missing': 'second_section'})
             return TaskArtifact(origin=flow.name())
         section_ids = list(tools('read_metadata', {'post_id': post_id})['section_ids'])
         # LLM fills source.sec with raw text ("Process"); canonicalize to slug ("process").
         resolved = [r for r in (self._resolve_sec_id(raw, tools, post_id) for raw in raw_secs[:2]) if r]
         if len(resolved) < 2:
-            self.ambiguity.declare('specific',
+            self.ambiguity.recognize('specific',
                 observation="I couldn't match both sections to the post — name them as they appear in the outline.",
                 metadata={'missing': 'second_section'})
             return TaskArtifact(origin=flow.name())
@@ -160,11 +160,11 @@ class RevisePolicy(BasePolicy):
         where = flow.slots['category'].value  # 'to_top' or 'to_end' — guaranteed by the dispatch
         raw_secs = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if not raw_secs:
-            self.ambiguity.declare('specific', metadata={'missing': 'section'})
+            self.ambiguity.recognize('specific', metadata={'missing': 'section'})
             return TaskArtifact(origin=flow.name())
         sec = self._resolve_sec_id(raw_secs[0], tools, post_id)
         if not sec:
-            self.ambiguity.declare('specific',
+            self.ambiguity.recognize('specific',
                 observation=f"I couldn't find a section matching {raw_secs[0]!r} in this post.",
                 metadata={'missing': 'section'})
             return TaskArtifact(origin=flow.name())
@@ -192,7 +192,7 @@ class RevisePolicy(BasePolicy):
 
         # Skill may declare ambiguity (e.g. confirmation on vague direction); leave flow
         # Active so the next turn can resolve rather than treating completion as final.
-        if self.ambiguity.present():
+        if self.ambiguity.present:
             return TaskArtifact(origin=flow.name())
 
         # Bump used_count on scratchpad entries the skill actually consumed.
@@ -202,7 +202,7 @@ class RevisePolicy(BasePolicy):
                 entry = self._read_scratch_value(str(key))
                 if isinstance(entry, dict):
                     entry['used_count'] = entry.get('used_count', 0) + 1
-                    self.scratchpad.write(str(key), entry, writer=flow.name())
+                    self.scratchpad.write(entry, writer=flow.name())
 
         # Scope-mismatch fallback: if inspect_post flagged structural issues,
         # re-route to rework rather than committing the edit.
@@ -234,7 +234,7 @@ class RevisePolicy(BasePolicy):
         pre = self._read_post_content(post_id, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools,
             extra_resolved={'post_prose': pre.get('content', '')})
-        if self.ambiguity.present():
+        if self.ambiguity.present:
             return TaskArtifact(flow.name())
 
         saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
@@ -261,7 +261,7 @@ class RevisePolicy(BasePolicy):
         post_id, sec_id, error = self.resolve_source_ids(flow, state, tools)
         if error: return error
         if not sec_id:
-            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'section'})
+            self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'section'})
             return TaskArtifact(flow.name())
 
         extra = {}
@@ -270,7 +270,7 @@ class RevisePolicy(BasePolicy):
             extra['section_content'] = sec['content']
         text, _ = self.llm_execute(flow, state, context, tools,
             extra_resolved=extra or None, exclude_tools=('revise_content',))
-        if self.ambiguity.present():
+        if self.ambiguity.present:
             return TaskArtifact(flow.name())
 
         # Skill replies one candidate per line, numbered — strip the list marker and quotes.
@@ -281,8 +281,9 @@ class RevisePolicy(BasePolicy):
             return self.error_artifact(flow, 'empty_output',
                 thoughts='Propose produced no candidate alternatives.', code=text)
 
-        self.scratchpad.write('propose',
-            {'candidates': candidates, 'post_id': post_id, 'sec_id': sec_id}, writer='propose')
+        self.scratchpad.write(
+            {'key': 'propose', 'candidates': candidates, 'post_id': post_id, 'sec_id': sec_id},
+            writer='propose')
         flow.stage = 'discovery'
         block_options = [{'label': opt[:80], 'payload': idx, 'body': opt}
                          for idx, opt in enumerate(candidates)]
@@ -296,7 +297,7 @@ class RevisePolicy(BasePolicy):
     def _propose_insert(self, flow, state, context, tools):
         saved = self._read_scratch_value('propose')
         if not isinstance(saved, dict) or 'candidates' not in saved:
-            self.ambiguity.declare('specific',
+            self.ambiguity.recognize('specific',
                 observation='The proposed options were lost between turns — run propose again.',
                 metadata={'missing': 'candidates'})
             return TaskArtifact(flow.name())

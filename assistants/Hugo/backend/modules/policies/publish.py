@@ -49,7 +49,7 @@ class PublishPolicy(BasePolicy):
 
         # Skill may declare ambiguity (e.g. an unknown channel name); leave the flow Active
         # and ask — never publish in the same breath as the question.
-        if self.ambiguity.present():
+        if self.ambiguity.present:
             return self._clarify_with_steps(flow)
 
         failed = self._first_failed_platform_tool(tool_log)
@@ -89,7 +89,7 @@ class PublishPolicy(BasePolicy):
     def schedule_policy(self, flow, state, context, tools):
         missing = self._first_missing_required(flow, (flow.entity_slot, 'channel'))
         if missing:
-            self.ambiguity.declare('specific', metadata={'missing': missing})
+            self.ambiguity.recognize('specific', metadata={'missing': missing})
             artifact = self._clarify_with_steps(flow)
         else:
             text, tool_log = self.llm_execute(flow, state, context, tools)
@@ -110,7 +110,7 @@ class PublishPolicy(BasePolicy):
         target_slot = flow.slots['target']
         url_slot = flow.slots['url']
         if not target_slot.check_if_filled() and not url_slot.check_if_filled():
-            self.ambiguity.declare('specific', metadata={'missing': 'target'})
+            self.ambiguity.recognize('specific', metadata={'missing': 'target'})
             return TaskArtifact()
 
         # Cite may proceed url-only without a grounded post, so an unresolvable reference is

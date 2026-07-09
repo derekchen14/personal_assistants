@@ -31,7 +31,7 @@ def pytest_configure(config):
 
 
 from schemas.config import load_config
-from backend.agent import Agent
+from backend.assistant import Assistant
 from backend.components.prompt_engineer import PromptEngineer
 from backend.utilities.post_service import PostService
 
@@ -45,8 +45,8 @@ def config():
 @pytest.fixture
 def agent(monkeypatch):
     """Create an Agent with debug=True so RES skips naturalize."""
-    monkeypatch.setattr('backend.agent.load_config', lambda: load_config(overrides={'debug': True}))
-    a = Agent(username='test_user')
+    monkeypatch.setattr('backend.assistant.load_config', lambda: load_config(overrides={'debug': True}))
+    a = Assistant(username='test_user')
     yield a
     a.close()
 
@@ -71,8 +71,8 @@ def _stub_call_claude(system, messages, model_id, *, tools=None, max_tokens=4096
 @pytest.fixture
 def mock_agent(monkeypatch):
     """Agent with LLM calls stubbed out — tests routing without API keys."""
-    monkeypatch.setattr('backend.agent.load_config', lambda: load_config(overrides={'debug': True}))
-    a = Agent(username='test_user')
+    monkeypatch.setattr('backend.assistant.load_config', lambda: load_config(overrides={'debug': True}))
+    a = Assistant(username='test_user')
     a.engineer.flow_execute = _stub_tool_call
     a.engineer._call_claude = _stub_call_claude
     yield a
@@ -109,6 +109,7 @@ def minimal_config():
         'limits': {'max_rounds': 8, 'max_corrective': 3, 'max_reads': 3, 'max_tool_calls': 8,
                    'extended_tool_calls': 16,
                    'extended_call_flows': ['audit', 'refine', 'rework', 'compose']},
+        'session': {'max_flow_depth': 16},
     })
 
 
@@ -131,8 +132,8 @@ def orch_agent(sessions_dir, monkeypatch):
     """Agent with a tmp sessions root and scripted LLM calls. NLU.understand is stubbed to a
     no-op so the Flow gate stays hermetic — these tests exercise PEX.execute (the acting loop),
     not ensemble detection; the belief stays at its session defaults."""
-    monkeypatch.setattr('backend.agent.load_config', lambda: load_config(overrides={'debug': True}))
-    agent = Agent(username='test_user')
+    monkeypatch.setattr('backend.assistant.load_config', lambda: load_config(overrides={'debug': True}))
+    agent = Assistant(username='test_user')
     agent.nlu.understand = lambda *args, **kwargs: None
     yield agent
     agent.close()

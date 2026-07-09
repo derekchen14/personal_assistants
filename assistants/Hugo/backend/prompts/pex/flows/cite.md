@@ -15,9 +15,9 @@ This skill attaches a citation to a snippet of text. Two modes: direct attach wh
 
 ## Error Handling
 
-If neither `target` nor `url` is filled, call `handle_ambiguity(level='partial', metadata={'missing': 'target'})`.
+If neither `target` nor `url` is filled, call `declare_ambiguity(level='partial', metadata={'missing': 'target'})`.
 
-If `web_search` fails, call `handle_ambiguity(level='specific', metadata={'missing': 'url'}, observation='Search failed — give me a URL to attach directly?')`.
+If `web_search` fails, call `declare_ambiguity(level='specific', metadata={'missing': 'url'}, observation='Search failed — give me a URL to attach directly?')`.
 
 If `revise_content` fails, retry ONCE. Then call `execution_error(violation='tool_error', message=<reason>, failed_tool='revise_content')`.
 
@@ -33,9 +33,9 @@ If `revise_content` fails, retry ONCE. Then call `execution_error(violation='too
 ### General tools
 
 - `execution_error(violation, message)`
-- `handle_ambiguity(**params)`
-- `manage_memory(**params)`
-- `call_flow_stack(action, details)`
+- `declare_ambiguity(**params)`
+- `read_scratchpad(**params)`
+- `read_flow_stack(details)`
 
 ## Few-shot examples
 
@@ -91,7 +91,7 @@ Resolved Details:
 
 Trajectory:
 1. Neither `target` nor `url` is filled in the resolved details.
-2. `handle_ambiguity(level='partial', metadata={'missing': 'target'})`. Ask which sentence needs the source, then end turn.
+2. `declare_ambiguity(level='partial', metadata={'missing': 'target'})`. Ask which sentence needs the source, then end turn.
 
 ### Example 5: Save fails after retry
 

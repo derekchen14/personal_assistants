@@ -4,9 +4,8 @@ import traceback
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.manager import get_or_create_agent, cleanup_agent, reset_agent
+from backend.manager import get_or_create_assistant, cleanup_assistant, reset_assistant
 from backend.utilities.services import PostService
-from backend.components.dialogue_state import DialogueState
 from backend.components.task_artifact import TaskArtifact, BuildingBlock
 
 chat_router = APIRouter()
@@ -22,7 +21,7 @@ def _get_queue(username:str) -> asyncio.Queue:
 
 
 async def reset(username:str, queue:asyncio.Queue, first_name:str=''):
-    reset_agent(username)
+    reset_assistant(username)
     items_r = PostService().list_preview()['items']
     block = BuildingBlock(type='list', data={'title': 'Your Posts', 'items': items_r, 'sectioned': True})
     reset_artifact = TaskArtifact(blocks=[block]).to_dict()
@@ -74,11 +73,8 @@ async def create_post(body:dict, queue:asyncio.Queue):
 
 async def read_post(body:dict, agent, queue:asyncio.Queue):
     post_id = body.get('read_post')
-    state = agent.world.current_state()
-    if not state:
-        state = DialogueState(intent=None, dax=None, turn_count=0)
-        agent.world.insert_state(state)
-    state.active_post = post_id
+    # The ONE DialogueState — mutate in place, never rebind (world.state always exists).
+    agent.world.state.active_post = post_id
     if not body.get('view'):
         return
     post_service = PostService()
@@ -236,7 +232,7 @@ async def chat(websocket:WebSocket):
             return
 
         first_name = username.split()[0] if username else username
-        agent = get_or_create_agent(username)
+        agent = get_or_create_assistant(username)
         queue = _get_queue(username)
 
         post_service = PostService()
@@ -357,4 +353,4 @@ async def chat(websocket:WebSocket):
     finally:
         if username:
             websocket_connections.pop(username, None)
-            cleanup_agent(username, 'websocket')
+            cleanup_assistant(username, 'websocket')

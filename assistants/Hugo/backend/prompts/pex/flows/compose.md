@@ -73,7 +73,7 @@ If the `<post_content>` block looks malformed, best-effort convert the visible s
 
 If `convert_to_prose` fails for a section, retry ONCE. If it fails again, skip that section and continue — do NOT abort the whole flow. After saving all in-scope sections, note the skipped ones with `execution_error(violation='tool_error', message=<section names>)`.
 
-If the user's request doesn't make sense given the outline, call `handle_ambiguity(level=<specific|partial|confirmation>, ...)`.
+If the user's request doesn't make sense given the outline, call `declare_ambiguity(level=<specific|partial|confirmation>, ...)`.
 
 ## Tools
 
@@ -86,9 +86,9 @@ If the user's request doesn't make sense given the outline, call `handle_ambigui
 ### General tools
 
 - `execution_error(violation, message)`
-- `handle_ambiguity(**params)`
-- `manage_memory(**params)`
-- `call_flow_stack(action, details)`
+- `declare_ambiguity(**params)`
+- `read_scratchpad(**params)`
+- `read_flow_stack(details)`
 
 ## Few-shot examples
 
@@ -135,7 +135,7 @@ Resolved Details:
 
 Trajectory: no tool calls. The request is a single-sentence rewrite inside prose that already exists, which is write's scope, not an outline-to-prose conversion.
 
-Final reply: call_flow_stack(action='fallback', details='write')
+Final reply: fallback_flow(flow='write')
 
 ### Example 5 — ambiguous scope on an already-prose section
 
@@ -145,4 +145,4 @@ Resolved Details:
 
 Trajectory:
 1. The Alerting preview in `<post_content>` is already full prose, so "redo" could mean recompose from scratch or leave it and edit.
-2. `handle_ambiguity(level='confirmation', metadata={'missing': 'scope', 'question': "Alerting is already written out. Want me to recompose it from the bullets, or edit the prose that's there?"})`. End turn.
+2. `declare_ambiguity(level='confirmation', metadata={'missing': 'scope', 'question': "Alerting is already written out. Want me to recompose it from the bullets, or edit the prose that's there?"})`. End turn.

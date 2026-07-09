@@ -20,18 +20,21 @@ class SessionScratchpad:
         self._scratchpad = OrderedDict()
         self._scratchpad_path = Path(scratchpad_path) if scratchpad_path else None
 
-    def write(self, key:str|dict, value:str|dict|None=None, writer:str='orchestrator'):
+    def write(self, entry:dict, writer:str='orchestrator'):
+        """Append one entry (a schema-free dict). The `writer` stamp is added here, never trusted
+        from LLM input. File mode appends the stamped entry; in-memory (test-only) keys it on
+        `entry['key']`."""
+        stamped = {**entry, 'writer': writer}
         if self._scratchpad_path is None:
+            key = stamped['key']
             if key in self._scratchpad:
                 self._scratchpad.move_to_end(key)
-            self._scratchpad[key] = value
+            self._scratchpad[key] = stamped
             while len(self._scratchpad) > self._max_snippets:
                 self._scratchpad.popitem(last=False)
             return
-        entry = dict(key) if isinstance(key, dict) else {key: value}
-        entry['writer'] = writer  # stamped by code, never trusted from LLM input
         with open(self._scratchpad_path, 'a', encoding='utf-8') as file:
-            file.write(json.dumps(entry) + '\n')
+            file.write(json.dumps(stamped) + '\n')
 
     def read(self, key:str|None=None, writer:str|None=None,
              keys:list[str]|None=None) -> str | dict | list[dict]:

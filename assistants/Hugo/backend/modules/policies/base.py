@@ -33,7 +33,6 @@ class BasePolicy:
 
     def __init__(self, components):
         self.engineer = components['engineer']
-        self.memory = components['memory']
         self.scratchpad = components['scratchpad']
         self.config = components['config']
         self.ambiguity = components['ambiguity']
@@ -215,7 +214,7 @@ class BasePolicy:
         non-None result via `if artifact := self._guard_entity(flow): return artifact`."""
         ent_slot = flow.entity_slot
         if not flow.slots[ent_slot].check_if_filled():
-            self.ambiguity.declare('partial', metadata={'missing': ent_slot, 'entity': 'post'})
+            self.ambiguity.recognize('partial', metadata={'missing': ent_slot, 'entity': 'post'})
             return TaskArtifact(flow.name())
         return None
 
@@ -228,7 +227,7 @@ class BasePolicy:
         scratchpad; activate_flow collects it via pop_completion and returns it as the tool
         result. Call it before stacking any follow-up flow — the completing flow must be top of
         stack."""
-        if self.flow_stack.peek().flow_id != flow.flow_id:
+        if self.flow_stack.get_flow().flow_id != flow.flow_id:
             raise ValueError(f'complete_flow: {flow.name()!r} is not top of stack — finish or '
                              f'pop the flows above it first')
         state.write_state(self._state_file(), 'update_flow', stack=self.flow_stack,

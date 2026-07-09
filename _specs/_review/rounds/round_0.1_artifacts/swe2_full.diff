@@ -1,0 +1,2088 @@
+diff --git a/assistants/Hugo/backend/agent.py b/assistants/Hugo/backend/agent.py
+index 266f150..190f0a4 100644
+--- a/assistants/Hugo/backend/agent.py
++++ b/assistants/Hugo/backend/agent.py
+@@ -40,9 +40,10 @@ class Agent:
+         self.business = BusinessContext(self.engineer)
+         self.memory = MemoryManager(self.world.context, self.preferences, self.business)
+ 
+-        self.nlu = NLU(self.config, self.ambiguity, self.engineer, self.world)
++        self.nlu = NLU(self.config, self.ambiguity, self.engineer, self.memory, self.world)
+         self.pex = PEX(self.config, self.ambiguity, self.engineer, self.memory, self.world)
+         self.pex.nlu = self.nlu  # PEX re-consults NLU (contemplate) on policy-execution failures
++        self.ambiguity.nlu = self.nlu  # recover() delegates to NLU's recovery reasoning
+ 
+     def take_turn(self, text:str, dax:str|None=None, payload:dict|None=None) -> dict:
+         try:
+diff --git a/assistants/Hugo/backend/components/ambiguity_handler.py b/assistants/Hugo/backend/components/ambiguity_handler.py
+index 596c7ea..e818638 100644
+--- a/assistants/Hugo/backend/components/ambiguity_handler.py
++++ b/assistants/Hugo/backend/components/ambiguity_handler.py
+@@ -16,6 +16,7 @@ class AmbiguityHandler:
+     def __init__(self, config, engineer=None):
+         self.config = config
+         self.engineer = engineer
++        self.nlu = None  # wired by Agent; recover() delegates the recovery reasoning to NLU
+         thresholds = config.get('thresholds', {})
+         self.confidence_min = thresholds.get('nlu_confidence_min', 0.64)
+         self.max_turns = thresholds.get('ambiguity_escalation_turns', 3)
+@@ -27,8 +28,8 @@ class AmbiguityHandler:
+             'general': 0, 'partial': 0, 'specific': 0, 'confirmation': 0,
+         }
+ 
+-    def declare(self, level:str, metadata:dict={}, observation:str=''):
+-        log.info('[ambig-trace] declare level=%s metadata=%s observation=%r',
++    def recognize(self, level:str, metadata:dict={}, observation:str=''):
++        log.info('[ambig-trace] recognize level=%s metadata=%s observation=%r',
+                  level, metadata, observation)
+         self.level = level
+         self.metadata = metadata
+@@ -36,11 +37,14 @@ class AmbiguityHandler:
+         if level in self.counts:
+             self.counts[level] += 1
+ 
+-    def present(self, name:bool=False):
+-        if name:
+-            return self.level if self.level else 'None'
+-        else:
+-            return bool(self.level)
++    def present(self):
++        """The highest ambiguity level pending, or '' when none."""
++        return self.level
++
++    def recover(self):
++        """Ask NLU to resolve the pending ambiguity internally (a MEM query + scratchpad review)
++        before escalating to the user. Routing only — the reasoning lives in NLU."""
++        return self.nlu.recover()
+ 
+     def ask(self, flow_name:str) -> str:
+         if self.observation:
+@@ -53,8 +57,8 @@ class AmbiguityHandler:
+             case 'confirmation': response = self._confirmation_ask()
+         return response
+ 
+-    def resolve(self):
+-        log.info('[ambig-trace] resolve was=%s', self.level)
++    def resolve(self, explanation:str=''):
++        log.info('[ambig-trace] resolve was=%s explanation=%r', self.level, explanation)
+         self.level = ''
+         self.metadata = {}
+         self.observation = ''
+diff --git a/assistants/Hugo/backend/components/business_context.py b/assistants/Hugo/backend/components/business_context.py
+index 07b118e..c936734 100644
+--- a/assistants/Hugo/backend/components/business_context.py
++++ b/assistants/Hugo/backend/components/business_context.py
+@@ -57,14 +57,14 @@ class BusinessContext:
+         """Ingestion / promotion seam — append one record to the in-RAM corpus."""
+         self._corpus.append(record)
+ 
+-    def search_all(self, query:str, top_k:int=1000) -> list:
++    def _candidates(self, query:str, top_k:int=1000) -> list:
+         """Candidate retrieval. Without a vector store this returns the whole corpus (capped at
+         top_k); a real embedding search lands here, using the shared model in
+         `backend.utilities.embeddings` (the same one the eval response scorer uses — one download,
+         not several). # designed-not-built (vector retrieval)"""
+         return self._corpus[:top_k]
+ 
+-    def rerank(self, query:str, candidates:list, top_k:int=10) -> dict:
++    def _rerank(self, query:str, candidates:list, top_k:int=10) -> dict:
+         """LLM rerank of the given candidates down to the top_k matches."""
+         if not candidates:
+             return {'_success': False, '_error': 'empty_corpus',
+@@ -80,6 +80,6 @@ class BusinessContext:
+                     'answer': entry['answer'], 'score': hit['score']})
+         return {'_success': True, 'matches': matches}
+ 
+-    def search_faqs(self, query:str, top_k:int=3) -> dict:
+-        """FAQ shortcut — rerank the whole FAQ corpus. Keeps the existing tool contract."""
+-        return self.rerank(query, self._corpus, top_k)
++    def search_documents(self, query:str, top_k:int=3) -> dict:
++        """Rerank the whole document corpus (FAQs are one document type)."""
++        return self._rerank(query, self._corpus, top_k)
+diff --git a/assistants/Hugo/backend/components/context_coordinator.py b/assistants/Hugo/backend/components/context_coordinator.py
+index 232e324..35a645e 100644
+--- a/assistants/Hugo/backend/components/context_coordinator.py
++++ b/assistants/Hugo/backend/components/context_coordinator.py
+@@ -292,21 +292,13 @@ class ContextCoordinator:
+                 turn.add_revision(revised)
+                 return
+ 
+-    def setbookmark(self, speaker:str=''):
++    def set_bookmark(self, speaker:str=''):
+         """Set bookmark to the most recent turn_id, optionally filtered by speaker."""
+         for turn in reversed(self._history):
+             if not speaker or turn.speaker == speaker:
+                 self.bookmark = turn.turn_id
+                 return
+ 
+-    def find_turn_by_id(self, turn_id:int, clearbookmark:bool=False):
+-        for turn in self._history:
+-            if turn.turn_id == turn_id:
+-                if clearbookmark:
+-                    self.bookmark = None
+-                return turn
+-        return None
+-
+     def contains_keyword(self, keyword:str, look_back:int=3) -> bool:
+         """Check recent turns for a keyword (splits on space/hyphen/underscore)."""
+         tokens = set()
+@@ -319,7 +311,7 @@ class ContextCoordinator:
+                 return True
+         return False
+ 
+-    def storecompleted_flows(self, completed_flows:list[str]):
++    def store_completed_flows(self, completed_flows:list[str]):
+         self.completed_flows = list(completed_flows)
+ 
+     def find_action_by_name(self, action_name:str):
+@@ -338,22 +330,3 @@ class ContextCoordinator:
+         for action in actions:
+             turn = self.add_turn(actor, action, turn_type='action')
+             self.last_actions[actor].append(action)
+-
+-    def revise_user_utterance(self, turns_back:int):
+-        """Truncate history to the nth-back user turn and rebuild recent."""
+-        user_turns = [turn for turn in self._history if turn.speaker == 'User'
+-                      and turn.turn_type == 'utterance']
+-        if turns_back > len(user_turns):
+-            return
+-        target = user_turns[-turns_back]
+-        index = self._history.index(target)
+-        self._history = self._history[:index]
+-        self._rebuild_recent()
+-
+-    def _rebuild_recent(self):
+-        self.recent.clear()
+-        for turn in self._history:
+-            if turn.speaker != 'System' and turn.turn_type == 'utterance':
+-                self.recent.append(turn)
+-        if len(self.recent) > self.lookback_count:
+-            self.recent = self.recent[-self.lookback_count:]
+diff --git a/assistants/Hugo/backend/components/dialogue_state.py b/assistants/Hugo/backend/components/dialogue_state.py
+index 1562e23..fedde89 100644
+--- a/assistants/Hugo/backend/components/dialogue_state.py
++++ b/assistants/Hugo/backend/components/dialogue_state.py
+@@ -114,22 +114,9 @@ class DialogueState:
+             'active_post': self.active_post,
+         }
+ 
+-    def serialize_session(self) -> dict:
+-        """The per-session state.json document. Extends the serialize()
+-        vocabulary: intent, turn_count, and has_issues keep their meanings."""
+-        session = {'conversation_id': self.conversation_id, 'username': self.username,
+-                   'turn_count': self.turn_count}
+-        beliefs = {'intent': self.pred_intent, 'pred_flows': self.pred_flows,
+-                   'confidence': self.confidence, 'pred_slots': self.pred_slots,
+-                   'goal': self.goal, 'confirmed': self.confirmed,
+-                   'rejected': self.rejected, 'workflow_step': self.workflow_step}
+-        flags = {'has_issues': self.has_issues}
+-        return {'session': session, 'user_beliefs': beliefs, 'grounding': dict(self.grounding),
+-                'flow_stack': self.flow_stack, 'flags': flags}
+-
+     def save(self, path):
+         """Rewrite state.json — the single document form, one write per write_state."""
+-        Path(path).write_text(json.dumps(self.serialize_session(), indent=2), encoding='utf-8')
++        Path(path).write_text(json.dumps(self.read_state(), indent=2), encoding='utf-8')
+ 
+     @classmethod
+     def load(cls, path):
+@@ -155,8 +142,18 @@ class DialogueState:
+     # These methods are the callable surface for the tool catalog.
+ 
+     def read_state(self) -> dict:
+-        """The read_state tool surface: user beliefs, grounding, flow stack, and flags."""
+-        return self.serialize_session()
++        """The read_state tool surface and the per-session state.json document: user beliefs,
++        grounding, flow stack, and flags. Extends the serialize() vocabulary — intent, turn_count,
++        and has_issues keep their meanings."""
++        session = {'conversation_id': self.conversation_id, 'username': self.username,
++                   'turn_count': self.turn_count}
++        beliefs = {'intent': self.pred_intent, 'pred_flows': self.pred_flows,
++                   'confidence': self.confidence, 'pred_slots': self.pred_slots,
++                   'goal': self.goal, 'confirmed': self.confirmed,
++                   'rejected': self.rejected, 'workflow_step': self.workflow_step}
++        flags = {'has_issues': self.has_issues}
++        return {'session': session, 'user_beliefs': beliefs, 'grounding': dict(self.grounding),
++                'flow_stack': self.flow_stack, 'flags': flags}
+ 
+     def write_state(self, path, op, stack=None, **kwargs) -> dict:
+         """The write_state tool surface — the ONLY writer of state.json. Ops:
+@@ -165,7 +162,7 @@ class DialogueState:
+                         completion is grounding-validated),
+         'stackon'       push flow_name= with FlowStack semantics,
+         'fallback'      replace the top flow with flow_name=,
+-        'pop_completed' remove Completed/Invalid flows, activating the next Pending one.
++        'pop'           remove Completed/Invalid flows, activating the next Pending one.
+         `stack` is the FlowStack component — the one flow stack. Stack ops mutate it directly;
+         self.flow_stack is only a saved copy, refreshed from stack.to_list() before the save."""
+         if op == 'update':
+@@ -176,14 +173,14 @@ class DialogueState:
+             stack.stackon(kwargs['flow_name'])
+         elif op == 'fallback':
+             stack.fallback(kwargs['flow_name'])
+-        elif op == 'pop_completed':
+-            stack.pop_completed()
++        elif op == 'pop':
++            stack.pop()
+         else:
+             raise ValueError(f'Unknown write_state op: {op!r}')
+         if stack is not None:
+             self.flow_stack = stack.to_list()
+         self.save(path)
+-        return self.serialize_session()
++        return self.read_state()
+ 
+     def _apply_update(self, fields:dict):
+         for key, value in fields.items():
+@@ -200,7 +197,7 @@ class DialogueState:
+                 raise KeyError(f'write_state update does not accept field {key!r}')
+ 
+     def _update_flow(self, stack, fields:dict):
+-        flow = stack.peek()
++        flow = stack.get_flow()
+         if 'status' in fields:  # validate first — a rejected write must not mutate the live flow
+             self._check_grounding(flow, fields['status'])
+         if 'slots' in fields:
+diff --git a/assistants/Hugo/backend/components/flow_stack/stack.py b/assistants/Hugo/backend/components/flow_stack/stack.py
+index b2afb0c..9a134ae 100644
+--- a/assistants/Hugo/backend/components/flow_stack/stack.py
++++ b/assistants/Hugo/backend/components/flow_stack/stack.py
+@@ -46,10 +46,6 @@ class FlowStack:
+                 new_flow.fill_slot_values({slot_name: slot.to_dict()})
+         return new_flow
+ 
+-    def peek(self):
+-        """Top of stack without removing."""
+-        return self._stack[-1] if self._stack else None
+-
+     def get_flow(self, status:str|None=None):
+         """Top-of-stack flow, optionally filtered by lifecycle status
+         (e.g. 'Active', 'Pending')."""
+@@ -72,7 +68,7 @@ class FlowStack:
+         live = (FlowLifecycle.ACTIVE.value, FlowLifecycle.PENDING.value)
+         return sum(1 for entry in self._stack if entry.status in live)
+ 
+-    def pop_completed(self):
++    def pop(self):
+         """Remove all Completed and Invalid flows. Returns only the
+         Completed ones (Invalid are silently discarded). Activates the
+         next Pending flow if one is now on top."""
+@@ -106,7 +102,7 @@ class FlowStack:
+         flow = cls()
+         flow.flow_id = str(uuid4())[:8]
+         # Pushed flows wait as Pending (the user 2026-07-03) — activation promotes to Active
+-        # (activate_flow, or pop_completed surfacing the next top).
++        # (activate_flow, or pop surfacing the next top).
+         flow.status = FlowLifecycle.PENDING.value
+         self._stack.append(flow)
+         return flow
+diff --git a/assistants/Hugo/backend/components/memory_manager.py b/assistants/Hugo/backend/components/memory_manager.py
+index 0c6ec6e..8d09002 100644
+--- a/assistants/Hugo/backend/components/memory_manager.py
++++ b/assistants/Hugo/backend/components/memory_manager.py
+@@ -2,7 +2,7 @@ class MemoryManager:
+     """MEM, the Head — the synchronous facade over the three memory tiers. Holds references to the
+     tiers and exposes one read skill per tier (`recap` / `recall` / `retrieve`). Tier-specific
+     operations are reached through the sub-component, e.g. `memory.preferences.store_preference`
+-    or `memory.business.search_faqs`.
++    or `memory.business.search_documents`.
+ 
+     The continuous background MEM loop (auto-promotion, proactive push) is designed-not-built."""
+ 
+@@ -25,6 +25,6 @@ class MemoryManager:
+         rank the supplied documents, or the corpus candidates, down to top_k."""
+         documents = documents or []
+         if documents and documents[0] == 'faq':
+-            return self.business.search_faqs(query, top_k=top_k)
+-        candidates = documents if documents else self.business.search_all(query, top_k=1000)
+-        return self.business.rerank(query, candidates, top_k=top_k)
++            return self.business.search_documents(query, top_k=top_k)
++        candidates = documents if documents else self.business._candidates(query, top_k=1000)
++        return self.business._rerank(query, candidates, top_k=top_k)
+diff --git a/assistants/Hugo/backend/components/session_scratchpad.py b/assistants/Hugo/backend/components/session_scratchpad.py
+index b8c98fc..bd170b2 100644
+--- a/assistants/Hugo/backend/components/session_scratchpad.py
++++ b/assistants/Hugo/backend/components/session_scratchpad.py
+@@ -20,18 +20,21 @@ class SessionScratchpad:
+         self._scratchpad = OrderedDict()
+         self._scratchpad_path = Path(scratchpad_path) if scratchpad_path else None
+ 
+-    def write(self, key:str|dict, value:str|dict|None=None, writer:str='orchestrator'):
++    def write(self, entry:dict, writer:str='orchestrator'):
++        """Append one entry (a schema-free dict). The `writer` stamp is added here, never trusted
++        from LLM input. File mode appends the stamped entry; in-memory (test-only) keys it on
++        `entry['key']`."""
++        stamped = {**entry, 'writer': writer}
+         if self._scratchpad_path is None:
++            key = stamped['key']
+             if key in self._scratchpad:
+                 self._scratchpad.move_to_end(key)
+-            self._scratchpad[key] = value
++            self._scratchpad[key] = stamped
+             while len(self._scratchpad) > self._max_snippets:
+                 self._scratchpad.popitem(last=False)
+             return
+-        entry = dict(key) if isinstance(key, dict) else {key: value}
+-        entry['writer'] = writer  # stamped by code, never trusted from LLM input
+         with open(self._scratchpad_path, 'a', encoding='utf-8') as file:
+-            file.write(json.dumps(entry) + '\n')
++            file.write(json.dumps(stamped) + '\n')
+ 
+     def read(self, key:str|None=None, writer:str|None=None,
+              keys:list[str]|None=None) -> str | dict | list[dict]:
+diff --git a/assistants/Hugo/backend/components/user_preferences.py b/assistants/Hugo/backend/components/user_preferences.py
+index 19efa7a..4d319a6 100644
+--- a/assistants/Hugo/backend/components/user_preferences.py
++++ b/assistants/Hugo/backend/components/user_preferences.py
+@@ -40,9 +40,6 @@ class UserPreferences:
+         deferred (no vector store yet), so this returns every preference for now."""
+         return {key: pref.value for key, pref in self._preferences.items()}
+ 
+-    def read_all(self) -> dict:
+-        return dict(self._preferences)
+-
+     def render(self) -> str:
+         """Sorted-by-key (cache-stable) prompt fragment. Endorsed → a standing instruction;
+         guessed → an overridable default the user can correct."""
+diff --git a/assistants/Hugo/backend/modules/nlu.py b/assistants/Hugo/backend/modules/nlu.py
+index f5378ea..94dd81b 100644
+--- a/assistants/Hugo/backend/modules/nlu.py
++++ b/assistants/Hugo/backend/modules/nlu.py
+@@ -73,10 +73,11 @@ def _fill_slots_schema(flow) -> dict:
+ 
+ class NLU:
+ 
+-    def __init__(self, config, ambiguity, engineer, world):
++    def __init__(self, config, ambiguity, engineer, memory, world):
+         self.config = config
+         self.ambiguity = ambiguity
+         self.engineer = engineer
++        self.memory = memory
+         self.world = world
+         self.flow_stack = world.flow_stack
+         self.scratchpad = world.scratchpad
+@@ -116,7 +117,7 @@ class NLU:
+         state = self._write_belief(flow_name, detection['confidence'], predicted_flows, flow)
+ 
+         if self.ambiguity.needs_clarification(state.confidence):
+-            self.ambiguity.declare(
++            self.ambiguity.recognize(
+                 'general',
+                 metadata={'top_detection': flow_name},
+                 observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"',
+@@ -144,6 +145,22 @@ class NLU:
+         return self._write_belief(flow_name, 0.99,
+                                   [{'flow_name': flow_name, 'confidence': 0.99, 'votes': 1}], flow)
+ 
++    def recover(self):
++        """Try to clear the pending ambiguity internally before escalating: look the missing slot
++        up in L2 preferences (memory.recall), then in the scratchpad. Write the attempt to the
++        scratchpad and resolve the ambiguity when a value is found. Deterministic this round — an
++        LLM-judged version is designed-not-built."""
++        missing = self.ambiguity.metadata.get('missing', '')
++        found = self.memory.recall(missing).get(missing)
++        if not found:
++            for entry in self.scratchpad.read(keys=[missing]):
++                found = entry[missing]
++                break
++        self.scratchpad.write({'key': 'recovery', 'missing': missing, 'found': found}, writer='nlu')
++        if found:
++            self.ambiguity.resolve(explanation=f'recovered {missing}={found} from memory')
++        return {'recovery': found}
++
+     def validate(self, state):
+         cat = FLOW_ONTOLOGY.get(state.flow_name(string=True))
+         if not cat:
+@@ -198,7 +215,7 @@ class NLU:
+                 matches = get_close_matches(value, candidates, n=1, cutoff=0.6)
+                 if matches:
+                     slot.value = matches[0]
+-                    self.ambiguity.declare(
++                    self.ambiguity.recognize(
+                         'confirmation',
+                         metadata={
+                             'missing': slot_name,
+@@ -212,7 +229,7 @@ class NLU:
+                     )
+                     if llm_result:
+                         slot.value = llm_result
+-                        self.ambiguity.declare(
++                        self.ambiguity.recognize(
+                             'confirmation',
+                             metadata={
+                                 'missing': slot_name,
+@@ -225,7 +242,7 @@ class NLU:
+         return state
+ 
+     def _declare_slot_failure(self, slot, slot_name:str, value:str) -> None:
+-        self.ambiguity.declare(
++        self.ambiguity.recognize(
+             'specific', metadata={'missing': slot_name, 'reason': 'invalid_value'},
+         )
+         slot.reset()
+diff --git a/assistants/Hugo/backend/modules/pex.py b/assistants/Hugo/backend/modules/pex.py
+index ffe58dd..df5fb41 100644
+--- a/assistants/Hugo/backend/modules/pex.py
++++ b/assistants/Hugo/backend/modules/pex.py
+@@ -143,7 +143,7 @@ class PEX:
+             'list_channels':     (self._platform_service, 'list_channels'),
+             'channel_status':    (self._platform_service, 'channel_status'),
+             # BusinessContext / FAQs (1)
+-            'search_faqs':       (self.memory.business, 'search_faqs'),
++            'search_documents':  (self.memory.business, 'search_documents'),
+         }
+ 
+         # Real prompt-token usage off the last acting-loop API response — Agent's compression
+@@ -159,10 +159,12 @@ class PEX:
+         # Orchestrator hot-path tools — wiring only; the implementations live in
+         # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
+         self._orchestrator_toolset = {
+-            'manage_flows':         self._dispatch_manage_flows,
+-            'understand':           self._dispatch_understand,
+-            'scratchpad':           self._dispatch_scratchpad,
+-            'store_preference':     self._dispatch_store_preference,
++            'manage_flows':             self._dispatch_manage_flows,
++            'understand':               self._dispatch_understand,
++            'append_to_scratchpad':     self._dispatch_append_scratchpad,
++            'store_preference':         self._dispatch_store_preference,
++            'ask_clarification_question': self._dispatch_ask_clarification,
++            'recover_from_ambiguity':   self._dispatch_recover_ambiguity,
+         }
+ 
+         components = {'engineer': engineer, 'memory': memory, 'config': config, 'ambiguity': ambiguity,
+@@ -194,7 +196,7 @@ class PEX:
+             if (caps.get('accesses_private_data')
+                     and caps.get('receives_untrusted_input')
+                     and caps.get('communicates_externally')):
+-                self.ambiguity.declare(
++                self.ambiguity.recognize(
+                     'confirmation',
+                     metadata={
+                         'missing': 'tool_approval',
+@@ -448,8 +450,6 @@ class PEX:
+                                   'Stack on and activate a flow, or respond to the user.'}
+         else:
+             result = self._dispatch_tool(tool_use.name, dict(tool_use.input or {}))
+-            if '_success' not in result:  # manage_memory keeps its old {'status': ...} contract
+-                result['_success'] = result.get('status') == 'success'
+             if tool_use.name in READ_ONLY_DOMAIN_TOOLS and result['_success']:
+                 self._reads += 1
+         return result, (call, result['_success'])
+@@ -475,14 +475,18 @@ class PEX:
+                 service, method_name = self.tools[tool_name]
+                 method = getattr(service, method_name)
+                 return method(**tool_input)
+-            elif tool_name == 'handle_ambiguity':
+-                return self._dispatch_ambiguity_tool(tool_input)
++            elif tool_name == 'declare_ambiguity':
++                return self._dispatch_declare_ambiguity(tool_input)
+             elif tool_name == 'coordinate_context':
+                 return self._dispatch_context_tool(tool_input)
+-            elif tool_name == 'manage_memory':
+-                return self._dispatch_manage_memory(tool_input)
+-            elif tool_name == 'call_flow_stack':
+-                return self._dispatch_flow_stack_tool(tool_input)
++            elif tool_name == 'read_scratchpad':
++                return self._dispatch_read_scratchpad(tool_input)
++            elif tool_name == 'read_flow_stack':
++                return self._dispatch_read_flow_stack(tool_input)
++            elif tool_name == 'stackon_flow':
++                return self._dispatch_stackon_flow(tool_input)
++            elif tool_name == 'fallback_flow':
++                return self._dispatch_fallback_flow(tool_input)
+             elif tool_name == 'save_findings':
+                 return self._dispatch_save_findings_tool(tool_input)
+             elif tool_name in self._orchestrator_toolset:
+@@ -518,50 +522,34 @@ class PEX:
+             return {'_success': True, 'checkpoint': cp}
+         return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
+ 
+-    def _dispatch_flow_stack_tool(self, params:dict) -> dict:
+-        action = params.get('action', '')
+-        details = params.get('details')
+-        if action == 'read':
+-            if details == 'slots':
+-                return {'_success': True, 'slots': self.flow_stack.get_flow().slot_values_dict()}
+-            if details == 'flow_meta':
+-                return {'_success': True, 'flow': self.flow_stack.get_flow().to_dict()}
+-            if details == 'flows':
+-                return {'_success': True, 'flows': self.flow_stack.to_list()}
+-            return {'_success': False, '_error': 'invalid_input',
+-                    '_message': f"read details must be one of 'flows', 'slots', 'flow_meta'; got {details!r}"}
+-        if action == 'stackon':
+-            if not details:
+-                return {'_success': False, '_error': 'invalid_input',
+-                        '_message': 'stackon requires `details` naming the flow to push'}
+-            self.flow_stack.stackon(details)
+-            return {'_success': True, 'stacked': details}
+-        if action == 'fallback':
+-            if not details:
+-                return {'_success': False, '_error': 'invalid_input',
+-                        '_message': 'fallback requires `details` naming the flow to route to'}
+-            self.flow_stack.fallback(details)
+-            return {'_success': True, 'fell_back_to': details}
+-        return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
+-
+-    def _dispatch_ambiguity_tool(self, params:dict) -> dict:
+-        action = params['action']
+-        if action == 'present':
+-            return {'_success': True, 'present': self.ambiguity.present(),
+-                    'level': self.ambiguity.level}
+-        if action == 'declare':
+-            if 'level' not in params or 'metadata' not in params:
+-                return {'_success': False, '_error': 'invalid_input',
+-                        '_message': "declare requires both 'level' and 'metadata'"}
+-            level, metadata = params['level'], params['metadata']
+-            err = _validate_ambig_metadata(level, metadata)
+-            if err:
+-                log.info('[ambig-trace] dispatch declare REJECTED level=%s metadata=%s err=%s',
+-                         level, metadata, err)
+-                return {'_success': False, '_error': 'invalid_input', '_message': err}
+-            self.ambiguity.declare(level, metadata=metadata, observation=params.get('observation', ''))
+-            return {'_success': True}
+-        return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
++    def _dispatch_read_flow_stack(self, params:dict) -> dict:
++        details = params.get('details', 'flows')
++        if details == 'slots':
++            return {'_success': True, 'slots': self.flow_stack.get_flow().slot_values_dict()}
++        if details == 'flow_meta':
++            return {'_success': True, 'flow': self.flow_stack.get_flow().to_dict()}
++        if details == 'flows':
++            return {'_success': True, 'flows': self.flow_stack.to_list()}
++        return {'_success': False, '_error': 'invalid_input',
++                '_message': f"details must be 'flows', 'slots', or 'flow_meta'; got {details!r}"}
++
++    def _dispatch_stackon_flow(self, params:dict) -> dict:
++        self.flow_stack.stackon(params['flow'])
++        return {'_success': True, 'stacked': params['flow']}
++
++    def _dispatch_fallback_flow(self, params:dict) -> dict:
++        self.flow_stack.fallback(params['flow'])
++        return {'_success': True, 'fell_back_to': params['flow']}
++
++    def _dispatch_declare_ambiguity(self, params:dict) -> dict:
++        level, metadata = params['level'], params['metadata']
++        err = _validate_ambig_metadata(level, metadata)
++        if err:
++            log.info('[ambig-trace] declare_ambiguity REJECTED level=%s metadata=%s err=%s',
++                     level, metadata, err)
++            return {'_success': False, '_error': 'invalid_input', '_message': err}
++        self.ambiguity.recognize(level, metadata=metadata, observation=params.get('observation', ''))
++        return {'_success': True}
+ 
+     def _dispatch_save_findings_tool(self, params:dict) -> dict:
+         """Persist structured findings to the scratchpad under the active flow's name.
+@@ -575,7 +563,8 @@ class PEX:
+         references_used = params.get('references_used', [])
+         flow = self.flow_stack.get_flow()
+         key = flow.name() if flow else 'findings'
+-        self.scratchpad.write(key, {
++        self.scratchpad.write({
++            'key': key,
+             'version': '1',
+             'turn_number': self.world.context.turn_id,
+             'used_count': 0,
+@@ -604,11 +593,11 @@ class PEX:
+     def _dispatch_manage_flows(self, params:dict) -> dict:
+         """The orchestrator's one flow tool — ops [update, stackon, fallback, activate, pop].
+         `update` mutates the top flow (old update_flow) and `pop` removes Completed AND Invalid
+-        flows in one sweep (old pop_completed). Belief and grounding stay NLU's job — no op here
++        flows in one sweep (write_state op 'pop'). Belief and grounding stay NLU's job — no op here
+         touches them."""
+         if params['op'] == 'activate':
+             return self.activate_flow(params)
+-        op = {'update': 'update_flow', 'pop': 'pop_completed'}.get(params['op'], params['op'])
++        op = {'update': 'update_flow'}.get(params['op'], params['op'])
+         return self._dispatch_write_state({**params, 'op': op})
+ 
+     def _dispatch_write_state(self, params:dict) -> dict:
+@@ -617,7 +606,7 @@ class PEX:
+         if 'flow_name' in params:
+             kwargs['flow_name'] = params['flow_name']
+         if params['op'] == 'update_flow' and 'slots' in kwargs:
+-            top = self.flow_stack.peek()
++            top = self.flow_stack.get_flow()
+             unknown = [name for name in kwargs['slots'] if name not in top.slots]
+             if unknown:  # corrective error — fill_slot_values would drop these silently
+                 return {'_success': False, '_error': 'invalid_input',
+@@ -639,7 +628,7 @@ class PEX:
+         same flow — the code-side replacement for the recipe's update_flow step."""
+         if not state.pred_flows or state.pred_flows[0]['flow_name'] != flow_name:
+             return
+-        top = self.flow_stack.peek()
++        top = self.flow_stack.get_flow()
+         slots = {name: value for name, value in state.pred_slots.items()
+                  if name in top.slots and value}
+         if slots:
+@@ -737,7 +726,7 @@ class PEX:
+         self._check_nlu()
+         if params['op'] == 'read':
+             return self.read_state(params)
+-        top = self.flow_stack.peek()
++        top = self.flow_stack.get_flow()
+         hint = top.intent if top and top.intent in _DOMAIN_INTENTS else ''
+         state = self.nlu.understand(op=params['op'], user_text=self.world.context.last_user_text,
+                                     hint=hint)
+@@ -746,34 +735,35 @@ class PEX:
+         return {'_success': True, 'intent': state.pred_intent,
+                 'flow_name': top['flow_name'], 'confidence': top['confidence']}
+ 
+-    def _dispatch_scratchpad(self, params:dict) -> dict:
+-        """The orchestrator's one scratchpad tool — op 'read' or 'append'."""
+-        if params['op'] == 'append':
+-            self.scratchpad.write(params['entry'])  # `writer` stamped by code
+-            return {'_success': True, 'size': self.scratchpad.size}
++    def _dispatch_read_scratchpad(self, params:dict) -> dict:
+         entries = self.scratchpad.read(writer=params.get('writer'), keys=params.get('keys'))
+         return {'_success': True, 'entries': entries}
+ 
++    def _dispatch_append_scratchpad(self, params:dict) -> dict:
++        self.scratchpad.write(params['entry'])  # `writer` stamped by code
++        return {'_success': True, 'size': self.scratchpad.size}
++
+     def _dispatch_store_preference(self, params:dict) -> dict:
+         """Persist a durable user preference to L2."""
+         self.memory.preferences.store_preference(params['key'], params['value'])
+         return {'_success': True, 'key': params['key']}
+ 
+-    def _dispatch_manage_memory(self, params:dict) -> dict:
+-        """The combined memory tool: scratchpad read/write + preference read. Keeps the legacy
+-        {'status': ...} result contract."""
+-        action = params.get('action', '')
+-        if action == 'read_scratchpad':
+-            return {'status': 'success', 'result': self.scratchpad.read(params.get('key'))}
+-        if action == 'write_scratchpad':
+-            key = params.get('key', '')
+-            if not key:
+-                return {'status': 'error', 'message': 'key is required'}
+-            self.scratchpad.write(key, params.get('value', ''))
+-            return {'status': 'success', 'result': 'written'}
+-        if action == 'read_preferences':
+-            return {'status': 'success', 'result': self.memory.preferences.read()}
+-        return {'status': 'error', 'message': f'Unknown action: {action}'}
++    def _dispatch_ask_clarification(self, params:dict) -> dict:
++        """Generate the level-specific clarification question for the pending ambiguity — NLU
++        authors it (wider view of the session than the orchestrator)."""
++        if self.ambiguity.present():
++            flow = self.flow_stack.get_flow()
++            return {'_success': True, 'question': self.ambiguity.ask(flow.name() if flow else '')}
++        return {'_success': False, '_error': 'invalid_input',
++                '_message': 'No pending ambiguity to ask about.'}
++
++    def _dispatch_recover_ambiguity(self, params:dict) -> dict:
++        """Ask NLU to resolve the pending ambiguity internally (memory + scratchpad) before
++        escalating to the user."""
++        if self.ambiguity.present():
++            return {'_success': True, **self.ambiguity.recover()}
++        return {'_success': False, '_error': 'invalid_input',
++                '_message': 'No pending ambiguity to recover.'}
+ 
+     # -- Tool definitions -------------------------------------------------
+ 
+@@ -808,14 +798,11 @@ class PEX:
+     def _component_tool_definitions(self) -> list[dict]:
+         return [
+             {
+-                'name': 'handle_ambiguity',
++                'name': 'declare_ambiguity',
+                 'description': (
+-                    "Raise an ambiguity flag back to the user when you truly cannot proceed. "
+-                    "Policies declare ambiguity directly; only call this tool when the skill "
+-                    "itself decides the user must clarify before you can act.\n\n"
+-                    "Actions:\n"
+-                    "- `declare` — raise the flag. Requires `level` and `metadata`; `observation` is optional except at `confirmation` level (which uses `metadata.question` instead).\n"
+-                    "- `present` — return whether an ambiguity is already pending and at what level. Use to avoid overwriting a prior declaration.\n\n"
++                    "Raise an ambiguity flag back to the user when a slot is missing, an entity "
++                    "can't be resolved, or something needs confirming and you truly cannot "
++                    "proceed.\n\n"
+                     "Per-level metadata shape (validated at dispatch — wrong shape returns invalid_input):\n"
+                     "- `general`      → metadata.missing ∈ {intent, flow}; metadata.error ∈ {misclassified, misdetected, user_error} (optional).\n"
+                     "- `partial`      → metadata.missing ∈ {source, target, title, query}; metadata.entity ∈ {post, section, snippet, channel} (optional).\n"
+@@ -830,12 +817,11 @@ class PEX:
+                 'input_schema': {
+                     'type': 'object',
+                     'properties': {
+-                        'action':      {'type': 'string', 'enum': ['declare', 'present']},
+                         'level':       {'type': 'string', 'enum': ['general', 'partial', 'specific', 'confirmation']},
+                         'metadata':    {'type': 'object', 'description': 'shape required per level — see description'},
+                         'observation': {'type': 'string', 'description': 'agent-authored clarification utterance (general/partial/specific only)'},
+                     },
+-                    'required': ['action'],
++                    'required': ['level', 'metadata'],
+                 },
+             },
+             {
+@@ -864,42 +850,60 @@ class PEX:
+                 },
+             },
+             {
+-                'name': 'manage_memory',
+-                'description': 'Read/write session scratchpad and user preferences. Actions: read_scratchpad, write_scratchpad, read_preferences',
++                'name': 'read_scratchpad',
++                'description': (
++                    "Read session scratchpad entries, newest last. Optional filters: `writer` "
++                    "('orchestrator' or a flow name) and `keys` (only entries carrying every "
++                    "named key — e.g. ['flow', 'summary'] selects completion records). Pick up "
++                    "prerequisites left by earlier flows here."
++                ),
+                 'input_schema': {
+                     'type': 'object',
+                     'properties': {
+-                        'action': {'type': 'string', 'enum': ['read_scratchpad', 'write_scratchpad', 'read_preferences']},
+-                        'key': {'type': 'string'},
+-                        'value': {'type': 'string'},
++                        'writer': {'type': 'string'},
++                        'keys': {'type': 'array', 'items': {'type': 'string'}},
+                     },
+-                    'required': ['action'],
++                    'required': [],
+                 },
+             },
+             {
+-                'name': 'call_flow_stack',
++                'name': 'read_flow_stack',
+                 'description': (
+-                    "Interact with the flow stack. Three actions:\n"
+-                    "- read: inspect stack state. `details` picks what to read: "
+-                    "'flows' (the full stack of queued and active flows), "
++                    "Inspect the flow stack. `details` picks what to read: "
++                    "'flows' (the full stack of queued and active flows, the default), "
+                     "'slots' (the active flow's filled slot values), "
+-                    "or 'flow_meta' (the active flow's class-level metadata).\n"
+-                    "- stackon: push a prerequisite flow onto the stack. "
+-                    "`details` is the flow name to push.\n"
+-                    "- fallback: pop the current flow and route to a sibling "
+-                    "when the user's intent is better served elsewhere. "
+-                    "`details` is the flow name to route to."
++                    "or 'flow_meta' (the active flow's class-level metadata)."
+                 ),
+                 'input_schema': {
+                     'type': 'object',
+                     'properties': {
+-                        'action': {'type': 'string', 'enum': ['read', 'stackon', 'fallback']},
+-                        'details': {
+-                            'type': 'string',
+-                            'description': "For read: one of 'flows', 'slots', 'flow_meta'. For stackon or fallback: the target flow name.",
+-                        },
++                        'details': {'type': 'string', 'enum': ['flows', 'slots', 'flow_meta']},
+                     },
+-                    'required': ['action'],
++                    'required': [],
++                },
++            },
++            {
++                'name': 'stackon_flow',
++                'description': (
++                    "Push a prerequisite flow onto the stack — the current flow needs another "
++                    "flow's output first. `flow` is the flow name to push."
++                ),
++                'input_schema': {
++                    'type': 'object',
++                    'properties': {'flow': {'type': 'string'}},
++                    'required': ['flow'],
++                },
++            },
++            {
++                'name': 'fallback_flow',
++                'description': (
++                    "Hand off to a sibling flow when the request belongs there — replaces the "
++                    "current flow, transferring matching slot values. `flow` is the target flow name."
++                ),
++                'input_schema': {
++                    'type': 'object',
++                    'properties': {'flow': {'type': 'string'}},
++                    'required': ['flow'],
+                 },
+             },
+             {
+@@ -918,7 +922,7 @@ class PEX:
+                     "- conflict: two slot values contradict\n"
+                     "- tool_error: a deterministic tool returned `_success=False`\n\n"
+                     "Use after retries and alternatives have been exhausted. For "
+-                    "user-intent ambiguity, use handle_ambiguity instead."
++                    "user-intent ambiguity, use declare_ambiguity instead."
+                 ),
+                 'input_schema': {
+                     'type': 'object',
+@@ -971,13 +975,13 @@ class PEX:
+         ]
+ 
+     def get_tools_for_orchestrator(self) -> list[dict]:
+-        """The orchestrator's tool list: hot-path dedicated tools, the three long-tail
+-        component dispatch tools, and the read-only domain allowlist. call_flow_stack is
+-        deliberately absent — its job lives in understand/manage_flows."""
++        """The orchestrator's tool list: hot-path dedicated tools, the borrowed component tools
++        it shares with sub-agents (coordinate_context, read_scratchpad), and the read-only domain
++        allowlist. The flow-stack tools are deliberately absent — their job lives in
++        understand/manage_flows."""
+         tools = self._orchestrator_tool_definitions()
+         component = {tool['name']: tool for tool in self._component_tool_definitions()}
+-        tools += [component[name] for name in ('handle_ambiguity', 'coordinate_context',
+-                                               'manage_memory')]
++        tools += [component[name] for name in ('coordinate_context', 'read_scratchpad')]
+         for tool_name in READ_ONLY_DOMAIN_TOOLS:
+             tool_def = self._get_tool_def(tool_name)
+             if tool_def:
+@@ -1051,28 +1055,17 @@ class PEX:
+                 },
+             },
+             {
+-                'name': 'scratchpad',
++                'name': 'append_to_scratchpad',
+                 'description': (
+-                    "The session scratchpad (JSONL). Ops:\n"
+-                    "- `read`   — return entries, newest last. Optional filters: `writer` "
+-                    "('orchestrator' or a flow name) and `keys` (only entries carrying every "
+-                    "named key — e.g. ['flow', 'summary'] selects completion records).\n"
+-                    "- `append` — add one agent-belief entry. `entry` is a schema-free JSON "
+-                    "object — intermediate findings, tool results worth keeping, working notes. "
+-                    "The `writer` stamp is added by code; do not include a writer key yourself."
++                    "Append one agent-belief entry to the session scratchpad (JSONL). `entry` is a "
++                    "schema-free JSON object — intermediate findings, tool results worth keeping, "
++                    "working notes. The `writer` stamp is added by code; do not include a writer "
++                    "key yourself. Reads go through the read_scratchpad tool."
+                 ),
+                 'input_schema': {
+                     'type': 'object',
+-                    'properties': {
+-                        'op': {'type': 'string', 'enum': ['read', 'append']},
+-                        'entry': {'type': 'object',
+-                                  'description': 'for append — the entry to add'},
+-                        'writer': {'type': 'string',
+-                                   'description': 'for read — filter by writer'},
+-                        'keys': {'type': 'array', 'items': {'type': 'string'},
+-                                 'description': 'for read — only entries carrying every named key'},
+-                    },
+-                    'required': ['op'],
++                    'properties': {'entry': {'type': 'object'}},
++                    'required': ['entry'],
+                 },
+             },
+             {
+@@ -1091,6 +1084,25 @@ class PEX:
+                     'required': ['key', 'value'],
+                 },
+             },
++            {
++                'name': 'ask_clarification_question',
++                'description': (
++                    "Turn the pending ambiguity into a clarification question for the user. NLU "
++                    "authors it (wider view of the scratchpad, belief state, and other ambiguities "
++                    "than you have), so rely on this rather than writing your own. No arguments — "
++                    "returns `question`. Errors if no ambiguity is pending."
++                ),
++                'input_schema': {'type': 'object', 'properties': {}, 'required': []},
++            },
++            {
++                'name': 'recover_from_ambiguity',
++                'description': (
++                    "Ask NLU to resolve the pending ambiguity internally — a memory query plus a "
++                    "scratchpad review — before you escalate to the user. No arguments — returns "
++                    "`recovery` (the value found, or null). Errors if no ambiguity is pending."
++                ),
++                'input_schema': {'type': 'object', 'properties': {}, 'required': []},
++            },
+         ]
+ 
+ 
+diff --git a/assistants/Hugo/backend/modules/policies/base.py b/assistants/Hugo/backend/modules/policies/base.py
+index 07a7338..d8acfbd 100644
+--- a/assistants/Hugo/backend/modules/policies/base.py
++++ b/assistants/Hugo/backend/modules/policies/base.py
+@@ -215,7 +215,7 @@ class BasePolicy:
+         non-None result via `if artifact := self._guard_entity(flow): return artifact`."""
+         ent_slot = flow.entity_slot
+         if not flow.slots[ent_slot].check_if_filled():
+-            self.ambiguity.declare('partial', metadata={'missing': ent_slot, 'entity': 'post'})
++            self.ambiguity.recognize('partial', metadata={'missing': ent_slot, 'entity': 'post'})
+             return TaskArtifact(flow.name())
+         return None
+ 
+@@ -228,7 +228,7 @@ class BasePolicy:
+         scratchpad; activate_flow collects it via pop_completion and returns it as the tool
+         result. Call it before stacking any follow-up flow — the completing flow must be top of
+         stack."""
+-        if self.flow_stack.peek().flow_id != flow.flow_id:
++        if self.flow_stack.get_flow().flow_id != flow.flow_id:
+             raise ValueError(f'complete_flow: {flow.name()!r} is not top of stack — finish or '
+                              f'pop the flows above it first')
+         state.write_state(self._state_file(), 'update_flow', stack=self.flow_stack,
+diff --git a/assistants/Hugo/backend/modules/policies/draft.py b/assistants/Hugo/backend/modules/policies/draft.py
+index 5ca7e5d..8021e1d 100644
+--- a/assistants/Hugo/backend/modules/policies/draft.py
++++ b/assistants/Hugo/backend/modules/policies/draft.py
+@@ -78,7 +78,7 @@ class DraftPolicy(BasePolicy):
+ 
+     def outline_policy(self, flow, state, context, tools):
+         if not flow.slots['source'].check_if_filled():
+-            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
++            self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
+             return TaskArtifact()
+ 
+         depth_slot = flow.slots['depth']
+@@ -125,7 +125,7 @@ class DraftPolicy(BasePolicy):
+                 flow.stage = 'discovery'
+                 artifact = self._propose_outline(flow, state, context, tools)
+             else:
+-                self.ambiguity.declare('specific', metadata={'missing': 'topic'})
++                self.ambiguity.recognize('specific', metadata={'missing': 'topic'})
+                 artifact = TaskArtifact(flow.name())
+ 
+         return artifact
+@@ -157,9 +157,9 @@ class DraftPolicy(BasePolicy):
+     def refine_policy(self, flow, state, context, tools):
+         if not flow.is_filled():
+             if not flow.slots['source'].filled:
+-                self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
++                self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
+             elif not flow.slots['feedback'].filled or not flow.slots['steps'].filled:
+-                self.ambiguity.declare('specific', metadata={'missing': 'refine_details'})
++                self.ambiguity.recognize('specific', metadata={'missing': 'refine_details'})
+             return TaskArtifact(flow.name())
+ 
+         post_id, _, error = self.resolve_source_ids(flow, state, tools)
+@@ -198,7 +198,7 @@ class DraftPolicy(BasePolicy):
+ 
+     def compose_policy(self, flow, state, context, tools):
+         if not flow.slots['source'].check_if_filled():
+-            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
++            self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
+             return TaskArtifact()
+         post_id, _, error = self.resolve_source_ids(flow, state, tools)
+         if error: return error
+@@ -245,7 +245,7 @@ class DraftPolicy(BasePolicy):
+             parsed = self.engineer.apply_guardrails(raw_output)
+             flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})
+             if not flow.slots['topic'].filled:
+-                self.ambiguity.declare('specific', metadata={'missing': 'topic'})
++                self.ambiguity.recognize('specific', metadata={'missing': 'topic'})
+                 return TaskArtifact(flow.name())
+             else:
+                 text, _ = self.llm_execute(flow, state, context, tools, model='high', schema=schema)
+diff --git a/assistants/Hugo/backend/modules/policies/publish.py b/assistants/Hugo/backend/modules/policies/publish.py
+index aa4c6f1..68ff875 100644
+--- a/assistants/Hugo/backend/modules/policies/publish.py
++++ b/assistants/Hugo/backend/modules/policies/publish.py
+@@ -89,7 +89,7 @@ class PublishPolicy(BasePolicy):
+     def schedule_policy(self, flow, state, context, tools):
+         missing = self._first_missing_required(flow, (flow.entity_slot, 'channel'))
+         if missing:
+-            self.ambiguity.declare('specific', metadata={'missing': missing})
++            self.ambiguity.recognize('specific', metadata={'missing': missing})
+             artifact = self._clarify_with_steps(flow)
+         else:
+             text, tool_log = self.llm_execute(flow, state, context, tools)
+@@ -110,7 +110,7 @@ class PublishPolicy(BasePolicy):
+         target_slot = flow.slots['target']
+         url_slot = flow.slots['url']
+         if not target_slot.check_if_filled() and not url_slot.check_if_filled():
+-            self.ambiguity.declare('specific', metadata={'missing': 'target'})
++            self.ambiguity.recognize('specific', metadata={'missing': 'target'})
+             return TaskArtifact()
+ 
+         # Cite may proceed url-only without a grounded post, so an unresolvable reference is
+diff --git a/assistants/Hugo/backend/modules/policies/research.py b/assistants/Hugo/backend/modules/policies/research.py
+index 57ce3d0..b9faed3 100644
+--- a/assistants/Hugo/backend/modules/policies/research.py
++++ b/assistants/Hugo/backend/modules/policies/research.py
+@@ -22,7 +22,7 @@ class ResearchPolicy(BasePolicy):
+     def browse_policy(self, flow, state, context, tools):
+         query_slot = flow.slots['query']
+         if not query_slot.check_if_filled():
+-            self.ambiguity.declare('partial', metadata={'missing': 'query'})
++            self.ambiguity.recognize('partial', metadata={'missing': 'query'})
+             return TaskArtifact(flow.name())
+ 
+         target_slot = flow.slots['target']
+@@ -110,7 +110,8 @@ class ResearchPolicy(BasePolicy):
+             list_data['expanded_ids'] = [it['post_id'] for it in items]
+ 
+         # Scratchpad write — downstream audit can reference matches.
+-        self.scratchpad.write(flow.name(), {
++        self.scratchpad.write({
++            'key': flow.name(),
+             'version': '1',
+             'turn_number': context.turn_id,
+             'used_count': 0,
+@@ -170,7 +171,7 @@ class ResearchPolicy(BasePolicy):
+         # Comparison kind drives both the metrics surfaced and the prose framing.
+         # Ask before dispatching when none was named.
+         if not flow.slots['category'].check_if_filled():
+-            self.ambiguity.declare('specific',
++            self.ambiguity.recognize('specific',
+                 observation='Should I compare metrics, metadata, or tone?',
+                 metadata={'missing': 'category'})
+             return TaskArtifact(flow.name())
+@@ -204,7 +205,7 @@ class ResearchPolicy(BasePolicy):
+         post_id, _, error = self.resolve_source_ids(flow, state, tools)
+         if error: return error
+         if not post_id:
+-            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'})
++            self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
+             return TaskArtifact(flow.name())
+         text, _ = self.llm_execute(flow, state, context, tools)
+         if self.ambiguity.present():
+diff --git a/assistants/Hugo/backend/modules/policies/revise.py b/assistants/Hugo/backend/modules/policies/revise.py
+index 7c0fe4b..2cf8bec 100644
+--- a/assistants/Hugo/backend/modules/policies/revise.py
++++ b/assistants/Hugo/backend/modules/policies/revise.py
+@@ -30,9 +30,9 @@ class RevisePolicy(BasePolicy):
+                 return TaskArtifact()
+ 
+     def _read_scratch_value(self, key):
+-        """Keyed scratchpad lookup: newest matching JSONL entry."""
+-        entries = self.scratchpad.read(keys=[key])
+-        return entries[-1][key] if entries else ''
++        """Newest scratchpad entry stored under `key` (flat single-dict shape)."""
++        entries = [entry for entry in self.scratchpad.read() if entry.get('key') == key]
++        return entries[-1] if entries else ''
+ 
+     def rework_policy(self, flow, state, context, tools):
+         if artifact := self._guard_entity(flow): return artifact
+@@ -51,7 +51,7 @@ class RevisePolicy(BasePolicy):
+ 
+         # Null-category agentic path: skill handles itemized changes via `suggestions` / `remove`.
+         if not flow.slots['suggestions'].check_if_filled() and not flow.slots['remove'].check_if_filled():
+-            self.ambiguity.declare('specific', metadata={'missing': 'category_or_suggestions'})
++            self.ambiguity.recognize('specific', metadata={'missing': 'category_or_suggestions'})
+             return TaskArtifact(origin=flow.name())
+ 
+         self.record_snapshot(self.content, flow, context, post_id)
+@@ -79,7 +79,7 @@ class RevisePolicy(BasePolicy):
+         grounding.post at completion — it does no existence check."""
+         meta = tools('read_metadata', {'post_id': post_id})
+         if meta['_success'] and meta['status'] == 'published':
+-            self.ambiguity.declare('confirmation', metadata={
++            self.ambiguity.recognize('confirmation', metadata={
+                 'missing': 'unpublish_intent',
+                 'question': 'That post is already published — unpublish it first, or cancel?'})
+             return TaskArtifact(flow.name())
+@@ -108,7 +108,7 @@ class RevisePolicy(BasePolicy):
+             state.keep_going = True
+             return TaskArtifact(flow.name(), thoughts='Sharpening reads as Refine, rerouting.')
+         # cat == 'reframe'
+-        self.ambiguity.declare(
++        self.ambiguity.recognize(
+             'confirmation',
+             metadata={
+                 'missing': 'rework_changes',
+@@ -122,13 +122,13 @@ class RevisePolicy(BasePolicy):
+     def _rework_swap(self, flow, state, context, post_id, tools):
+         raw_secs = [e['sec'] for e in flow.slots['source'].values if e['sec']]
+         if len(raw_secs) < 2:
+-            self.ambiguity.declare('specific', metadata={'missing': 'second_section'})
++            self.ambiguity.recognize('specific', metadata={'missing': 'second_section'})
+             return TaskArtifact(origin=flow.name())
+         section_ids = list(tools('read_metadata', {'post_id': post_id})['section_ids'])
+         # LLM fills source.sec with raw text ("Process"); canonicalize to slug ("process").
+         resolved = [r for r in (self._resolve_sec_id(raw, tools, post_id) for raw in raw_secs[:2]) if r]
+         if len(resolved) < 2:
+-            self.ambiguity.declare('specific',
++            self.ambiguity.recognize('specific',
+                 observation="I couldn't match both sections to the post — name them as they appear in the outline.",
+                 metadata={'missing': 'second_section'})
+             return TaskArtifact(origin=flow.name())
+@@ -160,11 +160,11 @@ class RevisePolicy(BasePolicy):
+         where = flow.slots['category'].value  # 'to_top' or 'to_end' — guaranteed by the dispatch
+         raw_secs = [e['sec'] for e in flow.slots['source'].values if e['sec']]
+         if not raw_secs:
+-            self.ambiguity.declare('specific', metadata={'missing': 'section'})
++            self.ambiguity.recognize('specific', metadata={'missing': 'section'})
+             return TaskArtifact(origin=flow.name())
+         sec = self._resolve_sec_id(raw_secs[0], tools, post_id)
+         if not sec:
+-            self.ambiguity.declare('specific',
++            self.ambiguity.recognize('specific',
+                 observation=f"I couldn't find a section matching {raw_secs[0]!r} in this post.",
+                 metadata={'missing': 'section'})
+             return TaskArtifact(origin=flow.name())
+@@ -202,7 +202,7 @@ class RevisePolicy(BasePolicy):
+                 entry = self._read_scratch_value(str(key))
+                 if isinstance(entry, dict):
+                     entry['used_count'] = entry.get('used_count', 0) + 1
+-                    self.scratchpad.write(str(key), entry, writer=flow.name())
++                    self.scratchpad.write(entry, writer=flow.name())
+ 
+         # Scope-mismatch fallback: if inspect_post flagged structural issues,
+         # re-route to rework rather than committing the edit.
+@@ -261,7 +261,7 @@ class RevisePolicy(BasePolicy):
+         post_id, sec_id, error = self.resolve_source_ids(flow, state, tools)
+         if error: return error
+         if not sec_id:
+-            self.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'section'})
++            self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'section'})
+             return TaskArtifact(flow.name())
+ 
+         extra = {}
+@@ -281,8 +281,9 @@ class RevisePolicy(BasePolicy):
+             return self.error_artifact(flow, 'empty_output',
+                 thoughts='Propose produced no candidate alternatives.', code=text)
+ 
+-        self.scratchpad.write('propose',
+-            {'candidates': candidates, 'post_id': post_id, 'sec_id': sec_id}, writer='propose')
++        self.scratchpad.write(
++            {'key': 'propose', 'candidates': candidates, 'post_id': post_id, 'sec_id': sec_id},
++            writer='propose')
+         flow.stage = 'discovery'
+         block_options = [{'label': opt[:80], 'payload': idx, 'body': opt}
+                          for idx, opt in enumerate(candidates)]
+@@ -296,7 +297,7 @@ class RevisePolicy(BasePolicy):
+     def _propose_insert(self, flow, state, context, tools):
+         saved = self._read_scratch_value('propose')
+         if not isinstance(saved, dict) or 'candidates' not in saved:
+-            self.ambiguity.declare('specific',
++            self.ambiguity.recognize('specific',
+                 observation='The proposed options were lost between turns — run propose again.',
+                 metadata={'missing': 'candidates'})
+             return TaskArtifact(flow.name())
+diff --git a/assistants/Hugo/backend/prompts/for_orchestrator.py b/assistants/Hugo/backend/prompts/for_orchestrator.py
+index 5af4837..49bc9d2 100644
+--- a/assistants/Hugo/backend/prompts/for_orchestrator.py
++++ b/assistants/Hugo/backend/prompts/for_orchestrator.py
+@@ -86,13 +86,15 @@ TOOL_POLICY = (
+     'was already forced (old flow dropped as Invalid, NLU\'s flow swapped in as Active), run '
+     'that flow with `manage_flows` op="activate".\n'
+     '**The commit rule.** For any Research / Draft / Revise / Publish turn, the turn is not done '
+-    'until a flow has run via `manage_flows` (or you declared ambiguity with `handle_ambiguity`). '
+-    'A plain-text reply with no flow run and no declared ambiguity is a failed turn. Reading '
+-    'metadata is not doing the task — running the flow is.\n'
++    'until a flow has run via `manage_flows`, or a dispatched flow returned a clarification you '
++    'relayed to the user. A plain-text reply with no flow run and no relayed clarification is a '
++    'failed turn. Reading metadata is not doing the task — running the flow is.\n'
+     '**Ask vs. proceed.** When the detection is confident, proceed with the '
+     'stack-on recipe below. When confidence is low, the top candidates are close, or a required '
+-    'slot is missing or contradictory, do not guess — use `handle_ambiguity` to declare the '
+-    'ambiguity and ask the user. AmbiguityHandler owns levels and escalation bookkeeping; you '
++    'slot is missing or contradictory, do not guess. A dispatched flow that stalls returns a '
++    '`question` — relay it to the user verbatim. Before escalating, call `recover_from_ambiguity` '
++    'to let NLU resolve it internally from memory, or `ask_clarification_question` to have NLU '
++    'author the question. AmbiguityHandler owns levels and escalation bookkeeping; you '
+     'own the ask-vs-proceed decision. An explicit imperative ("Publish the post", "Delete that '
+     'section") IS the authorization — dispatch it; never ask for re-confirmation, and never '
+     'block a new command on unrelated pending flows or earlier suggestions the user left '
+@@ -110,8 +112,8 @@ TOOL_POLICY = (
+     'the resolved flow.\n'
+     '**Completion records.** A flow that completes returns `{flow, summary, metadata}` — its '
+     'completion record, also appended to the scratchpad. Before chaining a dependent flow, read '
+-    'earlier records with `scratchpad` op="read" (keys=["flow", "summary"]). Persist your own '
+-    'findings worth keeping with `scratchpad` op="append"; authorship is stamped by code — never '
++    'earlier records with `read_scratchpad` (keys=["flow", "summary"]). Persist your own '
++    'findings worth keeping with `append_to_scratchpad`; authorship is stamped by code — never '
+     'write a `writer` key yourself.\n'
+     '**Read-only domain tools (an exception, not a menu).** `find_posts`, `read_metadata`, '
+     '`read_section`, `search_notes`, `list_channels`, `channel_status` may be called directly, '
+@@ -223,7 +225,7 @@ def _render_preferences(memory) -> str:
+     body = memory.preferences.render()
+     if not body:
+         return ('## User Preferences\n\n'
+-                'No preferences recorded yet. Promote durable ones via `manage_memory`.')
++                'No preferences recorded yet. Promote durable ones via `store_preference`.')
+     lines = ['## User Preferences', '',
+              'L2 snapshot frozen at session start; mid-session writes apply next session.', '',
+              body]
+diff --git a/assistants/Hugo/backend/prompts/for_pex.py b/assistants/Hugo/backend/prompts/for_pex.py
+index 3127f6b..ae1552c 100644
+--- a/assistants/Hugo/backend/prompts/for_pex.py
++++ b/assistants/Hugo/backend/prompts/for_pex.py
+@@ -45,7 +45,7 @@ In contrast to semantic mis-understanding, there may also be systemic errors cau
+ | `conflict` | Two slot values contradict |
+ | `tool_error` | A deterministic tool returned `_success=False` |
+ 
+-Use the `handle_ambiguity()` or `execution_error()` tools to signal such issues only after considering all other paths to resolution."""
++Use the `declare_ambiguity()` or `execution_error()` tools to signal such issues only after considering all other paths to resolution."""
+ 
+ 
+ def build_flow_system(base_system:str, flow, flow_prompt:str|None) -> str:
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/audit.md b/assistants/Hugo/backend/prompts/pex/flows/audit.md
+index 7f8c536..891297f 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/audit.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/audit.md
+@@ -35,9 +35,9 @@ If the post already matches the user's voice and needs no edits, make no `revise
+ ### General tools
+ 
+ - `execution_error(violation, message)` for hard failures (total loss of metrics).
+-- `handle_ambiguity(level, metadata)` rare in audit — the entity is the post, guaranteed by the policy guard.
+-- `manage_memory(action, key, value)` to read prior `find` / `inspect` findings for this post.
+-- `call_flow_stack(action='read', details='flows')` to see what follows audit.
++- `declare_ambiguity(level, metadata)` rare in audit — the entity is the post, guaranteed by the policy guard.
++- `read_scratchpad(action, key, value)` to read prior `find` / `inspect` findings for this post.
++- `read_flow_stack(details='flows')` to see what follows audit.
+ 
+ ## Few-shot examples
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/brainstorm.md b/assistants/Hugo/backend/prompts/pex/flows/brainstorm.md
+index 9ec49fd..a269e6a 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/brainstorm.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/brainstorm.md
+@@ -17,7 +17,7 @@ This skill produces creative angles for a topic, or alternative phrasings for a
+ 
+ ## Error Handling
+ 
+-If neither `topic` nor `source.snip` is filled, call `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`.
++If neither `topic` nor `source.snip` is filled, call `declare_ambiguity(level='specific', metadata={'missing': 'topic'})`.
+ 
+ Brainstorming is tolerant of tool gaps — if `read_section` or `find_posts` fails, fall back to LLM-only ideation based on the topic. Do NOT call `execution_error`.
+ 
+@@ -33,9 +33,9 @@ Brainstorming is tolerant of tool gaps — if `read_section` or `find_posts` fai
+ ### General tools
+ 
+ - `execution_error(violation, message)`
+-- `handle_ambiguity(**params)`
+-- `manage_memory(**params)`
+-- `call_flow_stack(action, details)`
++- `declare_ambiguity(**params)`
++- `read_scratchpad(**params)`
++- `read_flow_stack(details)`
+ 
+ ## Output
+ 
+@@ -126,7 +126,7 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. Neither `topic` nor `source.snip` is present in the resolved details.
+-2. `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what to brainstorm about, then end turn.
++2. `declare_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what to brainstorm about, then end turn.
+ 
+ ### Example 5: Topic seeded by a saved note
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/browse.md b/assistants/Hugo/backend/prompts/pex/flows/browse.md
+index de37dc2..bc76c72 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/browse.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/browse.md
+@@ -12,7 +12,7 @@ This skill narrates a browse result. The policy has already called `find_posts`
+ 
+ ## Error Handling
+ 
+-If `Items` is empty AND no tags were provided, call `handle_ambiguity(level='specific', metadata={'missing': 'tags'})` — the user needs to specify what to browse for.
++If `Items` is empty AND no tags were provided, call `declare_ambiguity(level='specific', metadata={'missing': 'tags'})` — the user needs to specify what to browse for.
+ 
+ If the policy's `find_posts` failed (indicated by a missing or malformed `Items` block), call `execution_error(violation='tool_error', message='find_posts upstream failure')`.
+ 
+@@ -25,9 +25,9 @@ If the policy's `find_posts` failed (indicated by a missing or malformed `Items`
+ ### General tools
+ 
+ - `execution_error(violation, message)`
+-- `handle_ambiguity(**params)`
+-- `manage_memory(**params)`
+-- `call_flow_stack(action, details)`
++- `declare_ambiguity(**params)`
++- `read_scratchpad(**params)`
++- `read_flow_stack(details)`
+ 
+ ## Few-shot examples
+ 
+@@ -91,4 +91,4 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. No tags were provided and nothing came back to narrate.
+-2. `handle_ambiguity(level='specific', metadata={'missing': 'tags'})`. Ask what to browse for, then end turn.
++2. `declare_ambiguity(level='specific', metadata={'missing': 'tags'})`. Ask what to browse for, then end turn.
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/cite.md b/assistants/Hugo/backend/prompts/pex/flows/cite.md
+index 881fc05..c41183a 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/cite.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/cite.md
+@@ -15,9 +15,9 @@ This skill attaches a citation to a snippet of text. Two modes: direct attach wh
+ 
+ ## Error Handling
+ 
+-If neither `target` nor `url` is filled, call `handle_ambiguity(level='partial', metadata={'missing': 'target'})`.
++If neither `target` nor `url` is filled, call `declare_ambiguity(level='partial', metadata={'missing': 'target'})`.
+ 
+-If `web_search` fails, call `handle_ambiguity(level='specific', metadata={'missing': 'url'}, observation='Search failed — give me a URL to attach directly?')`.
++If `web_search` fails, call `declare_ambiguity(level='specific', metadata={'missing': 'url'}, observation='Search failed — give me a URL to attach directly?')`.
+ 
+ If `revise_content` fails, retry ONCE. Then call `execution_error(violation='tool_error', message=<reason>, failed_tool='revise_content')`.
+ 
+@@ -33,9 +33,9 @@ If `revise_content` fails, retry ONCE. Then call `execution_error(violation='too
+ ### General tools
+ 
+ - `execution_error(violation, message)`
+-- `handle_ambiguity(**params)`
+-- `manage_memory(**params)`
+-- `call_flow_stack(action, details)`
++- `declare_ambiguity(**params)`
++- `read_scratchpad(**params)`
++- `read_flow_stack(details)`
+ 
+ ## Few-shot examples
+ 
+@@ -91,7 +91,7 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. Neither `target` nor `url` is filled in the resolved details.
+-2. `handle_ambiguity(level='partial', metadata={'missing': 'target'})`. Ask which sentence needs the source, then end turn.
++2. `declare_ambiguity(level='partial', metadata={'missing': 'target'})`. Ask which sentence needs the source, then end turn.
+ 
+ ### Example 5: Save fails after retry
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/compare.md b/assistants/Hugo/backend/prompts/pex/flows/compare.md
+index 98237d6..9617860 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/compare.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/compare.md
+@@ -18,11 +18,11 @@ This skill narrates a side-by-side comparison of two posts. The policy resolves
+ 
+ ## Error Handling
+ 
+-If only one post resolved (the user named one or none could be located), call `handle_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'post'})`.
++If only one post resolved (the user named one or none could be located), call `declare_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'post'})`.
+ 
+ If a tool call fails, fall back to a prose-only narration based on whatever data you already have. Do NOT call `execution_error` — the comparison is still useful even with partial data.
+ 
+-If the section the user named doesn't exist on either post, call `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
++If the section the user named doesn't exist on either post, call `declare_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
+ 
+ ## Tools
+ 
+@@ -36,9 +36,9 @@ If the section the user named doesn't exist on either post, call `handle_ambigui
+ ### General tools
+ 
+ - `execution_error(violation, message)`
+-- `handle_ambiguity(**params)`
+-- `manage_memory(**params)`
+-- `call_flow_stack(action, details)`
++- `declare_ambiguity(**params)`
++- `read_scratchpad(**params)`
++- `read_flow_stack(details)`
+ 
+ ## Few-shot examples
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/compose.md b/assistants/Hugo/backend/prompts/pex/flows/compose.md
+index 3e2bb05..fcef8af 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/compose.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/compose.md
+@@ -73,7 +73,7 @@ If the `<post_content>` block looks malformed, best-effort convert the visible s
+ 
+ If `convert_to_prose` fails for a section, retry ONCE. If it fails again, skip that section and continue — do NOT abort the whole flow. After saving all in-scope sections, note the skipped ones with `execution_error(violation='tool_error', message=<section names>)`.
+ 
+-If the user's request doesn't make sense given the outline, call `handle_ambiguity(level=<specific|partial|confirmation>, ...)`.
++If the user's request doesn't make sense given the outline, call `declare_ambiguity(level=<specific|partial|confirmation>, ...)`.
+ 
+ ## Tools
+ 
+@@ -86,9 +86,9 @@ If the user's request doesn't make sense given the outline, call `handle_ambigui
+ ### General tools
+ 
+ - `execution_error(violation, message)`
+-- `handle_ambiguity(**params)`
+-- `manage_memory(**params)`
+-- `call_flow_stack(action, details)`
++- `declare_ambiguity(**params)`
++- `read_scratchpad(**params)`
++- `read_flow_stack(details)`
+ 
+ ## Few-shot examples
+ 
+@@ -135,7 +135,7 @@ Resolved Details:
+ 
+ Trajectory: no tool calls. The request is a single-sentence rewrite inside prose that already exists, which is write's scope, not an outline-to-prose conversion.
+ 
+-Final reply: call_flow_stack(action='fallback', details='write')
++Final reply: fallback_flow(flow='write')
+ 
+ ### Example 5 — ambiguous scope on an already-prose section
+ 
+@@ -145,4 +145,4 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. The Alerting preview in `<post_content>` is already full prose, so "redo" could mean recompose from scratch or leave it and edit.
+-2. `handle_ambiguity(level='confirmation', metadata={'missing': 'scope', 'question': "Alerting is already written out. Want me to recompose it from the bullets, or edit the prose that's there?"})`. End turn.
++2. `declare_ambiguity(level='confirmation', metadata={'missing': 'scope', 'question': "Alerting is already written out. Want me to recompose it from the bullets, or edit the prose that's there?"})`. End turn.
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/find.md b/assistants/Hugo/backend/prompts/pex/flows/find.md
+index 98116c3..5769d9c 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/find.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/find.md
+@@ -13,7 +13,7 @@ This skill narrates a find result. The policy has already expanded the user's qu
+ 
+ ## Error Handling
+ 
+-If `Items` is empty AND no query was provided, call `handle_ambiguity(level='specific', metadata={'missing': 'query'})` — the user needs to say what to search for.
++If `Items` is empty AND no query was provided, call `declare_ambiguity(level='specific', metadata={'missing': 'query'})` — the user needs to say what to search for.
+ 
+ If the policy's `find_posts` failed (indicated by a missing or malformed `Items` block), call `execution_error(violation='tool_error', message='find_posts upstream failure')`.
+ 
+@@ -26,9 +26,9 @@ If the policy's `find_posts` failed (indicated by a missing or malformed `Items`
+ ### General tools
+ 
+ - `execution_error(violation, message)`
+-- `handle_ambiguity(**params)`
+-- `manage_memory(**params)`
+-- `call_flow_stack(action, details)`
++- `declare_ambiguity(**params)`
++- `read_scratchpad(**params)`
++- `read_flow_stack(details)`
+ 
+ ## Few-shot examples
+ 
+@@ -94,4 +94,4 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. Nothing came back and no search term was given.
+-2. `handle_ambiguity(level='specific', metadata={'missing': 'query'})`. Ask what to search for, then end turn.
++2. `declare_ambiguity(level='specific', metadata={'missing': 'query'})`. Ask what to search for, then end turn.
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/outline.md b/assistants/Hugo/backend/prompts/pex/flows/outline.md
+index 94fc5e3..b05ac46 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/outline.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/outline.md
+@@ -44,7 +44,7 @@ If in propose mode you find yourself wanting to call `generate_outline`, stop: t
+ 
+ If in direct mode `generate_outline` fails, the policy will retry once automatically. A second failure surfaces as a `tool_error` frame; do not attempt a third call from the skill.
+ 
+-If the topic cannot be extracted from the conversation and no sections were supplied, call `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`.
++If the topic cannot be extracted from the conversation and no sections were supplied, call `declare_ambiguity(level='specific', metadata={'missing': 'topic'})`.
+ 
+ ## Tools
+ 
+@@ -56,9 +56,9 @@ If the topic cannot be extracted from the conversation and no sections were supp
+ ### General tools
+ 
+ - `execution_error(violation, message)` for hard failures.
+-- `handle_ambiguity(level, metadata)` for cases where the user's request is genuinely unclear.
+-- `manage_memory(action, key, value)` to read or write session scratchpad and user preferences.
+-- `call_flow_stack(action='read')` to check whether a compose or refine is queued behind this outline so the generated bullets match what the next flow will consume.
++- `declare_ambiguity(level, metadata)` for cases where the user's request is genuinely unclear.
++- `read_scratchpad(action, key, value)` to read or write session scratchpad and user preferences.
++- `read_flow_stack()` to check whether a compose or refine is queued behind this outline so the generated bullets match what the next flow will consume.
+ 
+ ## Output
+ 
+@@ -157,4 +157,4 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. Neither a topic nor any sections are present, so there is nothing to outline.
+-2. `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what the post should be about, then end turn.
++2. `declare_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what the post should be about, then end turn.
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/propose.md b/assistants/Hugo/backend/prompts/pex/flows/propose.md
+index 693b8aa..4010318 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/propose.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/propose.md
+@@ -12,8 +12,8 @@ This skill fills a placeholder gap — a `<fill in here>` marker, a `[TODO]`, or
+ 
+ ## Handling Ambiguity and Errors
+ 
+-- If you cannot find a gap in the section, call `handle_ambiguity(level='specific', metadata={'missing': 'gap', 'reason': 'unclear_value'})` and name what you looked for.
+-- If the section itself can't be located, call `handle_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'section'})`.
++- If you cannot find a gap in the section, call `declare_ambiguity(level='specific', metadata={'missing': 'gap', 'reason': 'unclear_value'})` and name what you looked for.
++- If the section itself can't be located, call `declare_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'section'})`.
+ 
+ ## Tools
+ 
+@@ -25,7 +25,7 @@ This skill fills a placeholder gap — a `<fill in here>` marker, a `[TODO]`, or
+ 
+ ### General tools
+ 
+-- `handle_ambiguity(level, metadata)` when the gap or section is unclear.
++- `declare_ambiguity(level, metadata)` when the gap or section is unclear.
+ - `coordinate_context(lookback)` to pull earlier conversation if the gap references it.
+ 
+ ## Few-shot examples
+@@ -69,7 +69,7 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. `read_metadata(post_id=3e9b0d55, include_outline=True)` → no section resembles a deployment checklist.
+-2. `handle_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'section'})`. End turn.
++2. `declare_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'section'})`. End turn.
+ 
+ ### Example 4: No gap in the named section
+ 
+@@ -79,7 +79,7 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. `read_section(post_id=b2d84c10, sec_id=conclusion, include_sentence_ids=True)` → complete prose, no placeholder or blank slot.
+-2. `handle_ambiguity(level='specific', metadata={'missing': 'gap', 'reason': 'unclear_value'})`. Say the conclusion reads complete and ask which sentence to open up, then end turn.
++2. `declare_ambiguity(level='specific', metadata={'missing': 'gap', 'reason': 'unclear_value'})`. Say the conclusion reads complete and ask which sentence to open up, then end turn.
+ 
+ ### Example 5: Gap that references an earlier turn
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/refine.md b/assistants/Hugo/backend/prompts/pex/flows/refine.md
+index 3052060..6c097e1 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/refine.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/refine.md
+@@ -26,7 +26,7 @@ This skill describes how to refine outlines. The current outline is provided in
+ 
+ If the `<post_content>` looks malformed (missing `##` headings, bullets outside a section), do your best to fix visible structure while honoring the request. If truly unworkable, call `execution_error(violation='invalid_input', message=<short explanation>)` and do NOT save.
+ 
+-If the user's request does not make sense given the actual outline content, call `handle_ambiguity(level=<partial|specific|confirmation>, ...)` with the supporting detail so Hugo can resolve it on the next turn.
++If the user's request does not make sense given the actual outline content, call `declare_ambiguity(level=<partial|specific|confirmation>, ...)` with the supporting detail so Hugo can resolve it on the next turn.
+ 
+ ## Tools
+ 
+@@ -43,9 +43,9 @@ If the user's request does not make sense given the actual outline content, call
+ ### General tools
+ 
+ - `execution_error(violation, message)`
+-- `handle_ambiguity(**params)`
+-- `manage_memory(**params)`
+-- `call_flow_stack(action, details)`
++- `declare_ambiguity(**params)`
++- `read_scratchpad(**params)`
++- `read_flow_stack(details)`
+ 
+ ## Few-shot examples
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/release.md b/assistants/Hugo/backend/prompts/pex/flows/release.md
+index 4629922..972a7d7 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/release.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/release.md
+@@ -19,7 +19,7 @@ If `channel_status` returns `_success=False`, do NOT call `release_post` for tha
+ 
+ If `release_post` fails, surface the error in the output for that channel and continue with the remaining channels. Do not abort the whole flow.
+ 
+-An empty channel list is never ambiguous — it defaults to `['mt1t']`, the primary blog. Only call `handle_ambiguity(level='specific', metadata={'missing': 'channel'})` when the user named a channel you cannot match to a known one.
++An empty channel list is never ambiguous — it defaults to `['mt1t']`, the primary blog. Only call `declare_ambiguity(level='specific', metadata={'missing': 'channel'})` when the user named a channel you cannot match to a known one.
+ 
+ ## Tools
+ 
+@@ -32,9 +32,9 @@ An empty channel list is never ambiguous — it defaults to `['mt1t']`, the prim
+ ### General tools
+ 
+ - `execution_error(violation, message)` when a tool fails in a way that should surface as a policy-layer error artifact rather than a per-channel failure row.
+-- `handle_ambiguity(level, metadata)` when the user named a channel that does not match any known one. Never for an empty channel list — that defaults to `mt1t`.
+-- `manage_memory(action, key, value)` to read a per-channel token when the user has stored authentication preferences there.
+-- `call_flow_stack(action='read', details='flows')` to check whether another Publish flow (`schedule`, `cite`) is already queued behind this release, so the output notes what runs next.
++- `declare_ambiguity(level, metadata)` when the user named a channel that does not match any known one. Never for an empty channel list — that defaults to `mt1t`.
++- `read_scratchpad(action, key, value)` to read a per-channel token when the user has stored authentication preferences there.
++- `read_flow_stack(details='flows')` to check whether another Publish flow (`schedule`, `cite`) is already queued behind this release, so the output notes what runs next.
+ 
+ ## Output Shape
+ 
+@@ -133,7 +133,7 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. `Mastodon` matches none of the known channels (`mt1t`, `substack`, `linkedin`, `twitter`).
+-2. `handle_ambiguity(level='specific', metadata={'missing': 'channel'})`. Name the channels you can publish to, then end turn.
++2. `declare_ambiguity(level='specific', metadata={'missing': 'channel'})`. Name the channels you can publish to, then end turn.
+ 
+ ### Example 5: A schedule flow is queued behind the release
+ 
+@@ -142,7 +142,7 @@ Resolved Details:
+ - channel: ['Substack']
+ 
+ Trajectory:
+-1. `call_flow_stack(action='read', details='flows')` → a `schedule` flow is queued behind this release for the LinkedIn cross-post, so release only the named channel now.
++1. `read_flow_stack(details='flows')` → a `schedule` flow is queued behind this release for the LinkedIn cross-post, so release only the named channel now.
+ 2. `channel_status(post_id='4b90c1a2', platform='substack')` → ok.
+ 3. `release_post(post_id='4b90c1a2', platform='substack')` → `{_success: True, url: 'https://substack.com/p/migrating-a-monolith-to-services'}`.
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/rework.md b/assistants/Hugo/backend/prompts/pex/flows/rework.md
+index 7f6e21a..f912ba7 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/rework.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/rework.md
+@@ -17,7 +17,7 @@ This skill describes how to rework a blog post given user-supplied items: a list
+ ## Handling Ambiguity and Errors
+ 
+ - Vague guidance (no concrete spans, no numbered list): emit JSON with empty `changes` and `done`; describe the confusion in `summary`. Do not save anything.
+-- Wrong flow: if the request reads as a Write edit — sentence cleanup inside one paragraph, or trimming a few words/sentences — call `call_flow_stack(action='fallback', flow='write')`. The policy re-routes through the flow stack — you still emit the JSON with empty arrays and a `summary` line naming the right flow.
++- Wrong flow: if the request reads as a Write edit — sentence cleanup inside one paragraph, or trimming a few words/sentences — call `fallback_flow(flow='write')`. The policy re-routes through the flow stack — you still emit the JSON with empty arrays and a `summary` line naming the right flow.
+ - If `revise_content` fails twice, the policy emits a `failed_to_save` error artifact. Do not attempt a third call from the skill.
+ 
+ ## Tools
+@@ -31,8 +31,8 @@ This skill describes how to rework a blog post given user-supplied items: a list
+ ### General tools
+ 
+ - `execution_error(violation, message)` for hard failures after retries.
+-- `manage_memory(action, key, value)` to read the audit scratchpad when prior findings exist for this section.
+-- `call_flow_stack(action='read', details='flows')` to see what flow follows rework, which sometimes informs whether to leave breadcrumbs for a subsequent write.
++- `read_scratchpad(action, key, value)` to read the audit scratchpad when prior findings exist for this section.
++- `read_flow_stack(details='flows')` to see what flow follows rework, which sometimes informs whether to leave breadcrumbs for a subsequent write.
+ 
+ ## Output
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/schedule.md b/assistants/Hugo/backend/prompts/pex/flows/schedule.md
+index 473d2e3..71e5323 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/schedule.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/schedule.md
+@@ -15,7 +15,7 @@ If a channel fails its `channel_status` check, surface the failure for that chan
+ 
+ If `release_post` fails for a channel, retry ONCE; then `execution_error(violation='tool_error', message=<channel that failed>, failed_tool='release_post')`.
+ 
+-If `datetime.start` is in the past, call `handle_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation=<parsed date>)`.
++If `datetime.start` is in the past, call `declare_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation=<parsed date>)`.
+ 
+ ## Tools
+ 
+@@ -29,9 +29,9 @@ If `datetime.start` is in the past, call `handle_ambiguity(level='specific', met
+ ### General tools
+ 
+ - `execution_error(violation, message)`
+-- `handle_ambiguity(**params)`
+-- `manage_memory(**params)`
+-- `call_flow_stack(action, details)`
++- `declare_ambiguity(**params)`
++- `read_scratchpad(**params)`
++- `read_flow_stack(details)`
+ 
+ ## Few-shot examples
+ 
+@@ -77,7 +77,7 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. `datetime.start` is earlier than the current time, so the schedule cannot be set.
+-2. `handle_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation='June 30 at 2:00 PM UTC has already passed; give me a future time')`. End turn.
++2. `declare_ambiguity(level='specific', metadata={'missing': 'datetime', 'reason': 'invalid_value'}, observation='June 30 at 2:00 PM UTC has already passed; give me a future time')`. End turn.
+ 
+ ### Example 4: All channels
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/summarize.md b/assistants/Hugo/backend/prompts/pex/flows/summarize.md
+index f020f5c..2faa24d 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/summarize.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/summarize.md
+@@ -11,7 +11,7 @@ This skill produces a standalone summary paragraph for a post. The policy preloa
+ 
+ If the post body is empty or unreadable, call `execution_error(violation='empty_output', message='post body is empty')`.
+ 
+-If the user named a section that doesn't exist, call `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
++If the user named a section that doesn't exist, call `declare_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
+ 
+ ## Tools
+ 
+@@ -24,9 +24,9 @@ If the user named a section that doesn't exist, call `handle_ambiguity(level='sp
+ ### General tools
+ 
+ - `execution_error(violation, message)`
+-- `handle_ambiguity(**params)`
+-- `manage_memory(**params)`
+-- `call_flow_stack(action, details)`
++- `declare_ambiguity(**params)`
++- `read_scratchpad(**params)`
++- `read_flow_stack(details)`
+ 
+ ## Few-shot examples
+ 
+@@ -74,7 +74,7 @@ Resolved Details:
+ 
+ Trajectory:
+ 1. The preloaded outline lists Motivation, Keys, and Failure Modes, with no Retries section.
+-2. `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`. Name the sections that exist, then end turn.
++2. `declare_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`. Name the sections that exist, then end turn.
+ 
+ ### Example 5: Read a section for extra detail
+ 
+diff --git a/assistants/Hugo/backend/prompts/pex/flows/write.md b/assistants/Hugo/backend/prompts/pex/flows/write.md
+index 80cd82d..77fb85c 100644
+--- a/assistants/Hugo/backend/prompts/pex/flows/write.md
++++ b/assistants/Hugo/backend/prompts/pex/flows/write.md
+@@ -24,9 +24,9 @@ This skill edits a paragraph, sentence, or text snippet by rephrasing, adding, o
+ 
+ ## Handling Ambiguity and Errors
+ 
+-If the named span cannot be located within the section ("second paragraph" in a one-paragraph section), call `handle_ambiguity(level='specific', metadata={'missing': 'span', 'reason': 'invalid_value'})`.
++If the named span cannot be located within the section ("second paragraph" in a one-paragraph section), call `declare_ambiguity(level='specific', metadata={'missing': 'span', 'reason': 'invalid_value'})`.
+ 
+-**Default to CONFIRMATION when the user's direction is soft.** Soft directions name a goal but not specific edits — "flow better", "sound better", "clean it up", "punchier", "tighter", "smoother", "nicer". On a soft direction, do NOT act directly. Read the target span, decide on 2-3 concrete options that span the operation space (mix of edits, additions, removals as the prose invites), then call `handle_ambiguity(level='confirmation', metadata={'missing': 'edit_direction', 'question': '<concrete question listing 2-3 specific options the user can pick from>'})`. Don't anchor every option on the same operation — if the user asked for an addition, your options should include addition variants, not three flavors of trim.
++**Default to CONFIRMATION when the user's direction is soft.** Soft directions name a goal but not specific edits — "flow better", "sound better", "clean it up", "punchier", "tighter", "smoother", "nicer". On a soft direction, do NOT act directly. Read the target span, decide on 2-3 concrete options that span the operation space (mix of edits, additions, removals as the prose invites), then call `declare_ambiguity(level='confirmation', metadata={'missing': 'edit_direction', 'question': '<concrete question listing 2-3 specific options the user can pick from>'})`. Don't anchor every option on the same operation — if the user asked for an addition, your options should include addition variants, not three flavors of trim.
+ 
+ Edit DIRECTLY (skip confirmation) only when the user named a concrete operation — e.g. "cut sentence 3", "replace passive voice with active in the second sentence", "add a transition between sentences 1 and 2", "add a concluding sentence about scale". A specific op is one a reader could verify against the prose without reinterpreting intent.
+ 
+@@ -47,10 +47,10 @@ Trim/shorten-only and image replace/remove requests are handled here directly 
+ ### General tools
+ 
+ - `execution_error(violation, message)` for hard failures after retries.
+-- `handle_ambiguity(level, metadata)` for unclear or vague user intent.
+-- `manage_memory(action, key, value)` to read the scratchpad for prior findings
++- `declare_ambiguity(level, metadata)` for unclear or vague user intent.
++- `read_scratchpad(action, key, value)` to read the scratchpad for prior findings
+ - `coordinate_context(lookback)` to look at conversation history going back to the beginning
+-- `call_flow_stack(action='read', details='flows')` to see what other flows are on the stack
++- `read_flow_stack(details='flows')` to see what other flows are on the stack
+ 
+ ## Few-shot examples
+ 
+@@ -66,7 +66,7 @@ Trajectory:
+    - merge sentences 0-1 to drop a redundant transition (edit);
+    - flip passive in sentence 1 to active (edit);
+    - add a one-sentence hook at the start to set up the timeline (add).
+-3. `handle_ambiguity(level='confirmation', metadata={'missing': 'edit_direction', 'question': "Three options for flow: (1) merge sentences 0-1 to remove the redundant transition, (2) flip sentence 1's passive voice to active, (3) add a one-sentence hook at the start to set up the timeline. Pick any subset, or 'all three'."})`. End turn.
++3. `declare_ambiguity(level='confirmation', metadata={'missing': 'edit_direction', 'question': "Three options for flow: (1) merge sentences 0-1 to remove the redundant transition, (2) flip sentence 1's passive voice to active, (3) add a one-sentence hook at the start to set up the timeline. Pick any subset, or 'all three'."})`. End turn.
+ 
+ ### Example 2: Direct addition
+ 
+@@ -110,4 +110,4 @@ Resolved Details:
+ 
+ Trajectory: no tool calls
+ 
+-Final reply: call_flow_stack(action='fallback', details='rework')
++Final reply: fallback_flow(flow='rework')
+diff --git a/assistants/Hugo/schemas/tools.yaml b/assistants/Hugo/schemas/tools.yaml
+index 3cc59c4..01e2443 100644
+--- a/assistants/Hugo/schemas/tools.yaml
++++ b/assistants/Hugo/schemas/tools.yaml
+@@ -575,9 +575,9 @@ tools:
+     capabilities: {accesses_private_data: false, receives_untrusted_input: false, communicates_externally: false}
+ 
+   # -- FAQService -----------------------------------------------------------
+-  search_faqs:
+-    tool_id: search_faqs
+-    name: "Search FAQs"
++  search_documents:
++    tool_id: search_documents
++    name: "Search documents"
+     description: "Look up vetted FAQ entries about Hugo (capabilities, scope, privacy, channels, voice tooling). Returns the top matches ranked by relevance. Use for meta-questions about the assistant; use find_posts for the user's own blog content."
+     input_schema:
+       type: object
+diff --git a/assistants/Hugo/utils/evaluation_suite/_tests/mem_unit_tests.py b/assistants/Hugo/utils/evaluation_suite/_tests/mem_unit_tests.py
+index 87edc90..f7299cc 100644
+--- a/assistants/Hugo/utils/evaluation_suite/_tests/mem_unit_tests.py
++++ b/assistants/Hugo/utils/evaluation_suite/_tests/mem_unit_tests.py
+@@ -313,7 +313,7 @@ class TestBusinessContext:
+         from backend.components.business_context import BusinessContext
+         engineer = _FakeEngineer({'matches': [{'idx': 0, 'score': 0.92}]})
+         svc = BusinessContext(engineer)
+-        result = svc.search_faqs(query='what can it do', top_k=3)
++        result = svc.search_documents(query='what can it do', top_k=3)
+         assert result['_success'] is True
+         assert len(result['matches']) == 1
+         assert result['matches'][0]['question'] == 'What can Hugo do?'
+@@ -323,7 +323,7 @@ class TestBusinessContext:
+         # No faqs.json written — corpus loads empty.
+         from backend.components.business_context import BusinessContext
+         svc = BusinessContext(_FakeEngineer({'matches': []}))
+-        result = svc.search_faqs(query='anything')
++        result = svc.search_documents(query='anything')
+         assert result['_success'] is False
+         assert result['_error'] == 'empty_corpus'
+ 
+@@ -335,7 +335,7 @@ class TestBusinessContext:
+         engineer = _FakeEngineer({'matches': [{'idx': 0, 'score': 0.8},
+             {'idx': 99, 'score': 0.2}]})
+         svc = BusinessContext(engineer)
+-        result = svc.search_faqs(query='q')
++        result = svc.search_documents(query='q')
+         # Out-of-range idx (99) silently dropped; valid one kept.
+         assert len(result['matches']) == 1
+         assert result['matches'][0]['question'] == 'Q1'
+@@ -368,7 +368,7 @@ class TestWorldSessions:
+         world = World(minimal_config)
+         state = world.open_session('convo-42')
+         assert world.current_state() is state
+-        assert state.serialize_session() == _session_state().serialize_session()
++        assert state.read_state() == _session_state().read_state()
+ 
+     def test_reset_deletes_and_recreates_session_dir(self, sessions_dir, minimal_config):
+         world = World(minimal_config)
+@@ -503,9 +503,9 @@ class TestMessageList:
+                           stack=stack, flow_name='outline')
+         world = World(minimal_config)
+         world.open_session('convo-43')
+-        top = world.flow_stack.peek()
++        top = world.flow_stack.get_flow()
+         assert top.flow_type == 'outline' and top.status == 'Pending'
+-        assert top.flow_id == stack.peek().flow_id
++        assert top.flow_id == stack.get_flow().flow_id
+ 
+ 
+ # ═══════════════════════════════════════════════════════════════════
+@@ -533,14 +533,14 @@ class TestUserPreferences:
+         prefs = UserPreferences(minimal_config)
+         prefs.store_preference('verbosity', 'terse')
+         assert prefs.get_preference('verbosity') == 'terse'
+-        record = prefs.read_all()['verbosity']
++        record = prefs._preferences['verbosity']
+         assert record.endorsed is True and record.confidence == 1.0
+ 
+     def test_dict_stores_typed_record(self, minimal_config):
+         prefs = UserPreferences(minimal_config)
+         prefs.store_preference('tone', {'value': 'wry', 'endorsed': False,
+                                         'confidence': 0.6, 'triggers': ['humor']})
+-        record = prefs.read_all()['tone']
++        record = prefs._preferences['tone']
+         assert record.value == 'wry' and record.endorsed is False
+         assert record.confidence == 0.6 and record.triggers == ['humor']
+ 
+diff --git a/assistants/Hugo/utils/evaluation_suite/_tests/nlu_unit_tests.py b/assistants/Hugo/utils/evaluation_suite/_tests/nlu_unit_tests.py
+index f116516..72dd010 100644
+--- a/assistants/Hugo/utils/evaluation_suite/_tests/nlu_unit_tests.py
++++ b/assistants/Hugo/utils/evaluation_suite/_tests/nlu_unit_tests.py
+@@ -32,13 +32,55 @@ def nlu(minimal_config):
+     == 'action') is exercisable by default; tests that need an utterance turn override it."""
+     from backend.components.world import World
+     from backend.components.ambiguity_handler import AmbiguityHandler
++    from backend.components.memory_manager import MemoryManager
++    from backend.components.user_preferences import UserPreferences
++    from backend.components.business_context import BusinessContext
+     engineer = PromptEngineer(minimal_config)
+     ambiguity = AmbiguityHandler(minimal_config, engineer=engineer)
+     world = World(minimal_config)
+     world.context.add_turn('User', '', turn_type='action')
+-    return NLU(minimal_config, ambiguity, engineer, world)
+-
+-
++    memory = MemoryManager(world.context, UserPreferences(minimal_config), BusinessContext(engineer))
++    nlu = NLU(minimal_config, ambiguity, engineer, memory, world)
++    ambiguity.nlu = nlu  # recover() delegates to NLU
++    return nlu
++
++
++
++
++class TestAmbiguityHandler:
++    """The redesigned Ambiguity Handler surface: present() returns the level string, resolve()
++    takes an explanation, and recover() delegates to NLU's internal-resolution attempt."""
++
++    def test_present_returns_level_string(self, nlu):
++        nlu.ambiguity.recognize('specific', {'missing': 'x'})
++        assert nlu.ambiguity.present() == 'specific'
++        nlu.ambiguity.resolve()
++        assert nlu.ambiguity.present() == ''
++
++    def test_resolve_takes_explanation(self, nlu):
++        nlu.ambiguity.recognize('partial', {'missing': 'source'}, observation='which post?')
++        nlu.ambiguity.resolve('found in prefs')
++        assert nlu.ambiguity.level == '' and nlu.ambiguity.metadata == {}
++        assert nlu.ambiguity.observation == ''
++
++    def test_recover_resolves_from_preference(self, nlu, tmp_path):
++        nlu.scratchpad._scratchpad_path = tmp_path / 'scratchpad.jsonl'
++        nlu.memory.preferences.store_preference('channel', 'substack')
++        nlu.ambiguity.recognize('partial', {'missing': 'channel'})
++        result = nlu.ambiguity.recover()
++        assert result == {'recovery': 'substack'}
++        assert nlu.ambiguity.present() == ''  # resolved from memory, no user escalation
++        recovery = [e for e in nlu.scratchpad.read() if e.get('key') == 'recovery']
++        assert recovery[-1]['found'] == 'substack' and recovery[-1]['writer'] == 'nlu'
++
++    def test_recover_stays_pending_when_nothing_found(self, nlu, tmp_path):
++        nlu.scratchpad._scratchpad_path = tmp_path / 'scratchpad.jsonl'
++        nlu.ambiguity.recognize('partial', {'missing': 'channel'})
++        result = nlu.ambiguity.recover()
++        assert result == {'recovery': None}
++        assert nlu.ambiguity.present() == 'partial'  # nothing found — still pending
++        recovery = [e for e in nlu.scratchpad.read() if e.get('key') == 'recovery']
++        assert recovery[-1]['found'] is None  # the attempt is recorded either way
+ 
+ 
+ class TestEnsembleVoting:
+@@ -443,10 +485,10 @@ class TestSessionScratchpad:
+         assert [entry['finding'] for entry in entries] == ['first', 'second']
+         assert file_memory.size == 2
+ 
+-    def test_key_value_call_wraps_into_entry(self, file_memory):
+-        file_memory.write('repair', 'bad outline')
++    def test_entry_dict_is_stamped_and_appended(self, file_memory):
++        file_memory.write({'key': 'repair', 'note': 'bad outline'})
+         entries = file_memory.read()
+-        assert entries == [{'repair': 'bad outline', 'writer': 'orchestrator'}]
++        assert entries == [{'key': 'repair', 'note': 'bad outline', 'writer': 'orchestrator'}]
+ 
+     def test_clear_truncates_file(self, file_memory):
+         file_memory.write({'finding': 'gone soon'})
+@@ -538,10 +580,10 @@ class TestSessionStateFile:
+         state_file = tmp_path / 'state.json'
+         state.save(state_file)
+         reloaded = DialogueState.load(state_file)
+-        assert reloaded.serialize_session() == state.serialize_session()
++        assert reloaded.read_state() == state.read_state()
+ 
+     def test_document_blocks_and_grounding_parts(self):
+-        document = _session_state().serialize_session()
++        document = _session_state().read_state()
+         assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack', 'flags']
+         assert list(document['grounding']) == ['post', 'sec', 'snip', 'chl', 'ver']
+         assert document['session']['turn_count'] == 12
+@@ -619,7 +661,7 @@ class TestWriteStateOps:
+         state.write_state(path, 'fallback', stack=stack, flow_name='refine')
+         state.write_state(path, 'update', grounding={'post': 'p1'})
+         state.write_state(path, 'update_flow', stack=stack, status='Completed')
+-        state.write_state(path, 'pop_completed', stack=stack)
++        state.write_state(path, 'pop', stack=stack)
+ 
+         assert state.flow_stack == stack.to_list()
+         assert DialogueState.load(path).flow_stack == state.flow_stack
+@@ -666,7 +708,7 @@ class TestWriteStateOps:
+         stack = FlowStack({}, flow_classes=flow_classes)
+         state.write_state(path, 'stackon', stack=stack, flow_name='chat')
+         state.write_state(path, 'update_flow', stack=stack, status='Completed')
+-        state.write_state(path, 'pop_completed', stack=stack)
++        state.write_state(path, 'pop', stack=stack)
+         state.write_state(path, 'stackon', stack=stack, flow_name='find')
+         state.write_state(path, 'update_flow', stack=stack, status='Completed')
+         assert state.flow_stack[0]['status'] == 'Completed'
+diff --git a/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py b/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
+index edacc5d..6396247 100644
+--- a/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
++++ b/assistants/Hugo/utils/evaluation_suite/_tests/pex_unit_tests.py
+@@ -26,7 +26,8 @@ from backend.prompts.for_orchestrator import build_orchestrator_prompt
+ from schemas.config import load_config
+ from schemas.ontology import FLOW_ONTOLOGY
+ 
+-_HOT_PATH_TOOLS = ('manage_flows', 'understand', 'scratchpad', 'store_preference')
++_HOT_PATH_TOOLS = ('manage_flows', 'understand', 'append_to_scratchpad', 'store_preference',
++                   'ask_clarification_question', 'recover_from_ambiguity')
+ 
+ 
+ # ==============================================================================
+@@ -82,11 +83,12 @@ class TestOrchestratorToolDefs:
+         names = [tool['name'] for tool in mock_agent.pex.get_tools_for_orchestrator()]
+         for name in _HOT_PATH_TOOLS:
+             assert name in names
+-        for name in ('handle_ambiguity', 'coordinate_context', 'manage_memory'):
++        for name in ('coordinate_context', 'read_scratchpad'):  # borrowed from the component menu
+             assert name in names
+         for name in READ_ONLY_DOMAIN_TOOLS:
+             assert name in names, f'allowlisted read-only tool {name} missing'
+-        assert 'call_flow_stack' not in names  # retired on the orchestrator path
++        for name in ('handle_ambiguity', 'manage_memory', 'call_flow_stack'):
++            assert name not in names  # retired on the orchestrator path
+         writes = {'create_post', 'update_post', 'delete_post', 'revise_content', 'release_post'}
+         assert not writes & set(names)  # domain writes only via activate_flow
+ 
+@@ -113,7 +115,7 @@ class TestOrchestratorDispatch:
+         assert result['_success'] is True
+         assert result['state']['flow_stack'][0]['flow_name'] == 'outline'
+         assert (sessions_dir / 'wire-test' / 'state.json').exists()
+-        assert mock_agent.pex.flow_stack.peek().flow_type == 'outline'
++        assert mock_agent.pex.flow_stack.get_flow().flow_type == 'outline'
+ 
+     def test_manage_flows_pop_clears_the_stack(self, sessions_dir, mock_agent):
+         """`pop` removes Completed and Invalid flows all at once; the saved document shows it."""
+@@ -142,13 +144,14 @@ class TestOrchestratorDispatch:
+         assert result['_error'] == 'invalid_input'
+         assert "'source'" in result['_message']  # valid slots are listed for the retry
+ 
+-    def test_scratchpad_tool_routes_to_memory(self, mock_agent, tmp_path):
++    def test_read_and_append_scratchpad_tools(self, mock_agent, tmp_path):
++        """The split scratchpad tools: append_to_scratchpad stamps the writer and grows the pad;
++        read_scratchpad filters by writer."""
+         pex = mock_agent.pex
+         pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
+-        appended = pex._dispatch_tool('scratchpad',
+-                                      {'op': 'append', 'entry': {'finding': 'intro is weak'}})
++        appended = pex._dispatch_tool('append_to_scratchpad', {'entry': {'finding': 'intro is weak'}})
+         assert appended == {'_success': True, 'size': 1}
+-        result = pex._dispatch_tool('scratchpad', {'op': 'read', 'writer': 'orchestrator'})
++        result = pex._dispatch_tool('read_scratchpad', {'writer': 'orchestrator'})
+         assert result['entries'] == [{'finding': 'intro is weak', 'writer': 'orchestrator'}]
+ 
+     def test_understand_hint_is_deterministic_from_stack_top(self, mock_agent):
+@@ -172,6 +175,73 @@ class TestOrchestratorDispatch:
+ 
+ 
+ 
++class TestScopedToolSurface:
++    """The scoped tool surface (round 0.1): sub-agents declare_ambiguity + the three flat flow-stack
++    tools; the orchestrator asks/recovers; manage_memory is retired."""
++
++    def test_declare_ambiguity_tool_recognizes(self, mock_agent):
++        pex = mock_agent.pex
++        result = pex._dispatch_tool('declare_ambiguity',
++            {'level': 'partial', 'metadata': {'missing': 'source', 'entity': 'post'}})
++        assert result == {'_success': True}
++        assert pex.ambiguity.present() == 'partial'
++        bad = pex._dispatch_tool('declare_ambiguity',
++                                 {'level': 'general', 'metadata': {'missing': 'nope'}})
++        assert bad['_success'] is False and bad['_error'] == 'invalid_input'
++
++    def test_ask_clarification_question_tool(self, mock_agent):
++        pex = mock_agent.pex
++        none = pex._dispatch_tool('ask_clarification_question', {})
++        assert none['_success'] is False and none['_error'] == 'invalid_input'
++        pex.ambiguity.recognize('partial', {'missing': 'source', 'entity': 'post'})
++        result = pex._dispatch_tool('ask_clarification_question', {})
++        assert result['_success'] is True and result['question']
++
++    def test_recover_from_ambiguity_tool(self, mock_agent, tmp_path):
++        pex = mock_agent.pex
++        pex.scratchpad._scratchpad_path = tmp_path / 'scratch.jsonl'  # file-backed for recover
++        none = pex._dispatch_tool('recover_from_ambiguity', {})
++        assert none['_success'] is False and none['_error'] == 'invalid_input'
++        pex.memory.preferences.store_preference('channel', 'substack')
++        pex.ambiguity.recognize('partial', {'missing': 'channel'})
++        result = pex._dispatch_tool('recover_from_ambiguity', {})
++        assert result['_success'] is True and result['recovery'] == 'substack'
++        assert pex.ambiguity.present() == ''  # resolved internally, guarded by present()
++
++    def test_flow_stack_tools_replace_call_flow_stack(self, mock_agent):
++        pex = mock_agent.pex
++        pex.flow_stack.stackon('outline')
++        flows = pex._dispatch_tool('read_flow_stack', {'details': 'flows'})
++        assert flows['_success'] is True and flows['flows'][0]['flow_name'] == 'outline'
++        assert pex._dispatch_tool('stackon_flow', {'flow': 'compose'}) == \
++            {'_success': True, 'stacked': 'compose'}
++        assert pex._dispatch_tool('fallback_flow', {'flow': 'write'}) == \
++            {'_success': True, 'fell_back_to': 'write'}
++
++    def test_manage_memory_tool_is_gone(self, mock_agent):
++        pex = mock_agent.pex
++        orch_names = {tool['name'] for tool in pex.get_tools_for_orchestrator()}
++        comp_names = {tool['name'] for tool in pex._component_tool_definitions()}
++        assert 'manage_memory' not in orch_names and 'manage_memory' not in comp_names
++        result = pex._dispatch_tool('manage_memory', {'action': 'read_scratchpad'})
++        assert result['_success'] is False and 'Unknown tool' in result['_message']
++
++    def test_read_scratch_value_reads_flat_entry(self, mock_agent, tmp_path):
++        """A9 read side: a flat save_findings-shape write is read back whole, and the used-count
++        bump re-write shows the increment on a re-read."""
++        pex = mock_agent.pex
++        pex.scratchpad = SessionScratchpad(pex.config, scratchpad_path=str(tmp_path / 'scratch.jsonl'))
++        policy = pex._policies['Revise']
++        policy.scratchpad = pex.scratchpad
++        pex.scratchpad.write({'key': 'audit', 'used_count': 0, 'summary': 's', 'findings': []},
++                             writer='audit')
++        entry = policy._read_scratch_value('audit')
++        assert entry['summary'] == 's' and entry['used_count'] == 0
++        entry['used_count'] = entry.get('used_count', 0) + 1
++        pex.scratchpad.write(entry, writer='audit')
++        assert policy._read_scratch_value('audit')['used_count'] == 1
++
++
+ class _StubPolicy:
+     """Happy-path policy stand-in: marks the staged flow and returns a minimal artifact."""
+ 
+@@ -244,8 +314,8 @@ class TestDispatchFlow:
+         pex = wired.pex
+         pex._policies['Draft'] = _StubPolicy(pex.flow_stack, status='Active',
+                                              thoughts='Need a post first.')
+-        pex.ambiguity.declare('partial', metadata={'missing': 'source', 'entity': 'post'},
+-                              observation='Which post should I work on?')
++        pex.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'},
++                                observation='Which post should I work on?')
+         result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
+         assert result['_success'] is True
+         assert result['status'] == 'Active'
+@@ -1574,7 +1644,7 @@ def _build_flowstack_machine():
+         @rule()
+         def pop_completed(self):
+             before_completed = [e for e in self.stack._stack if e.status == 'Completed']
+-            self.state.write_state(self.state_file, 'pop_completed', stack=self.stack)
++            self.state.write_state(self.state_file, 'pop', stack=self.stack)
+             for entry in self.stack._stack:
+                 assert entry.status not in ('Completed', 'Invalid'), \
+                     f'pop_completed left a {entry.status} flow on the stack'
+@@ -1677,8 +1747,9 @@ from backend.prompts.for_pex import build_flow_system
+ 
+ _FLOW_DIR = _Path(__file__).resolve().parents[3] / 'backend' / 'prompts' / 'pex' / 'flows'
+ _TOOLS_YAML = _Path(__file__).resolve().parents[3] / 'schemas' / 'tools.yaml'
+-_COMPONENT_TOOLS = {'handle_ambiguity', 'coordinate_context', 'manage_memory',
+-                    'call_flow_stack', 'execution_error', 'save_findings'}
++_COMPONENT_TOOLS = {'declare_ambiguity', 'coordinate_context', 'read_scratchpad',
++                    'read_flow_stack', 'stackon_flow', 'fallback_flow',
++                    'execution_error', 'save_findings'}
+ 
+ 
+ def _flow_files():
+@@ -1760,7 +1831,7 @@ class TestSingleCallStackon:
+                                     {'op': 'stackon', 'flow_name': 'outline', 'active': True})
+         assert result['_success'] is True
+         assert ran['flow_name'] == 'outline'   # policy ran with no separate activate_flow call
+-        top = pex.flow_stack.peek()
++        top = pex.flow_stack.get_flow()
+         assert top.slots['source'].values[0]['post'] == 'p1'   # belief slots folded in
+ 
+     def test_stackon_without_active_only_stacks(self, sessions_dir, mock_agent, monkeypatch):
+@@ -1853,7 +1924,7 @@ class TestBeliefInjection:
+         pex = mock_agent.pex
+         state = mock_agent.world.current_state()
+         pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
+-        live = pex.flow_stack.peek()
++        live = pex.flow_stack.get_flow()
+         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
+         self._believe(state, 'release', intent='Publish')
+         note = pex.inject_belief_state()
+@@ -1867,7 +1938,7 @@ class TestBeliefInjection:
+         pex = mock_agent.pex
+         state = mock_agent.world.current_state()
+         pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
+-        live = pex.flow_stack.peek()
++        live = pex.flow_stack.get_flow()
+         live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
+         self._believe(state, 'refine', intent='Draft')
+         note = pex.inject_belief_state()

@@ -6,14 +6,11 @@ from datetime import datetime
 from threading import Thread
 
 from schemas.config import load_config
-from backend.modules.nlu import NLU
-from backend.modules.pex import PEX, _FALLBACK_MESSAGE, _NUDGE_MESSAGE, _WRAP_UP_MESSAGE
+from backend.modules.nlu import NaturalLanguageUnderstanding
+from backend.modules.pex import PolicyExecutor, _FALLBACK_MESSAGE, _NUDGE_MESSAGE, _WRAP_UP_MESSAGE
+from backend.components.memory_manager import MemoryExtensionModule
 from backend.components.task_artifact import TaskArtifact
 from backend.components.prompt_engineer import PromptEngineer
-from backend.components.ambiguity_handler import AmbiguityHandler
-from backend.components.memory_manager import MemoryManager
-from backend.components.user_preferences import UserPreferences
-from backend.components.business_context import BusinessContext
 from backend.components.world import World
 from backend.prompts.for_compressor import build_compression_prompt
 from backend.prompts.for_orchestrator import build_orchestrator_prompt
@@ -21,69 +18,73 @@ from backend.prompts.for_orchestrator import build_orchestrator_prompt
 log = logging.getLogger(__name__)
 
 # _FALLBACK_MESSAGE / _NUDGE_MESSAGE / _WRAP_UP_MESSAGE are re-exported from PEX (the acting loop
-# moved there) so callers importing them from backend.agent keep working.
+# moved there) so callers importing them from backend.assistant keep working.
 
 
-class Agent:
+class Assistant:
 
     def __init__(self, username: str):
         self.username = username
         self.config = load_config()
         self.conversation_id: str | None = None
-        # Orchestrator system prompt — built once per session, then frozen.
         self.system_prompt: str | None = None
 
-        self.world = World(self.config)
         self.engineer = PromptEngineer(self.config)
-        self.ambiguity = AmbiguityHandler(self.config, engineer=self.engineer)
-        self.preferences = UserPreferences(self.config)
-        self.business = BusinessContext(self.engineer)
-        self.memory = MemoryManager(self.world.context, self.preferences, self.business)
+        self.nlu = NaturalLanguageUnderstanding(self.config, self.engineer)
+        self.pex = PolicyExecutor(self.config, self.engineer)
+        self.mem = MemoryExtensionModule(self.config, self.engineer)
 
-        self.nlu = NLU(self.config, self.ambiguity, self.engineer, self.world)
-        self.pex = PEX(self.config, self.ambiguity, self.engineer, self.memory, self.world)
-        self.pex.nlu = self.nlu  # PEX re-consults NLU (contemplate) on policy-execution failures
+        self.world = World(self.config, self.nlu, self.pex, self.mem)
+        self.nlu.world = self.world
+        self.pex.world = self.world
+        self.mem.world = self.world
 
     def take_turn(self, text:str, dax:str|None=None, payload:dict|None=None) -> dict:
+        """ Process
+        0. Resolve any lingering ambguity, go straight to nlu.react() if user action was taken, then straight to step 3.
+        1. PEX takes System 1 attempt at classifying intent.
+        2a. If the intent is clear (Research, Draft, Revise, Publish), PEX proceeds.
+            NLU runs in parallel to detects the flow and derives the intent from the detected flow.
+            If the intents match, we just let PEX proceed. Otherwise, we must intervene at next hook point.
+        2b. If the intent is potentially complex (Plan, Clarify, Converse), then PEX awaits nlu.understand(op='read')
+        3. PEX agent decides the complexity of the request:
+            - basic: just call tools itself, or even skip tools and just respond
+            - intermediate: execute the policy corresponding to the detected flow
+                * continue to the next stage of an already active flow
+                * stackon a new flow, activated immediately, and start policy execution
+            - advanced: lean on the Workflow Planner to breakdown a complex task or kick-off a Pending flow
+        4. Pass the agent response back to the user
+        5. Store results into memory, MEM agent decides if it wants to promote any thoughts to L2 or L3
+        """
+        
         try:
-            return self._orchestrate(text, dax, payload)
+            self._ensure_session()
+            turn_type = 'action' if dax else 'utterance'
+            self.world.context.add_turn('User', text, turn_type=turn_type)
+            log.info('USER (%s): %s', turn_type, text)
+
+            if self.world.ambiguity.present:
+                self.world.ambiguity.resolve()
+
+            state = self.world.state
+            thread = None
+            if dax:                          # click or action+text: react fills from the dax/payload
+                self.nlu.understand(op='react', dax=dax, payload=payload)
+            elif state.grounding['post']:    # utterance, active entity: think in parallel with PEX
+                thread = Thread(target=self.nlu.understand,
+                                kwargs={'op': 'think', 'user_text': text, 'payload': payload})
+                thread.start()
+            else:                            # utterance, no active entity: think, awaited
+                self.nlu.understand(op='think', user_text=text, payload=payload)
+
+            utterance = self.pex.execute(state, self.world.context, self.system_prompt,
+                                            dax=dax, payload=payload, text=text, nlu_thread=thread)
+            if thread:
+                thread.join()                # join the parallel detection at the turn boundary
+            return self._epilogue(utterance)
         except Exception as ecp:  # noqa: BLE001 — top-level safety net
             log.exception('take_turn crashed: %s', ecp)
             return self._fallback_response("Something went wrong on my end. Please try again.")
-
-    # ── Orchestrator path ────────────────────────────────────────────────
-
-    def _orchestrate(self, text:str, dax:str|None, payload:dict|None) -> dict:
-        """One user turn as a Flow gate: deterministic PRE-HOOK, run NLU (which writes belief),
-        then PEX.execute() (the acting loop), deterministic POST-HOOK. The Assistant touches the
-        modules at exactly three points — NLU.understand(), PEX.execute(), and MEM (epilogue).
-        A click awaits react; an utterance with no active entity awaits think; an utterance with
-        an active entity runs think on a thread, truly in parallel with PEX.execute()."""
-        self._ensure_session()
-        turn_type = 'action' if dax else 'utterance'
-        self.world.context.add_turn('User', text, turn_type=turn_type)
-        log.info('USER (%s): %s', turn_type, text)
-        # A new user turn answers or supersedes last turn's pending question — clear it so a
-        # stale ambiguity can't leak into this turn's detection.
-        if self.ambiguity.present():
-            self.ambiguity.resolve()
-
-        state = self.world.current_state()
-        thread = None
-        if dax:                          # click or action+text: react fills from the dax/payload
-            self.nlu.understand(op='react', dax=dax, payload=payload)
-        elif state.grounding['post']:    # utterance, active entity: think in parallel with PEX
-            thread = Thread(target=self.nlu.understand,
-                            kwargs={'op': 'think', 'user_text': text, 'payload': payload})
-            thread.start()
-        else:                            # utterance, no active entity: think, awaited
-            self.nlu.understand(op='think', user_text=text, payload=payload)
-
-        utterance = self.pex.execute(state, self.world.context, self.system_prompt,
-                                     dax=dax, payload=payload, text=text, nlu_thread=thread)
-        if thread:
-            thread.join()                # join the parallel detection at the turn boundary
-        return self._epilogue(utterance)
 
     def _ensure_session(self):
         """Orchestrator session start. Runs once per session: bind a session dir when
@@ -97,18 +98,18 @@ class Agent:
         # The shared scratchpad (owned by the World; seen by NLU/PEX/policies) is bound to the
         # session's file so completion records land on disk.
         self.world.scratchpad._scratchpad_path = self.world.session_dir() / 'scratchpad.jsonl'
-        state = self.world.current_state()
+        state = self.world.state
         state.conversation_id = self.world.conversation_id
         state.username = self.username
         self.system_prompt = build_orchestrator_prompt(
-            self.engineer, self.memory, self.world.conversation_id, self.username,
+            self.engineer, self.mem, self.world.conversation_id, self.username,
             datetime.now().strftime('%Y-%m-%d'))
 
     def _epilogue(self, utterance:str) -> dict:
         """POST-HOOK: record the agent turn, persist the state file, run the compression
         check, build the frontend payload."""
         self.world.context.add_turn('Agent', utterance, turn_type='utterance')
-        state = self.world.current_state()
+        state = self.world.state
         state.turn_count += 1
         state.flow_stack = self.pex.flow_stack.to_list()  # refresh the saved copy, then save
         state.save(self.world.state_file())  # _ensure_session guarantees a bound session
@@ -149,7 +150,7 @@ class Agent:
 
     def reset(self):
         self.world.reset()
-        self.ambiguity.resolve()
+        self.world.ambiguity.resolve()
         self.conversation_id = None
         self.system_prompt = None  # next session rebuilds + refreezes
 

@@ -48,7 +48,7 @@ benign user's uploaded knowledge (MEM) outranks the agent's own predictions (NLU
 
 The main Agent runs every turn deterministically:
 
-**Pre-hook.** Append the user turn to the event stream, then gate NLU via **`understand(op=…)`** (the
+**Start** Append the user turn to the event stream, then gate NLU via **`understand(op=…)`** (the
 Assistant's only NLU entry point):
 - **Click** (a `dax`, no free text) → `await understand(op=react)` — fills required slots from the payload
   in code, no model loop.
@@ -68,7 +68,7 @@ Publish→`release`); the chat policy (Converse); relay ambiguity (Clarify); or 
 then loops until it chooses to stop. `keep_going` is just whether PEX runs another round, not a menu choice.
 Exhausting the round budget triggers one no-tools `_final_emit` wrap-up so completed work is never lost.
 
-**Post-hook.** Record the agent turn, persist `state.json`, run the compaction check,
+**End** Record the agent turn, persist `state.json`, run the compaction check,
 and deliver the turn's [Task Artifact](#task-artifact-flow): a processed version to the user (through the
 webserver) and a copy to MEM for long-term storage (through the World object).
 

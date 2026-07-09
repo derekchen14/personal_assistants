@@ -9,8 +9,13 @@ class FlowStack:
     def __init__(self, config, flow_classes:dict|None=None):
         self.config = config
         self._stack: list[BaseFlow] = []
-        self._max_depth: int = config.get('session', {}).get('max_flow_depth', 16)
+        self._max_depth: int = config['session']['max_flow_depth']
         self._flow_classes = flow_classes or {}
+
+    def reset(self):
+        """New session: clear in place (the no-rebind rule) — the one stack lives for the
+        Assistant's lifetime."""
+        self._stack.clear()
 
     # ── Public API ──────────────────────────────────────────────────
 
@@ -46,10 +51,6 @@ class FlowStack:
                 new_flow.fill_slot_values({slot_name: slot.to_dict()})
         return new_flow
 
-    def peek(self):
-        """Top of stack without removing."""
-        return self._stack[-1] if self._stack else None
-
     def get_flow(self, status:str|None=None):
         """Top-of-stack flow, optionally filtered by lifecycle status
         (e.g. 'Active', 'Pending')."""
@@ -72,7 +73,7 @@ class FlowStack:
         live = (FlowLifecycle.ACTIVE.value, FlowLifecycle.PENDING.value)
         return sum(1 for entry in self._stack if entry.status in live)
 
-    def pop_completed(self):
+    def pop(self):
         """Remove all Completed and Invalid flows. Returns only the
         Completed ones (Invalid are silently discarded). Activates the
         next Pending flow if one is now on top."""
@@ -106,7 +107,7 @@ class FlowStack:
         flow = cls()
         flow.flow_id = str(uuid4())[:8]
         # Pushed flows wait as Pending (the user 2026-07-03) — activation promotes to Active
-        # (activate_flow, or pop_completed surfacing the next top).
+        # (activate_flow, or pop surfacing the next top).
         flow.status = FlowLifecycle.PENDING.value
         self._stack.append(flow)
         return flow

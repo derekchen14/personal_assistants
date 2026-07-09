@@ -45,7 +45,7 @@ In contrast to semantic mis-understanding, there may also be systemic errors cau
 | `conflict` | Two slot values contradict |
 | `tool_error` | A deterministic tool returned `_success=False` |
 
-Use the `handle_ambiguity()` or `execution_error()` tools to signal such issues only after considering all other paths to resolution."""
+Use the `declare_ambiguity()` or `execution_error()` tools to signal such issues only after considering all other paths to resolution."""
 
 
 def build_flow_system(base_system:str, flow, flow_prompt:str|None) -> str:

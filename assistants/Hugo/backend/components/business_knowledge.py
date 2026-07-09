@@ -40,7 +40,7 @@ def build_rerank_prompt(query:str, candidates:list, top_k:int) -> str:
     )
 
 
-class BusinessContext:
+class BusinessKnowledge:
     """MEM's L3 tier — the single interface for business-knowledge retrieval, including FAQs. Loads
     the in-RAM corpus once and serves LLM-rerank queries through the engineer. The corpus is small
     enough (<50 entries) that whole-corpus rerank in one prompt is cheaper than embeddings. Reached
@@ -57,14 +57,14 @@ class BusinessContext:
         """Ingestion / promotion seam — append one record to the in-RAM corpus."""
         self._corpus.append(record)
 
-    def search_all(self, query:str, top_k:int=1000) -> list:
+    def _candidates(self, query:str, top_k:int=1000) -> list:
         """Candidate retrieval. Without a vector store this returns the whole corpus (capped at
         top_k); a real embedding search lands here, using the shared model in
         `backend.utilities.embeddings` (the same one the eval response scorer uses — one download,
         not several). # designed-not-built (vector retrieval)"""
         return self._corpus[:top_k]
 
-    def rerank(self, query:str, candidates:list, top_k:int=10) -> dict:
+    def _rerank(self, query:str, candidates:list, top_k:int=10) -> dict:
         """LLM rerank of the given candidates down to the top_k matches."""
         if not candidates:
             return {'_success': False, '_error': 'empty_corpus',
@@ -80,6 +80,6 @@ class BusinessContext:
                     'answer': entry['answer'], 'score': hit['score']})
         return {'_success': True, 'matches': matches}
 
-    def search_faqs(self, query:str, top_k:int=3) -> dict:
-        """FAQ shortcut — rerank the whole FAQ corpus. Keeps the existing tool contract."""
-        return self.rerank(query, self._corpus, top_k)
+    def search_documents(self, query:str, top_k:int=3) -> dict:
+        """Rerank the whole document corpus (FAQs are one document type)."""
+        return self._rerank(query, self._corpus, top_k)

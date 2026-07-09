@@ -17,7 +17,7 @@ This skill produces creative angles for a topic, or alternative phrasings for a 
 
 ## Error Handling
 
-If neither `topic` nor `source.snip` is filled, call `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`.
+If neither `topic` nor `source.snip` is filled, call `declare_ambiguity(level='specific', metadata={'missing': 'topic'})`.
 
 Brainstorming is tolerant of tool gaps — if `read_section` or `find_posts` fails, fall back to LLM-only ideation based on the topic. Do NOT call `execution_error`.
 
@@ -33,9 +33,9 @@ Brainstorming is tolerant of tool gaps — if `read_section` or `find_posts` fai
 ### General tools
 
 - `execution_error(violation, message)`
-- `handle_ambiguity(**params)`
-- `manage_memory(**params)`
-- `call_flow_stack(action, details)`
+- `declare_ambiguity(**params)`
+- `read_scratchpad(**params)`
+- `read_flow_stack(details)`
 
 ## Output
 
@@ -126,7 +126,7 @@ Resolved Details:
 
 Trajectory:
 1. Neither `topic` nor `source.snip` is present in the resolved details.
-2. `handle_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what to brainstorm about, then end turn.
+2. `declare_ambiguity(level='specific', metadata={'missing': 'topic'})`. Ask what to brainstorm about, then end turn.
 
 ### Example 5: Topic seeded by a saved note
 

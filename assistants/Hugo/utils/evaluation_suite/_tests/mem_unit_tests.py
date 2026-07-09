@@ -12,8 +12,8 @@ import pytest
 
 from backend.components.world import World
 from backend.components.user_preferences import UserPreferences
-from backend.components.business_context import BusinessContext
-from backend.components.memory_manager import MemoryManager
+from backend.components.business_documents import BusinessDocuments
+from backend.components.memory_manager import MEM
 from backend.components.context_coordinator import ContextCoordinator
 from backend.prompts.for_compressor import SUMMARY_PREFIX
 
@@ -55,19 +55,19 @@ def _script(agent, responses):
 
 
 
-class TestMemoryManagerFacade:
+class TestMEMFacade:
     """The MEM facade delegates each read skill to its tier (recap→L1, recall→L2, retrieve→L3)."""
 
     def test_recall_returns_stored_preferences(self, minimal_config):
         prefs = UserPreferences(minimal_config)
         prefs.store_preference('tone', 'casual')
-        memory = MemoryManager(None, prefs, None)
+        memory = MEM(None, prefs, None)
         assert memory.recall('tone') == {'tone': 'casual'}
 
     def test_retrieve_faq_shortcut(self, minimal_config):
-        business = BusinessContext(_FakeEngineer({'matches': [{'idx': 0, 'score': 0.9}]}))
+        business = BusinessDocuments(_FakeEngineer({'matches': [{'idx': 0, 'score': 0.9}]}))
         business._corpus = [{'question': 'What is X?', 'answer': 'X is Y.'}]
-        memory = MemoryManager(None, None, business)
+        memory = MEM(None, None, business)
         result = memory.retrieve('what is x', documents=['faq'])
         assert result['_success'] is True
         assert result['matches'][0]['question'] == 'What is X?'
@@ -75,7 +75,7 @@ class TestMemoryManagerFacade:
     def test_recap_returns_recent_history(self, minimal_config):
         world = World(minimal_config)
         world.context.add_turn('User', 'draft a post about otters', 'utterance')
-        memory = MemoryManager(world.context, None, None)
+        memory = MEM(world.context, None, None)
         assert 'otters' in memory.recap()
 
 
@@ -304,16 +304,16 @@ def tmp_faq_db(tmp_db):
 
 
 
-class TestBusinessContext:
+class TestBusinessDocuments:
     def test_search_returns_top_matches(self, tmp_faq_db):
         (tmp_faq_db / 'faqs.json').write_text(json.dumps([
             {'question': 'What can Hugo do?', 'answer': 'Help write blog posts.', 'tags': ['cap']},
             {'question': 'Who built Hugo?', 'answer': 'Soleda.', 'tags': ['origin']},
         ]))
-        from backend.components.business_context import BusinessContext
+        from backend.components.business_documents import BusinessDocuments
         engineer = _FakeEngineer({'matches': [{'idx': 0, 'score': 0.92}]})
-        svc = BusinessContext(engineer)
-        result = svc.search_faqs(query='what can it do', top_k=3)
+        svc = BusinessDocuments(engineer)
+        result = svc.search_documents(query='what can it do', top_k=3)
         assert result['_success'] is True
         assert len(result['matches']) == 1
         assert result['matches'][0]['question'] == 'What can Hugo do?'
@@ -321,9 +321,9 @@ class TestBusinessContext:
 
     def test_search_empty_corpus(self, tmp_faq_db):
         # No faqs.json written — corpus loads empty.
-        from backend.components.business_context import BusinessContext
-        svc = BusinessContext(_FakeEngineer({'matches': []}))
-        result = svc.search_faqs(query='anything')
+        from backend.components.business_documents import BusinessDocuments
+        svc = BusinessDocuments(_FakeEngineer({'matches': []}))
+        result = svc.search_documents(query='anything')
         assert result['_success'] is False
         assert result['_error'] == 'empty_corpus'
 
@@ -331,11 +331,11 @@ class TestBusinessContext:
         (tmp_faq_db / 'faqs.json').write_text(json.dumps([
             {'question': 'Q1', 'answer': 'A1', 'tags': []},
         ]))
-        from backend.components.business_context import BusinessContext
+        from backend.components.business_documents import BusinessDocuments
         engineer = _FakeEngineer({'matches': [{'idx': 0, 'score': 0.8},
             {'idx': 99, 'score': 0.2}]})
-        svc = BusinessContext(engineer)
-        result = svc.search_faqs(query='q')
+        svc = BusinessDocuments(engineer)
+        result = svc.search_documents(query='q')
         # Out-of-range idx (99) silently dropped; valid one kept.
         assert len(result['matches']) == 1
         assert result['matches'][0]['question'] == 'Q1'
@@ -346,7 +346,7 @@ class TestBusinessContext:
 @pytest.fixture
 def session_config(minimal_config):
     config = dict(minimal_config)
-    config['session'] = {'persistence': {'max_sessions': 2}}
+    config['session'] = {'max_flow_depth': 16, 'persistence': {'max_sessions': 2}}
     return MappingProxyType(config)
 
 
@@ -368,7 +368,7 @@ class TestWorldSessions:
         world = World(minimal_config)
         state = world.open_session('convo-42')
         assert world.current_state() is state
-        assert state.serialize_session() == _session_state().serialize_session()
+        assert state.read_state() == _session_state().read_state()
 
     def test_reset_deletes_and_recreates_session_dir(self, sessions_dir, minimal_config):
         world = World(minimal_config)
@@ -495,7 +495,7 @@ class TestMessageList:
         assert world.context.messages == _tool_call_messages()
 
     def test_open_session_rebuilds_flow_stack(self, sessions_dir, minimal_config):
-        stack = FlowStack({}, flow_classes=flow_classes)
+        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
         state = DialogueState(intent='Draft', dax=None, turn_count=1)
         state.conversation_id = 'convo-43'
         (sessions_dir / 'convo-43').mkdir(parents=True)
@@ -503,9 +503,9 @@ class TestMessageList:
                           stack=stack, flow_name='outline')
         world = World(minimal_config)
         world.open_session('convo-43')
-        top = world.flow_stack.peek()
+        top = world.flow_stack.get_flow()
         assert top.flow_type == 'outline' and top.status == 'Pending'
-        assert top.flow_id == stack.peek().flow_id
+        assert top.flow_id == stack.get_flow().flow_id
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -533,14 +533,14 @@ class TestUserPreferences:
         prefs = UserPreferences(minimal_config)
         prefs.store_preference('verbosity', 'terse')
         assert prefs.get_preference('verbosity') == 'terse'
-        record = prefs.read_all()['verbosity']
+        record = prefs._preferences['verbosity']
         assert record.endorsed is True and record.confidence == 1.0
 
     def test_dict_stores_typed_record(self, minimal_config):
         prefs = UserPreferences(minimal_config)
         prefs.store_preference('tone', {'value': 'wry', 'endorsed': False,
                                         'confidence': 0.6, 'triggers': ['humor']})
-        record = prefs.read_all()['tone']
+        record = prefs._preferences['tone']
         assert record.value == 'wry' and record.endorsed is False
         assert record.confidence == 0.6 and record.triggers == ['humor']
 

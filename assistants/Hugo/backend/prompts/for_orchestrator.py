@@ -86,13 +86,15 @@ TOOL_POLICY = (
     'was already forced (old flow dropped as Invalid, NLU\'s flow swapped in as Active), run '
     'that flow with `manage_flows` op="activate".\n'
     '**The commit rule.** For any Research / Draft / Revise / Publish turn, the turn is not done '
-    'until a flow has run via `manage_flows` (or you declared ambiguity with `handle_ambiguity`). '
-    'A plain-text reply with no flow run and no declared ambiguity is a failed turn. Reading '
-    'metadata is not doing the task — running the flow is.\n'
+    'until a flow has run via `manage_flows`, or a dispatched flow returned a clarification you '
+    'relayed to the user. A plain-text reply with no flow run and no relayed clarification is a '
+    'failed turn. Reading metadata is not doing the task — running the flow is.\n'
     '**Ask vs. proceed.** When the detection is confident, proceed with the '
     'stack-on recipe below. When confidence is low, the top candidates are close, or a required '
-    'slot is missing or contradictory, do not guess — use `handle_ambiguity` to declare the '
-    'ambiguity and ask the user. AmbiguityHandler owns levels and escalation bookkeeping; you '
+    'slot is missing or contradictory, do not guess. A dispatched flow that stalls returns a '
+    '`question` — relay it to the user verbatim. Before escalating, call `recover_from_ambiguity` '
+    'to let NLU resolve it internally from memory, or `ask_clarification_question` to have NLU '
+    'author the question. AmbiguityHandler owns levels and escalation bookkeeping; you '
     'own the ask-vs-proceed decision. An explicit imperative ("Publish the post", "Delete that '
     'section") IS the authorization — dispatch it; never ask for re-confirmation, and never '
     'block a new command on unrelated pending flows or earlier suggestions the user left '
@@ -110,8 +112,8 @@ TOOL_POLICY = (
     'the resolved flow.\n'
     '**Completion records.** A flow that completes returns `{flow, summary, metadata}` — its '
     'completion record, also appended to the scratchpad. Before chaining a dependent flow, read '
-    'earlier records with `scratchpad` op="read" (keys=["flow", "summary"]). Persist your own '
-    'findings worth keeping with `scratchpad` op="append"; authorship is stamped by code — never '
+    'earlier records with `read_scratchpad` (keys=["flow", "summary"]). Persist your own '
+    'findings worth keeping with `append_to_scratchpad`; authorship is stamped by code — never '
     'write a `writer` key yourself.\n'
     '**Read-only domain tools (an exception, not a menu).** `find_posts`, `read_metadata`, '
     '`read_section`, `search_notes`, `list_channels`, `channel_status` may be called directly, '
@@ -223,7 +225,7 @@ def _render_preferences(memory) -> str:
     body = memory.preferences.render()
     if not body:
         return ('## User Preferences\n\n'
-                'No preferences recorded yet. Promote durable ones via `manage_memory`.')
+                'No preferences recorded yet. Promote durable ones via `store_preference`.')
     lines = ['## User Preferences', '',
              'L2 snapshot frozen at session start; mid-session writes apply next session.', '',
              body]

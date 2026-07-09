@@ -24,9 +24,9 @@ This skill edits a paragraph, sentence, or text snippet by rephrasing, adding, o
 
 ## Handling Ambiguity and Errors
 
-If the named span cannot be located within the section ("second paragraph" in a one-paragraph section), call `handle_ambiguity(level='specific', metadata={'missing': 'span', 'reason': 'invalid_value'})`.
+If the named span cannot be located within the section ("second paragraph" in a one-paragraph section), call `declare_ambiguity(level='specific', metadata={'missing': 'span', 'reason': 'invalid_value'})`.
 
-**Default to CONFIRMATION when the user's direction is soft.** Soft directions name a goal but not specific edits — "flow better", "sound better", "clean it up", "punchier", "tighter", "smoother", "nicer". On a soft direction, do NOT act directly. Read the target span, decide on 2-3 concrete options that span the operation space (mix of edits, additions, removals as the prose invites), then call `handle_ambiguity(level='confirmation', metadata={'missing': 'edit_direction', 'question': '<concrete question listing 2-3 specific options the user can pick from>'})`. Don't anchor every option on the same operation — if the user asked for an addition, your options should include addition variants, not three flavors of trim.
+**Default to CONFIRMATION when the user's direction is soft.** Soft directions name a goal but not specific edits — "flow better", "sound better", "clean it up", "punchier", "tighter", "smoother", "nicer". On a soft direction, do NOT act directly. Read the target span, decide on 2-3 concrete options that span the operation space (mix of edits, additions, removals as the prose invites), then call `declare_ambiguity(level='confirmation', metadata={'missing': 'edit_direction', 'question': '<concrete question listing 2-3 specific options the user can pick from>'})`. Don't anchor every option on the same operation — if the user asked for an addition, your options should include addition variants, not three flavors of trim.
 
 Edit DIRECTLY (skip confirmation) only when the user named a concrete operation — e.g. "cut sentence 3", "replace passive voice with active in the second sentence", "add a transition between sentences 1 and 2", "add a concluding sentence about scale". A specific op is one a reader could verify against the prose without reinterpreting intent.
 
@@ -47,10 +47,10 @@ Trim/shorten-only and image replace/remove requests are handled here directly �
 ### General tools
 
 - `execution_error(violation, message)` for hard failures after retries.
-- `handle_ambiguity(level, metadata)` for unclear or vague user intent.
-- `manage_memory(action, key, value)` to read the scratchpad for prior findings
+- `declare_ambiguity(level, metadata)` for unclear or vague user intent.
+- `read_scratchpad(action, key, value)` to read the scratchpad for prior findings
 - `coordinate_context(lookback)` to look at conversation history going back to the beginning
-- `call_flow_stack(action='read', details='flows')` to see what other flows are on the stack
+- `read_flow_stack(details='flows')` to see what other flows are on the stack
 
 ## Few-shot examples
 
@@ -66,7 +66,7 @@ Trajectory:
    - merge sentences 0-1 to drop a redundant transition (edit);
    - flip passive in sentence 1 to active (edit);
    - add a one-sentence hook at the start to set up the timeline (add).
-3. `handle_ambiguity(level='confirmation', metadata={'missing': 'edit_direction', 'question': "Three options for flow: (1) merge sentences 0-1 to remove the redundant transition, (2) flip sentence 1's passive voice to active, (3) add a one-sentence hook at the start to set up the timeline. Pick any subset, or 'all three'."})`. End turn.
+3. `declare_ambiguity(level='confirmation', metadata={'missing': 'edit_direction', 'question': "Three options for flow: (1) merge sentences 0-1 to remove the redundant transition, (2) flip sentence 1's passive voice to active, (3) add a one-sentence hook at the start to set up the timeline. Pick any subset, or 'all three'."})`. End turn.
 
 ### Example 2: Direct addition
 
@@ -110,4 +110,4 @@ Resolved Details:
 
 Trajectory: no tool calls
 
-Final reply: call_flow_stack(action='fallback', details='rework')
+Final reply: fallback_flow(flow='rework')

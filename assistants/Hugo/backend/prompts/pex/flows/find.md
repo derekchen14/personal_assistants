@@ -13,7 +13,7 @@ This skill narrates a find result. The policy has already expanded the user's qu
 
 ## Error Handling
 
-If `Items` is empty AND no query was provided, call `handle_ambiguity(level='specific', metadata={'missing': 'query'})` — the user needs to say what to search for.
+If `Items` is empty AND no query was provided, call `declare_ambiguity(level='specific', metadata={'missing': 'query'})` — the user needs to say what to search for.
 
 If the policy's `find_posts` failed (indicated by a missing or malformed `Items` block), call `execution_error(violation='tool_error', message='find_posts upstream failure')`.
 
@@ -26,9 +26,9 @@ If the policy's `find_posts` failed (indicated by a missing or malformed `Items`
 ### General tools
 
 - `execution_error(violation, message)`
-- `handle_ambiguity(**params)`
-- `manage_memory(**params)`
-- `call_flow_stack(action, details)`
+- `declare_ambiguity(**params)`
+- `read_scratchpad(**params)`
+- `read_flow_stack(details)`
 
 ## Few-shot examples
 
@@ -94,4 +94,4 @@ Resolved Details:
 
 Trajectory:
 1. Nothing came back and no search term was given.
-2. `handle_ambiguity(level='specific', metadata={'missing': 'query'})`. Ask what to search for, then end turn.
+2. `declare_ambiguity(level='specific', metadata={'missing': 'query'})`. Ask what to search for, then end turn.

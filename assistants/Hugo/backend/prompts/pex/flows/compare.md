@@ -18,11 +18,11 @@ This skill narrates a side-by-side comparison of two posts. The policy resolves 
 
 ## Error Handling
 
-If only one post resolved (the user named one or none could be located), call `handle_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'post'})`.
+If only one post resolved (the user named one or none could be located), call `declare_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'post'})`.
 
 If a tool call fails, fall back to a prose-only narration based on whatever data you already have. Do NOT call `execution_error` — the comparison is still useful even with partial data.
 
-If the section the user named doesn't exist on either post, call `handle_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
+If the section the user named doesn't exist on either post, call `declare_ambiguity(level='specific', metadata={'missing': 'section', 'reason': 'invalid_value'})`.
 
 ## Tools
 
@@ -36,9 +36,9 @@ If the section the user named doesn't exist on either post, call `handle_ambigui
 ### General tools
 
 - `execution_error(violation, message)`
-- `handle_ambiguity(**params)`
-- `manage_memory(**params)`
-- `call_flow_stack(action, details)`
+- `declare_ambiguity(**params)`
+- `read_scratchpad(**params)`
+- `read_flow_stack(details)`
 
 ## Few-shot examples
 

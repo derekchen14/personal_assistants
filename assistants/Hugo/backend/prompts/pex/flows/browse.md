@@ -12,7 +12,7 @@ This skill narrates a browse result. The policy has already called `find_posts` 
 
 ## Error Handling
 
-If `Items` is empty AND no tags were provided, call `handle_ambiguity(level='specific', metadata={'missing': 'tags'})` — the user needs to specify what to browse for.
+If `Items` is empty AND no tags were provided, call `declare_ambiguity(level='specific', metadata={'missing': 'tags'})` — the user needs to specify what to browse for.
 
 If the policy's `find_posts` failed (indicated by a missing or malformed `Items` block), call `execution_error(violation='tool_error', message='find_posts upstream failure')`.
 
@@ -25,9 +25,9 @@ If the policy's `find_posts` failed (indicated by a missing or malformed `Items`
 ### General tools
 
 - `execution_error(violation, message)`
-- `handle_ambiguity(**params)`
-- `manage_memory(**params)`
-- `call_flow_stack(action, details)`
+- `declare_ambiguity(**params)`
+- `read_scratchpad(**params)`
+- `read_flow_stack(details)`
 
 ## Few-shot examples
 
@@ -91,4 +91,4 @@ Resolved Details:
 
 Trajectory:
 1. No tags were provided and nothing came back to narrate.
-2. `handle_ambiguity(level='specific', metadata={'missing': 'tags'})`. Ask what to browse for, then end turn.
+2. `declare_ambiguity(level='specific', metadata={'missing': 'tags'})`. Ask what to browse for, then end turn.

@@ -32,13 +32,55 @@ def nlu(minimal_config):
     == 'action') is exercisable by default; tests that need an utterance turn override it."""
     from backend.components.world import World
     from backend.components.ambiguity_handler import AmbiguityHandler
+    from backend.components.memory_manager import MEM
+    from backend.components.user_preferences import UserPreferences
+    from backend.components.business_documents import BusinessDocuments
     engineer = PromptEngineer(minimal_config)
     ambiguity = AmbiguityHandler(minimal_config, engineer=engineer)
     world = World(minimal_config)
     world.context.add_turn('User', '', turn_type='action')
-    return NLU(minimal_config, ambiguity, engineer, world)
+    memory = MEM(world.context, UserPreferences(minimal_config), BusinessDocuments(engineer))
+    nlu = NLU(minimal_config, ambiguity, engineer, memory, world)
+    ambiguity.nlu = nlu  # recover() delegates to NLU
+    return nlu
 
 
+
+
+class TestAmbiguityHandler:
+    """The redesigned Ambiguity Handler surface: present() returns the level string, resolve()
+    takes an explanation, and recover() delegates to NLU's internal-resolution attempt."""
+
+    def test_present_returns_level_string(self, nlu):
+        nlu.ambiguity.recognize('specific', {'missing': 'x'})
+        assert nlu.ambiguity.present() == 'specific'
+        nlu.ambiguity.resolve()
+        assert nlu.ambiguity.present() == ''
+
+    def test_resolve_takes_explanation(self, nlu):
+        nlu.ambiguity.recognize('partial', {'missing': 'source'}, observation='which post?')
+        nlu.ambiguity.resolve('found in prefs')
+        assert nlu.ambiguity.level == '' and nlu.ambiguity.metadata == {}
+        assert nlu.ambiguity.observation == ''
+
+    def test_recover_resolves_from_preference(self, nlu, tmp_path):
+        nlu.scratchpad._scratchpad_path = tmp_path / 'scratchpad.jsonl'
+        nlu.memory.preferences.store_preference('channel', 'substack')
+        nlu.ambiguity.recognize('partial', {'missing': 'channel'})
+        result = nlu.ambiguity.recover()
+        assert result == {'recovery': 'substack'}
+        assert nlu.ambiguity.present() == ''  # resolved from memory, no user escalation
+        recovery = [e for e in nlu.scratchpad.read() if e.get('key') == 'recovery']
+        assert recovery[-1]['found'] == 'substack' and recovery[-1]['writer'] == 'nlu'
+
+    def test_recover_stays_pending_when_nothing_found(self, nlu, tmp_path):
+        nlu.scratchpad._scratchpad_path = tmp_path / 'scratchpad.jsonl'
+        nlu.ambiguity.recognize('partial', {'missing': 'channel'})
+        result = nlu.ambiguity.recover()
+        assert result == {'recovery': None}
+        assert nlu.ambiguity.present() == 'partial'  # nothing found — still pending
+        recovery = [e for e in nlu.scratchpad.read() if e.get('key') == 'recovery']
+        assert recovery[-1]['found'] is None  # the attempt is recorded either way
 
 
 class TestEnsembleVoting:
@@ -443,10 +485,10 @@ class TestSessionScratchpad:
         assert [entry['finding'] for entry in entries] == ['first', 'second']
         assert file_memory.size == 2
 
-    def test_key_value_call_wraps_into_entry(self, file_memory):
-        file_memory.write('repair', 'bad outline')
+    def test_entry_dict_is_stamped_and_appended(self, file_memory):
+        file_memory.write({'key': 'repair', 'note': 'bad outline'})
         entries = file_memory.read()
-        assert entries == [{'repair': 'bad outline', 'writer': 'orchestrator'}]
+        assert entries == [{'key': 'repair', 'note': 'bad outline', 'writer': 'orchestrator'}]
 
     def test_clear_truncates_file(self, file_memory):
         file_memory.write({'finding': 'gone soon'})
@@ -538,10 +580,10 @@ class TestSessionStateFile:
         state_file = tmp_path / 'state.json'
         state.save(state_file)
         reloaded = DialogueState.load(state_file)
-        assert reloaded.serialize_session() == state.serialize_session()
+        assert reloaded.read_state() == state.read_state()
 
     def test_document_blocks_and_grounding_parts(self):
-        document = _session_state().serialize_session()
+        document = _session_state().read_state()
         assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack', 'flags']
         assert list(document['grounding']) == ['post', 'sec', 'snip', 'chl', 'ver']
         assert document['session']['turn_count'] == 12
@@ -610,7 +652,7 @@ class TestWriteStateOps:
         saved copy and the file in step with the one flow stack."""
         path = tmp_path / 'state.json'
         state = _ops_state()
-        stack = FlowStack({}, flow_classes=flow_classes)
+        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
 
         state.write_state(path, 'stackon', stack=stack, flow_name='outline')
         state.write_state(path, 'update_flow', stack=stack, slots={'source': [{'post': 'p1'}]},
@@ -619,7 +661,7 @@ class TestWriteStateOps:
         state.write_state(path, 'fallback', stack=stack, flow_name='refine')
         state.write_state(path, 'update', grounding={'post': 'p1'})
         state.write_state(path, 'update_flow', stack=stack, status='Completed')
-        state.write_state(path, 'pop_completed', stack=stack)
+        state.write_state(path, 'pop', stack=stack)
 
         assert state.flow_stack == stack.to_list()
         assert DialogueState.load(path).flow_stack == state.flow_stack
@@ -627,7 +669,7 @@ class TestWriteStateOps:
     def test_grounding_validation_raises_on_ungrounded_completion(self, tmp_path):
         path = tmp_path / 'state.json'
         state = _ops_state()
-        stack = FlowStack({}, flow_classes=flow_classes)
+        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
         state.write_state(path, 'stackon', stack=stack, flow_name='outline')
         with pytest.raises(ValueError, match='grounding.post is empty'):
             state.write_state(path, 'update_flow', stack=stack, status='Completed')
@@ -637,7 +679,7 @@ class TestWriteStateOps:
     def test_grounding_validation_passes_once_post_is_set(self, tmp_path):
         path = tmp_path / 'state.json'
         state = _ops_state()
-        stack = FlowStack({}, flow_classes=flow_classes)
+        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
         state.write_state(path, 'stackon', stack=stack, flow_name='outline')
         state.write_state(path, 'update', grounding={'post': 'p1'})
         state.write_state(path, 'update_flow', stack=stack, status='Completed')
@@ -648,7 +690,7 @@ class TestWriteStateOps:
         entities, and a bare item in place of a list, all coerce instead of crashing."""
         path = tmp_path / 'state.json'
         state = _ops_state()
-        stack = FlowStack({}, flow_classes=flow_classes)
+        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
         state.write_state(path, 'stackon', stack=stack, flow_name='outline')
         state.write_state(path, 'update_flow', stack=stack,
                           slots={'sections': ['Motivation', 'Process'], 'source': 'p1',
@@ -663,10 +705,10 @@ class TestWriteStateOps:
         mirroring the old PEX post-hook's slot-type filter."""
         path = tmp_path / 'state.json'
         state = _ops_state()
-        stack = FlowStack({}, flow_classes=flow_classes)
+        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
         state.write_state(path, 'stackon', stack=stack, flow_name='chat')
         state.write_state(path, 'update_flow', stack=stack, status='Completed')
-        state.write_state(path, 'pop_completed', stack=stack)
+        state.write_state(path, 'pop', stack=stack)
         state.write_state(path, 'stackon', stack=stack, flow_name='find')
         state.write_state(path, 'update_flow', stack=stack, status='Completed')
         assert state.flow_stack[0]['status'] == 'Completed'

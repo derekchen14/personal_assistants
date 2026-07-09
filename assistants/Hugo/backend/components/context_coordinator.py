@@ -292,20 +292,12 @@ class ContextCoordinator:
                 turn.add_revision(revised)
                 return
 
-    def setbookmark(self, speaker:str=''):
+    def set_bookmark(self, speaker:str=''):
         """Set bookmark to the most recent turn_id, optionally filtered by speaker."""
         for turn in reversed(self._history):
             if not speaker or turn.speaker == speaker:
                 self.bookmark = turn.turn_id
                 return
-
-    def find_turn_by_id(self, turn_id:int, clearbookmark:bool=False):
-        for turn in self._history:
-            if turn.turn_id == turn_id:
-                if clearbookmark:
-                    self.bookmark = None
-                return turn
-        return None
 
     def contains_keyword(self, keyword:str, look_back:int=3) -> bool:
         """Check recent turns for a keyword (splits on space/hyphen/underscore)."""
@@ -319,7 +311,7 @@ class ContextCoordinator:
                 return True
         return False
 
-    def storecompleted_flows(self, completed_flows:list[str]):
+    def store_completed_flows(self, completed_flows:list[str]):
         self.completed_flows = list(completed_flows)
 
     def find_action_by_name(self, action_name:str):
@@ -338,22 +330,3 @@ class ContextCoordinator:
         for action in actions:
             turn = self.add_turn(actor, action, turn_type='action')
             self.last_actions[actor].append(action)
-
-    def revise_user_utterance(self, turns_back:int):
-        """Truncate history to the nth-back user turn and rebuild recent."""
-        user_turns = [turn for turn in self._history if turn.speaker == 'User'
-                      and turn.turn_type == 'utterance']
-        if turns_back > len(user_turns):
-            return
-        target = user_turns[-turns_back]
-        index = self._history.index(target)
-        self._history = self._history[:index]
-        self._rebuild_recent()
-
-    def _rebuild_recent(self):
-        self.recent.clear()
-        for turn in self._history:
-            if turn.speaker != 'System' and turn.turn_type == 'utterance':
-                self.recent.append(turn)
-        if len(self.recent) > self.lookback_count:
-            self.recent = self.recent[-self.lookback_count:]

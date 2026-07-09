@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from backend.components.task_artifact import TaskArtifact
+from backend.components.flow_stack import FlowStack, flow_classes
+from backend.components.session_scratchpad import SessionScratchpad
 
 from backend.utilities.services import (
     PostService, ContentService, AnalysisService, PlatformService,
@@ -87,19 +89,18 @@ def _validate_ambig_metadata(level:str, metadata:dict) -> str | None:
     return None
 
 
-class PEX:
+class PolicyExecutor:
 
-    def __init__(self, config, ambiguity, engineer, memory, world):
+    def __init__(self, config, engineer):
         self.config = config
         self.max_rounds = config['limits']['max_rounds']
         self.max_corrective = config['limits']['max_corrective']
         self.max_reads = config['limits']['max_reads']
-        self.ambiguity = ambiguity
         self.engineer = engineer
-        self.memory = memory
-        self.world = world
-        self.flow_stack = world.flow_stack
-        self.scratchpad = world.scratchpad
+
+        self.flow_stack = FlowStack(config, flow_classes=flow_classes)
+        self.session_scratchpad = SessionScratchpad(config)
+        self._world = None  # set via the `world` property once the Assistant builds the World
 
         self._post_service = PostService()
         self._content_service = ContentService()
@@ -142,8 +143,6 @@ class PEX:
             'cancel_release':    (self._platform_service, 'cancel_release'),
             'list_channels':     (self._platform_service, 'list_channels'),
             'channel_status':    (self._platform_service, 'channel_status'),
-            # BusinessContext / FAQs (1)
-            'search_faqs':       (self.memory.business, 'search_faqs'),
         }
 
         # Real prompt-token usage off the last acting-loop API response — Agent's compression
@@ -155,29 +154,42 @@ class PEX:
         self._injected = False  # belief injected once per turn; reset in execute()
         self._reads = 0  # per-turn count of successful read-only domain-tool calls; reset in execute()
         self._nlu_thread = None  # this turn's parallel NLU think thread; joined+cleared by _check_nlu
-        self.nlu = None  # wired by Agent after construction; used to re-consult on policy failures
         # Orchestrator hot-path tools — wiring only; the implementations live in
         # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
         self._orchestrator_toolset = {
-            'manage_flows':         self._dispatch_manage_flows,
-            'understand':           self._dispatch_understand,
-            'scratchpad':           self._dispatch_scratchpad,
-            'store_preference':     self._dispatch_store_preference,
+            'manage_flows':             self._dispatch_manage_flows,
+            'understand':               self._dispatch_understand,
+            'append_to_scratchpad':     self._dispatch_append_scratchpad,
+            'store_preference':         self._dispatch_store_preference,
+            'ask_clarification_question': self._dispatch_ask_clarification,
+            'recover_from_ambiguity':   self._dispatch_recover_ambiguity,
         }
+        self._policies: dict[str, object] = {}  # built when the world is attached (setter below)
+        self.initialization()
 
-        components = {'engineer': engineer, 'memory': memory, 'config': config, 'ambiguity': ambiguity,
+    @property
+    def world(self):
+        return self._world
+
+    @world.setter
+    def world(self, world):
+        """Assigning the world finishes the wiring: the one domain tool that reads a MEM
+        component, and the policies (their scoped components dict carries world-bound references —
+        sub-agents never see the whole world)."""
+        self._world = world
+        self.tools['search_documents'] = (world.knowledge, 'search_documents')
+        components = {'engineer': self.engineer, 'config': self.config, 'ambiguity': world.ambiguity,
             'get_tools': self.get_tools_for_flow, 'flow_stack': self.flow_stack,
-            'content_service': self._content_service, 'state_file': self.world.state_file,
-            'scratchpad': self.scratchpad,
+            'content_service': self._content_service, 'state_file': world.state_file,
+            'scratchpad': self.session_scratchpad,
         }
-        self._policies: dict[str, object] = {
+        self._policies = {
             Intent.CONVERSE: ConversePolicy(components),
             Intent.RESEARCH: ResearchPolicy(components),
             Intent.DRAFT: DraftPolicy(components),
             Intent.REVISE: RevisePolicy(components),
             Intent.PUBLISH: PublishPolicy(components),
         }
-        self.initialization()
 
     def initialization(self):
         # Wipe snapshot history from prior sessions
@@ -194,7 +206,7 @@ class PEX:
             if (caps.get('accesses_private_data')
                     and caps.get('receives_untrusted_input')
                     and caps.get('communicates_externally')):
-                self.ambiguity.declare(
+                self.world.ambiguity.recognize(
                     'confirmation',
                     metadata={
                         'missing': 'tool_approval',
@@ -209,7 +221,7 @@ class PEX:
                 )
                 artifact = TaskArtifact(flow.name())
                 artifact.add_block({'type': 'confirmation', 'data': {
-                    'prompt': self.ambiguity.ask(flow.name()),
+                    'prompt': self.world.ambiguity.ask(flow.name()),
                     'confirm_label': 'Approve',
                     'cancel_label': 'Cancel',
                 }})
@@ -235,7 +247,7 @@ class PEX:
         """Check whether a artifact is good enough to show to the user. A artifact with a 'violation'
         set is already recognized as an error artifact, so it does NOT need Tier-1 retry. Return
         passed=False + is_error_frame=True so the outer caller routes it directly to the error path."""
-        if self.ambiguity.present():
+        if self.world.ambiguity.present:
             return ArtifactCheck(passed=True)
         if 'violation' in artifact.data:
             violation = artifact.data['violation']
@@ -388,13 +400,11 @@ class PEX:
                     result = {'_success': False, '_error': 'server_error',
                               '_message': f'{type(ecp).__name__}: {ecp}'}
                     last_call = None
-                # hook: post-tool — a policy execution failure re-consults NLU with narrowed
-                # candidates (contemplate, never think), then re-arms belief for the fresh detection.
+                # hook: post-tool — on a policy execution failure, re-arm the belief note so the
+                # next round re-reads it. PEX never invokes the NLU module (modules don't call
+                # modules); a contemplate re-detection is the Assistant's move on the next turn.
                 if tool_use.name == 'manage_flows' and result.get('_error') == 'execution_error':
-                    # Order the two belief writers: a still-running think would overwrite
-                    # contemplate's narrowed detection with the original failed one.
                     self._check_nlu()
-                    self.nlu.understand(op='contemplate', user_text=self.world.context.last_user_text)
                     self._injected = False
                 errors = errors + 1 if not result['_success'] else 0
                 log.info('  orch round=%d tool=%s ok=%s', round_idx + 1, tool_use.name,
@@ -448,8 +458,6 @@ class PEX:
                                   'Stack on and activate a flow, or respond to the user.'}
         else:
             result = self._dispatch_tool(tool_use.name, dict(tool_use.input or {}))
-            if '_success' not in result:  # manage_memory keeps its old {'status': ...} contract
-                result['_success'] = result.get('status') == 'success'
             if tool_use.name in READ_ONLY_DOMAIN_TOOLS and result['_success']:
                 self._reads += 1
         return result, (call, result['_success'])
@@ -475,14 +483,18 @@ class PEX:
                 service, method_name = self.tools[tool_name]
                 method = getattr(service, method_name)
                 return method(**tool_input)
-            elif tool_name == 'handle_ambiguity':
-                return self._dispatch_ambiguity_tool(tool_input)
+            elif tool_name == 'declare_ambiguity':
+                return self._dispatch_declare_ambiguity(tool_input)
             elif tool_name == 'coordinate_context':
                 return self._dispatch_context_tool(tool_input)
-            elif tool_name == 'manage_memory':
-                return self._dispatch_manage_memory(tool_input)
-            elif tool_name == 'call_flow_stack':
-                return self._dispatch_flow_stack_tool(tool_input)
+            elif tool_name == 'read_scratchpad':
+                return self._dispatch_read_scratchpad(tool_input)
+            elif tool_name == 'read_flow_stack':
+                return self._dispatch_read_flow_stack(tool_input)
+            elif tool_name == 'stackon_flow':
+                return self._dispatch_stackon_flow(tool_input)
+            elif tool_name == 'fallback_flow':
+                return self._dispatch_fallback_flow(tool_input)
             elif tool_name == 'save_findings':
                 return self._dispatch_save_findings_tool(tool_input)
             elif tool_name in self._orchestrator_toolset:
@@ -518,50 +530,34 @@ class PEX:
             return {'_success': True, 'checkpoint': cp}
         return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
 
-    def _dispatch_flow_stack_tool(self, params:dict) -> dict:
-        action = params.get('action', '')
-        details = params.get('details')
-        if action == 'read':
-            if details == 'slots':
-                return {'_success': True, 'slots': self.flow_stack.get_flow().slot_values_dict()}
-            if details == 'flow_meta':
-                return {'_success': True, 'flow': self.flow_stack.get_flow().to_dict()}
-            if details == 'flows':
-                return {'_success': True, 'flows': self.flow_stack.to_list()}
-            return {'_success': False, '_error': 'invalid_input',
-                    '_message': f"read details must be one of 'flows', 'slots', 'flow_meta'; got {details!r}"}
-        if action == 'stackon':
-            if not details:
-                return {'_success': False, '_error': 'invalid_input',
-                        '_message': 'stackon requires `details` naming the flow to push'}
-            self.flow_stack.stackon(details)
-            return {'_success': True, 'stacked': details}
-        if action == 'fallback':
-            if not details:
-                return {'_success': False, '_error': 'invalid_input',
-                        '_message': 'fallback requires `details` naming the flow to route to'}
-            self.flow_stack.fallback(details)
-            return {'_success': True, 'fell_back_to': details}
-        return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
+    def _dispatch_read_flow_stack(self, params:dict) -> dict:
+        details = params.get('details', 'flows')
+        if details == 'slots':
+            return {'_success': True, 'slots': self.flow_stack.get_flow().slot_values_dict()}
+        if details == 'flow_meta':
+            return {'_success': True, 'flow': self.flow_stack.get_flow().to_dict()}
+        if details == 'flows':
+            return {'_success': True, 'flows': self.flow_stack.to_list()}
+        return {'_success': False, '_error': 'invalid_input',
+                '_message': f"details must be 'flows', 'slots', or 'flow_meta'; got {details!r}"}
 
-    def _dispatch_ambiguity_tool(self, params:dict) -> dict:
-        action = params['action']
-        if action == 'present':
-            return {'_success': True, 'present': self.ambiguity.present(),
-                    'level': self.ambiguity.level}
-        if action == 'declare':
-            if 'level' not in params or 'metadata' not in params:
-                return {'_success': False, '_error': 'invalid_input',
-                        '_message': "declare requires both 'level' and 'metadata'"}
-            level, metadata = params['level'], params['metadata']
-            err = _validate_ambig_metadata(level, metadata)
-            if err:
-                log.info('[ambig-trace] dispatch declare REJECTED level=%s metadata=%s err=%s',
-                         level, metadata, err)
-                return {'_success': False, '_error': 'invalid_input', '_message': err}
-            self.ambiguity.declare(level, metadata=metadata, observation=params.get('observation', ''))
-            return {'_success': True}
-        return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
+    def _dispatch_stackon_flow(self, params:dict) -> dict:
+        self.flow_stack.stackon(params['flow'])
+        return {'_success': True, 'stacked': params['flow']}
+
+    def _dispatch_fallback_flow(self, params:dict) -> dict:
+        self.flow_stack.fallback(params['flow'])
+        return {'_success': True, 'fell_back_to': params['flow']}
+
+    def _dispatch_declare_ambiguity(self, params:dict) -> dict:
+        level, metadata = params['level'], params['metadata']
+        err = _validate_ambig_metadata(level, metadata)
+        if err:
+            log.info('[ambig-trace] declare_ambiguity REJECTED level=%s metadata=%s err=%s',
+                     level, metadata, err)
+            return {'_success': False, '_error': 'invalid_input', '_message': err}
+        self.world.ambiguity.recognize(level, metadata=metadata, observation=params.get('observation', ''))
+        return {'_success': True}
 
     def _dispatch_save_findings_tool(self, params:dict) -> dict:
         """Persist structured findings to the scratchpad under the active flow's name.
@@ -575,7 +571,8 @@ class PEX:
         references_used = params.get('references_used', [])
         flow = self.flow_stack.get_flow()
         key = flow.name() if flow else 'findings'
-        self.scratchpad.write(key, {
+        self.session_scratchpad.write({
+            'key': key,
             'version': '1',
             'turn_number': self.world.context.turn_id,
             'used_count': 0,
@@ -597,27 +594,27 @@ class PEX:
 
     def read_state(self, params:dict) -> dict:
         self._check_nlu()
-        state = self.world.current_state()
+        state = self.world.state
         state.flow_stack = self.flow_stack.to_list()  # saved copy tracks the one stack
         return {'_success': True, 'state': state.read_state()}
 
     def _dispatch_manage_flows(self, params:dict) -> dict:
         """The orchestrator's one flow tool — ops [update, stackon, fallback, activate, pop].
         `update` mutates the top flow (old update_flow) and `pop` removes Completed AND Invalid
-        flows in one sweep (old pop_completed). Belief and grounding stay NLU's job — no op here
+        flows in one sweep (write_state op 'pop'). Belief and grounding stay NLU's job — no op here
         touches them."""
         if params['op'] == 'activate':
             return self.activate_flow(params)
-        op = {'update': 'update_flow', 'pop': 'pop_completed'}.get(params['op'], params['op'])
+        op = {'update': 'update_flow'}.get(params['op'], params['op'])
         return self._dispatch_write_state({**params, 'op': op})
 
     def _dispatch_write_state(self, params:dict) -> dict:
-        state = self.world.current_state()
+        state = self.world.state
         kwargs = dict(params.get('fields', {}))
         if 'flow_name' in params:
             kwargs['flow_name'] = params['flow_name']
         if params['op'] == 'update_flow' and 'slots' in kwargs:
-            top = self.flow_stack.peek()
+            top = self.flow_stack.get_flow()
             unknown = [name for name in kwargs['slots'] if name not in top.slots]
             if unknown:  # corrective error — fill_slot_values would drop these silently
                 return {'_success': False, '_error': 'invalid_input',
@@ -639,7 +636,7 @@ class PEX:
         same flow — the code-side replacement for the recipe's update_flow step."""
         if not state.pred_flows or state.pred_flows[0]['flow_name'] != flow_name:
             return
-        top = self.flow_stack.peek()
+        top = self.flow_stack.get_flow()
         slots = {name: value for name, value in state.pred_slots.items()
                  if name in top.slots and value}
         if slots:
@@ -654,7 +651,7 @@ class PEX:
         forced in code here as a FALLBACK: the active flow is marked Invalid (we are not coming
         back to it) and NLU's flow takes over as Active (the user 2026-07-03)."""
         self._check_nlu(wait=False)
-        state = self.world.current_state()
+        state = self.world.state
         if self._injected or self._nlu_thread is not None or not state.pred_flows:
             return None
         self._injected = True
@@ -664,7 +661,7 @@ class PEX:
                 f"slots: {json.dumps(state.pred_slots, default=str)}. If you are on a different "
                 f"flow, prefer NLU's detection unless you have a concrete reason to stay.")
         active = self.flow_stack.get_flow(status='Active')
-        if (active and not self.ambiguity.present()
+        if (active and not self.world.ambiguity.present
                 and state.pred_intent in ('Research', 'Draft', 'Revise', 'Publish')
                 and state.pred_intent != active.intent):
             old_name = active.name()
@@ -683,7 +680,7 @@ class PEX:
         session scratchpad and returned as the tool result. State-file persistence stays with
         write_state."""
         self._check_nlu(wait=False)  # flow execution never blocks on NLU — only Plan/Clarify wait
-        state = self.world.current_state()
+        state = self.world.state
         name = params['flow_name']
         flow = self.flow_stack.find_by_name(name) or self.flow_stack.stackon(name)
         flow.status = 'Active'  # pushes wait as Pending; running the policy promotes
@@ -714,66 +711,54 @@ class PEX:
         state.flow_stack = self.flow_stack.to_list()
         blocks = _block_summaries(artifact)
         if flow.status != 'Completed':
-            question = self.ambiguity.ask(flow.name()) if self.ambiguity.present() else ''
+            question = self.world.ambiguity.ask(flow.name()) if self.world.ambiguity.present else ''
             return {'_success': True, 'status': flow.status, 'thoughts': artifact.thoughts,
                     'question': question, 'blocks': blocks}
         self._completed_this_turn.append(flow.name())  # for the end-of-turn checkpoint
         if record is None:  # policy completed without calling complete_flow — synthesize a record
             summary = artifact.thoughts or f'{flow.name()} completed'
-            record = self.scratchpad.write_completion(flow.name(), summary, metadata=artifact.data)
+            record = self.session_scratchpad.write_completion(flow.name(), summary, metadata=artifact.data)
         return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
 
     def _dispatch_understand(self, params:dict) -> dict:
-        """The orchestrator's one belief tool. op='read' returns the serialized belief (joining the
-        NLU thread first, so Plan/Clarify wait here). op='think' re-runs detection; op='contemplate'
-        re-routes over a flow that stalled on a missing entity (a partial ambiguity) and rewrites
-        belief. The intent hint is DETERMINISTIC coordination code, never a tool argument: the flow
-        PEX committed to the stack is its first-pass selection, so a domain intent (Research / Draft
-        / Revise / Publish) on top becomes NLU's candidate-narrowing hint; Plan / Clarify / Converse
-        (or an empty stack) carry no real signal, so the hint stays blank and NLU detects over the
-        full ontology. On think/contemplate the stale ambiguity is cleared (the re-consult
-        supersedes it) and the corrected detection is returned so the orchestrator can stack the
-        right flow."""
+        """The orchestrator's belief READ — invokes the Dialogue State component directly (joining
+        the parallel NLU thread first, so Plan/Clarify wait here). PEX never invokes the NLU module:
+        think/react/contemplate are the Assistant's calls; PEX only reads the belief they wrote."""
         self._check_nlu()
-        if params['op'] == 'read':
-            return self.read_state(params)
-        top = self.flow_stack.peek()
-        hint = top.intent if top and top.intent in _DOMAIN_INTENTS else ''
-        state = self.nlu.understand(op=params['op'], user_text=self.world.context.last_user_text,
-                                    hint=hint)
-        self.ambiguity.resolve()
-        top = state.pred_flows[0]
-        return {'_success': True, 'intent': state.pred_intent,
-                'flow_name': top['flow_name'], 'confidence': top['confidence']}
+        return self.read_state(params)
 
-    def _dispatch_scratchpad(self, params:dict) -> dict:
-        """The orchestrator's one scratchpad tool — op 'read' or 'append'."""
-        if params['op'] == 'append':
-            self.scratchpad.write(params['entry'])  # `writer` stamped by code
-            return {'_success': True, 'size': self.scratchpad.size}
-        entries = self.scratchpad.read(writer=params.get('writer'), keys=params.get('keys'))
+    def _dispatch_read_scratchpad(self, params:dict) -> dict:
+        entries = self.session_scratchpad.read(writer=params.get('writer'), keys=params.get('keys'))
         return {'_success': True, 'entries': entries}
+
+    def _dispatch_append_scratchpad(self, params:dict) -> dict:
+        self.session_scratchpad.write(params['entry'])  # `writer` stamped by code
+        return {'_success': True, 'size': self.session_scratchpad.size}
 
     def _dispatch_store_preference(self, params:dict) -> dict:
         """Persist a durable user preference to L2."""
-        self.memory.preferences.store_preference(params['key'], params['value'])
+        self.world.prefs.store_preference(params['key'], params['value'])
         return {'_success': True, 'key': params['key']}
 
-    def _dispatch_manage_memory(self, params:dict) -> dict:
-        """The combined memory tool: scratchpad read/write + preference read. Keeps the legacy
-        {'status': ...} result contract."""
-        action = params.get('action', '')
-        if action == 'read_scratchpad':
-            return {'status': 'success', 'result': self.scratchpad.read(params.get('key'))}
-        if action == 'write_scratchpad':
-            key = params.get('key', '')
-            if not key:
-                return {'status': 'error', 'message': 'key is required'}
-            self.scratchpad.write(key, params.get('value', ''))
-            return {'status': 'success', 'result': 'written'}
-        if action == 'read_preferences':
-            return {'status': 'success', 'result': self.memory.preferences.read()}
-        return {'status': 'error', 'message': f'Unknown action: {action}'}
+    def _dispatch_ask_clarification(self, params:dict) -> dict:
+        """Generate the level-specific clarification question for the pending ambiguity — NLU
+        authors it (wider view of the session than the orchestrator)."""
+        if self.world.ambiguity.present:
+            flow = self.flow_stack.get_flow()
+            return {'_success': True, 'question': self.world.ambiguity.ask(flow.name() if flow else '')}
+        return {'_success': False, '_error': 'invalid_input',
+                '_message': 'No pending ambiguity to ask about.'}
+
+    def _dispatch_recover_ambiguity(self, params:dict) -> dict:
+        """Resolve the pending ambiguity internally (preferences + scratchpad) before escalating
+        to the user — direct component calls, no NLU module invocation."""
+        if not self.world.ambiguity.present:
+            return {'_success': False, '_error': 'invalid_input',
+                    '_message': 'No pending ambiguity to recover.'}
+        result, success = self.world.ambiguity.recover(self.world.prefs, self.world.scratchpad)
+        entry = {'key': 'recovery', 'found' if success else 'missing': result}
+        self.world.scratchpad.write(entry)  # `writer` stamped by code
+        return {'_success': True, 'recovery': result if success else None}
 
     # -- Tool definitions -------------------------------------------------
 
@@ -808,14 +793,11 @@ class PEX:
     def _component_tool_definitions(self) -> list[dict]:
         return [
             {
-                'name': 'handle_ambiguity',
+                'name': 'declare_ambiguity',
                 'description': (
-                    "Raise an ambiguity flag back to the user when you truly cannot proceed. "
-                    "Policies declare ambiguity directly; only call this tool when the skill "
-                    "itself decides the user must clarify before you can act.\n\n"
-                    "Actions:\n"
-                    "- `declare` — raise the flag. Requires `level` and `metadata`; `observation` is optional except at `confirmation` level (which uses `metadata.question` instead).\n"
-                    "- `present` — return whether an ambiguity is already pending and at what level. Use to avoid overwriting a prior declaration.\n\n"
+                    "Raise an ambiguity flag back to the user when a slot is missing, an entity "
+                    "can't be resolved, or something needs confirming and you truly cannot "
+                    "proceed.\n\n"
                     "Per-level metadata shape (validated at dispatch — wrong shape returns invalid_input):\n"
                     "- `general`      → metadata.missing ∈ {intent, flow}; metadata.error ∈ {misclassified, misdetected, user_error} (optional).\n"
                     "- `partial`      → metadata.missing ∈ {source, target, title, query}; metadata.entity ∈ {post, section, snippet, channel} (optional).\n"
@@ -830,12 +812,11 @@ class PEX:
                 'input_schema': {
                     'type': 'object',
                     'properties': {
-                        'action':      {'type': 'string', 'enum': ['declare', 'present']},
                         'level':       {'type': 'string', 'enum': ['general', 'partial', 'specific', 'confirmation']},
                         'metadata':    {'type': 'object', 'description': 'shape required per level — see description'},
                         'observation': {'type': 'string', 'description': 'agent-authored clarification utterance (general/partial/specific only)'},
                     },
-                    'required': ['action'],
+                    'required': ['level', 'metadata'],
                 },
             },
             {
@@ -864,42 +845,60 @@ class PEX:
                 },
             },
             {
-                'name': 'manage_memory',
-                'description': 'Read/write session scratchpad and user preferences. Actions: read_scratchpad, write_scratchpad, read_preferences',
-                'input_schema': {
-                    'type': 'object',
-                    'properties': {
-                        'action': {'type': 'string', 'enum': ['read_scratchpad', 'write_scratchpad', 'read_preferences']},
-                        'key': {'type': 'string'},
-                        'value': {'type': 'string'},
-                    },
-                    'required': ['action'],
-                },
-            },
-            {
-                'name': 'call_flow_stack',
+                'name': 'read_scratchpad',
                 'description': (
-                    "Interact with the flow stack. Three actions:\n"
-                    "- read: inspect stack state. `details` picks what to read: "
-                    "'flows' (the full stack of queued and active flows), "
-                    "'slots' (the active flow's filled slot values), "
-                    "or 'flow_meta' (the active flow's class-level metadata).\n"
-                    "- stackon: push a prerequisite flow onto the stack. "
-                    "`details` is the flow name to push.\n"
-                    "- fallback: pop the current flow and route to a sibling "
-                    "when the user's intent is better served elsewhere. "
-                    "`details` is the flow name to route to."
+                    "Read session scratchpad entries, newest last. Optional filters: `writer` "
+                    "('orchestrator' or a flow name) and `keys` (only entries carrying every "
+                    "named key — e.g. ['flow', 'summary'] selects completion records). Pick up "
+                    "prerequisites left by earlier flows here."
                 ),
                 'input_schema': {
                     'type': 'object',
                     'properties': {
-                        'action': {'type': 'string', 'enum': ['read', 'stackon', 'fallback']},
-                        'details': {
-                            'type': 'string',
-                            'description': "For read: one of 'flows', 'slots', 'flow_meta'. For stackon or fallback: the target flow name.",
-                        },
+                        'writer': {'type': 'string'},
+                        'keys': {'type': 'array', 'items': {'type': 'string'}},
                     },
-                    'required': ['action'],
+                    'required': [],
+                },
+            },
+            {
+                'name': 'read_flow_stack',
+                'description': (
+                    "Inspect the flow stack. `details` picks what to read: "
+                    "'flows' (the full stack of queued and active flows, the default), "
+                    "'slots' (the active flow's filled slot values), "
+                    "or 'flow_meta' (the active flow's class-level metadata)."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {
+                        'details': {'type': 'string', 'enum': ['flows', 'slots', 'flow_meta']},
+                    },
+                    'required': [],
+                },
+            },
+            {
+                'name': 'stackon_flow',
+                'description': (
+                    "Push a prerequisite flow onto the stack — the current flow needs another "
+                    "flow's output first. `flow` is the flow name to push."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {'flow': {'type': 'string'}},
+                    'required': ['flow'],
+                },
+            },
+            {
+                'name': 'fallback_flow',
+                'description': (
+                    "Hand off to a sibling flow when the request belongs there — replaces the "
+                    "current flow, transferring matching slot values. `flow` is the target flow name."
+                ),
+                'input_schema': {
+                    'type': 'object',
+                    'properties': {'flow': {'type': 'string'}},
+                    'required': ['flow'],
                 },
             },
             {
@@ -918,7 +917,7 @@ class PEX:
                     "- conflict: two slot values contradict\n"
                     "- tool_error: a deterministic tool returned `_success=False`\n\n"
                     "Use after retries and alternatives have been exhausted. For "
-                    "user-intent ambiguity, use handle_ambiguity instead."
+                    "user-intent ambiguity, use declare_ambiguity instead."
                 ),
                 'input_schema': {
                     'type': 'object',
@@ -971,13 +970,13 @@ class PEX:
         ]
 
     def get_tools_for_orchestrator(self) -> list[dict]:
-        """The orchestrator's tool list: hot-path dedicated tools, the three long-tail
-        component dispatch tools, and the read-only domain allowlist. call_flow_stack is
-        deliberately absent — its job lives in understand/manage_flows."""
+        """The orchestrator's tool list: hot-path dedicated tools, the borrowed component tools
+        it shares with sub-agents (coordinate_context, read_scratchpad), and the read-only domain
+        allowlist. The flow-stack tools are deliberately absent — their job lives in
+        understand/manage_flows."""
         tools = self._orchestrator_tool_definitions()
         component = {tool['name']: tool for tool in self._component_tool_definitions()}
-        tools += [component[name] for name in ('handle_ambiguity', 'coordinate_context',
-                                               'manage_memory')]
+        tools += [component[name] for name in ('coordinate_context', 'read_scratchpad')]
         for tool_name in READ_ONLY_DOMAIN_TOOLS:
             tool_def = self._get_tool_def(tool_name)
             if tool_def:
@@ -1030,49 +1029,32 @@ class PEX:
             {
                 'name': 'understand',
                 'description': (
-                    "Your one belief tool. op='read' returns the session's DialogueState: user "
+                    "Your belief READ. op='read' returns the session's DialogueState: user "
                     "beliefs (intent, goal, confirmed/rejected, workflow_step), the grounding "
                     "block (the active post/sec/snip/chl entity), the flow stack, and flags — "
-                    "cheap, call it whenever you need current state rather than guessing. "
-                    "op='think' re-runs NLU's flow detection over the latest turn. "
-                    "op='contemplate' re-routes when a flow you dispatched stalled on a missing "
-                    "entity (a `partial` ambiguity — it needs a post/section that isn't grounded) "
-                    "and returns a corrected `flow_name`. Use contemplate BEFORE relaying a "
-                    "partial-ambiguity clarification — the stall often means the first flow pick "
-                    "was wrong (e.g. `refine`/`audit` on a post that doesn't exist yet, when the "
-                    "user is starting a fresh post → `outline`). Stack the returned flow and run "
-                    "it; only relay a clarification if the re-route still cannot proceed."
+                    "cheap, call it whenever you need current state rather than guessing. NLU "
+                    "writes the belief before your loop runs; a stalled flow returns a "
+                    "clarification `question` you can relay, or try `recover_from_ambiguity` "
+                    "first."
                 ),
                 'input_schema': {
                     'type': 'object',
-                    'properties': {'op': {'type': 'string',
-                                          'enum': ['read', 'think', 'contemplate']}},
+                    'properties': {'op': {'type': 'string', 'enum': ['read']}},
                     'required': ['op'],
                 },
             },
             {
-                'name': 'scratchpad',
+                'name': 'append_to_scratchpad',
                 'description': (
-                    "The session scratchpad (JSONL). Ops:\n"
-                    "- `read`   — return entries, newest last. Optional filters: `writer` "
-                    "('orchestrator' or a flow name) and `keys` (only entries carrying every "
-                    "named key — e.g. ['flow', 'summary'] selects completion records).\n"
-                    "- `append` — add one agent-belief entry. `entry` is a schema-free JSON "
-                    "object — intermediate findings, tool results worth keeping, working notes. "
-                    "The `writer` stamp is added by code; do not include a writer key yourself."
+                    "Append one agent-belief entry to the session scratchpad (JSONL). `entry` is a "
+                    "schema-free JSON object — intermediate findings, tool results worth keeping, "
+                    "working notes. The `writer` stamp is added by code; do not include a writer "
+                    "key yourself. Reads go through the read_scratchpad tool."
                 ),
                 'input_schema': {
                     'type': 'object',
-                    'properties': {
-                        'op': {'type': 'string', 'enum': ['read', 'append']},
-                        'entry': {'type': 'object',
-                                  'description': 'for append — the entry to add'},
-                        'writer': {'type': 'string',
-                                   'description': 'for read — filter by writer'},
-                        'keys': {'type': 'array', 'items': {'type': 'string'},
-                                 'description': 'for read — only entries carrying every named key'},
-                    },
-                    'required': ['op'],
+                    'properties': {'entry': {'type': 'object'}},
+                    'required': ['entry'],
                 },
             },
             {
@@ -1091,6 +1073,29 @@ class PEX:
                     'required': ['key', 'value'],
                 },
             },
+            {
+                'name': 'ask_clarification_question',
+                'description': (
+                    "Turn the pending ambiguity into a clarification question for the user. NLU "
+                    "authors it (wider view of the scratchpad, belief state, and other ambiguities "
+                    "than you have), so rely on this rather than writing your own. No arguments — "
+                    "returns `question`. Errors if no ambiguity is pending."
+                ),
+                'input_schema': {'type': 'object', 'properties': {}, 'required': []},
+            },
+            {
+                'name': 'recover_from_ambiguity',
+                'description': (
+                    "Ask NLU to resolve the pending ambiguity internally — a memory query plus a "
+                    "scratchpad review — before you escalate to the user. No arguments — returns "
+                    "`recovery` (the value found, or null). Errors if no ambiguity is pending."
+                ),
+                'input_schema': {'type': 'object', 'properties': {}, 'required': []},
+            },
         ]
 
 
+
+
+# Module alias — the module is PEX; the class name spells it out.
+PEX = PolicyExecutor

@@ -12,8 +12,8 @@ This skill fills a placeholder gap — a `<fill in here>` marker, a `[TODO]`, or
 
 ## Handling Ambiguity and Errors
 
-- If you cannot find a gap in the section, call `handle_ambiguity(level='specific', metadata={'missing': 'gap', 'reason': 'unclear_value'})` and name what you looked for.
-- If the section itself can't be located, call `handle_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'section'})`.
+- If you cannot find a gap in the section, call `declare_ambiguity(level='specific', metadata={'missing': 'gap', 'reason': 'unclear_value'})` and name what you looked for.
+- If the section itself can't be located, call `declare_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'section'})`.
 
 ## Tools
 
@@ -25,7 +25,7 @@ This skill fills a placeholder gap — a `<fill in here>` marker, a `[TODO]`, or
 
 ### General tools
 
-- `handle_ambiguity(level, metadata)` when the gap or section is unclear.
+- `declare_ambiguity(level, metadata)` when the gap or section is unclear.
 - `coordinate_context(lookback)` to pull earlier conversation if the gap references it.
 
 ## Few-shot examples
@@ -69,7 +69,7 @@ Resolved Details:
 
 Trajectory:
 1. `read_metadata(post_id=3e9b0d55, include_outline=True)` → no section resembles a deployment checklist.
-2. `handle_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'section'})`. End turn.
+2. `declare_ambiguity(level='partial', metadata={'missing': 'source', 'entity': 'section'})`. End turn.
 
 ### Example 4: No gap in the named section
 
@@ -79,7 +79,7 @@ Resolved Details:
 
 Trajectory:
 1. `read_section(post_id=b2d84c10, sec_id=conclusion, include_sentence_ids=True)` → complete prose, no placeholder or blank slot.
-2. `handle_ambiguity(level='specific', metadata={'missing': 'gap', 'reason': 'unclear_value'})`. Say the conclusion reads complete and ask which sentence to open up, then end turn.
+2. `declare_ambiguity(level='specific', metadata={'missing': 'gap', 'reason': 'unclear_value'})`. Say the conclusion reads complete and ask which sentence to open up, then end turn.
 
 ### Example 5: Gap that references an earlier turn
 
