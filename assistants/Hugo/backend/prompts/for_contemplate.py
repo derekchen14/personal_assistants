@@ -22,7 +22,7 @@ CONTEMPLATE_EXEMPLARS = '''
 ---
 Failed flow: find (low confidence)
 User: "what posts do I have?"
-Candidates: find, browse, chat
+Candidates: find, inspect, chat
 _Output_
 ```json
 {{"thought": "User wants to list existing posts — find is correct.", "flow_name": "find"}}
@@ -48,7 +48,7 @@ _Output_
 ---
 Failed flow: summarize (tool error)
 User: "tell me about content calendars"
-Candidates: browse, chat
+Candidates: inspect, chat
 _Output_
 ```json
 {{"thought": "General knowledge question, not about a specific post — route to chat.", "flow_name": "chat"}}

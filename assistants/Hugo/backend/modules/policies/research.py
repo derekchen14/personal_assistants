@@ -12,43 +12,23 @@ class ResearchPolicy(BasePolicy):
         flow = self.flow_stack.get_flow()
 
         match flow.name():
-            case 'browse': return self.browse_policy(flow, state, context, tools)
+            case 'inspect': return self.inspect_policy(flow, state, context, tools)
             case 'summarize': return self.summarize_policy(flow, state, context, tools)
             case 'find': return self.find_policy(flow, state, context, tools)
             case 'compare': return self.compare_policy(flow, state, context, tools)
             case _:
                 return TaskArtifact()
 
-    def browse_policy(self, flow, state, context, tools):
-        query_slot = flow.slots['query']
-        if not query_slot.check_if_filled():
-            self.ambiguity.recognize('partial', metadata={'missing': 'query'})
+    def inspect_policy(self, flow, state, context, tools):
+        """Report metrics or metadata (planner spec scenario 18): the sub-agent gathers the
+        answer through its read tools (read_metadata / find_posts / channel_status), the
+        completion record lands on the session scratchpad, and PEX pops the flow."""
+        text, tool_log = self.llm_execute(flow, state, context, tools)
+        if self.ambiguity.is_present:
             return TaskArtifact(flow.name())
-
-        target_slot = flow.slots['target']
-        # Default-commit: target is elective; commit 'note' when unset.
-        target = str(target_slot.to_dict()) if target_slot.check_if_filled() else 'note'
-
-        tags = query_slot.to_dict()
-        params = {'tags': tags}
-        if target == 'note':
-            params['status'] = 'note'
-        result = tools('find_posts', params)
-        items = result['items'] if result['_success'] else []
-
-        titles = [it['title'] for it in items[:10]]
-        summary = f"Found {len(items)} item(s) tagged {', '.join(tags)} (target='{target}')."
-        if titles:
-            summary += ' Titles: ' + ', '.join(titles)
-
-        convo_history = context.compile_history()
-        history_with_data = f"{convo_history}\n\n[Data retrieved]\n{summary}"
-        text = self.engineer.flow_reply(flow, history_with_data, self.scratchpad.read())
-
-        self.complete_flow(flow, state, context, summary, metadata={'tags': tags, 'target': target})
-        artifact = TaskArtifact(flow.name(), thoughts=text)
-        artifact.add_block({'type': 'list', 'data': {'items': items}})
-        return artifact
+        self.complete_flow(flow, state, context, text or 'Reported the requested metrics.',
+            metadata={'metrics': flow.slots['metrics'].to_dict()})
+        return TaskArtifact(flow.name(), thoughts=text)
 
     def summarize_policy(self, flow, state, context, tools):
         if artifact := self._guard_entity(flow): return artifact
@@ -195,7 +175,7 @@ class ResearchPolicy(BasePolicy):
 
         # Skill may declare ambiguity (e.g. missing category); leave flow Active so the
         # next turn can resolve rather than treating completion as final.
-        if self.ambiguity.present:
+        if self.ambiguity.is_present:
             return TaskArtifact(flow.name())
 
         self.complete_flow(flow, state, context, text or 'Compared the two posts.',
@@ -214,7 +194,7 @@ class ResearchPolicy(BasePolicy):
             self.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'})
             return TaskArtifact(flow.name())
         text, _ = self.llm_execute(flow, state, context, tools)
-        if self.ambiguity.present:
+        if self.ambiguity.is_present:
             return TaskArtifact(flow.name())
         self.complete_flow(flow, state, context, text or 'Diffed the section against a prior version.',
             metadata={'post_id': post_id})

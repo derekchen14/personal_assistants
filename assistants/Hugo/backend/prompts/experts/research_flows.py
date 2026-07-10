@@ -1,8 +1,8 @@
 INSTRUCTIONS = (
     'Pick the flow within the Research intent set (and its edge flows into adjacent intents) that '
-    'most specifically matches the user\'s goal. Research covers browsing topics and saved ideas, '
-    'finding and listing posts, summarizing a draft\'s content, and comparing posts (including '
-    'version-to-version comparisons of a single post).'
+    'most specifically matches the user\'s goal. Research covers finding and listing posts and notes, '
+    'inspecting metrics and metadata (word counts, tags, dates, status), summarizing a draft\'s '
+    'content, and comparing posts (including version-to-version comparisons of a single post).'
 )
 
 RULES = ''
@@ -10,11 +10,11 @@ RULES = ''
 EXAMPLES = '''<positive_example>
 ## Conversation History
 
-User: "browse topic ideas"
+User: "how many words is my sourdough draft?"
 ## Output
 
 ```json
-{"reasoning": "Browsing available topics.", "flow_name": "browse"}
+{"reasoning": "Asking for a metric (word count) of one post.", "flow_name": "inspect"}
 ```
 </positive_example>
 

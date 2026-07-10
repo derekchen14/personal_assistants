@@ -10,7 +10,7 @@ class AmbiguityHandler:
         self.confidence_min = thresholds.get('nlu_confidence_min', 0.64)
         self.max_turns = thresholds.get('ambiguity_escalation_turns', 3)
 
-        self.present: bool = False
+        self.is_present: bool = False
         self.metadata: dict = {}
         self.observation: str = ''
         self.counts: dict[str, int] = {
@@ -18,12 +18,17 @@ class AmbiguityHandler:
         }
 
     def recognize(self, level:str, metadata:dict={}, observation:str=''):
+        """Concurrent ambiguities are legal (planner spec scenario 21): metadata merges ADDITIVELY —
+        new keys join without kicking out prior information — and counts keep incrementing to show
+        several ambiguities are open at once. The observation string is immutable: a newer one
+        replaces it wholesale, and nothing ever appends to it."""
         log.info('[ambig-trace] recognize level=%s metadata=%s observation=%r', level, metadata, observation)
-        self.metadata = metadata
-        self.observation = observation
+        self.metadata = {**self.metadata, **metadata}
+        if observation:
+            self.observation = observation
         if level in self.counts:
             self.counts[level] += 1
-        self.present = True
+        self.is_present = True
 
     def get_level(self):
         # return the greatest level of ambiguity
@@ -61,7 +66,7 @@ class AmbiguityHandler:
 
     def resolve(self, explanation:str=''):
         log.info('[ambig-trace] resolve was=%s explanation=%r', self.get_level(), explanation)
-        self.present = False
+        self.is_present = False
         self.metadata = {}
         self.observation = ''
 

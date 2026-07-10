@@ -41,7 +41,7 @@ ROLE = (
 BACKGROUND_STATIC = (
     '## Background\n\n'
     "An upstream component decided to route the current user turn to one of Hugo's **flows** — "
-    'units of work that share a goal (drafting a post, releasing it, browsing notes, etc.). '
+    'units of work that share a goal (drafting a post, releasing it, finding posts, etc.). '
     'Every flow declares a schema of named **slots** that capture what the agent needs to act.\n'
     'Given the recent conversation history, slot-filling is responsible for finding values for each '
     "slot in the active flow. The shape of a value is set by the slot's type — e.g. `SourceSlot` "
@@ -80,7 +80,9 @@ SLOT_TYPE_GUIDES = {
         'When using a title, strip trailing status words ("post", "draft", "article", "note") — '
         '`"Trustworthy AI post"` → `"Trustworthy AI"`.\n'
         '- `sec`: a section within the post (e.g. "introduction", "methods").\n'
-        '- `snip`: a shorter snippet (tweet, comment, quote).\n'
+        '- `snip`: a snippet id — a sentence index or [start, end] slice inside a section, resolved '
+        'by the policy that reads the section. Leave `null` unless an id is already visible in '
+        'context; never fill it with a description of the span.\n'
         '- `chl`: a publishing channel — only when the entity itself IS a channel.\n'
         'Omit keys whose values would be empty. At minimum include `post`.\n\n'
         '**Canonical IDs.** If the `source slot` is present in `## Input`, then it represents the '
@@ -245,10 +247,10 @@ def _render_filled_slots(flow) -> list[str]:
     return lines
 
 
-def build_bind_guidance(question:str, choices:list) -> str:
-    """Bind-before-detect (round 3.3): appended to the slot-filling prompt when the active flow
-    is stalled on an open question. Conservative-fill contract — an empty fill means the reply
-    was not an answer, and NLU falls through to fresh flow detection."""
+def build_pending_question(question:str, choices:list) -> str:
+    """Appended to the slot-filling prompt when detection landed on a flow that is stalled on an
+    open question. Conservative-fill contract — an empty fill is always better than a fabricated
+    value; the stalled flow simply keeps asking."""
     import json
     lines = ['<pending_question>']
     if question:

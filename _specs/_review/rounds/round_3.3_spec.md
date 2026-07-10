@@ -1,4 +1,4 @@
-# Round 3.3 — Clarification Binding & Grounding Continuity
+# Round 3.3 — Clarification Answers & Grounding Continuity
 
 Maps to **Master Plan · Round 3**. This round is about understanding why Hugo loses the thread after it asks,
 shows, or implies a grounding choice. The goal of this spec is to define the problem and root cause clearly
@@ -77,16 +77,21 @@ flow's slot never fills.
 
 ---
 
-## Solution — Bind Before Detecting
+## Solution — Detect, Then Fill the Active Flow In Place
 
-No new data model. Three changes, all against existing surfaces:
+No new data model. Three changes, all against existing surfaces. NLU's order of operations stays
+uniform across `react` / `think` / `contemplate`: flow detection first (which indirectly classifies
+the intent), then slot-filling. A stalled Active flow does not reorder anything — it only changes
+where the fill lands.
 
-1. **Bind before detecting.** At the top of `think()`: if there is an Active flow on top of the stack —
-   not just when `ambiguity_handler.present` — run the existing `_fill_slots` pass against that **existing
-   flow** (the one with the unfilled or possibly incorrect slot), not a fresh instance.
-   - The missing slot fills → proceed as normal through PEX.
-   - It does not fill (the reply is not an answer, or the user changed tasks) → fall through to normal
-     detection, which is today's behavior.
+1. **Fill the Active flow in place.** In `think()`, detection runs as always; the conversation
+   history carries the open question, so an answer turn detects the SAME flow that is already
+   Active on the stack. When detection matches the Active flow, run the existing `_fill_slots` pass
+   against that flow (the one with the unfilled or possibly incorrect slot) — not a fresh instance,
+   and no new `stackon`.
+   - Detection matches the Active flow → fill it; PEX resumes its policy.
+   - Detection returns a different flow → the user detoured or abandoned; the normal stack rules
+     apply (see `_specs/components/workflow_planner.md`).
 2. **Write shown candidates to `grounding.choices`** when a policy displays them — typed records like
    `{'kind': 'post', 'label': ..., 'entity': {post, sec, snip, chl, ver}, 'source': 'find',
    'turn_number': 3}` — so the fill prompt can offer them as the options for the source slot. This is the
@@ -96,46 +101,49 @@ No new data model. Three changes, all against existing surfaces:
 
 ### The four reply outcomes
 
-After "Which draft should I outline?", the next turn resolves one of four ways. The fill call itself
-decides which — `_fill_slots_schema` already permits returning nothing for a slot, so the rule is a
-sentence of fill-prompt guidance, not a classifier:
+After "Which draft should I outline?", the next turn resolves one of four ways. Flow detection
+decides which — the history carries the open question, so detection routes an answer back to the
+same flow:
 
-- **Clear answer** ("the prompt injection one") — fill the `source` slot, resolve the ambiguity, done.
-- **Vague answer** ("that title's good") — still an answer; the fill call binds it using convo history and
-  `grounding.choices`. This is also where NLU having `attempt_recovery()` is powerful: preferences and
-  scratchpad can supply the referent when the words alone cannot.
-- **Task change** ("actually, when did I last publish anything?") — the fill returns empty; detection
-  proposes the new flow and `stackon` places it above the outline flow. Record why in the ambiguity
+- **Clear answer** ("the prompt injection one") — detection lands on `outline`, matching the Active
+  flow; slot-filling fills `source`, the ambiguity resolves, done.
+- **Vague answer** ("that title's good") — same path; the fill call resolves the referent using convo
+  history and `grounding.choices`. This is also where NLU having `attempt_recovery()` is powerful:
+  preferences and scratchpad can supply the referent when the words alone cannot.
+- **Task change** ("actually, when did I last publish anything?") — detection lands on a different
+  flow; `stackon` places it and `outline` reverts to Pending beneath it. Record why in the ambiguity
   observation and in the SessionScratchpad, so every agent can see the detour. The ambiguity stays
   **unresolved** — the grounding goal was never met.
-- **On-task but non-selecting** ("neither is right, look again") — also a `stackon`, because searching
-  again is a different flow (`find`). Flows continue: when `find` completes, PEX pops it, sees the still
-  Pending `outline`, and carries on. The ambiguity again stays **unresolved**.
+- **On-task but non-selecting** ("neither is right, look again") — detection lands on `find`; also a
+  `stackon`. Flows continue: when `find` completes, PEX pops it, `outline` is promoted back to
+  Active, and the work carries on. The ambiguity again stays **unresolved**.
 
-The errors are not symmetric — a false bind makes Hugo act on the wrong post (visible damage), a false
-pass just re-runs detection (annoying, recoverable) — so the fill guidance leans conservative: when
-unsure, do not fill. Known cost: a real task change pays the fill call and then the detection ensemble,
-one extra LLM call on a minority of turns.
+Within a matching fill the guidance still leans conservative — `_fill_slots_schema` permits returning
+nothing for a slot, and a fabricated value is worse than an empty one: a wrong fill makes Hugo act on
+the wrong post (visible damage), while an empty fill just leaves the flow asking (annoying,
+recoverable).
 
 ### Stack invariants this leans on
 
 - **No Pending flow is ever on top of the stack at the start of a turn.** PEX continually pops completed
   flows and continues onto the next as long as there is work to do; a turn can only end with an Active
-  (but incomplete) flow that needs more information, or an empty stack. So "Active flow on top" is the
-  complete trigger condition for the bind pass.
-- **An Active top should never be stacked onto by fresh detection** — we are mid-task; at most a
-  `fallback` says we are changing tasks. This nuance is out of scope for the current error; mark it with
-  a comment in `_stack_detected_flow` and revisit later.
+  (but incomplete) flow that needs more information, or an empty stack. So NLU's detection is always
+  compared against a live Active flow, never a stale one.
+- The full detour/abandonment rules (detour `stackon` reverts the stalled flow to Pending; abandonment
+  marks it Invalid; `fallback` is only for re-routing a wrongly predicted flow) live in
+  `_specs/components/workflow_planner.md` — see its stack invariants and scenario matrix.
 
 ---
 
 ## Decisions (settled 2026-07-09)
 
-- **D1 — Answer vs. task-change:** the slot-fill call itself decides; empty fill = not an answer. See the
-  four reply outcomes above.
-- **D2 — Bind target:** always the top of the stack. That is what makes the stack useful to begin with.
+- **D1 — Answer vs. task-change:** flow detection decides — the same flow as the Active one means
+  answer/continuation; a different flow means detour or abandonment. The fill guidance stays
+  conservative within a match: an empty fill rather than a fabricated value. (Supersedes the earlier
+  "empty fill = not an answer" routing rule.)
+- **D2 — Fill target:** always the top of the stack. That is what makes the stack useful to begin with.
   Naming a target flow in ambiguity metadata would be the Rejected Direction in miniature.
-- **D3 — Belief written on a bind:** `think()` writes the latest intent and flow to dialogue state — the
+- **D3 — Belief written on a successful fill:** `think()` writes the latest intent and flow to dialogue state — the
   same values already there, so effectively a no-op. A bit of extra work, not dangerous.
 - **D4 — Ambiguity across a detour:** the per-turn `counts` reset (new turn), but the ambiguity remains
   **unresolved** until grounding completes. An ambiguity that lives across turns and across tasks is
@@ -143,8 +151,8 @@ one extra LLM call on a minority of turns.
 - **D5 — `grounding.choices` lifecycle:** policies that display a pick-one list write. When the flow
   completes, MEM stores the result (including the slots) and tells NLU to clear `choices` — the chosen
   value already lives in the flow's slots, so nothing else needs saving. Proposal clicks keep working
-  because they resolve through `react`, not the bind pass.
-- **D6 — Confirmation ambiguities** ("Did you mean *Guardrails*?", slot already filled): same bind pass —
+  because they resolve through `react`, not the utterance slot-fill path.
+- **D6 — Confirmation ambiguities** ("Did you mean *Guardrails*?", slot already filled): same fill pass —
   on "yes" the slot keeps its value and the ambiguity resolves; on "no" the slot resets and the ambiguity
   stands. If expressing this through the fill schema gets too complicated, ship without it and revisit.
 

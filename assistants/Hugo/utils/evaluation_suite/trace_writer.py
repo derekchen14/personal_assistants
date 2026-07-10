@@ -44,8 +44,8 @@ def grounding_snapshot(agent) -> dict:
 def ambiguity_snapshot(agent) -> dict:
     ambiguity = agent.world.ambiguity
     return {
-        'present': bool(ambiguity.present),
-        'level': ambiguity.get_level() if ambiguity.present else '',
+        'present': bool(ambiguity.is_present),
+        'level': ambiguity.get_level() if ambiguity.is_present else '',
         'metadata': dict(ambiguity.metadata or {}),
         'observation': ambiguity.observation or '',
     }

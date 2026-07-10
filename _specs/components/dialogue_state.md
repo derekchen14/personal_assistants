@@ -70,12 +70,12 @@ Step by step:
 1. **The Assistant starts by calling the PEX agent**, whose first reasoning step forms an initial
    intent sense (System 1). This is prompt guidance in the orchestrator's own reasoning, not a tool
    call — no LLM call is spent on a separate classification pass.
-2. **If the intent is clear, PEX proceeds.** NLU runs in parallel: it detects the flow and derives
+2. **If the intent is clear, PEX proceeds.** NLU runs in parallel as System-2 thinking. It detects the flow and derives
    the authoritative intent from the detected flow. **The hint rule:** when PEX's first pass selects
-   a domain intent (Research, Draft, Revise, Publish), NLU receives that selection as an intent hint
+   a domain intent (Research, Draft, Revise, Publish, Continue), NLU receives that selection as an intent hint
    and narrows its candidate flows to it; when PEX selects Plan, Clarify, or Converse, the hint stays
-   blank — PEX's guidance offers no real signal there, so NLU detects over the full ontology. The
-   hint is derived by the **Assistant's coordination code, deterministically** — PEX's selection is
+   blank — PEX's guidance offers no real signal there, so NLU detects over the full set of flows. The
+   hint is derived by the **Assistant's code, deterministically** — PEX's selection is
    the flow it committed to the stack, and the code reads that stack top; it is never a tool argument
    the orchestrator has to remember. NLU
    then compares its intent against the one PEX picked — a comparison NLU does on its own, without
@@ -329,7 +329,7 @@ flow stack — nothing else touches the Dialogue State:
 | Tool | Owner | What it does |
 |---|---|---|
 | `understand(op)` | NLU | PEX's one belief tool. `op='read'` returns the serialized belief (flow, intent, confidence, slots, grounding), joining the parallel NLU thread first — this is where Plan/Clarify wait. `op='think'` re-runs prediction over the latest turn; `op='contemplate'` re-routes over a failed flow. |
-| `manage_flows(op)` | Workflow Planner | The flow stack only — ops `update` (top-flow slots/stage/status), `stackon` (+ `active: true` single-call dispatch), `fallback`, `activate` (run the policy), `pop` (remove Completed AND Invalid flows all at once). Replaces the old `write_state` + `activate_flow` pair; the old belief-fields update op is gone — PEX cannot manipulate the belief, that is NLU's job. |
+| `manage_flows(op)` | Workflow Planner | The flow stack only — ops `update` (flow slots/stage/status, any depth via `flow_name`; a status write of `'Active'` re-runs the flow), `stackon` (push and run — `active` defaults true; `active: false` queues a plan step), `fallback` (replace and run), `pop` (remove Completed AND Invalid flows all at once, then run the surfaced Pending flow). There is no `activate` op — policy execution is runtime-owned. The old belief-fields update op is gone — PEX cannot manipulate the belief, that is NLU's job. |
 
 The intent hint is **deterministic coordination code in the Assistant, never a tool argument**: the
 flow PEX committed to the stack IS its first-pass selection, so on an NLU consult the code reads the

@@ -52,18 +52,18 @@ FLOW_ONTOLOGY = {
     'find': {
         'dax': '{001}',
         'intent': Intent.RESEARCH,
-        'description': 'Search previous posts by keyword or topic — returns matching titles, excerpts, and publication dates sorted by relevance',
+        'description': 'Search previous posts, drafts or notes by keyword or topic — returns matching titles, excerpts, and publication dates sorted by relevance',
         'output': 'list',
-        'edge_flows': ['browse', 'audit', 'summarize'],
+        'edge_flows': ['audit', 'summarize'],
         'policy_path': 'policies.research.find',
     },
-    'browse': {
-        'dax': '{012}',
+    'inspect': {
+        'dax': '{1AD}',
         'intent': Intent.RESEARCH,
-        'description': 'Browse available topics, notes, trending subjects, saved ideas, and content gaps filtered by category. Excludes drafts and posts which use the "find" flow instead.',
-        'output': 'list',
-        'edge_flows': ['find', 'brainstorm', 'audit'],
-        'policy_path': 'policies.research.browse',
+        'description': 'Report one or more metrics — word count, section count, reading time, image count, post size (MB), or post metadata - category tags, has_featured_image, publication date, last edited date, scheduled date, channels, status',
+        'output': 'card',
+        'edge_flows': ['summarize'],
+        'policy_path': 'policies.research.inspect',
     },
     'summarize': {
         'dax': '{19A}',
@@ -113,7 +113,7 @@ FLOW_ONTOLOGY = {
         'intent': Intent.DRAFT,
         'description': 'Come up with new ideas or angles for a given topic, word, or phrase. This may include hooks, opening lines, synonyms, or new perspectives the user can choose from',
         'output': 'list',
-        'edge_flows': ['browse', 'outline'],
+        'edge_flows': ['find', 'outline'],
         'policy_path': 'policies.draft.brainstorm',
     },
 

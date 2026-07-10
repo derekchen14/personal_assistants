@@ -228,7 +228,7 @@ class PolicyExecutor:
         """Check whether a artifact is good enough to show to the user. A artifact with a 'violation'
         set is already recognized as an error artifact, so it does NOT need Tier-1 retry. Return
         passed=False + is_error_frame=True so the outer caller routes it directly to the error path."""
-        if self.world.ambiguity.present:
+        if self.world.ambiguity.is_present:
             return ArtifactCheck(passed=True)
         if 'violation' in artifact.data:
             violation = artifact.data['violation']
@@ -578,12 +578,17 @@ class PolicyExecutor:
         return {'_success': True, 'state': state.read_state()}
 
     def _dispatch_manage_flows(self, params:dict) -> dict:
-        """The orchestrator's one flow tool — ops [update, stackon, fallback, activate, pop].
-        `update` mutates the top flow (old update_flow) and `pop` removes Completed AND Invalid
-        flows in one sweep (write_state op 'pop'). Belief and grounding stay NLU's job — no op here
-        touches them."""
+        """The orchestrator's one flow tool — ops [update, stackon, fallback, pop].
+        `update` changes a flow in place at any depth (flow_name targets a buried flow; blank means
+        the top flow) and `pop` removes Completed AND Invalid flows in one sweep. Policy execution
+        is runtime-owned: stackon (active defaults true), fallback, and a pop that surfaces a
+        Pending flow run the top policy; `activate_flow` is internal plumbing, not a tool op.
+        Belief and grounding stay NLU's job — no op here touches them."""
         if params['op'] == 'activate':
-            return self.activate_flow(params)
+            return {'_success': False, '_error': 'invalid_input',
+                    '_message': "manage_flows no longer accepts op='activate'; stackon/fallback/"
+                                "pop run the top policy themselves, and an update that sets "
+                                "status='Active' re-runs the flow."}
         op = {'update': 'update_flow'}.get(params['op'], params['op'])
         return self._dispatch_write_state({**params, 'op': op})
 
@@ -593,19 +598,40 @@ class PolicyExecutor:
         if 'flow_name' in params:
             kwargs['flow_name'] = params['flow_name']
         if params['op'] == 'update_flow' and 'slots' in kwargs:
-            top = self.flow_stack.get_flow()
-            unknown = [name for name in kwargs['slots'] if name not in top.slots]
+            target = (self.flow_stack.find_by_name(kwargs['flow_name'])
+                      if kwargs.get('flow_name') else self.flow_stack.get_flow())
+            unknown = [name for name in kwargs['slots'] if target and name not in target.slots]
             if unknown:  # corrective error — fill_slot_values would drop these silently
                 return {'_success': False, '_error': 'invalid_input',
-                        '_message': f'flow {top.name()!r} has no slot(s) {unknown}; '
-                                    f'valid slots: {list(top.slots)}'}
+                        '_message': f'flow {target.name()!r} has no slot(s) {unknown}; '
+                                    f'valid slots: {list(target.slots)}'}
+        if params['op'] == 'stackon':
+            # No slot hand-over while an ambiguity is open — the stalled flow's values are
+            # exactly what is in question (planner spec scenario 15 discussion).
+            kwargs['transfer'] = not self.world.ambiguity.is_present
         document = state.write_state(self.world.state_file(), params['op'],
                                      stack=self.flow_stack, **kwargs)
-        if params['op'] == 'stackon' and params.get('active'):
-            # Single-call stack-on (the user 2026-07-03): stackon handed over matching slots; fold
-            # in belief's pred_slots, then run the policy — no update_flow / activate_flow calls.
+        if params['op'] in ('stackon', 'fallback') and params.get('flow_name'):
             self._apply_belief_slots(state, params['flow_name'])
-            return self.activate_flow({'flow_name': params['flow_name']})
+        # Exactly three stack events run the top policy: stackon (active defaults true —
+        # active=false queues a plan step), fallback, and pop. A status write of 'Active' through
+        # update is the manual run button (planner spec scenario 20); slot-only updates never run.
+        run = (params['op'] in ('fallback', 'pop')
+               or (params['op'] == 'stackon' and params.get('active', True))
+               or (params['op'] == 'update_flow' and kwargs.get('status') == 'Active'))
+        if run:
+            return self._dispatch_top_policy(state, document)
+        return {'_success': True, 'state': document}
+
+    def _dispatch_top_policy(self, state, document:dict|None=None) -> dict:
+        """Run the policy for the top runnable flow after a stack mutation. This is the
+        runtime-owned activation path; it is intentionally not exposed as a planner tool."""
+        top = self.flow_stack.get_flow()
+        if top and top.status in ('Pending', 'Active'):
+            return self.activate_flow({'flow_name': top.name()})
+        if document is None:
+            state.flow_stack = self.flow_stack.to_list()
+            document = state.read_state()
         return {'_success': True, 'state': document}
 
     def _apply_belief_slots(self, state, flow_name:str):
@@ -637,7 +663,7 @@ class PolicyExecutor:
                 f"slots: {json.dumps(state.pred_slots, default=str)}. If you are on a different "
                 f"flow, prefer NLU's detection unless you have a concrete reason to stay.")
         active = self.flow_stack.get_flow(status='Active')
-        if (active and not self.world.ambiguity.present
+        if (active and not self.world.ambiguity.is_present
                 and state.pred_intent in ('Research', 'Draft', 'Revise', 'Publish')
                 and state.pred_intent != active.intent):
             old_name = active.name()
@@ -646,7 +672,7 @@ class PolicyExecutor:
             self._apply_belief_slots(state, top['flow_name'])
             note += (f" Intent changed: I dropped {old_name} (Invalid) and swapped in "
                      f"{top['flow_name']} for the detected {state.pred_intent} intent — run it "
-                     f"with manage_flows (op='activate').")
+                     f"with manage_flows (op='update', fields={{'status': 'Active'}}).")
         return note
 
     def activate_flow(self, params:dict) -> dict:
@@ -682,7 +708,7 @@ class PolicyExecutor:
         state.flow_stack = self.flow_stack.to_list()
         blocks = _block_summaries(artifact)
         if flow.status != 'Completed':
-            question = self.world.ambiguity.ask(flow.name()) if self.world.ambiguity.present else ''
+            question = self.world.ambiguity.ask(flow.name()) if self.world.ambiguity.is_present else ''
             return {'_success': True, 'status': flow.status, 'thoughts': artifact.thoughts,
                     'question': question, 'blocks': blocks}
         self.completed_this_turn.append(flow)  # for the end-of-turn checkpoint + MEM's store
@@ -722,7 +748,7 @@ class PolicyExecutor:
     def _dispatch_ask_clarification(self, params:dict) -> dict:
         """Generate the level-specific clarification question for the pending ambiguity — NLU
         authors it (wider view of the session than the orchestrator)."""
-        if self.world.ambiguity.present:
+        if self.world.ambiguity.is_present:
             flow = self.flow_stack.get_flow()
             return {'_success': True, 'question': self.world.ambiguity.ask(flow.name() if flow else '')}
         return {'_success': False, '_error': 'invalid_input',
@@ -731,7 +757,7 @@ class PolicyExecutor:
     def _dispatch_recover_ambiguity(self, params:dict) -> dict:
         """Resolve the pending ambiguity internally (preferences + scratchpad) before escalating
         to the user — direct component calls, no NLU module invocation."""
-        if not self.world.ambiguity.present:
+        if not self.world.ambiguity.is_present:
             return {'_success': False, '_error': 'invalid_input',
                     '_message': 'No pending ambiguity to recover.'}
         result, success = self.world.ambiguity.recover(self.world.prefs, self.world.scratchpad)
@@ -969,39 +995,38 @@ class PolicyExecutor:
                 'name': 'manage_flows',
                 'description': (
                     "Possible Ops:\n"
-                    "- `update`   — mutate the flow on top of the stack. `fields` may carry `slots` "
-                    "(slot-name → value, in the exact shapes belief's `pred_slots` carries: "
-                    "strings for single-value slots, lists for multi-value slots), `stage`, and "
-                    "`status`.\n"
-                    "- `stackon`  — push `flow_name` on top of the stack as Pending; matching "
-                    "slot values hand over from the prior flow automatically. Pass `active: true` "
-                    "to also fold in belief's `pred_slots`, promote to Active, and run the policy "
-                    "immediately. If executing a multi-step plan, you can stacks ALL related "
-                    "flows at once (reverse execution order, first-to-run pushed last with "
-                    "`active: true`); the rest wait as Pending.\n"
+                    "- `update`   — change a flow in place. `fields` may carry `slots` (slot-name "
+                    "→ value, in the exact shapes belief's `pred_slots` carries: strings for "
+                    "single-value slots, lists for multi-value slots), `stage`, and `status`. "
+                    "Targets the top flow by default; pass `flow_name` to reach a buried flow "
+                    "(e.g. cancelling a whole stack by marking each flow Invalid). Setting "
+                    "`status: 'Active'` re-runs the flow's policy — this is how you CONTINUE the "
+                    "Active flow after the user answers its question. Slot-only updates never run "
+                    "anything.\n"
+                    "- `stackon`  — push `flow_name` on top of the stack and run its policy "
+                    "(`active` defaults to true; the flow beneath reverts to Pending and resumes "
+                    "later). Matching slot values hand over from the prior flow automatically. "
+                    "Pass `active: false` to queue a plan step as Pending WITHOUT running it — "
+                    "stack a plan in reverse execution order with active=false, then push the "
+                    "first step plain.\n"
                     "- `fallback` — replace the top flow with `flow_name`, transferring matching "
-                    "slot values.\n"
-                    "- `activate` — run the named flow's policy inline as a sub-agent (skill "
-                    "prompt + domain tools). Slots come from the flow's stack entry; grounding "
-                    "from the state file. On completion you get the completion record {flow, "
-                    "summary, metadata} — also appended to the scratchpad. A non-completed run "
-                    "returns the flow status plus any pending clarification question. `blocks` "
-                    "summarizes the UI artifact (cards, selection options) the frontend renders "
-                    "alongside your reply — reference it briefly, never restate its contents.\n"
-                    "- `pop`      — remove Completed and Invalid flows all at once, surfacing "
-                    "the next Pending flow."
+                    "slot values; the replacement policy runs immediately.\n"
+                    "- `pop`      — remove Completed and Invalid flows all at once. If a Pending "
+                    "flow is surfaced, it is promoted to Active and its policy runs.\n"
+                    "There is no `activate` op — stackon/fallback/pop run the top policy "
+                    "themselves; inspect the returned policy result."
                 ),
                 'input_schema': {
                     'type': 'object',
                     'properties': {
                         'op': {'type': 'string',
-                               'enum': ['update', 'stackon', 'fallback', 'activate', 'pop']},
+                               'enum': ['update', 'stackon', 'fallback', 'pop']},
                         'flow_name': {'type': 'string',
-                                      'description': 'for stackon / fallback / activate — the target flow'},
+                                      'description': 'for stackon / fallback — the target flow; for update — optional deep target (defaults to the top flow)'},
                         'fields': {'type': 'object',
-                                   'description': 'for update — the flow fields to set'},
+                                   'description': 'for update — the flow fields to set (slots / stage / status)'},
                         'active': {'type': 'boolean',
-                                   'description': 'for stackon — promote to Active and run the flow in one call'},
+                                   'description': 'for stackon — defaults true (push and run); false queues a plan step as Pending without running it'},
                     },
                     'required': ['op'],
                 },

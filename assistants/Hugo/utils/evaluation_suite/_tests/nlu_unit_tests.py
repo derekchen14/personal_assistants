@@ -52,15 +52,15 @@ class TestAmbiguityHandler:
 
     def test_recognize_sets_present_and_level(self, nlu):
         nlu.ambiguity_handler.recognize('specific', {'missing': 'x'})
-        assert nlu.ambiguity_handler.present is True
+        assert nlu.ambiguity_handler.is_present is True
         assert nlu.ambiguity_handler.get_level() == 'specific'
         nlu.ambiguity_handler.resolve()
-        assert nlu.ambiguity_handler.present is False
+        assert nlu.ambiguity_handler.is_present is False
 
     def test_resolve_takes_explanation(self, nlu):
         nlu.ambiguity_handler.recognize('partial', {'missing': 'source'}, observation='which post?')
         nlu.ambiguity_handler.resolve('found in prefs')
-        assert nlu.ambiguity_handler.present is False
+        assert nlu.ambiguity_handler.is_present is False
         assert nlu.ambiguity_handler.metadata == {}
         assert nlu.ambiguity_handler.observation == ''
 
@@ -70,7 +70,7 @@ class TestAmbiguityHandler:
         nlu.ambiguity_handler.recognize('partial', {'missing': 'channel'})
         result = nlu.attempt_recovery()
         assert result == {'recovery': 'substack'}
-        assert nlu.ambiguity_handler.present is False  # resolved from memory, no user escalation
+        assert nlu.ambiguity_handler.is_present is False  # resolved from memory, no user escalation
         recovery = nlu.world.scratchpad.read(origin='recovery')
         assert recovery[-1]['found'] == 'substack' and recovery[-1]['version'] == 1
 
@@ -79,7 +79,7 @@ class TestAmbiguityHandler:
         nlu.ambiguity_handler.recognize('partial', {'missing': 'channel'})
         result = nlu.attempt_recovery()
         assert result == {'recovery': 'channel'}  # the missing slot name comes back unresolved
-        assert nlu.ambiguity_handler.present is True  # nothing found — still pending
+        assert nlu.ambiguity_handler.is_present is True  # nothing found — still pending
         recovery = nlu.world.scratchpad.read(origin='recovery')
         assert recovery[-1]['missing'] == 'channel'  # the attempt is recorded either way
 
@@ -214,7 +214,7 @@ class TestThinkDispatch:
         state = nlu.think('that thing')
         assert state.pred_flows[0]['flow_name'] == 'clarify'
         assert state.pred_slots == {}
-        assert nlu.ambiguity_handler.present is True
+        assert nlu.ambiguity_handler.is_present is True
         assert nlu.ambiguity_handler.get_level() == 'general'
 
     def test_generic_flow_prompt_used_when_no_hint(self):

@@ -108,7 +108,8 @@ class TestOrchestratorDispatch:
     def test_manage_flows_stacks_and_saves(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
         result = mock_agent.pex._dispatch_tool('manage_flows',
-                                               {'op': 'stackon', 'flow_name': 'outline'})
+                                               {'op': 'stackon', 'flow_name': 'outline',
+                                                'active': False})
         assert result['_success'] is True
         assert result['state']['flow_stack'][0]['flow_name'] == 'outline'
         assert (sessions_dir / 'wire-test' / 'state.json').exists()
@@ -169,7 +170,7 @@ class TestScopedToolSurface:
         result = pex._dispatch_tool('declare_ambiguity',
             {'level': 'partial', 'metadata': {'missing': 'source', 'entity': 'post'}})
         assert result == {'_success': True}
-        assert ambiguity.present is True and ambiguity.get_level() == 'partial'
+        assert ambiguity.is_present is True and ambiguity.get_level() == 'partial'
         bad = pex._dispatch_tool('declare_ambiguity',
                                  {'level': 'general', 'metadata': {'missing': 'nope'}})
         assert bad['_success'] is False and bad['_error'] == 'invalid_input'
@@ -191,7 +192,7 @@ class TestScopedToolSurface:
         mock_agent.world.ambiguity.recognize('partial', {'missing': 'channel'})
         result = pex._dispatch_tool('recover_from_ambiguity', {})
         assert result['_success'] is True and result['recovery'] == 'substack'
-        assert mock_agent.world.ambiguity.present is False  # resolved internally
+        assert mock_agent.world.ambiguity.is_present is False  # resolved internally
 
     def test_flow_stack_tools_replace_call_flow_stack(self, mock_agent):
         pex = mock_agent.pex
@@ -261,7 +262,7 @@ class TestDispatchFlow:
         state = wired.world.state
         state.set_active_entity(post='cafe01', ver=True)
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack)
-        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
+        result = pex.activate_flow({'flow_name': 'outline'})   # internal runtime plumbing, not a tool
         assert result['_success'] is True
         assert result['status'] == 'Completed'
         assert result['completion'] == {'origin': 'outline', 'version': 1,
@@ -291,7 +292,7 @@ class TestDispatchFlow:
 
         pex._policies['Draft'] = _CapturingPolicy(pex.flow_stack)
         assert pex.flow_stack.find_by_name('outline') is not None
-        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
+        result = pex.activate_flow({'flow_name': 'outline'})
         assert result['status'] == 'Completed'
         assert captured['slots']['source'][0]['post'] == 'cafe01'
 
@@ -301,7 +302,7 @@ class TestDispatchFlow:
                                              thoughts='Need a post first.')
         wired.world.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'},
                                         observation='Which post should I work on?')
-        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
+        result = pex.activate_flow({'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['status'] == 'Active'
         assert result['question'] == 'Which post should I work on?'
@@ -310,7 +311,7 @@ class TestDispatchFlow:
     def test_empty_artifact_fails_validation(self, wired):
         pex = wired.pex
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack, status='Active', thoughts='')
-        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
+        result = pex.activate_flow({'flow_name': 'outline'})
         assert result['_success'] is False
         assert result['_error'] == 'validation'
 
@@ -353,7 +354,7 @@ class TestPolicyCompletion:
         state.set_active_entity(post='cafe01', ver=True)
         pex._policies['Draft'] = self._migrated_policy(wired, 'Wrote the intro.',
                                                        metadata={'sec': 'intro'})
-        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
+        result = pex.activate_flow({'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['completion'] == {'origin': 'outline', 'version': 1,
                                         'turn_number': wired.world.context.turn_id, 'used_count': 0,
@@ -365,7 +366,9 @@ class TestPolicyCompletion:
     def test_complete_flow_blocks_ungrounded_completion(self, wired):
         pex = wired.pex
         pex._policies['Draft'] = self._migrated_policy(wired, 'Done.')
-        result = pex._dispatch_tool('manage_flows', {'op': 'activate', 'flow_name': 'outline'})
+        # stackon runs the policy (active defaults true); the grounding rejection comes back
+        # through the corrective-error wrapper.
+        result = pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is False
         assert 'grounding.post is empty' in result['_message']
         assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == []  # no record written
@@ -1813,20 +1816,21 @@ class TestSingleCallStackon:
         monkeypatch.setattr(pex, 'activate_flow',
                             lambda params: ran.update(params) or {'_success': True, 'status': 'Completed'})
         result = pex._dispatch_tool('manage_flows',
-                                    {'op': 'stackon', 'flow_name': 'outline', 'active': True})
+                                    {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True
-        assert ran['flow_name'] == 'outline'   # policy ran with no separate activate_flow call
+        assert ran['flow_name'] == 'outline'   # active defaults true: the push runs the policy
         top = pex.flow_stack.get_flow()
         assert top.slots['source'].values[0]['post'] == 'p1'   # belief slots folded in
 
-    def test_stackon_without_active_only_stacks(self, sessions_dir, mock_agent, monkeypatch):
+    def test_stackon_active_false_only_stacks(self, sessions_dir, mock_agent, monkeypatch):
         mock_agent.world.open_session('wire-test')
         state = mock_agent.world.state
         self._believe(state, 'outline')
         called = []
         monkeypatch.setattr(mock_agent.pex, 'activate_flow', lambda params: called.append(params))
         result = mock_agent.pex._dispatch_tool('manage_flows',
-                                               {'op': 'stackon', 'flow_name': 'outline'})
+                                               {'op': 'stackon', 'flow_name': 'outline',
+                                                'active': False})
         assert result['_success'] is True and not called
 
 
@@ -1851,9 +1855,10 @@ class TestBeliefInjection:
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         state = mock_agent.world.state
-        pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
+        pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline',
+                                            'active': False})
         live = pex.flow_stack.get_flow()
-        live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
+        live.status = 'Active'   # queued as Pending; model a mid-turn running flow
         self._believe(state, 'release', intent='Publish')
         note = pex.inject_belief_state()
         assert 'Intent changed' in note and 'Invalid' in note
@@ -1865,9 +1870,10 @@ class TestBeliefInjection:
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         state = mock_agent.world.state
-        pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
+        pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline',
+                                            'active': False})
         live = pex.flow_stack.get_flow()
-        live.status = 'Active'   # stackon lands Pending; model a mid-turn running flow
+        live.status = 'Active'   # queued as Pending; model a mid-turn running flow
         self._believe(state, 'refine', intent='Draft')
         note = pex.inject_belief_state()
         assert 'refine' in note and 'Intent changed' not in note
@@ -1885,7 +1891,8 @@ class TestPlanLifecycle:
         pex = mock_agent.pex
         state = mock_agent.world.state
         for flow_name in ('release', 'compose'):    # reverse execution order: first-to-run last
-            result = pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': flow_name})
+            result = pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': flow_name,
+                                                         'active': False})
             assert result['_success'] is True
 
         class _CompletingPolicy:
@@ -1897,11 +1904,14 @@ class TestPlanLifecycle:
         monkeypatch.setitem(pex._policies, Intent.DRAFT, _CompletingPolicy())
 
         result = pex._dispatch_tool('manage_flows',
-                                    {'op': 'stackon', 'flow_name': 'outline', 'active': True})
+                                    {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True and result['status'] == 'Completed'
         entries = [(entry['flow_name'], entry['status']) for entry in state.flow_stack]
         assert ('compose', 'Pending') in entries    # the plan survived the completion
         assert ('release', 'Pending') in entries
-        pex._dispatch_tool('manage_flows', {'op': 'pop'})
-        top = state.flow_stack[-1]
-        assert top['flow_name'] == 'compose' and top['status'] == 'Active'   # next flow surfaces
+        result = pex._dispatch_tool('manage_flows', {'op': 'pop'})
+        # pop promoted compose AND ran it — the runtime owns dispatch; the plan tail survives.
+        assert result['_success'] is True and result['status'] == 'Completed'
+        entries = [(entry['flow_name'], entry['status']) for entry in state.flow_stack]
+        assert ('compose', 'Completed') in entries
+        assert ('release', 'Pending') in entries

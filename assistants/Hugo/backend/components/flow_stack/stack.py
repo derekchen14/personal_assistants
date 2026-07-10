@@ -19,25 +19,48 @@ class FlowStack:
 
     # ── Public API ──────────────────────────────────────────────────
 
-    def stackon(self, flow_name:str):
-        """Push a flow on top of the stack. The current flow stays below and resumes after the new flow completes.
-        Transfers filled slot values to the new flow when slot names match across parent and child."""
+    def stackon(self, flow_name:str, transfer:bool=True):
+        """Push a flow on top of the stack. An in-flight flow beneath reverts to Pending and
+        resumes after the new flow completes (pop promotes it back). Transfers filled slot values
+        to the new flow when slot names match — callers pass transfer=False while an ambiguity is
+        open, since the stalled flow's values are exactly what is in question.
+
+        Same-type dedupe: pushing the type already in flight returns the existing flow ONLY while
+        that flow's entity slot is still empty — once it is grounded to an entity, a same-type
+        push is a new task on a new entity, not a repeat (planner spec scenario 12b).
+        Completed/Invalid tops never block or transfer — those are stale, the new flow is real."""
         curr_flow = self._stack[-1] if self._stack else None
-        # No consecutive same-type stackon when the top is still in flight. The active
-        # flow IS already that flow, so there is nothing to "push as a prerequisite".
-        # Completed/Invalid tops do not block — those are stale, the new flow is real.
         _terminal = (FlowLifecycle.COMPLETED.value, FlowLifecycle.INVALID.value)
-        if curr_flow and curr_flow.flow_type == flow_name and curr_flow.status not in _terminal:
-            return curr_flow
+        in_flight = bool(curr_flow) and curr_flow.status not in _terminal
+        if in_flight and curr_flow.flow_type == flow_name:
+            entity = curr_flow.slots.get(curr_flow.entity_slot)  # chat-style flows have none
+            if not (entity and entity.check_if_filled()):
+                return curr_flow
         new_flow = self._push(flow_name)
-        # Slot transfer only from a flow still in flight — a Completed/Invalid top is stale
-        # (see above), and seeding the new flow from it re-grounds fresh requests on old
-        # entities (e.g. inspect post A, then "now check post B" inheriting A).
-        if curr_flow and curr_flow.status not in _terminal:
-            for slot_name, slot in curr_flow.slots.items():
-                if slot_name in new_flow.slots and slot.filled:
-                    new_flow.fill_slot_values({slot_name: slot.to_dict()})
+        if in_flight:
+            if transfer:
+                for slot_name, slot in curr_flow.slots.items():
+                    if slot_name in new_flow.slots and slot.filled:
+                        new_flow.fill_slot_values({slot_name: slot.to_dict()})
+            curr_flow.status = FlowLifecycle.PENDING.value  # the new flow claims the conversation
         return new_flow
+
+    def update_flow(self, flow_name:str='', slots:dict|None=None, stage:str='', status:str=''):
+        """Update a flow IN PLACE at any depth. Unlike the top-only ops (stackon / fallback / pop /
+        get_flow), this locates the flow by name — blank name means the top flow — and writes
+        slots/stage/status without running anything. Slot values arrive pre-normalized
+        (DialogueState.write_state normalizes LLM-authored shapes before delegating here)."""
+        flow = self.find_by_name(flow_name) if flow_name else self.get_flow()
+        if not flow:  # LLM-authored flow_name — corrective error, not a crash
+            raise ValueError(f'no live flow named {flow_name!r} on the stack')
+        if slots:
+            flow.fill_slot_values(slots)
+            flow.is_filled()
+        if stage:
+            flow.stage = stage
+        if status:
+            flow.status = status
+        return flow
 
     def fallback(self, flow_name:str):
         """Replace the current flow. Marks it Invalid first, then pushes the new flow,

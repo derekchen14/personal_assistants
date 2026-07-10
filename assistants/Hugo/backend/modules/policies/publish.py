@@ -49,7 +49,7 @@ class PublishPolicy(BasePolicy):
 
         # Skill may declare ambiguity (e.g. an unknown channel name); leave the flow Active
         # and ask — never publish in the same breath as the question.
-        if self.ambiguity.present:
+        if self.ambiguity.is_present:
             return self._clarify_with_steps(flow)
 
         failed = self._first_failed_platform_tool(tool_log)

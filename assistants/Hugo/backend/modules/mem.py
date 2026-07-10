@@ -44,10 +44,24 @@ class MemoryExtensionModule:
             state.grounding['choices'] = []
         state.turn_count += 1
         state.flow_stack = self.world.flows.to_list()  # refresh the saved copy, then save
+        self._check_turn_end_shape(state.flow_stack)
         state.save(self.world.state_file())
         # artifact long-term storage (append world.latest_artifact() to artifacts.jsonl in the
         # session dir) # designed-not-built
         self._compression_check(prompt_tokens)
+
+    @staticmethod
+    def _check_turn_end_shape(stack:list):
+        """Log-only turn-end invariant check (round 2.12): a turn must end with an empty stack or
+        an Active flow on top — no Pending flow on top, no Completed/Invalid survivor. Post-hooks
+        validate, they never rewrite state; a violation here means PEX's pop discipline slipped
+        and the NEXT turn would fill the wrong flow."""
+        terminal = [entry['flow_name'] for entry in stack
+                    if entry['status'] in ('Completed', 'Invalid')]
+        pending_top = bool(stack) and stack[-1]['status'] == 'Pending'
+        if terminal or pending_top:
+            log.warning('turn-end stack shape violated: top=%s terminal_leftovers=%s',
+                        stack[-1]['status'] if stack else 'empty', terminal)
 
     def _compression_check(self, prompt_tokens:int):
         """Compactor trigger: real prompt-token usage from PEX's last acting-loop API response

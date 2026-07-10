@@ -3,7 +3,7 @@ from backend.components.flow_stack.flows import *
 
 flow_classes: dict[str, type] = {
     # Research
-    'find': FindFlow, 'browse': BrowseFlow, 'summarize': SummarizeFlow,
+    'find': FindFlow, 'inspect': InspectFlow, 'summarize': SummarizeFlow,
     'compare': CompareFlow,
     # Draft
     'brainstorm': BrainstormFlow, 'outline': OutlineFlow, 'compose': ComposeFlow,

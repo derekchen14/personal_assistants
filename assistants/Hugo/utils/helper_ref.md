@@ -223,7 +223,7 @@ Before proposing a new tool, grep for the capability here first.
 
 **BusinessContext** (1): `search_faqs`.
 
-**Orchestrator hot-path tools** (5, `_orchestrator_toolset`): `understand`, `manage_flows`, `scratchpad`, `store_preference`, plus the long-tail component tools. Writes still route through a flow via `manage_flows` op=activate; the tool surface is being reshaped per `_specs/_review/rounds/round_0.1_spec.md` (scoped per-agent toolsets).
+**Orchestrator hot-path tools** (5, `_orchestrator_toolset`): `understand`, `manage_flows`, `scratchpad`, `store_preference`, plus the long-tail component tools. Writes still route through a flow via `manage_flows` — stackon (active defaults true), fallback, and pop-promotion run the top policy themselves; there is no activate op. The tool surface is being reshaped per `_specs/_review/rounds/round_0.1_spec.md` (scoped per-agent toolsets).
 
 **Component tools** (3): `handle_ambiguity`, `coordinate_context`, `manage_memory`.
 

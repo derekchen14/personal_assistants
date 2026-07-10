@@ -192,7 +192,7 @@ class RevisePolicy(BasePolicy):
 
         # Skill may declare ambiguity (e.g. confirmation on vague direction); leave flow
         # Active so the next turn can resolve rather than treating completion as final.
-        if self.ambiguity.present:
+        if self.ambiguity.is_present:
             return TaskArtifact(origin=flow.name())
 
         # Bump used_count on scratchpad entries the skill actually consumed.
@@ -234,7 +234,7 @@ class RevisePolicy(BasePolicy):
         pre = self._read_post_content(post_id, tools)
         text, tool_log = self.llm_execute(flow, state, context, tools,
             extra_resolved={'post_prose': pre.get('content', '')})
-        if self.ambiguity.present:
+        if self.ambiguity.is_present:
             return TaskArtifact(flow.name())
 
         saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
@@ -270,7 +270,7 @@ class RevisePolicy(BasePolicy):
             extra['section_content'] = sec['content']
         text, _ = self.llm_execute(flow, state, context, tools,
             extra_resolved=extra or None, exclude_tools=('revise_content',))
-        if self.ambiguity.present:
+        if self.ambiguity.is_present:
             return TaskArtifact(flow.name())
 
         # Skill replies one candidate per line, numbered — strip the list marker and quotes.

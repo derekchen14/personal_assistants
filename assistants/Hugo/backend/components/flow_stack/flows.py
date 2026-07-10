@@ -11,25 +11,31 @@ OUTLINE_LEVELS = {
 
 # ── Research (4 flows) ──────────────────────────────────────────────────────
 
-class BrowseFlow(ResearchParentFlow):
+class InspectFlow(ResearchParentFlow):
   def __init__(self):
     super().__init__()
-    self.flow_type = 'browse'
-    self.dax = '{012}'
-    self.entity_slot = 'query'
-    self.goal = 'browse the user\'s tagged content and saved notes for trending subjects, ideas, and content gaps; excludes drafts and posts which use the "find" flow instead'
-
+    self.flow_type = 'inspect'
+    self.dax = '{1AD}'
+    self.goal = ('report one or more metrics — word count, section count, reading time, image '
+                 'count, post size — or post metadata: category tags, featured image, '
+                 'publication/edit/scheduled dates, channels, status')
     self.slots = {
-      'query': FreeTextSlot(priority='required'),
-      'target': CategorySlot(['tag', 'note', 'both'], priority='required'),
+      'source': SourceSlot(1, priority='elective'),
+      'metrics': ChecklistSlot(priority='elective'),
+      'threshold': ScoreSlot(priority='optional'),  # check a metric against this bound
     }
-    self.tools = ['find_posts', 'brainstorm_ideas', 'search_notes']
+    self.tools = ['read_metadata', 'find_posts', 'channel_status']
 
   def fill_slot_values(self, values):
-    for item in values.get('query', []):
-      self.slots['query'].add_one(item)
-    if 'target' in values:
-      self.slots['target'].assign_one(values['target'])
+    for item in values.get('source', []):
+      self.slots['source'].add_one(**item)
+    for item in values.get('metrics', []):
+      if isinstance(item, dict):
+        self.slots['metrics'].add_one(**item)
+      else:
+        self.slots['metrics'].add_one(item)
+    if 'threshold' in values:
+      self.slots['threshold'].assign_one(float(values['threshold']))
 
 class SummarizeFlow(ResearchParentFlow):
   def __init__(self):

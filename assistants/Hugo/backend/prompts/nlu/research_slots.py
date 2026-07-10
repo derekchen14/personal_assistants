@@ -1,40 +1,41 @@
-BROWSE_PROMPT = {
+INSPECT_PROMPT = {
     'instructions': (
-        "The Browse Flow is a discovery flow over the user's saved notes and tagged content — surfacing "
-        "trending subjects, ideas, and content gaps. The two main objects in Hugo are posts (blog "
-        "articles; drafts are just unpublished posts) and notes (shorter saved snippets). Browse handles "
-        "tag-level and note-level discovery; post-level lookup belongs to the Find Flow.\n\n"
-        "Map any canonical tags the user names — close synonyms permitted but stay conservative. Infer "
-        "the target from the user's wording: tag-leaning phrasing points at the tag taxonomy itself, "
-        "note-leaning phrasing points at the saved notes, and explicit catch-alls cover both."
+        "The Inspect Flow reports metrics and metadata about the user's content — word count, section "
+        "count, reading time, image count, post size, category tags, featured image, "
+        "publication/edit/scheduled dates, channels, and status. Questions may be scoped to one post "
+        "('how long is my caching post?') or span the library ('how many posts did I publish last "
+        "month?').\n\n"
+        "Extract WHICH content is being measured (source), WHAT is being measured (metrics), and any "
+        "numeric bound the user wants the metric checked against (threshold). The agent gathers the "
+        "numbers itself — never guess values, only capture what to measure."
     ),
     'rules': (
-        "1. `query` is a list of canonical tags forming the search filter. Tag set: ai, agents, "
-        "ambiguity, conference, data-strategy, dialogue, explainer, gpu, lists, machine-learning, "
-        "modeling, nlp, product-strategy, research, rl, startups, trends.\n"
-        "  a. Map close synonyms conservatively: 'AI/ML' → ai; 'reinforcement learning' → rl; 'NLP topics' "
-        "→ nlp; 'agent stuff' → agents. Drop phrases without a clean match.\n"
-        "2. `target` defaults to inference from wording: 'topics', 'tags', 'subjects' → 'tag'; 'notes', "
-        "'ideas', 'snippets' → 'note'; 'everything', 'all', 'both' → 'both'.\n"
-        "  a. When the user is not clearly asking about tag-level discovery, default `target` to 'note' — "
-        "notes are the more common browse object.\n"
-        "3. Utterances about specific posts, drafts, or titles do NOT belong here — leave both slots null.\n"
-        "4. Treat browse directives as current-turn-only. Prior-turn directives are assumed already "
+        "1. `source` holds the post being inspected. Library-wide questions ('how many posts...', "
+        "'which drafts...') leave `source` null — the empty source IS the library-wide signal.\n"
+        "2. `metrics` is the list of things to measure, one item per metric, named with the user's "
+        "own noun ('word count', 'reading time', 'tags', 'status', 'posts published last month').\n"
+        "3. `threshold` fills ONLY when the user states a numeric bound to check against ('is it "
+        "under 1500 words?' → 1500). Descriptive numbers that are not bounds do not fill it.\n"
+        "4. Treat inspect directives as current-turn-only. Prior-turn directives are assumed already "
         "applied — do NOT carry them into the current slot fill unless the current turn explicitly "
-        "references them via co-reference ('yes', 'do option 2', 'all three'). `source` is the "
-        "exception: it carries forward from `state.active_post`."
+        "references them via co-reference ('yes', 'that one too'). `source` is the exception: it "
+        "carries forward from `state.active_post`."
     ),
     'slots': (
-        "### query (required)\n\n"
-        "Type: FreeTextSlot. The list of canonical tags (see rule 1 for the closed set).\n\n"
-        "### target (required)\n\n"
-        "Type: CategorySlot. Options: tag, note, both. Tells the agent where to search (see rule "
-        "3 for inference cues)."
+        "### source (elective)\n\n"
+        "Type: SourceSlot. The post whose metrics/metadata the user wants. Null for library-wide "
+        "questions.\n\n"
+        "### metrics (elective)\n\n"
+        "Type: ChecklistSlot. One item per requested metric or metadata field: "
+        "{\"name\": <metric>, \"description\": <qualifier or null>}.\n\n"
+        "### threshold (optional)\n\n"
+        "Type: ScoreSlot. A numeric bound the user wants the metric compared against. Only explicit "
+        "bounds fill it."
     ),
     'examples': '''<positive_example>
 ## Conversation History
 
-User: "What topics have I been writing about lately?"
+User: "How long is my post on container orchestration?"
 
 ## Input
 Active post: None
@@ -43,10 +44,11 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Open-ended discovery, no specific tag named. 'Topics' phrasing leans toward tag-level discovery. Tags is empty (no filter); target is 'tag'.",
+  "reasoning": "Post named by topic. 'How long' asks for length — word count / reading time. No bound stated.",
   "slots": {
-    "query": [],
-    "target": "tag"
+    "source": [{"post": "container orchestration", "sec": null, "snip": null, "chl": null}],
+    "metrics": [{"name": "word count", "description": "length of the post"}],
+    "threshold": null
   }
 }
 ```
@@ -55,7 +57,7 @@ Active post: None
 <positive_example>
 ## Conversation History
 
-User: "Show me explainer ideas I haven't explored yet."
+User: "How many posts did I publish last month?"
 
 ## Input
 Active post: None
@@ -64,10 +66,11 @@ Active post: None
 
 ```json
 {
-  "reasoning": "'Explainer' is a canonical tag. 'Ideas' phrasing leans toward note.",
+  "reasoning": "Library-wide count — no single post, so source stays null (rule 1). The metric is the published-post count with a time qualifier.",
   "slots": {
-    "query": ["explainer"],
-    "target": "note"
+    "source": null,
+    "metrics": [{"name": "posts published", "description": "last month"}],
+    "threshold": null
   }
 }
 ```
@@ -76,21 +79,20 @@ Active post: None
 <positive_example>
 ## Conversation History
 
-User: "I'm working on something around RL."
-Agent: "Want me to surface related material?"
-User: "Yeah, browse my notes on it."
+User: "Is the draft still under 1500 words?"
 
 ## Input
-Active post: None
+Active post: **Soil Health for Small Farms** (id: `7c2d9e1f`)
 
 ## Output
 
 ```json
 {
-  "reasoning": "Tag carries from prior turn ('RL' → 'rl'). Current turn supplies the target via 'my notes' → 'note'.",
+  "reasoning": "'The draft' refers to the active post — copy its id verbatim (rule 4 exception). 'Under 1500' is an explicit bound → threshold=1500.",
   "slots": {
-    "query": ["rl"],
-    "target": "note"
+    "source": [{"post": "7c2d9e1f", "sec": null, "snip": null, "chl": null}],
+    "metrics": [{"name": "word count", "description": "check against the limit"}],
+    "threshold": 1500
   }
 }
 ```
@@ -99,9 +101,7 @@ Active post: None
 <positive_example>
 ## Conversation History
 
-User: "Browse my saved content."
-Agent: "Filtered by what?"
-User: "Anything tagged agents or dialogue — show me both notes and tags."
+User: "What tags and status does my ferment guide have?"
 
 ## Input
 Active post: None
@@ -110,10 +110,11 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Two canonical tags supplied in current turn. Explicit 'notes and tags' phrasing → target='both'.",
+  "reasoning": "Two metadata fields requested for one named post: tags and status — one metrics item each.",
   "slots": {
-    "query": ["agents", "dialogue"],
-    "target": "both"
+    "source": [{"post": "ferment guide", "sec": null, "snip": null, "chl": null}],
+    "metrics": [{"name": "tags", "description": null}, {"name": "status", "description": null}],
+    "threshold": null
   }
 }
 ```
@@ -122,19 +123,20 @@ Active post: None
 <edge_case>
 ## Conversation History
 
-User: "Any productivity angles?"
+User: "My intro feels bloated at around 300 words."
 
 ## Input
-Active post: None
+Active post: **Bird Migration Myths** (id: `2e8a4c6b`)
 
 ## Output
 
 ```json
 {
-  "reasoning": "'Productivity' does not cleanly map to any canonical tag — drop it rather than forcing a closest match. 'Angles' leans tag.",
+  "reasoning": "'Around 300 words' is descriptive, not a bound to check against — threshold stays null (rule 3). The measured thing is the intro's word count on the active post.",
   "slots": {
-    "query": [],
-    "target": "tag"
+    "source": [{"post": "2e8a4c6b", "sec": "intro", "snip": null, "chl": null}],
+    "metrics": [{"name": "word count", "description": "intro section"}],
+    "threshold": null
   }
 }
 ```
@@ -143,19 +145,20 @@ Active post: None
 <edge_case>
 ## Conversation History
 
-User: "Browse my AI stuff."
+User: "Give me the stats."
 
 ## Input
-Active post: None
+Active post: **Night Photography Basics** (id: `9b1f3d5a`)
 
 ## Output
 
 ```json
 {
-  "reasoning": "'AI' maps to canonical 'ai'. 'Stuff' is too vague to lean tag or note — fall back to 'note' per rule 4 (notes are the more common browse object when not clearly tag-level).",
+  "reasoning": "'Stats' names no specific metric — leave metrics null and let the agent report the standard set. Source carries from the active post.",
   "slots": {
-    "query": ["ai"],
-    "target": "note"
+    "source": [{"post": "9b1f3d5a", "sec": null, "snip": null, "chl": null}],
+    "metrics": null,
+    "threshold": null
   }
 }
 ```
@@ -164,44 +167,22 @@ Active post: None
 <edge_case>
 ## Conversation History
 
-User: "Find my regularization post."
-Agent: "Found it — want me to open it?"
-User: "Actually, browse my agents notes instead."
+User: "Which channels is the sourdough post live on?"
+Agent: "It went out on the blog and Substack."
+User: "And when was it last edited?"
 
 ## Input
-Active post: regularization
+Active post: **Sourdough Starters Demystified** (id: `4f7e2a9c`)
 
 ## Output
 
 ```json
 {
-  "reasoning": "Prior turn was a Find on a specific post. Current turn switches intent with 'actually...instead' to browsing notes by tag. Active post 'regularization' is irrelevant to the new browse — ignore it. Tag = 'agents'; target = 'note'.",
+  "reasoning": "Current turn asks one new metadata field (last edited date) about the same post. Prior turn's channels question was already answered — current-turn-only (rule 4).",
   "slots": {
-    "query": ["agents"],
-    "target": "note"
-  }
-}
-```
-</edge_case>
-
-<edge_case>
-## Conversation History
-
-User: "Show me what's saved under modeling."
-Agent: "Just the modeling tag, or related ones too?"
-User: "Add nlp and research to that."
-
-## Input
-Active post: None
-
-## Output
-
-```json
-{
-  "reasoning": "Tags accumulate across turns: 'modeling' from the first turn, 'nlp' and 'research' from the third. 'Saved under' phrasing leans toward note-level discovery.",
-  "slots": {
-    "query": ["modeling", "nlp", "research"],
-    "target": "note"
+    "source": [{"post": "4f7e2a9c", "sec": null, "snip": null, "chl": null}],
+    "metrics": [{"name": "last edited date", "description": null}],
+    "threshold": null
   }
 }
 ```
@@ -858,7 +839,7 @@ Active post: None
 
 
 PROMPTS = {
-    'browse': BROWSE_PROMPT,
+    'inspect': INSPECT_PROMPT,
     'summarize': SUMMARIZE_PROMPT,
     'find': FIND_PROMPT,
     'compare': COMPARE_PROMPT,

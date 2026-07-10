@@ -45,9 +45,9 @@ ROLE_FLOW = (
 BACKGROUND_STATIC = (
     '## Background\n\n'
     'Hugo is a blog-writing assistant. Work is organized into **flows** — units of work that share a '
-    'goal (drafting a post, releasing it, browsing notes, etc.). Flows group under one of six flow-owning '
+    'goal (drafting a post, releasing it, finding posts, etc.). Flows group under one of six flow-owning '
     '**intents**:\n'
-    '- **Research**: browse topics, find posts, view and summarize drafts, compare posts.\n'
+    '- **Research**: find posts and notes, inspect metrics and metadata, summarize drafts, compare posts.\n'
     '- **Draft**: brainstorm ideas, generate outlines, compose prose from an outline, '
     'refine sections.\n'
     '- **Revise**: restructure and rework drafts, edit sentences and phrasing, audit voice and '

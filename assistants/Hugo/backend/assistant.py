@@ -70,7 +70,12 @@ class Assistant:
             if dax:      # click or action+text: react fills belief from the dax/payload
                 self.nlu.understand(op='react', dax=dax, payload=payload)
             else:        # utterance: detection writes belief before PEX's loop runs
-                self.nlu.understand(op='think', user_text=text, payload=payload)
+                # The hint is deterministic coordination code, never a tool argument: an Active
+                # flow on the stack IS the continue signal, so its name narrows detection's
+                # candidates and stands in as PEX's flow-level vote.
+                top = self.world.flows.get_flow()
+                hint = top.name() if top and top.status == 'Active' else ''
+                self.nlu.understand(op='think', user_text=text, payload=payload, hint=hint)
 
             # 1-4. PEX's agent loop: System-1 intent attempt first, then act, then reply.
             utterance = self.pex.execute(self.system_prompt, dax=dax, payload=payload, text=text)

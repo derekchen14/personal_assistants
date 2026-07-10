@@ -2,7 +2,8 @@ REWORK_PROMPT = {
     'instructions': (
         "The Rework Flow is major revision of prose that already exists — restructuring sections, "
         "replacing weak arguments, or weaving in itemized edits across more than one section. "
-        "Source can carry sections or a snippet target.\n\n"
+        "Source carries the post and section(s); paragraph/sentence-scoped requests belong to "
+        "Write — flow detection routes them there.\n\n"
         "Source is typically pre-filled with the post; the user may add one or more section names. "
         "Beyond that, the user usually fills exactly one of: `category` (a tightly-defined verb that "
         "maps to a deterministic operation), `suggestions` (a numbered or bulleted list of specific "
@@ -11,9 +12,11 @@ REWORK_PROMPT = {
     ),
     'rules': (
         "1. Source: post is pre-filled. If the user names a section, fill `sec`. For a swap utterance "
-        "('swap A and B'), source.values must carry BOTH section names. If the user names a "
-        "paragraph/sentence/phrase scope, fill `source.snip` instead and leave `post`/`sec` off — this "
-        "triggers a re-route to Write.\n"
+        "('swap A and B'), source.values must carry BOTH section names. A paragraph/sentence/phrase scope is "
+        "Write's territory — flow detection routes it there; still fill the entity you know "
+        "(`post`, plus `sec` when named) and leave `snip` null. `snip` holds a snippet id (a "
+        "sentence index or an end-exclusive [start, end] slice) that the policy resolves by "
+        "reading the section — never a description.\n"
         "2. Exactly one of `category` / `suggestions` / `remove` must fill (or all null when no clean "
         "direction):\n"
         "  a. `category` is a CategorySlot. Pick the closest option only when the verb maps cleanly. "
@@ -41,8 +44,8 @@ REWORK_PROMPT = {
         "### source (required)\n\n"
         "Type: SourceSlot. References the target of the rework. Typically pre-filled with the post; "
         "the user may add one or more section names. For swap, BOTH section names must appear as two "
-        "separate entries in `source.values`. If the user names a paragraph/sentence/phrase scope, "
-        "fill `snip` instead — this triggers a re-route to Write.\n\n"
+        "separate entries in `source.values`. `snip` stays null at fill time — it holds a "
+        "policy-resolved snippet id, never a description.\n\n"
         "### category (elective)\n\n"
         "Type: CategorySlot. Options: swap, to_top, to_end, trim, sharpen, reframe (see rule 2a "
         "for verb mappings).\n\n"
@@ -245,9 +248,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "User named a paragraph scope ('the second paragraph'). Per rule 1, fill source.snip and leave post/sec off — this triggers a re-route to Write. No category fits.",
+  "reasoning": "Paragraph scope ('the second paragraph') is Write's territory — flow detection routes there. Fill what is known: the section. snip stays null; it holds a policy-resolved snippet id, never a description. No category fits.",
   "slots": {
-    "source": {"snip": "the second paragraph in my methods section"},
+    "source": {"sec": "methods"},
     "category": null,
     "suggestions": null,
     "remove": null
@@ -311,18 +314,23 @@ WRITE_PROMPT = {
         "word choice, tightening sentences, fixing transitions, and smoothing flow without changing "
         "meaning or structure. Scope is always within a single paragraph or an image caption, not "
         "across sections or the whole post; bigger revisions go through Rework instead.\n"
-        "Extract the `source` which must include a snippet or section along with the post, and any stylistic "
-        "direction as `style_notes`. The `image` slot is relevant only when the user asks to add or edit "
+        "Extract the `source` — always the whole entity, with the post and the section that holds "
+        "the target span (keep `post`/`sec` stable on re-fills), and any stylistic direction as "
+        "`style_notes`. `snip` holds a snippet id — a sentence index or an end-exclusive "
+        "[start, end] slice — which the POLICY resolves by reading the section; leave it null "
+        "unless an id is already visible in context (e.g. numbered sentences from an earlier read). The `image` slot is relevant only when the user asks to add or edit "
         "an image caption, or to regenerate an existing image."
     ),
     'rules': (
-        "1. `source` fills `snip` when the user names a paragraph/sentence/phrase ('the opening "
-        "paragraph'), or `sec` when they name a section ('the methods section'), or both when context "
-        "mentions both (e.g., 'the opening of the methods section' → sec=methods, snip=opening).\n"
+        "1. `source` always fills the WHOLE entity: `post`, plus `sec` when the user names or "
+        "implies a section ('the methods section'; 'the opening of the methods section' → "
+        "sec=methods). A paragraph/sentence/phrase reference points AT a span inside a section — "
+        "capture the section, leave `snip` null; the policy locates the exact sentences and fills "
+        "the snippet id.\n"
         "  a. The `post` should already be known, so only change it if the user has mentioned a completely "
         "  new one."
-        "  b. Since Write is for targeted edits, we require that `sec` or `snip` are filled. If neither "
-        "  is mentioned, then leave them so `null` so we can ask the user for clarification. "
+        "  b. Since Write is for targeted edits, we require `sec`. If no section is named or "
+        "  inferable, leave it `null` so we can ask the user for clarification. "
         "2. Decide whether `image` or `suggestions` are mentioned (or both stay `null` if neither image-level "
         "language nor user proposals are made):\n"
         "  a. `image` fires only on explicit image-level language — caption edits or image "
@@ -342,10 +350,10 @@ WRITE_PROMPT = {
     ),
     'slots': (
         "### source (required)\n\n"
-        "Type: SourceSlot. What to edit. Most often a snippet — the user names a paragraph, "
-        "sentence, or phrase. Less often a whole section, and sometimes both (sec + snip). Include "
-        "`post` only when the user disambiguates across posts; otherwise active_post provides that "
-        "context.\n\n"
+        "Type: SourceSlot. What to edit: the post plus the section that holds the target span. "
+        "Include `post` only when the user disambiguates across posts; otherwise active_post "
+        "provides that context. `snip` stays null at fill time — it holds a policy-resolved "
+        "snippet id (a sentence index or [start, end] slice), never a description.\n\n"
         "### style_notes (optional)\n\n"
         "Type: FreeTextSlot. The user's stylistic direction, captured verbatim. Often a phrase or "
         "short sentence. Examples: 'short sentences, no passive voice', 'warmer tone, less academic'. "
@@ -371,9 +379,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "User names a paragraph scope ('opening paragraph') with explicit cross-post context → source fills post + snip. Style direction is a specific phrase → fill style_notes verbatim.",
+  "reasoning": "Cross-post context → source fills the post. 'Opening paragraph' names a span, not a section — sec stays null (rule 1b lets the flow ground or ask) and snip stays null: the policy locates the sentences and fills the id. Style direction is a specific phrase → fill style_notes verbatim.",
   "slots": {
-    "source": {"post": "Deep NLP", "snip": "opening paragraph"},
+    "source": {"post": "Deep NLP"},
     "style_notes": "punchier — short sentences, no passive voice, and open with the hook",
     "image": null,
     "suggestions": null
@@ -448,9 +456,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Target is a specific line — snippet fills with the user's full reference. Post is explicit. Style direction is specific → style_notes fills.",
+  "reasoning": "Target is a specific line, which stays in the utterance for the policy to locate — snip is an id, never a description. Post is explicit; no section named → sec null. Style direction is specific → style_notes fills.",
   "slots": {
-    "source": {"post": "design", "snip": "'less is more' hook at the start"},
+    "source": {"post": "design"},
     "style_notes": "snappier",
     "image": null,
     "suggestions": null
@@ -521,9 +529,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Snippet scope captured from the first turn. Current turn gives a vague directive ('just make it better') → style_notes stays null per rule 2 so the agent can ask for a specific direction.",
+  "reasoning": "The span ('opening sentence') is the policy's to locate — snip stays null. Current turn gives a vague directive ('just make it better') → style_notes stays null per rule 2 so the agent can ask for a specific direction.",
   "slots": {
-    "source": {"post": "RL primer", "snip": "opening sentence"},
+    "source": {"post": "RL primer"},
     "style_notes": null,
     "image": null,
     "suggestions": null
@@ -544,9 +552,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Both snip and sec fire in one utterance: sec='methods' for the paragraph's home section, snip names the specific lines. Style direction is a specific phrase.",
+  "reasoning": "sec='methods' captures the span's home section; the three target sentences are the policy's to locate — snip stays null (an id, never a description). Style direction is a specific phrase.",
   "slots": {
-    "source": {"sec": "methods", "snip": "all three sentences in the methods paragraph"},
+    "source": {"sec": "methods"},
     "style_notes": "shorter and parallel",
     "image": null,
     "suggestions": null
@@ -569,9 +577,9 @@ Active post: My ML Paper
 
 ```json
 {
-  "reasoning": "Agent's prior turn proposed 3 edit options; current user turn accepts the full list with 'yes, do all three'. Source carries forward from turn 1 (sec=methods, snip=opening paragraph). Style_notes already applied in turn 1 ('flows better' is now stale). Suggestions fills with the full proposed list per rule 2b.",
+  "reasoning": "Agent's prior turn proposed 3 edit options; current user turn accepts the full list with 'yes, do all three'. Source carries forward from turn 1 — keep the same post and section on a re-fill; the opening-paragraph span is the policy's to locate. Style_notes already applied in turn 1 ('flows better' is now stale). Suggestions fills with the full proposed list per rule 2b.",
   "slots": {
-    "source": {"post": "My ML Paper", "sec": "Methods", "snip": "opening paragraph"},
+    "source": {"post": "My ML Paper", "sec": "Methods"},
     "style_notes": null,
     "image": null,
     "suggestions": [

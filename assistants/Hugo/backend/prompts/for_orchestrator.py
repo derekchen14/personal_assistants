@@ -4,7 +4,7 @@ Orchestrator system-prompt builder.
 Built ONCE per session, frozen, and byte-stable for prefix caching (a three-tier pattern).
 Tiers:
 
-  1. Stable   — Hugo persona (`build_system(engineer.persona)`), the 7-intent taxonomy,
+  1. Stable   — Hugo persona (`build_system(engineer.persona)`), the 8-intent taxonomy,
                 tool-use policy and loop discipline.
   2. Context  — the 10-step blog workflow (README.md), a flow ontology summary rendered from
                 FLOW_ONTOLOGY, and the OUTLINE_LEVELS constants.
@@ -28,17 +28,18 @@ from schemas.ontology import FLOW_ONTOLOGY
 INTENT_TAXONOMY = (
     '## Intent Taxonomy\n\n'
     'Work is organized into **flows** — units of work that share a goal (drafting a post, '
-    'releasing it, browsing notes, etc.). Flows group under one of seven **intents**. Your FIRST '
+    'releasing it, finding posts, etc.). Flows group under one of eight **intents**. Your FIRST '
     'move on every turn is a System-1 attempt at the intent: a fast working classification from '
     'the message and recent context, before any tool call. It is a guess, not on the record — NLU '
     'owns the authoritative intent: it is written when NLU detects a flow, and you read it from '
     'belief with `understand` op="read" (user_beliefs.intent, pred_flows, pred_slots). Use your '
-    'own attempt to pick which flow to activate when the mapping is obvious (a click or a clear '
+    'own attempt to pick which flow to run when the mapping is obvious (a click or a clear '
     'continuation). '
     'When you '
     'are unsure — the request is multi-step, vague, or spans intents — bias toward Plan or Clarify, '
     'which wait for NLU rather than guessing. Never assert a final intent yourself:\n'
-    '- **Research**: browse topics, find posts, view and summarize drafts, compare posts.\n'
+    '- **Research**: find posts and notes, inspect metrics and metadata, summarize drafts, '
+    'compare posts.\n'
     '- **Draft**: brainstorm ideas, generate outlines, compose prose from an outline, '
     'refine sections.\n'
     '- **Revise**: restructure and rework drafts, edit sentences and phrasing, audit voice and '
@@ -47,7 +48,11 @@ INTENT_TAXONOMY = (
     '- **Converse**: greetings, open-ended questions about writing, general discussion.\n'
     '- **Plan**: lay out a multi-step writing plan that spans the intents above.\n'
     '- **Clarify**: the request is too ambiguous or underspecified to commit to another intent '
-    '— ask a clarifying question instead of acting (Clarify has no flows of its own).\n\n'
+    '— ask a clarifying question instead of acting (Clarify has no flows of its own).\n'
+    '- **Continue**: the turn advances the flow that is already Active — an answer to its open '
+    'question, an elaboration, or "keep going". Legal only while an Active flow exists. '
+    'Continuing means running THAT flow (`manage_flows` op="update", '
+    'fields={"status": "Active"}) — never stacking a duplicate.\n\n'
     'Acting on the wrong flow makes the agent work on the wrong data. Read belief first, then act.'
 )
 
@@ -65,6 +70,9 @@ TOOL_POLICY = (
     "- **Research / Draft / Revise / Publish** → stack on and run that intent's default flow, at "
     'its universal dax: {001} `find`, {002} `outline`, {003} `write`, {004} `release` (resolve a '
     'dax through the flow ontology).\n'
+    '- **Continue** → an Active flow is mid-task and this turn advances it (NLU has already '
+    'filled its slots from the answer). Run it with `manage_flows` op="update", '
+    'fields={"status": "Active"} — the status write re-runs the flow; do NOT stack anything.\n'
     '- **Converse** → run the `chat` flow.\n'
     '- **Clarify** → the request is underspecified. Like Plan, wait on NLU: call `understand` '
     'op="read" first (the pending ambiguity and predicted state land there), then relay the '
@@ -74,26 +82,26 @@ TOOL_POLICY = (
     '(`understand` op="read" for belief) before deciding next steps, instead of guessing a flow '
     'or wandering through lookups. The belief read always reflects THIS turn\'s detection — read '
     'it before stacking flows when you picked Plan. Follow the Workflow Planner guidance in '
-    '`<workflow_planner>` to map the request to existing flows, then stack on ALL of them AT '
-    'ONCE, in reverse execution order — the first flow to run is pushed LAST, with `active: true` '
-    'so it runs now. The stack holds the plan: it is observable by every agent and survives even '
-    'if you lose track later. '
+    '`<workflow_planner>` to map the request to existing flows, then stack them in reverse '
+    'execution order: every queued step with `active: false`, and the first flow to run pushed '
+    'LAST as a plain stackon (active defaults true, so it runs now). The stack holds the plan: '
+    'it is observable by every agent and survives even if you lose track later. '
     'You own whether the plan is done: after each flow completes, `manage_flows` op="pop" '
-    'removes Completed and Invalid flows all at once, surfacing the '
-    "next flow — judge whether the user's goal has been met; run it with `manage_flows` "
-    'op="activate" if not, and conclude and report what was accomplished when it is.\n'
+    'removes Completed and Invalid flows all at once AND runs the surfaced Pending flow — judge '
+    "whether the user's goal has been met from each result, and conclude and report what was "
+    'accomplished when it is.\n'
     '**Belief notes.** A `[belief]` note carries THIS turn\'s NLU detection (intent, flow, slots). '
     'When it names a DIFFERENT flow than the one you are on, defer to NLU\'s detection unless you '
     'have a concrete reason to stay — defer in 80%+ of cases. If the note says an intent change '
     'was already forced (old flow dropped as Invalid, NLU\'s flow swapped in as Active), run '
-    'that flow with `manage_flows` op="activate".\n'
+    'that flow with `manage_flows` op="update", fields={"status": "Active"}.\n'
     '**Default flow lifecycle.** On a domain turn, read belief and inspect the stack. NLU may '
-    'already have stacked the detected flow as Pending with filled slots; if so, run it with '
-    '`manage_flows` op="activate" instead of stacking a duplicate. If no live detected flow is '
-    'present, use `manage_flows` op="stackon" with `active: true`. After any flow run that '
-    'returns Completed, call `manage_flows` op="pop" before your final user reply. If pop '
-    'surfaces a Pending flow as Active and the user goal is not yet met, activate that surfaced '
-    'flow; otherwise use the completion record/blocks to answer. The only normal reason to skip '
+    'already have stacked the detected flow with filled slots; if so, run it with `manage_flows` '
+    'op="update", fields={"status": "Active"} instead of stacking a duplicate. If no live '
+    'detected flow is present, use `manage_flows` op="stackon" — it runs the policy itself. '
+    'After any flow run that returns Completed, call `manage_flows` op="pop" before your final '
+    'user reply; pop also runs any Pending flow it surfaces, so judge the goal from each result '
+    'and use the completion record/blocks to answer. The only normal reason to skip '
     'pop is that the flow returned a clarification or validation problem that must be relayed.\n'
     '**The commit rule.** For any Research / Draft / Revise / Publish turn, the turn is not done '
     'until a flow has run via `manage_flows`, or a dispatched flow returned a clarification you '
@@ -110,8 +118,8 @@ TOOL_POLICY = (
     'block a new command on unrelated pending flows or earlier suggestions the user left '
     'unanswered.\n'
     '**Stacking and dispatching flows.** To stack on and run a flow, ONE call does everything: '
-    '`manage_flows` op="stackon" with the flow_name and `active: true`. Stacking hands over '
-    "matching slot values from the prior flow and belief's `pred_slots` automatically, then "
+    '`manage_flows` op="stackon" with the flow_name (`active` defaults to true). Stacking hands '
+    "over matching slot values from the prior flow and belief's `pred_slots` automatically, then "
     'runs the policy — no separate activate call.\n'
     'Every domain WRITE goes through a flow this way — never attempt writes any '
     'other way. Flows are sub-agents: each runs its own skill prompt and tools and returns a '
@@ -129,8 +137,8 @@ TOOL_POLICY = (
     '`read_section`, `search_notes`, `list_channels`, `channel_status` may be called directly, '
     'without a flow — but only when belief lacks an entity you need before stacking, and at most '
     'ONE such lookup per turn. Never call `read_metadata` or `read_section` more than once in a '
-    'turn: if you have read once, stack on and activate. Otherwise skip the lookup and go straight '
-    'to the stack-on recipe. Every other domain operation goes through `manage_flows`.\n'
+    'turn: if you have read once, stack on and run the flow. Otherwise skip the lookup and go '
+    'straight to the stack-on recipe. Every other domain operation goes through `manage_flows`.\n'
     '**Creating a new post.** A Draft opener that starts a brand-new post should route to '
     '`outline`. The outline policy owns creating and grounding the draft when a topic/title is '
     'available, then the outline skill saves the first content. Do not call post-creation tools '

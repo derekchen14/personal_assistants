@@ -9,7 +9,7 @@ from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.dialogue_state import DialogueState
 
 from backend.prompts.for_experts import build_intent_prompt, build_flow_prompt, render_flow_ontology
-from backend.prompts.for_nlu import build_slot_filling_prompt, build_bind_guidance
+from backend.prompts.for_nlu import build_slot_filling_prompt, build_pending_question
 from backend.prompts.for_contemplate import build_contemplate_prompt as _build_contemplate_prompt_text
 from backend.utilities.services import PostService
 from schemas.ontology import FLOW_ONTOLOGY, Intent
@@ -82,10 +82,11 @@ class NaturalLanguageUnderstanding:
         click; the dax names the flow), `think` (an utterance; ensemble detection), or
         `contemplate` (a failed-flow re-route). Each mode detects + fills a TRANSIENT flow and
         writes the detection onto the session state's belief (pred_intent / pred_flows /
-        confidence / pred_slots). `hint` is PEX's first-pass intent selection: a domain intent
-        narrows think's candidates; blank (Plan/Clarify/Converse carry no real signal) means
-        detect over the full ontology. For real policy flows, NLU also ensures the detected flow is
-        on the shared stack with the filled slots; PEX still owns activation and responses."""
+        confidence / pred_slots). `hint` is derived deterministically by the Assistant: the Active
+        flow's name when one is on the stack (the Continue signal — candidates narrow to it + its
+        edge flows and PEX's selection seeds the vote), a domain intent from PEX's first pass, or
+        blank (detect over the full ontology). For real policy flows, NLU also ensures the detected
+        flow is on the shared stack with the filled slots; PEX still owns responses."""
         if op == 'react':
             state = self.react(dax, payload or {})
         elif op == 'contemplate':
@@ -98,16 +99,11 @@ class NaturalLanguageUnderstanding:
     # ── Public operational modes ──────────────────────────────────────
 
     def think(self, user_text:str, payload:dict={}, hint:str=''):
-        # Bind before detecting (round 3.3): a turn that arrives while a flow is Active on top
-        # of the stack with unfilled slots is first read as an answer to that flow's open
-        # question. Turns only end with an Active-incomplete top or an empty stack (PEX pops
-        # completed flows), so this is the complete trigger condition.
-        top = self.world.flows.get_flow()
-        stalled = top if top and top.status == 'Active' and not top.is_filled() else None
-        if stalled and self._bind_stalled_flow(stalled, payload):
-            return self.world.state
-
-        detection = self._detect_flow(user_text, hint)      # hint='' on the pre-hook first pass
+        # One uniform process on every turn: flow detection, then slot-filling (round 2.12).
+        # `hint` is either an intent (narrows candidates to that intent's flows) or the Active
+        # flow's name (the Continue signal — candidates narrow to it + its edge flows, and PEX's
+        # selection seeds the vote).
+        detection = self._detect_flow(user_text, hint)
         if self._intent_split(detection):                   # low-confidence AND spans >1 intent
             intent = self._classify_intent(user_text)       # the retained tie-break call
             detection = self._detect_flow(user_text, hint=intent)
@@ -117,12 +113,17 @@ class NaturalLanguageUnderstanding:
         if flow_name not in flow_classes:
             return self._write_non_policy_belief(flow_name, detection['confidence'], predicted_flows)
 
+        top = self.world.flows.get_flow()
+        stalled = top if top and top.status == 'Active' else None
+        if stalled and stalled.name() == flow_name:
+            return self._fill_active_flow(stalled, payload, detection)
+
         flow = flow_classes[flow_name]()
         self._fill_slots(flow, payload)
         self._repair_entities(self.world.state, flow)
         state = self._write_belief(flow_name, detection['confidence'], predicted_flows, flow)
         self._stack_detected_flow(flow, state)
-        if stalled and self.ambiguity_handler.present and flow_name != stalled.name():
+        if stalled and self.ambiguity_handler.is_present:
             self._note_detour(stalled, flow_name)
 
         if self.ambiguity_handler.needs_clarification(state.confidence):
@@ -133,35 +134,29 @@ class NaturalLanguageUnderstanding:
             )
         return state
 
-    def _bind_stalled_flow(self, flow, payload:dict) -> bool:
-        """Bind pass (round 3.3): fill the EXISTING stacked flow's unfilled slots from the reply.
-        The fill call itself decides whether the reply is an answer — the bind guidance tells it
-        to fill ONLY when the message addresses the open question, so an empty fill means a task
-        change (or a new search) and the caller falls through to normal detection. A fill that
-        readies the flow resolves the ambiguity and skips detection; PEX resumes the flow."""
-        self._fill_slots(flow, payload, bind=True)
+    def _fill_active_flow(self, flow, payload:dict, detection:dict):
+        """Detection landed on the flow already Active on the stack: slot-filling applies to THAT
+        flow in place — no new stackon — and PEX resumes it. Belief is written from the detection
+        tally as on any other turn; a fill that readies the flow resolves the open ambiguity."""
+        self._fill_slots(flow, payload, stalled=True)
         self._repair_entities(self.world.state, flow)
-        if not flow.is_filled():
-            return False
-        if self.ambiguity_handler.present:
-            self.ambiguity_handler.resolve(explanation=f'reply bound to {flow.name()}')
-        self._write_belief(flow.name(), 0.9,
-                           [{'flow_name': flow.name(), 'confidence': 0.9, 'votes': 1}], flow)
-        self.world.state.flow_stack = self.world.flows.to_list()
-        return True
+        if flow.is_filled() and self.ambiguity_handler.is_present:
+            self.ambiguity_handler.resolve(explanation=f'answer filled {flow.name()}')
+        state = self._write_belief(flow.name(), detection['confidence'],
+                                   detection['pred_flows'], flow)
+        state.flow_stack = self.world.flows.to_list()
+        return state
 
     def _note_detour(self, stalled, flow_name:str):
-        """A task change while a grounding question is open (round 3.3): the ambiguity stays
-        unresolved, the detour is marked on the observation, and a scratchpad note tells every
-        agent why a new flow jumped the stalled one."""
+        """A task change while a grounding question is open: the ambiguity stays unresolved, the
+        detour lands in the (additive) metadata — the observation string is immutable — and a
+        scratchpad note tells every agent why a new flow jumped the stalled one."""
         note = f'user turned to {flow_name} before answering'
-        handler = self.ambiguity_handler
-        if handler.observation and note not in handler.observation:
-            handler.observation += f' ({note})'
+        self.ambiguity_handler.metadata['detour'] = note
         self.world.scratchpad.append_entry('detour', {
             'version': 1, 'turn_number': self.world.context.turn_id, 'used_count': 0,
             'stalled_flow': stalled.name(), 'detour_flow': flow_name,
-            'question': handler.observation})
+            'question': self.ambiguity_handler.observation})
 
     def _write_non_policy_belief(self, flow_name:str, confidence:float, pred_flows:list):
         state = self._write_belief(flow_name, confidence, pred_flows, flow=None)
@@ -226,9 +221,10 @@ class NaturalLanguageUnderstanding:
         """
         if flow.name() not in flow_classes:
             return None
-        # Round 3.3: an Active top mid-task should not get a fresh stackon — a task change is at
-        # most a fallback. Out of scope for now (stackon dedupes same-type tops); revisit.
-        stacked = self.world.flows.stackon(flow.name())
+        # A push over an in-flight flow reverts it to Pending (FlowStack.stackon owns that), and
+        # slot hand-over is skipped while an ambiguity is open — those values are in question.
+        stacked = self.world.flows.stackon(flow.name(),
+                                           transfer=not self.ambiguity_handler.is_present)
         values = flow.slot_values_dict()
         if values:
             stacked.fill_slot_values(values)
@@ -373,7 +369,10 @@ class NaturalLanguageUnderstanding:
         candidate_names = self._flow_candidate_names(hint)
         ontology = render_flow_ontology(candidate_names, FLOW_ONTOLOGY, flow_classes)
         active_post = self._active_post_dict()
-        return build_flow_prompt(user_text, hint, convo_history,
+        # A flow-name hint (Continue) borrows its flow's intent for the prompt content; the
+        # candidate narrowing above already carries the flow-level signal.
+        intent = FLOW_ONTOLOGY[hint]['intent'] if hint in FLOW_ONTOLOGY else hint
+        return build_flow_prompt(user_text, intent, convo_history,
                                  ontology, active_post=active_post)
 
     def _active_post_dict(self) -> dict | None:
@@ -429,7 +428,16 @@ class NaturalLanguageUnderstanding:
         candidate_names = self._flow_candidate_names(hint)
         schema = _flow_detection_schema(candidate_names)
 
-        votes = self._collect_votes(('claude', 'gemini', 'gpt'), 'med', prompt, schema)
+        votes: list[dict] = []
+        med_families = ('claude', 'gemini', 'gpt')
+        if hint in FLOW_ONTOLOGY:
+            # Continue: PEX already offered a flow-level vote for the Active flow — seed it and
+            # poll only the two families PEX is NOT running on. The tally runs over three votes
+            # exactly as on any other turn.
+            pex_family = self._orchestrator_family()
+            votes.append({'flow_name': hint, '_model': pex_family, '_tier': 'med'})
+            med_families = tuple(fam for fam in med_families if fam != pex_family)
+        votes += self._collect_votes(med_families, 'med', prompt, schema)
         if not votes:
             return {
                 'flow_name': 'chat', 'confidence': 0.3,
@@ -440,6 +448,15 @@ class NaturalLanguageUnderstanding:
             votes += self._collect_votes(('gemini', 'claude'), 'high', prompt, schema)
             detection = self._tally_votes(votes)
         return detection
+
+    def _orchestrator_family(self) -> str:
+        """The model family PEX runs on — its voters are the OTHER two families. Prefix match,
+        since the orchestrator model id need not appear in the voter tier table."""
+        model_id = self.config['models']['overrides']['orchestrator']['model_id']
+        for family in ('claude', 'gemini', 'gpt'):
+            if model_id.startswith(family):
+                return family
+        raise ValueError(f'orchestrator model {model_id!r} maps to no voter family')
 
     def _collect_votes(self, families:tuple, level:str, prompt:str, schema:dict) -> list[dict]:
         def _call_voter(family:str) -> dict | None:
@@ -472,10 +489,12 @@ class NaturalLanguageUnderstanding:
     def _flow_candidate_names(self, hint:str='') -> list[str]:
         if not hint:
             return list(FLOW_ONTOLOGY)
+        if hint in FLOW_ONTOLOGY:   # Continue: the Active flow's name narrows to it + its edges
+            return [hint, *FLOW_ONTOLOGY[hint]['edge_flows']]
         edges = _get_edge_flows_for_intent(hint)
         return [name for name, cat in FLOW_ONTOLOGY.items() if cat['intent'] == hint or name in edges]
 
-    def _fill_slots(self, flow, payload:dict={}, bind:bool=False):
+    def _fill_slots(self, flow, payload:dict={}, stalled:bool=False):
         last_turn = self.world.context.last_user_turn
 
         if payload:
@@ -500,9 +519,9 @@ class NaturalLanguageUnderstanding:
         if not flow.is_filled():
             convo_history = self.world.context.compile_history()
             prompt = build_slot_filling_prompt(flow, convo_history, self._active_post_dict())
-            if bind:  # round 3.3: the open question + shown candidates, with conservative-fill guidance
-                prompt += '\n\n' + build_bind_guidance(self.ambiguity_handler.observation,
-                                                       self.world.state.grounding['choices'])
+            if stalled:  # the open question + shown candidates, with conservative-fill guidance
+                prompt += '\n\n' + build_pending_question(self.ambiguity_handler.observation,
+                                                          self.world.state.grounding['choices'])
             for attempt in (1, 2):
                 try:
                     pred_slots = self.engineer(prompt, 'fill_slots', max_tokens=2048, schema=_fill_slots_schema(flow))

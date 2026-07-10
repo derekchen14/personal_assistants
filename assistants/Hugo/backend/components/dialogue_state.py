@@ -175,20 +175,21 @@ class DialogueState:
 
     def write_state(self, path, op, stack=None, **kwargs) -> dict:
         """The write_state tool surface — the ONLY writer of state.json. Ops:
-        'update'        mutate user-belief / grounding / flag fields (kwargs = fields),
-        'update_flow'   mutate the top flow of the live stack (slots= / stage= / status=;
-                        completion is grounding-validated),
-        'stackon'       push flow_name= with FlowStack semantics,
+        'update'        change user-belief / grounding / flag fields (kwargs = fields),
+        'update_flow'   change a flow in place at any depth (slots= / stage= / status=; flow_name=
+                        targets a buried flow, blank means the top flow; completion is
+                        grounding-validated),
+        'stackon'       push flow_name= with FlowStack semantics (transfer= gates slot hand-over),
         'fallback'      replace the top flow with flow_name=,
         'pop'           remove Completed/Invalid flows, activating the next Pending one.
-        `stack` is the FlowStack component — the one flow stack. Stack ops mutate it directly;
+        `stack` is the FlowStack component — the one flow stack. Stack ops write to it directly;
         self.flow_stack is only a saved copy, refreshed from stack.to_list() before the save."""
         if op == 'update':
             self._apply_update(kwargs)
         elif op == 'update_flow':
             self._update_flow(stack, kwargs)
         elif op == 'stackon':
-            stack.stackon(kwargs['flow_name'])
+            stack.stackon(kwargs['flow_name'], transfer=kwargs.get('transfer', True))
         elif op == 'fallback':
             stack.fallback(kwargs['flow_name'])
         elif op == 'pop':
@@ -218,16 +219,17 @@ class DialogueState:
                 raise KeyError(f'write_state update does not accept field {key!r}')
 
     def _update_flow(self, stack, fields:dict):
-        flow = stack.get_flow()
-        if 'status' in fields:  # validate first — a rejected write must not mutate the live flow
+        """Normalize + validate, then delegate the write to FlowStack.update_flow — which reaches
+        any depth via `flow_name` (blank = the top flow), unlike the top-only stack ops."""
+        flow_name = fields.get('flow_name', '')
+        flow = stack.find_by_name(flow_name) if flow_name else stack.get_flow()
+        if not flow:  # LLM-authored flow_name — corrective error, not a crash
+            raise ValueError(f'no live flow named {flow_name!r} on the stack')
+        if 'status' in fields:  # validate first — a rejected write must not touch the live flow
             self._check_grounding(flow, fields['status'])
-        if 'slots' in fields:
-            flow.fill_slot_values(normalize_slot_values(flow, fields['slots']))
-            flow.is_filled()
-        if 'stage' in fields:
-            flow.stage = fields['stage']
-        if 'status' in fields:
-            flow.status = fields['status']
+        slots = normalize_slot_values(flow, fields['slots']) if 'slots' in fields else None
+        stack.update_flow(flow_name, slots=slots,
+                          stage=fields.get('stage', ''), status=fields.get('status', ''))
 
     def _check_grounding(self, flow, status:str):
         """An entity-grounded flow cannot reach Completed while grounding.post is
