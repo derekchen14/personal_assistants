@@ -523,12 +523,12 @@ class TestSessionScratchpad:
 
     # ── NLU-only mutation: origin + turn_number is the unique ID ─────
 
-    def test_update_entry_modifies_in_place(self, file_memory):
+    def test_amend_entry_modifies_in_place(self, file_memory):
         file_memory.append_entry('audit', {'version': 1, 'turn_number': 3, 'used_count': 0,
                                            'note': 'v1'})
         file_memory.append_entry('find', {'version': 1, 'turn_number': 5, 'used_count': 0})
         entry = file_memory.read(origin='audit')[-1]
-        file_memory.update_entry('audit', 3, {**entry, 'note': 'v2'})
+        file_memory.amend_entry('audit', 3, {**entry, 'note': 'v2'})
         assert file_memory.size == 2  # modified in place — no extra line
         assert file_memory.read(origin='audit') == [{'origin': 'audit', 'version': 1,
                                                      'turn_number': 3, 'used_count': 0, 'note': 'v2'}]
@@ -539,10 +539,10 @@ class TestSessionScratchpad:
         file_memory.prune_entry('audit', 3)
         assert file_memory.read(origin='audit') == [] and file_memory.size == 1
 
-    def test_update_entry_unknown_id_raises(self, file_memory):
+    def test_amend_entry_unknown_id_raises(self, file_memory):
         file_memory.append_entry('audit', {'version': 1, 'turn_number': 3, 'used_count': 0})
         with pytest.raises(KeyError):
-            file_memory.update_entry('audit', 7, {'note': 'x'})
+            file_memory.amend_entry('audit', 7, {'note': 'x'})
 
 
 class TestScratchpadReview:

@@ -55,7 +55,7 @@ class SessionScratchpad:
             entries = [entry for entry in entries if all(name in entry for name in keys)]
         return entries
 
-    def update_entry(self, origin:str, turn_number:int, entry:dict):
+    def amend_entry(self, origin:str, turn_number:int, entry:dict):
         """NLU-only (the review pass): modify an EXISTING entry in place — origin + turn_number
         is the pad's unique ID. Everyone else appends; only NLU may amend history. The file is
         rewritten with the amended entry on the matched line."""

@@ -76,7 +76,7 @@ review pass:
 def review_scratchpad(self) -> dict: ...   # nlu.py — called at the end of understand()
 ```
 
-Mutating existing entries is NLU-only, via `SessionScratchpad.update_entry(origin, turn_number,
+Mutating existing entries is NLU-only, via `SessionScratchpad.amend_entry(origin, turn_number,
 entry)` and `prune_entry(origin, turn_number)` — origin + turn_number is the pad's unique ID, and
 both rewrite the file in place (raising when no entry carries the ID). Neither is in any tool
 catalog.
@@ -122,13 +122,13 @@ is later added.
   The session dir is created lazily on first write, keeping `open_session` side-effect free.
 - The method surface is append-family for producers and ID-addressed mutation for NLU (Derek:
   there is no `write()`): `append_entry(origin, entry)` for PEX, the policies, and every
-  sub-agent; `update_entry` / `prune_entry` for NLU only. All take `origin` first.
+  sub-agent; `amend_entry` / `prune_entry` for NLU only. All take `origin` first.
 - `append_entry(origin, entry)` — stamps `origin` (the merged key/writer field); no default
   origin, every caller names its own.
 - No `append_completion` (Derek): `complete_flow` and `activate_flow`'s fallback build the
   completion record `{version, turn_number, used_count, summary, metadata}` themselves and call
   `append_entry(flow.name(), record)` like any other producer.
-- `update_entry(origin, turn_number, entry)` — NLU-only (review pass): origin + turn_number is
+- `amend_entry(origin, turn_number, entry)` — NLU-only (review pass): origin + turn_number is
   the pad's unique ID; the file is rewritten with the amended entry on the matched line.
 - `prune_entry(origin, turn_number)` — NLU-only: removes the identified entry (stale note,
   merged duplicate). Both mutators raise `KeyError` when no entry carries the ID.

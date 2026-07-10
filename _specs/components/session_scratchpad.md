@@ -27,7 +27,7 @@ It is an **append-only** log of thoughts and observations. Four methods (plus `a
 |---|---|---|
 | `append_entry(origin, entry)` | any sub-agent / the PEX loop / NLU | append a new entry; `origin` is stamped **in code** so it can't be forged |
 | `read(origin=None, keys=None)` | any sub-agent / the PEX loop | read entries (by origin, by present keys, or walk the pad) — read-only |
-| `update_entry(origin, turn_number, entry)` | **NLU only** | modify the EXISTING entry identified by origin + turn_number (the pad's unique ID) in place; raises when no entry carries that ID |
+| `amend_entry(origin, turn_number, entry)` | **NLU only** | modify the EXISTING entry identified by origin + turn_number (the pad's unique ID) in place; raises when no entry carries that ID |
 | `prune_entry(origin, turn_number)` | **NLU only** | remove the entry identified by origin + turn_number — a stale note, a merged duplicate |
 
 Only NLU may mutate existing entries — everyone else appends. This keeps the log honest while letting NLU
@@ -95,8 +95,8 @@ PEX sub-agents can run in parallel and write into it concurrently, so it is the 
 about **race conditions**. We resolve this through [NLU](../modules/nlu.md): `NLU.review_scratchpad()` runs
 **once per turn at NLU's own turn point** (the end of `understand`) and keeps the pad conformant. The
 current pass is conservative — it losslessly repairs entries missing the required fields via the NLU-only
-`update_entry` and returns diagnostics `{reviewed, size, repaired}`; the semantic pass (merging duplicates
-via `update_entry` + `prune_entry`, reconciling contradictions, pruning stale notes) and the per-append /
+`amend_entry` and returns diagnostics `{reviewed, size, repaired}`; the semantic pass (merging duplicates
+via `amend_entry` + `prune_entry`, reconciling contradictions, pruning stale notes) and the per-append /
 background review trigger are designed-not-built.
 
 Writes are **non-blocking** (fire-and-forget): a producer appends and proceeds without waiting for any

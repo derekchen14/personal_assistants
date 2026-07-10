@@ -242,7 +242,7 @@ class NaturalLanguageUnderstanding:
     def review_scratchpad(self) -> dict:
         """Synchronous review pass at NLU's turn point. Conservative for now: repair entries
         missing the contract fields (version / turn_number / used_count) losslessly via the
-        NLU-only `update_entry`; semantic review — merging contradictions, pruning stale notes
+        NLU-only `amend_entry`; semantic review — merging contradictions, pruning stale notes
         via `prune_entry`, maintaining used_count — is designed-not-built."""
         repaired = 0
         for entry in self.world.scratchpad.read():
@@ -250,7 +250,7 @@ class NaturalLanguageUnderstanding:
                 continue
             amended = {'version': 1, 'used_count': 0,
                        'turn_number': self.world.context.turn_id, **entry}
-            self.world.scratchpad.update_entry(entry['origin'], entry.get('turn_number'), amended)
+            self.world.scratchpad.amend_entry(entry['origin'], entry.get('turn_number'), amended)
             repaired += 1
         return {'reviewed': True, 'size': self.world.scratchpad.size, 'repaired': repaired}
 
