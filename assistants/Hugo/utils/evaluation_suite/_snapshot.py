@@ -101,9 +101,6 @@ def _project_state_obj(state) -> dict:
     return {
         'pred_intent': state.pred_intent,
         'flow_dax': state.pred_flow,
-        'keep_going': state.keep_going,
-        'has_issues': state.has_issues,
-        'natural_birth': state.natural_birth,
         'active_post_set': bool(state.get_active_post()),
     }
 

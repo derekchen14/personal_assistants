@@ -1,7 +1,7 @@
 """PEX model unit tests (the Hands) — one of the three model-unit-test modules.
 
 Deterministic half only for now (the probabilistic half is empty): the orchestrator acting loop,
-the tool-def registry, flow dispatch / completion, the propose two-phase, and the system prompt.
+the tool-def registry, flow runs / completion, the propose two-phase, and the system prompt.
 Shared fixtures (mock_agent, sessions_dir, engineer, orch_agent) live in conftest.py.
 """
 from __future__ import annotations
@@ -70,7 +70,7 @@ class TestParseJson:
 class TestOrchestratorToolDefs:
     """Hot-path tool definitions and the orchestrator's tool list (decision 16 allowlist)."""
 
-    def test_defs_cover_dispatch_registry_exactly(self, mock_agent):
+    def test_defs_cover_tool_registry_exactly(self, mock_agent):
         pex = mock_agent.pex
         names = [tool['name'] for tool in pex._orchestrator_tool_definitions()]
         assert names == list(_HOT_PATH_TOOLS)
@@ -97,17 +97,16 @@ class TestOrchestratorToolDefs:
 
 
 class TestOrchestratorDispatch:
-    """_dispatch_tool routes the hot-path names onto the Phase 1/2 surfaces."""
+    """_tool routes the hot-path names onto the Phase 1/2 surfaces."""
 
     def test_understand_read_returns_document(self, mock_agent):
-        result = mock_agent.pex._dispatch_tool('understand', {'op': 'read'})
+        result = mock_agent.pex._tool('understand', {'op': 'read'})
         assert result['_success'] is True
-        assert list(result['state']) == ['session', 'user_beliefs', 'grounding',
-                                         'flow_stack', 'flags']
+        assert list(result['state']) == ['session', 'user_beliefs', 'grounding', 'flow_stack']
 
     def test_manage_flows_stacks_and_saves(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
-        result = mock_agent.pex._dispatch_tool('manage_flows',
+        result = mock_agent.pex._tool('manage_flows',
                                                {'op': 'stackon', 'flow_name': 'outline',
                                                 'active': False})
         assert result['_success'] is True
@@ -120,14 +119,14 @@ class TestOrchestratorDispatch:
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         pex.flow_stack.stackon('chat').status = 'Completed'
-        result = pex._dispatch_tool('manage_flows', {'op': 'pop'})
+        result = pex._tool('manage_flows', {'op': 'pop'})
         assert result['_success'] is True
         assert result['state']['flow_stack'] == []
         assert pex.flow_stack.to_list() == []
 
     def test_manage_flows_bad_op_returns_corrective_error(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
-        result = mock_agent.pex._dispatch_tool('manage_flows', {'op': 'merge'})
+        result = mock_agent.pex._tool('manage_flows', {'op': 'merge'})
         assert result['_success'] is False
         assert 'Unknown write_state op' in result['_message']
 
@@ -135,8 +134,8 @@ class TestOrchestratorDispatch:
         """LLM-invented slot names (e.g. create's `type` reread as genre) get a corrective
         error naming the valid slots, instead of fill_slot_values dropping them silently."""
         mock_agent.world.open_session('wire-test')
-        mock_agent.pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
-        result = mock_agent.pex._dispatch_tool(
+        mock_agent.pex._tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
+        result = mock_agent.pex._tool(
             'manage_flows', {'op': 'update', 'fields': {'slots': {'genre': 'tutorial'}}})
         assert result['_success'] is False
         assert result['_error'] == 'invalid_input'
@@ -147,12 +146,12 @@ class TestOrchestratorDispatch:
         the contract fields on the LLM-authored one; read_scratchpad filters by origin."""
         pex = mock_agent.pex
         pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
-        originless = pex._dispatch_tool('append_to_scratchpad', {'entry': {'finding': 'intro is weak'}})
+        originless = pex._tool('append_to_scratchpad', {'entry': {'finding': 'intro is weak'}})
         assert originless['_success'] is False and originless['_error'] == 'invalid_input'
-        appended = pex._dispatch_tool('append_to_scratchpad',
+        appended = pex._tool('append_to_scratchpad',
                                       {'entry': {'origin': 'audit', 'finding': 'intro is weak'}})
         assert appended == {'_success': True, 'size': 1}
-        result = pex._dispatch_tool('read_scratchpad', {'origin': 'audit'})
+        result = pex._tool('read_scratchpad', {'origin': 'audit'})
         assert result['entries'] == [{'origin': 'audit', 'finding': 'intro is weak', 'version': 1,
                                       'turn_number': mock_agent.world.context.turn_id,
                                       'used_count': 0}]
@@ -167,41 +166,41 @@ class TestScopedToolSurface:
     def test_declare_ambiguity_tool_recognizes(self, mock_agent):
         pex = mock_agent.pex
         ambiguity = mock_agent.world.ambiguity
-        result = pex._dispatch_tool('declare_ambiguity',
+        result = pex._tool('declare_ambiguity',
             {'level': 'partial', 'metadata': {'missing': 'source', 'entity': 'post'}})
         assert result == {'_success': True}
         assert ambiguity.is_present is True and ambiguity.get_level() == 'partial'
-        bad = pex._dispatch_tool('declare_ambiguity',
+        bad = pex._tool('declare_ambiguity',
                                  {'level': 'general', 'metadata': {'missing': 'nope'}})
         assert bad['_success'] is False and bad['_error'] == 'invalid_input'
 
     def test_ask_clarification_question_tool(self, mock_agent):
         pex = mock_agent.pex
-        none = pex._dispatch_tool('ask_clarification_question', {})
+        none = pex._tool('ask_clarification_question', {})
         assert none['_success'] is False and none['_error'] == 'invalid_input'
         mock_agent.world.ambiguity.recognize('partial', {'missing': 'source', 'entity': 'post'})
-        result = pex._dispatch_tool('ask_clarification_question', {})
+        result = pex._tool('ask_clarification_question', {})
         assert result['_success'] is True and result['question']
 
     def test_recover_from_ambiguity_tool(self, mock_agent, tmp_path):
         pex = mock_agent.pex
         pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')  # file-backed for recover
-        none = pex._dispatch_tool('recover_from_ambiguity', {})
+        none = pex._tool('recover_from_ambiguity', {})
         assert none['_success'] is False and none['_error'] == 'invalid_input'
         mock_agent.world.prefs.store_preference('channel', 'substack')
         mock_agent.world.ambiguity.recognize('partial', {'missing': 'channel'})
-        result = pex._dispatch_tool('recover_from_ambiguity', {})
+        result = pex._tool('recover_from_ambiguity', {})
         assert result['_success'] is True and result['recovery'] == 'substack'
         assert mock_agent.world.ambiguity.is_present is False  # resolved internally
 
     def test_flow_stack_tools_replace_call_flow_stack(self, mock_agent):
         pex = mock_agent.pex
         pex.flow_stack.stackon('outline')
-        flows = pex._dispatch_tool('read_flow_stack', {'details': 'flows'})
+        flows = pex._tool('read_flow_stack', {'details': 'flows'})
         assert flows['_success'] is True and flows['flows'][0]['flow_name'] == 'outline'
-        assert pex._dispatch_tool('stackon_flow', {'flow': 'compose'}) == \
+        assert pex._tool('stackon_flow', {'flow': 'compose'}) == \
             {'_success': True, 'stacked': 'compose'}
-        assert pex._dispatch_tool('fallback_flow', {'flow': 'write'}) == \
+        assert pex._tool('fallback_flow', {'flow': 'write'}) == \
             {'_success': True, 'fell_back_to': 'write'}
 
     def test_manage_memory_tool_is_gone(self, mock_agent):
@@ -209,7 +208,7 @@ class TestScopedToolSurface:
         orch_names = {tool['name'] for tool in pex.get_tools_for_orchestrator()}
         comp_names = {tool['name'] for tool in pex._component_tool_definitions()}
         assert 'manage_memory' not in orch_names and 'manage_memory' not in comp_names
-        result = pex._dispatch_tool('manage_memory', {'action': 'read_scratchpad'})
+        result = pex._tool('manage_memory', {'action': 'read_scratchpad'})
         assert result['_success'] is False and 'Unknown tool' in result['_message']
 
     def test_read_scratch_value_reads_flat_entry(self, mock_agent, tmp_path):
@@ -368,7 +367,7 @@ class TestPolicyCompletion:
         pex._policies['Draft'] = self._migrated_policy(wired, 'Done.')
         # stackon runs the policy (active defaults true); the grounding rejection comes back
         # through the corrective-error wrapper.
-        result = pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
+        result = pex._tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is False
         assert 'grounding.post is empty' in result['_message']
         assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == []  # no record written
@@ -512,7 +511,7 @@ class TestOrchestratorLoop:
         assert messages[1] == {'role': 'assistant',
                                'content': 'You have three posts in progress.'}
 
-    def test_tool_round_dispatches_and_appends_results(self, orch_agent):
+    def test_tool_round_calls_tools_and_appends_results(self, orch_agent):
         _script(orch_agent, [_response(_tool_block('understand', {'op': 'read'})),
                              _response(_text_block('All caught up.'))])
         result = orch_agent.take_turn('where were we?')
@@ -542,7 +541,7 @@ class TestOrchestratorLoop:
         second = json.loads(orch_agent.world.context.messages[4]['content'][0]['content'])
         assert second['_error'] == 'duplicate_call'
 
-    def test_identical_retry_after_error_is_dispatched(self, orch_agent):
+    def test_identical_retry_after_error_still_runs(self, orch_agent):
         """Dedupe only fires after a SUCCESSFUL identical call — retrying the same call
         after a transient tool error is legitimate recovery, not a loop."""
         bad_call = _tool_block('manage_flows', {'op': 'bogus'}, block_id='t1')
@@ -551,11 +550,11 @@ class TestOrchestratorLoop:
                              _response(_text_block('gave up'))])
         orch_agent.take_turn('do the thing')
         second = json.loads(orch_agent.world.context.messages[4]['content'][0]['content'])
-        assert second['_error'] != 'duplicate_call'  # re-dispatched, not skipped
+        assert second['_error'] != 'duplicate_call'  # re-called, not skipped
 
     def test_read_only_calls_capped_per_turn(self, orch_agent):
         """AC-3 (round 4.3): the first read-only lookup past limits.max_reads in one turn returns
-        read_cap without dispatching; varied args do not evade the cap."""
+        read_cap without calling the tool; varied args do not evade the cap."""
         cap = orch_agent.pex.max_reads
         queries = ['bees', 'jazz', 'tea', 'vans', 'oak', 'silk'][:cap + 1]
         calls = [_response(_tool_block('find_posts', {'query': query}, block_id=f't{idx}'))
@@ -635,7 +634,7 @@ class TestOrchestratorLoop:
         every other flow gets max_tool_calls."""
         captured = []
 
-        def fake_call(system, msgs, model_id, tool_defs, tool_dispatcher, max_tokens,
+        def fake_call(system, msgs, model_id, tool_defs, call_tool, max_tokens,
                       max_num_calls, schema_dict=None):
             captured.append(max_num_calls)
             return ('', [])
@@ -720,7 +719,7 @@ class TestTurnCheckpoint:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Context compression — the Hermes compactor port (changes.md §5.6, decision 9)
+# Context compaction — the Hermes compactor port (changes.md §5.6, decision 9)
 # ═══════════════════════════════════════════════════════════════════
 
 
@@ -1251,7 +1250,7 @@ class TestContentService:
     def test_save_section_content_validates_duplicate_h2(self, tmp_db):
         # _validate_outline now runs on every section write, regardless of
         # which tool initiated it. Renaming a section to a name that already
-        # exists should raise OutlineValidationError; PEX dispatch maps that
+        # exists should raise OutlineValidationError; PEX's `_tool` maps that
         # to {'_error': 'validation'} for the LLM.
         from backend.utilities.services import OutlineValidationError
         body = '## Ideas\n- early\n\n## Process\n- alpha\n'
@@ -1815,7 +1814,7 @@ class TestSingleCallStackon:
         ran = {}
         monkeypatch.setattr(pex, 'activate_flow',
                             lambda params: ran.update(params) or {'_success': True, 'status': 'Completed'})
-        result = pex._dispatch_tool('manage_flows',
+        result = pex._tool('manage_flows',
                                     {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True
         assert ran['flow_name'] == 'outline'   # active defaults true: the push runs the policy
@@ -1828,7 +1827,7 @@ class TestSingleCallStackon:
         self._believe(state, 'outline')
         called = []
         monkeypatch.setattr(mock_agent.pex, 'activate_flow', lambda params: called.append(params))
-        result = mock_agent.pex._dispatch_tool('manage_flows',
+        result = mock_agent.pex._tool('manage_flows',
                                                {'op': 'stackon', 'flow_name': 'outline',
                                                 'active': False})
         assert result['_success'] is True and not called
@@ -1855,7 +1854,7 @@ class TestBeliefInjection:
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         state = mock_agent.world.state
-        pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline',
+        pex._tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline',
                                             'active': False})
         live = pex.flow_stack.get_flow()
         live.status = 'Active'   # queued as Pending; model a mid-turn running flow
@@ -1870,7 +1869,7 @@ class TestBeliefInjection:
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         state = mock_agent.world.state
-        pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline',
+        pex._tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline',
                                             'active': False})
         live = pex.flow_stack.get_flow()
         live.status = 'Active'   # queued as Pending; model a mid-turn running flow
@@ -1891,26 +1890,26 @@ class TestPlanLifecycle:
         pex = mock_agent.pex
         state = mock_agent.world.state
         for flow_name in ('release', 'compose'):    # reverse execution order: first-to-run last
-            result = pex._dispatch_tool('manage_flows', {'op': 'stackon', 'flow_name': flow_name,
+            result = pex._tool('manage_flows', {'op': 'stackon', 'flow_name': flow_name,
                                                          'active': False})
             assert result['_success'] is True
 
         class _CompletingPolicy:
-            def execute(self, state, context, dispatch):
+            def execute(self, state, context, tools):
                 pex.flow_stack.get_flow(status='Active').status = 'Completed'
                 return TaskArtifact('outline', thoughts='outline done')
             def pop_completion(self):
                 return {'flow': 'outline', 'summary': 'done', 'metadata': {}}
         monkeypatch.setitem(pex._policies, Intent.DRAFT, _CompletingPolicy())
 
-        result = pex._dispatch_tool('manage_flows',
+        result = pex._tool('manage_flows',
                                     {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True and result['status'] == 'Completed'
         entries = [(entry['flow_name'], entry['status']) for entry in state.flow_stack]
         assert ('compose', 'Pending') in entries    # the plan survived the completion
         assert ('release', 'Pending') in entries
-        result = pex._dispatch_tool('manage_flows', {'op': 'pop'})
-        # pop promoted compose AND ran it — the runtime owns dispatch; the plan tail survives.
+        result = pex._tool('manage_flows', {'op': 'pop'})
+        # pop promoted compose AND ran it — the runtime owns policy execution; the plan tail survives.
         assert result['_success'] is True and result['status'] == 'Completed'
         entries = [(entry['flow_name'], entry['status']) for entry in state.flow_stack]
         assert ('compose', 'Completed') in entries

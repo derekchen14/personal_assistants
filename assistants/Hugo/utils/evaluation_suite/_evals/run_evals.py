@@ -5,7 +5,7 @@ against the 7 Eval criteria from `_specs/utilities/evaluation_suite.md`. Unlike 
 trajectory, order matters), Evals cares about the FINAL result. All seven are wired — the ground
 truth already lives in the corpus (96 examples):
   1 completion  — the turn finished in the right mode                     (is_completed)
-  2 correctness — the dispatched tools match the labelled actions          (tool_similarity vs the
+  2 correctness — the tools called match the labelled actions          (tool_similarity vs the
                   next agent turn's `actions`)
   3 response    — the reply matches the ground-truth agent turn            (embedding sim by default)
   4 state       — NLU belief detected the labelled flow                    (pred_flows vs labels.stack)

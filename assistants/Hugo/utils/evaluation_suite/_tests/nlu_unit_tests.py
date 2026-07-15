@@ -1,6 +1,6 @@
 """NLU deterministic unit tests (the Heart). No live model calls — the free tier.
 
-Covers NLU-owned components: ensemble tally/dispatch, the react() slot-fill contract, historical
+Covers NLU-owned components: ensemble tally/routing, the react() slot-fill contract, historical
 regressions, the Session Scratchpad, the Dialogue State (state.json serialization + belief/grounding
 write ops). The probabilistic (model-prediction) half lives in model_tests.py.
 Shared fixtures (minimal_config, engineer) live in conftest.py; `nlu` is NLU-only, below.
@@ -47,7 +47,7 @@ def nlu(minimal_config):
 
 class TestAmbiguityHandler:
     """The Ambiguity Handler surface: `present` is a bool attribute, get_level() reports the
-    greatest recognized level, resolve() takes an explanation, and NLU.attempt_recovery drives
+    greatest recognized level, resolve() takes an explanation, and NLU.recover drives
     recover(prefs, scratchpad) and records the attempt on the scratchpad."""
 
     def test_recognize_sets_present_and_level(self, nlu):
@@ -68,7 +68,7 @@ class TestAmbiguityHandler:
         nlu.world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
         nlu.world.prefs.store_preference('channel', 'substack')
         nlu.ambiguity_handler.recognize('partial', {'missing': 'channel'})
-        result = nlu.attempt_recovery()
+        result = nlu.recover()
         assert result == {'recovery': 'substack'}
         assert nlu.ambiguity_handler.is_present is False  # resolved from memory, no user escalation
         recovery = nlu.world.scratchpad.read(origin='recovery')
@@ -77,7 +77,7 @@ class TestAmbiguityHandler:
     def test_recover_stays_pending_when_nothing_found(self, nlu, tmp_path):
         nlu.world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
         nlu.ambiguity_handler.recognize('partial', {'missing': 'channel'})
-        result = nlu.attempt_recovery()
+        result = nlu.recover()
         assert result == {'recovery': 'channel'}  # the missing slot name comes back unresolved
         assert nlu.ambiguity_handler.is_present is True  # nothing found — still pending
         recovery = nlu.world.scratchpad.read(origin='recovery')
@@ -85,8 +85,8 @@ class TestAmbiguityHandler:
 
 
 class TestEnsembleVoting:
-    """Tally + dispatch math for the NLU ensemble voter. Config invariants and
-    bare-routing dispatch tests removed — they pass on typos, not behavior."""
+    """Tally + routing math for the NLU ensemble voter. Config invariants and
+    bare-routing tests removed — they pass on typos, not behavior."""
 
     def test_two_agree_one_dissents(self, nlu):
         votes = [
@@ -155,7 +155,7 @@ def _detection(pairs, confidence):
 
 
 def _stub_think_internals(nlu, detection):
-    """Stub everything think() touches besides detection, so the dispatch logic runs alone."""
+    """Stub everything think() touches besides detection, so the routing logic runs alone."""
     nlu._detect_flow = MagicMock(**detection)
     nlu._classify_intent = MagicMock(return_value='Draft')
     nlu._fill_slots = MagicMock()
@@ -244,7 +244,7 @@ class TestNLUSpecificRegressions:
                 f'dax2flow({dax!r}) returned {resolved!r}, expected {flow_name!r}'
 
     def test_refine_steps_unpacks_dict_kwargs(self):
-        """Regression: under the old generic dispatch, slot.add_one(item) bound the whole
+        """Regression: under the old generic fill path, slot.add_one(item) bound the whole
         {name, description} dict to the positional `name` arg, producing nested
         {name: {name: '...'}}. The per-flow refactor uses slot.add_one(**item)."""
         flow = flow_classes['refine']()
@@ -332,7 +332,7 @@ def _matches(actual, expected) -> bool:
 # ── Test cases ──────────────────────────────────────────────────────────────
 # (name, gold_dax, payload, phase3_slots, expected_flow, is_filled, slots, extras)
 # - slots: dict of slot_name → expected observable value (omit slots not asserted)
-# - extras: optional dict with post-react checks (e.g. dispatch-not-called)
+# - extras: optional dict with post-react checks (e.g. a tool was not called)
 
 NLU_REACT_CASES = [
     {
@@ -598,11 +598,10 @@ class TestSessionStateFile:
 
     def test_document_blocks_and_grounding_parts(self):
         document = _session_state().read_state()
-        assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack', 'flags']
+        assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack']
         assert list(document['grounding']) == ['choices', 'notes', 'entities']
         assert document['session']['turn_count'] == 12
         assert document['user_beliefs']['intent'] == 'Draft'
-        assert document['flags'] == {'has_issues': False}
 
     def test_load_rehydrates_fields(self, tmp_path):
         state_file = tmp_path / 'state.json'
@@ -636,7 +635,7 @@ class TestWriteStateOps:
 
     def test_read_state_returns_document(self):
         document = _ops_state().read_state()
-        assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack', 'flags']
+        assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack']
 
     def test_update_op_mutates_and_saves(self, tmp_path):
         state = _ops_state()

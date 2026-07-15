@@ -3,7 +3,7 @@
 Merges the former `scorers/completion.py`, `scorers/tools.py`, and `gates.py` into one module — all
 "how we score and gate an eval run":
   * is_completed   — did the turn finish in the right MODE for its label (completion scorer).
-  * tool_similarity— did the dispatched domain tools match the label, by token Levenshtein (tools scorer).
+  * tool_similarity— did the domain tools called match the label, by token Levenshtein (tools scorer).
   * grade / gate / evaluate / record — the folded-baseline red-green gate. Each tier keeps its own
     baseline under its folder: `_traces/traces.json`, `_evals/evals.json`.
 

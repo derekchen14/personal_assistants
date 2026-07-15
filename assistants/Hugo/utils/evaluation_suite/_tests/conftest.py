@@ -51,7 +51,7 @@ def agent(monkeypatch):
     a.close()
 
 
-def _stub_tool_call(messages, tools, tool_dispatcher, *,
+def _stub_tool_call(messages, tools, call_tool, *,
                     system=None, task='skill', max_rounds=10, max_tokens=4096):
     """Return a stub text response with no tool calls."""
     return '[stub] LLM response for testing.', []

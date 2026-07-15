@@ -3,7 +3,7 @@
 Runs each scenario's user turns through a live orchestrator Agent and scores two metrics from the
 SAME pass (one live run, no double LLM cost):
   * completion_rate  — did the turn finish in the right mode (completion scorer).
-  * tool_match_rate  — did the dispatched domain tools match the following agent turn's `actions`,
+  * tool_match_rate  — did the domain tools called match the following agent turn's `actions`,
                        by mean per-turn Levenshtein similarity (tools scorer). Drift shows as red.
 
 Writes report/<level>_metrics.json and calls the folded-baseline gate. Red-green: the gate stays
@@ -43,17 +43,17 @@ from utils.evaluation_suite.trace_writer import (
 
 def _domain_tools() -> set:
     """The domain tool IDs (keys under `tools:` in schemas/tools.yaml). Everything else the
-    orchestrator dispatches (coordinate_context, call_flow_stack, ...) is plumbing, filtered out."""
+    orchestrator calls (coordinate_context, call_flow_stack, ...) is plumbing, filtered out."""
     import yaml
     return set(yaml.safe_load((_HUGO_ROOT / 'schemas' / 'tools.yaml').read_text())['tools'])
 
 
 def _install_tool_logger(agent) -> list:
-    """Record every dispatched tool call by wrapping pex._dispatch_tool. Returns the shared log."""
+    """Record every tool call by wrapping pex._tool. Returns the shared log."""
     log = []
-    original = agent.pex._dispatch_tool
+    original = agent.pex._tool
 
-    def logging_dispatch(tool_name, tool_input):
+    def logging_tool(tool_name, tool_input):
         entry = {'name': tool_name, 'input': tool_input}
         log.append(entry)
         try:
@@ -68,7 +68,7 @@ def _install_tool_logger(agent) -> list:
         entry['result_message'] = result.get('_message') if isinstance(result, dict) else ''
         return result
 
-    agent.pex._dispatch_tool = logging_dispatch
+    agent.pex._tool = logging_tool
     return log
 
 

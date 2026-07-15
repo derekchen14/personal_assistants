@@ -16,7 +16,7 @@ from backend.modules.nlu import NLU
 from backend.modules.pex import PEX
 from backend.modules.mem import MEM
 from backend.components.context_coordinator import ContextCoordinator
-from backend.prompts.for_compressor import SUMMARY_PREFIX
+from backend.prompts.for_compactor import SUMMARY_PREFIX
 
 
 def _make_world(config):
@@ -144,19 +144,19 @@ class TestCompression:
         coordinator = ContextCoordinator(minimal_config)
         for message in _transcript(2):  # 8 messages <= head(3) + tail(20) + 1
             coordinator.append_message(message)
-        assert coordinator.compress_messages(_stub_summarizer([]), protect_tail=20) is False
+        assert coordinator.compact_messages(_stub_summarizer([]), protect_tail=20) is False
         assert coordinator.previous_summary is None
 
     def test_head_and_tail_are_protected(self, loaded):
         before = [json.dumps(message, default=str) for message in loaded.messages]
-        assert loaded.compress_messages(_stub_summarizer([]), protect_tail=20) is True
+        assert loaded.compact_messages(_stub_summarizer([]), protect_tail=20) is True
         after = loaded.messages
         assert len(after) == 3 + 1 + 20  # head + one handoff + tail
         assert [json.dumps(msg, default=str) for msg in after[:2]] == before[:2]
         assert [json.dumps(msg, default=str) for msg in after[-20:]] == before[20:]
 
     def test_handoff_message_shape(self, loaded):
-        loaded.compress_messages(_stub_summarizer([]), protect_tail=20)
+        loaded.compact_messages(_stub_summarizer([]), protect_tail=20)
         handoff = loaded.messages[3]
         assert handoff['role'] == 'user'
         assert handoff['content'].startswith(SUMMARY_PREFIX)
@@ -167,7 +167,7 @@ class TestCompression:
     def test_tail_cut_never_splits_a_tool_pair(self, loaded):
         # protect_tail=18 puts the raw cut on turn 5's tool results; alignment pulls the cut
         # back so the parent assistant tool_use travels into the tail with its results.
-        assert loaded.compress_messages(_stub_summarizer([]), protect_tail=18) is True
+        assert loaded.compact_messages(_stub_summarizer([]), protect_tail=18) is True
         handoff_idx = next(idx for idx, msg in enumerate(loaded.messages)
                            if isinstance(msg['content'], str)
                            and msg['content'].startswith(SUMMARY_PREFIX))
@@ -179,7 +179,7 @@ class TestCompression:
 
     def test_summarizer_sees_only_the_middle(self, loaded):
         record = []
-        loaded.compress_messages(_stub_summarizer(record), protect_tail=20)
+        loaded.compact_messages(_stub_summarizer(record), protect_tail=20)
         middle = record[0]['middle']
         assert len(middle) == 17  # messages 3..19 — nothing from the head or tail
         assert middle[0]['content'] == 'done with turn 0'
@@ -187,31 +187,31 @@ class TestCompression:
         assert record[0]['budget'] == 2000  # small middle clamps to the Hermes floor
 
     def test_old_tool_results_pruned_tail_results_kept(self, loaded):
-        loaded.compress_messages(_stub_summarizer([]), protect_tail=20)
+        loaded.compact_messages(_stub_summarizer([]), protect_tail=20)
         head_result = loaded.messages[2]['content'][0]['content']
         assert head_result == '[Old tool output cleared to save context space]'
         tail_result = loaded.messages[-2]['content'][0]['content']
         assert 'filler' in tail_result  # inside the protected tail — untouched
 
-    def test_messages_jsonl_matches_memory_after_compression(self, loaded, minimal_config,
+    def test_messages_jsonl_matches_memory_after_compaction(self, loaded, minimal_config,
                                                              tmp_path):
-        loaded.compress_messages(_stub_summarizer([]), protect_tail=20)
+        loaded.compact_messages(_stub_summarizer([]), protect_tail=20)
         reopened = ContextCoordinator(minimal_config)
         reopened.attach_messages(tmp_path / 'messages.jsonl')
         assert reopened.messages == loaded.messages
 
-    def test_checkpoint_records_the_compression_event(self, loaded):
-        loaded.compress_messages(_stub_summarizer([]), protect_tail=20, prompt_tokens=70000)
-        checkpoint = loaded.get_checkpoint('compression')
+    def test_checkpoint_records_the_compaction_event(self, loaded):
+        loaded.compact_messages(_stub_summarizer([]), protect_tail=20, prompt_tokens=70000)
+        checkpoint = loaded.get_checkpoint('compaction')
         assert checkpoint['data'] == {'messages_before': 40, 'messages_after': 24,
                                       'pruned_tool_results': 5, 'prompt_tokens': 70000}
 
     def test_second_compaction_updates_the_previous_summary(self, loaded):
         record = []
-        loaded.compress_messages(_stub_summarizer(record), protect_tail=20)
+        loaded.compact_messages(_stub_summarizer(record), protect_tail=20)
         for message in _transcript(5):  # the conversation keeps going
             loaded.append_message(message)
-        assert loaded.compress_messages(_stub_summarizer(record), protect_tail=20) is True
+        assert loaded.compact_messages(_stub_summarizer(record), protect_tail=20) is True
         assert record[0]['previous'] is None
         assert record[1]['previous'] == 'summary #1'
         # the old handoff sits in the window and is never re-summarized as a turn
@@ -221,18 +221,18 @@ class TestCompression:
 
     def test_rehydrated_session_seeds_previous_summary_from_handoff(self, loaded,
                                                                     minimal_config, tmp_path):
-        loaded.compress_messages(_stub_summarizer([]), protect_tail=20)
+        loaded.compact_messages(_stub_summarizer([]), protect_tail=20)
         reopened = ContextCoordinator(minimal_config)  # fresh process — no in-memory summary
         reopened.attach_messages(tmp_path / 'messages.jsonl')
         for message in _transcript(5):
             reopened.append_message(message)
         record = []
-        assert reopened.compress_messages(_stub_summarizer(record), protect_tail=20) is True
+        assert reopened.compact_messages(_stub_summarizer(record), protect_tail=20) is True
         assert record[0]['previous'] == 'summary #1'
 
 
 class TestCompressionTrigger:
-    """The end-of-turn trigger (MEM._compression_check, run by store_turn): real usage off
+    """The end-of-turn trigger (MEM._compaction_check, run by store_turn): real usage off
     response.usage against the configured threshold; the protected tail size rides in from
     config."""
 
@@ -251,7 +251,7 @@ class TestCompressionTrigger:
 
     def test_below_threshold_never_compacts(self, orch_agent, monkeypatch):
         calls = []
-        monkeypatch.setattr(orch_agent.world.context, 'compress_messages',
+        monkeypatch.setattr(orch_agent.world.context, 'compact_messages',
                             lambda *args: calls.append(args) or True)
         _script(orch_agent, [self._usage_response('small turn', 63999)])
         orch_agent.take_turn('hello')
@@ -259,19 +259,19 @@ class TestCompressionTrigger:
 
     def test_at_threshold_compacts_with_config_tail(self, orch_agent, monkeypatch):
         calls = []
-        monkeypatch.setattr(orch_agent.world.context, 'compress_messages',
+        monkeypatch.setattr(orch_agent.world.context, 'compact_messages',
                             lambda *args: calls.append(args) or True)
         _script(orch_agent, [self._usage_response('big turn', 64000)])
         orch_agent.take_turn('hello')
         summarize, protect_tail, prompt_tokens = calls[0]
         assert summarize == orch_agent.mem._summarize_middle
-        assert protect_tail == 20  # schemas/tools.yaml compression.protect_tail
+        assert protect_tail == 20  # schemas/tools.yaml compaction.protect_tail
         assert prompt_tokens == 64000
 
     def test_summarizer_failure_does_not_eat_the_reply(self, orch_agent, monkeypatch):
         def boom(*args):
             raise RuntimeError('aux model down')
-        monkeypatch.setattr(orch_agent.world.context, 'compress_messages', boom)
+        monkeypatch.setattr(orch_agent.world.context, 'compact_messages', boom)
         _script(orch_agent, [self._usage_response('still replies', 200000)])
         assert orch_agent.take_turn('hello')['message'] == 'still replies'
 
@@ -284,7 +284,7 @@ class TestStoreTurn:
 
     def test_store_turn_records_bumps_and_saves(self, sessions_dir, minimal_config):
         config = dict(minimal_config)
-        config['compression'] = {'threshold_tokens': 64000, 'protect_tail': 20}
+        config['compaction'] = {'threshold_tokens': 64000, 'protect_tail': 20}
         world, memory = _make_world(MappingProxyType(config))
         world.open_session('convo-store')
         before = world.state.turn_count

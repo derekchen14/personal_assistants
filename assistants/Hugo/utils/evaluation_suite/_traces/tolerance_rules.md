@@ -24,7 +24,7 @@ G1. `detect_and_fill` precedes any `write_state` that fills slots (`op=update_fl
     `fields.slots`) for the same flow, and precedes the first `activate_flow` of the turn.
 G2. Persistence-class calls are **counted**: `activate_flow` per flow per turn, and
     `write_state` with op in {`stackon`, `fallback`, `pop_completed`} per target flow.
-    A replay with extra stacked or re-dispatched flows does not match.
+    A replay with extra stacked or re-run flows does not match.
 G3. `read_state`, `read_scratchpad`, and the read-only domain allowlist (`find_posts`,
     `read_metadata`, `read_section`, `search_notes`, `list_channels`, `channel_status`) are
     **incidental** — never order-pinned, never counted.
@@ -51,42 +51,42 @@ Each rule block names the sidecar it constrains. N/A classes are omitted.
 - required-ordered: `detect_and_fill` → `write_state(op=stackon, create)` →
   `activate_flow(create)`
 - counted: `activate_flow(create)` ×1
-- forbidden: any second flow dispatch; `handle_ambiguity(declare)`
+- forbidden: running any second flow; `handle_ambiguity(declare)`
 - completion: `create` with metadata keys ⊇ {post_id}
 
 ### 02_revise_simplify
 - required-ordered: `detect_and_fill` → `write_state(op=stackon, simplify)` →
   `activate_flow(simplify)`
 - counted: `activate_flow(simplify)` ×1
-- forbidden: dispatch of any other Revise-family flow (the near-synonym trap: polish, rework)
+- forbidden: running any other Revise-family flow (the near-synonym trap: polish, rework)
 - completion: `simplify` grounded on the seeded post (G7)
 
 ### 03_publish_preview
 - required-ordered: `detect_and_fill` → `write_state(op=stackon, preview)` →
   `activate_flow(preview)`
 - counted: `activate_flow(preview)` ×1
-- forbidden: `release`, `syndicate`, `schedule` dispatches (preview is read-only on channels)
+- forbidden: `release`, `syndicate`, `schedule` runs (preview is read-only on channels)
 
 ### 04_research_compare
 - required-ordered: `detect_and_fill` → `write_state(op=stackon, compare)` →
   `write_state(op=update_flow)` carrying BOTH seeded posts in the source slot →
   `activate_flow(compare)`
 - counted: `activate_flow(compare)` ×1
-- forbidden: any domain write; answering from direct reads without dispatching the flow
-  (compare needs analysis tools outside the allowlist — a no-dispatch run does not match)
+- forbidden: any domain write; answering from direct reads without running the flow
+  (compare needs analysis tools outside the allowlist — a replay that never runs the flow does not match)
 
 ### 05_slot_clarify
 - turn 1 required-ordered: `detect_and_fill` → the turn ends asking for the missing tone.
   The ask may be plain text after detect_and_fill reports the unfilled elective, a
   `handle_ambiguity(declare)`, or a `activate_flow(tone)` returning a question — any ask
   path matches. The flow may or may not be staged on turn 1.
-- turn 1 forbidden: a completed `tone` dispatch; any content write.
+- turn 1 forbidden: a completed `tone` run; any content write.
 - turn 2 required-ordered: tone slot filled (`write_state op=update_flow` carrying
   `custom_tone` or `chosen_tone`) → `activate_flow(tone)` completing.
 - counted: completed `activate_flow(tone)` ×1 across the round (turn 2 only).
 
 ### 06_ambiguity_escalation
-- turn 1 required: the agent surfaces the two candidate posts and asks — no dispatch
+- turn 1 required: the agent surfaces the two candidate posts and asks — no flow run
   completes, no flow staged.
 - turn 2: a second, more pointed ask (concrete options); still no domain write.
 - forbidden (both turns): `activate_flow` of any flow that writes content; `write_state`
@@ -100,14 +100,14 @@ Each rule block names the sidecar it constrains. N/A classes are omitted.
 
 ### 07_plan_chain
 - required-ordered: `detect_and_fill` → `write_state(op=stackon, triage)` →
-  `activate_flow(triage)` (the plan) → first plan sub-flow staged and dispatched on the
+  `activate_flow(triage)` (the plan) → first plan sub-flow staged and run on the
   later turns (recorded: rework on the Motivation section), ending with the sub-flow's
   completion record.
-- handoff: the sub-flow dispatch must happen AFTER triage's plan result is available to the
+- handoff: the sub-flow must run AFTER triage's plan result is available to the
   loop (the activate_flow tool result or a `read_scratchpad` of completion records); the
   sequence ends with at least one sub-flow completion record.
-- counted: each dispatched flow ×1 per turn; a clarification round inside the sub-flow
-  (rework asking for direction) is a legitimate extra dispatch of the SAME flow once the
+- counted: each flow run ×1 per turn; a clarification round inside the sub-flow
+  (rework asking for direction) is a legitimate extra run of the SAME flow once the
   answer arrives.
 - NOTE for review: `plan_id` was removed in round 5.1 — the stack itself holds the plan
   (all sub-flows stacked at once); whether stronger plan-linkage evidence is needed is an
@@ -131,11 +131,11 @@ Each rule block names the sidecar it constrains. N/A classes are omitted.
   scratchpad (wrong memory tier).
 
 ### 10_grounding_switch
-- turn 1 required-ordered: `detect_and_fill` → stack/dispatch `inspect` grounded on post A;
+- turn 1 required-ordered: `detect_and_fill` → stack and run `inspect` grounded on post A;
   completion metadata references post A.
 - turn 2 required-ordered: grounding moves to post B (`write_state` with grounding.post=B, or
-  a fresh `detect_and_fill`+fill carrying B) BEFORE `activate_flow` runs; the dispatched
-  flow's completion metadata must reference post B, not A.
+  a fresh `detect_and_fill`+fill carrying B) BEFORE `activate_flow` runs; the flow that ran
+  must have completion metadata that must reference post B, not A.
 - forbidden: turn 2 acting on post A — stale grounding is the failure this trajectory exists
   to catch (it caught the real `_stage_flow` completed-flow-reuse bug when first recorded).
 
