@@ -1,6 +1,6 @@
 # Task Artifact
 
-The `TaskArtifact` is a flow's output — the structured payload built by the activated
+The `TaskArtifact` is a flow's output — the structured payload built by the running
 [PEX](../modules/pex.md) sub-agent. Each active flow builds its own; when a turn ran concurrent sub-agents,
 **PEX curates them into one** (stack order, dedup identical blocks, drop a failed sibling — see
 [Artifact Lifecycle](#artifact-lifecycle)), so the main Agent always receives a **single** TaskArtifact per
@@ -19,7 +19,7 @@ Every `TaskArtifact` has **3 stored attributes** plus **3 helper properties** th
 |---|---|---|---|
 | `origin` | `str` | stored | Flow name that produced the artifact (e.g. `compose`, `audit`, `release`). Identifies the producing flow; empty for system artifacts. PEX composes the reply directly — there is no response template. |
 | `parts` | `list[Part]` | stored | A2A v1.0 parts array. Each element is a `Part(text=…)` \| `Part(raw=…)` \| `Part(url=…)` \| `Part(data=…)` with optional `metadata` for tagging. The classification dict (violation / missing / entity / etc.) lives inside the first `data` Part. The agent's reasoning lives inside a `text` Part tagged `metadata={'kind':'thoughts'}`. Generated code lives inside a `text` Part tagged `metadata={'kind':'code'}`. |
-| `blocks` | `list[BuildingBlock]` | stored | Visual building blocks targeting display panels. Each block self-describes its `type`, `data`, `panel`, and optional `expand` flag. May be empty. Distinct from `parts`: blocks are *visual UI units*; parts are *content* (text / image / data / url). |
+| `blocks` | `list[BuildingBlock]` | stored | Visual building blocks targeting display panels. Each block self-describes its `type`, `data`, `panel`, and optional `expand` boolean. May be empty. Distinct from `parts`: blocks are *visual UI units*; parts are *content* (text / image / data / url). |
 | `data` | `dict` | property | First data Part's dict — the classification dict. Read as `artifact.data['violation']`. Empty dict when no data Part is present. |
 | `thoughts` | `str` | property + setter | Agent's user-facing reasoning prose. Backed by a text Part tagged `metadata.kind='thoughts'`. Empty string when absent. |
 | `code` | `str \| None` | property + setter | Generated code or raw payload. Backed by a text Part tagged `metadata.kind='code'`. `None` when absent. |
@@ -42,7 +42,7 @@ Constructing a Part with zero or multiple oneof fields raises `ValueError` — t
 
 ## Artifact Lifecycle
 
-- **Created** by the activated sub-agent (the policy) during PEX execution. The policy decides which blocks to attach, what to put in the classification dict, and what reasoning to expose via `thoughts`.
+- **Created** by the running sub-agent (the policy) during PEX execution. The policy decides which blocks to attach, what to put in the classification dict, and what reasoning to expose via `thoughts`.
 - **Scope**: one artifact per *flow*, **curated** by PEX into one delivered artifact per *turn*. Multi-turn flows produce a new artifact each turn; if a turn carries no new visual, the previous artifact stays on screen by default.
 - **Curated** when a turn ran concurrent sub-agents: PEX reviews their TaskArtifacts and produces **one** artifact for the turn by these rules:
   - **Order** blocks by stack order (top-of-stack flow first).
@@ -56,7 +56,7 @@ Constructing a Part with zero or multiple oneof fields raises `ValueError` — t
 
 ## Blocks
 
-Artifacts carry a list of pre-built building blocks. Each block is self-describing — type, panel, data, optional expand flag.
+Artifacts carry a list of pre-built building blocks. Each block is self-describing — type, panel, data, optional expand boolean.
 
 ### Closed Block-Type Vocabulary
 

@@ -8,13 +8,15 @@ what the user provides. Its goal is to form a **Theory of Mind** about the user 
 NLU is a **separate Agent** — one of three continuous LLM-loops, running underneath the deterministic
 **Assistant** (L0) alongside [PEX](pex.md) (acting) and [MEM](mem.md) (remembering). The Assistant reaches
 NLU at exactly one entry point: **`understand(op=…)`** with `op ∈ {react, think, contemplate}`. `understand`
-dispatches to that mode internally — `classify_intent`, `detect_flow`, and `fill_slots` are **NLU-internal**
+routes to that mode internally — `classify_intent`, `detect_flow`, and `fill_slots` are **NLU-internal**
 (not tools, never exposed to PEX or the Assistant).
 
 NLU detects **and** commits in one action: it **writes its prediction — intent, ranked flows, confidence,
 and slots (including the entity slot) — into the Dialogue State belief**. The Dialogue State is the
-**single source of truth** for those predictions; they are **never duplicated into the scratchpad**. PEX
-reads the belief through `read_state`; NLU itself **never touches the flow stack**.
+**single source of truth** for those predictions; they are **never duplicated into the scratchpad**. NLU
+also places its detected flow on the shared FlowStack so PEX sees the same live task: a fresh or different
+flow is placed with `stackon`, while a detection matching an incomplete Active flow fills that entry in place.
+NLU never pops, falls back, or runs a policy; those lifecycle decisions belong to PEX and the runtime.
 
 **When the Assistant gates NLU.** The Assistant picks `op` at turn entry: a **click** →
 `await understand(op=react)` (the dax is known; react fills required slots from the payload with no LLM
@@ -23,12 +25,13 @@ on, so it blocks); an **utterance with an active entity** → `understand(op=thi
 in parallel with `PEX.execute()`** (PEX proceeds on the standing belief while NLU refines). A **Clarify**
 signal from PEX re-runs `understand(op=think)`; `op=contemplate` is the separate failed-flow re-route.
 
-**Commit, or declare ambiguity.** Detection runs against the active flow (a continuing turn) or a fresh
-instance. When intent, flow, and grounding are confident, NLU commits the prediction into the Dialogue State
-belief; when any is uncertain, it declares ambiguity (below) **instead of** committing a guess. Flow
-*stacking* is not NLU's — NLU records the prediction in belief; PEX's
-[Workflow Planner](../components/workflow_planner.md) Skill (not NLU, not the Assistant) decides whether to
-`stackon` and activate.
+**Commit, or recognize ambiguity.** Every turn follows the same order: NLU detects the flow first, then fills
+its slots. When intent, flow, and grounding are confident, NLU commits the prediction into the Dialogue State
+belief; when any is uncertain, it recognizes ambiguity (below) **instead of** committing a guess. After
+detection, a matching incomplete Active flow is filled directly; otherwise NLU places the detected flow with
+`stackon`. A different detection over an Active flow is placed with `stackon`, and the old top reverts to Pending.
+The [Workflow Planner](../components/workflow_planner.md) owns the resulting lifecycle decisions, and the
+runtime—not NLU—runs policies.
 
 NLU works in three modes, all spanning these tools:
 
@@ -74,7 +77,7 @@ proactive and testable:
 - **Three correctness gates** describe *where* understanding can fail: (1) **intent + flow**, (2) **grounding
   entity**, (3) **slot-filling** — an exact mapping to `general` / `partial` / `specific` ambiguity
   (`confirmation` is the 4th, fork case). On an awaited path `think()` returns having either committed all
-  three or declared the ambiguity, so PEX never reads a half-formed belief.
+  three or recognized the ambiguity, so PEX never reads a half-formed belief.
 - **Eventual consistency (async) for everything else.** NLU is *triggered* by changes to its three
   sub-components — a new [scratchpad](../components/session_scratchpad.md) entry, an
   [ambiguity](../components/ambiguity_handler.md) declaration, or a Dialogue State change — and reacts in the
@@ -93,9 +96,11 @@ the **[Ambiguity Handler](../components/ambiguity_handler.md)** (uncertainty), a
 
 The [Dialogue State](../components/dialogue_state.md) is NLU's **structured** belief, filled with values from
 a pre-defined **ontology**. Because the shape is fixed, it supports direct lookups — find slot-values by
-slot-name, read a flag's boolean by name. Each turn NLU:
+slot-name. Each turn NLU:
 
-- **classifies** one of 7 intents (3 universal — Plan, Converse, Clarify — plus 4 domain-specific),
+- **classifies** one of 7 flow-owning ontology intents (3 universal — Plan, Converse, Clarify — plus 4
+  domain-specific). PEX has an eighth routing choice, Continue, which advances an existing Active flow and
+  is not written as a new ontology intent,
 - **detects** one of 32 flows (sub-agents),
 - **fills** 16 slot types,
 - tracks each flow in one of **4 statuses** — `pending`, `active`, `completed`, `invalid`.
@@ -106,7 +111,7 @@ develops one. An insight worth keeping past the session is handed to [MEM](mem.m
 Preferences.
 
 ### Coarse intent vs. fine detection
-The coarse intent is **PEX's fast first guess, not the decision.** The 7-intent taxonomy sits in PEX's
+The coarse intent is **PEX's fast first guess, not the decision.** The 8-choice taxonomy sits in PEX's
 system prompt, and PEX forms a coarse intent inside its own reasoning — committing it to no belief — only
 where the intent maps **1-to-1** onto a flow; under **any** uncertainty it is biased to pick **Plan** or
 **Clarify**, which gates execution to wait for NLU. PEX passes that as its **reasoning, a hint — never a
@@ -146,8 +151,9 @@ exact-repeat, reserved-keyword / injection rejection, unsupported language, and 
 Every intent (including Converse and Plan) owns flows. Each flow has a standardized **dact** name and a
 3-digit hex **dax** id (defined in domain config — see [Configuration](../utilities/configuration.md)).
 
-**Candidate set:** all flows from the hinted intent, plus configurable **edge flows** from adjacent intents
-(per-intent confusion lists in config). **Prompt context:** recent history from the
+**Candidate set:** normally all flows from the hinted intent, plus configurable **edge flows** from adjacent
+intents (per-intent confusion lists in config). On a **Continue** turn, the hint is the Active flow's name—not
+the word `Continue` or an intent—and candidates are that flow plus its edge flows. **Prompt context:** recent history from the
 [Context Coordinator](../components/context_coordinator.md), candidate dacts with descriptions, the
 active-flow signal (a strong prior to continue), and domain context.
 
@@ -162,8 +168,8 @@ is taken among the rest.
 | 2 | + 1 × `high`, + 1 alternate `med` | 3/4 on top-1 |
 | 3 | + 1 × `high` with extended thinking | 3/5 on top-1 |
 
-No majority after round 3 → the result carries low confidence and close candidates; NLU declares `general`
-ambiguity rather than letting PEX activate. Detection always includes at least one `high`-tier voter.
+No majority after round 3 → the result carries low confidence and close candidates; NLU recognizes `general`
+ambiguity rather than letting PEX execute. Detection always includes at least one `high`-tier voter.
 
 **Fusion — how votes combine.** Agreement is on the **post-weight top-1 share**, not a raw head-count. Each
 voter carries its tier weight, and a voter's **alignment** — how reliable that model has been on *this* domain's
@@ -180,16 +186,25 @@ wrong answer. This keeps a single confident voter from being diluted by peers wh
 > denominator are the **target** design, not yet built. Keep the simple ensemble until detection accuracy
 > demands the extra rounds; treat the elaboration as the upgrade path, not a present requirement.
 
-**Carryover (detached).** After detection, `detect_flow` reports whether the flow already matches the stacked
-one. It does **not** dedupe the live stack — it returns the data and lets PEX decide to continue the existing
-flow (carryover) or `stackon` a new one.
+**Continue voting.** PEX's Continue selection contributes the Active flow as one flow-level vote. NLU then
+runs exactly two `med` voters from the model families PEX is not using: Claude PEX → Gemini + GPT; GPT PEX →
+Gemini + Claude; Gemini PEX → GPT + Claude. Those two results join PEX's seeded vote, so the ordinary
+three-vote tally and confidence values remain unchanged (3/3 = 0.9; 2/3 = 0.7).
+
+**Active-flow fill.** After detection, NLU compares the result with the live stack top. When the top is Active,
+has the same flow name, and remains unfilled, `_fill_active_flow` fills that exact entry, repairs its entities,
+resolves its ambiguity once filled, writes the ordinary detection tally to belief, and refreshes the serialized
+`flow_stack`. An unresolved answer leaves the same flow Active; NLU never stacks a duplicate. A different
+detection takes the fresh-flow path, placing the flow with `stackon`, and the old Active top reverts to Pending.
 
 ### Slot-filling
 Runs for domain-specific intents (Converse/Plan typically skip). Two phases:
 
 1. **Payload phase** — grounding context from the turn's `payload` is mapped directly into slots before any
-   LLM call. Entity fields (`post`, `sec`, `snip`, `chl`) merge into a single SourceSlot entity. The payload
-   is consumed here, never stored.
+   LLM call. Entity fields (`post`, `sec`, `snip`, `chl`) merge into a single SourceSlot entity. NLU always
+   fills the whole entity on both first fill and refill, preserving the same `post` / `sec` on a refill.
+   `snip` is only a sentence index or end-exclusive `[start, end]` slice and stays empty unless an actual ID
+   is present; descriptive scope never goes in `snip`. The payload is consumed here, never stored.
 2. **LLM phase** — if required/elective slots remain unfilled, a single `med`-tier call extracts the rest
    from history. Skipped entirely when the payload already satisfied the required slots.
 
@@ -210,7 +225,7 @@ ladder**, stopping at the first rung that resolves it:
 > is **not** built into Charlie: it adds an embedding dependency we are deliberately deferring to keep the
 > agent running on the specs without extra moving parts. Note it, don't build it.
 
-A rung that resolves but with residual doubt declares `confirmation` rather than committing silently. Repair
+A rung that resolves but with residual doubt recognizes `confirmation` rather than committing silently. Repair
 operates on the detached flow; `fill_slots` writes the grounding as a **prediction** (`ver=False`), and it is
 **verified** (`ver=True`) only when PEX confirms it (user-approved or PEX-written).
 
@@ -231,13 +246,14 @@ The [Ambiguity Handler](../components/ambiguity_handler.md) makes uncertainty a 
 Only after internal resolution fails does NLU author a clarification observation; **PEX composes** the
 user-facing question from it directly (there is no naturalize tool). Because NLU holds the broadest view of the
 user's true intent, it has the best chance at writing the most well-informed observation. A recognized
-uncertainty can also flag the **scratchpad line items** it affects, so PEX's sub-agents know which findings are
+uncertainty can also mark the **scratchpad entries** it affects, so PEX's sub-agents know which findings are
 provisional.
 
-**Cross-turn binding.** When an ambiguity is already open (`present()` is true at turn entry), NLU first
-attempts to **`resolve`** it by binding the new input to the pending question — the reply is treated as the
-*answer*, not a fresh request. Only when the reply clearly abandons the question does NLU fall back to fresh
-detection.
+**Cross-turn answers.** An open ambiguity does not change NLU's order of operations: flow detection still
+runs first. If detection matches the incomplete Active flow, slot-filling applies the reply to that same flow
+and resolves the ambiguity once the flow is filled. If detection returns a different flow, the turn is a
+different flow or explicit abandonment for the Workflow Planner to handle; NLU does not force the utterance into the
+pending question before detection.
 
 ### Contemplate — re-routing
 `contemplate(source_flow)` takes the **failed flow** as a required input and re-detects within a narrowed
@@ -265,5 +281,5 @@ the state is what the agent *believes*, the scratchpad is what the swarm is *wor
 PEX sub-agents write findings into the scratchpad, and because they can run in parallel it is the surface
 exposed to **race conditions**. NLU resolves this: it is **triggered to review the scratchpad whenever it is
 updated**, and it is the NLU loop's responsibility to keep the scratchpad operating smoothly and uncorrupted —
-merging duplicates, reconciling contradictions, and pruning stale notes using its deeper understanding of the
+merging duplicates, reconciling contradictions, and pruning stale entries using its deeper understanding of the
 user's true intent.

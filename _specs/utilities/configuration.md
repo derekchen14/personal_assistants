@@ -73,7 +73,7 @@ See [Flow Selection](./flow_selection.md) for the compositional dact grammar, bu
 | 2 | `persona` | `tone: professional`, `expertise_boundaries: []`, `name: "Assistant"`, `response_style: balanced` |
 | 3 | `guardrails` | `input_max_tokens: 4096`, content filter enabled at `severity: medium`, PII detection disabled, topic control empty (defers to `persona.expertise_boundaries`), no forbidden patterns, prompt injection enabled at `medium` |
 | 4 | `session` | `idle_timeout_ms: 3600000` (60 min), `max_turns: 256`, `max_flow_depth: 8`, persistence backend `postgres`, `ttl_hours: 24` |
-| 5 | `memory` | `max_snippets: 64`, `eviction: lru`, `trigger_turn_count: 20`, `trigger_token_count: 32000`, user prefs backend `postgres` with 256 max entries, business context `retrieval_top_k: 128`, `rerank_top_n: 10`, `similarity_threshold: 0.5` |
+| 5 | `memory` | `max_snippets: 64`, `eviction: lru`, `trigger_turn_count: 20`, `trigger_token_count: 32000`, user prefs backend `postgres` with 256 max entries, Business Knowledge `retrieval_top_k: 128`, `rerank_top_n: 10`, `similarity_threshold: 0.5` |
 | 6 | `resilience` | tool retries `max_attempts: 3`, `exponential` backoff 1000/30000ms; LLM retries `max_attempts: 2`, `exponential` 500/10000ms, retriable `[rate_limit, timeout, server_error]`; no fallback model; `max_recovery_attempts: 2` |
 | 7 | `context_window` | `max_input_tokens: 128000`, allocation `system_prompt: 0.10, conversation_history: 0.30, memory_context: 0.15, tool_results: 0.35, response_reserve: 0.10`, `history_max_turns: 50`, priority `[memory_context, conversation_history, tool_results]` |
 | 8 | `logging` | level `null` (defer to environment: dev→DEBUG, prod→INFO), trace disabled, sensitive data all `false` in prod / all `true` in dev, signal export disabled |
@@ -195,7 +195,7 @@ resilience:
   max_recovery_attempts: 2          # max times Agent tries re-route before escalate
                                     # (skip and escalate are the natural fallback chain
                                     # after re-routes are exhausted, not counted as attempts)
-  # Consumed by: PEX acting loop + activate_flow (tool retries),
+  # Consumed by: PEX Agent + activate_flow (tool retries),
   #   Prompt Engineer (LLM retries),
   #   main Agent (recovery attempts)
 
@@ -204,7 +204,7 @@ context_window:
   allocation:                       # suggested fraction split — applies primarily to PEX policy calls
     system_prompt: 0.10             # fraction of budget (0.0–1.0)
     conversation_history: 0.30
-    memory_context: 0.15            # scratchpad + retrieved business context
+    memory_context: 0.15            # scratchpad + retrieved Business Knowledge
     tool_results: 0.35
     response_reserve: 0.10          # reserved for model output
   history_max_turns: 50             # max raw turns before summarization kicks in
@@ -383,7 +383,7 @@ response_constraints:               # override only what differs from shared def
 2. **`persona`**: Tone, expertise boundaries, display name, and response style consumed by Prompt Engineer for system prompt composition. Shared defaults provide a neutral baseline; domains override to set personality. The `response_style` (concise/balanced/detailed) guides Prompt Engineer verbosity. Other personality details (follow-up behavior, emoji usage) belong in prompt templates, not config.
 3. **`guardrails`**: Input/output safety checks, content filtering, PII detection, topic enforcement, forbidden regex patterns, and prompt injection detection. Severity is a single config value; `environment` modulates enforcement behavior (dev: warnings not blocks, prod: strict enforcement). Varies dramatically by domain (healthcare vs. entertainment). Amazon Bedrock, NVIDIA NeMo, and Azure all make this a first-class config surface.
 4. **`session`**: Session lifecycle management — idle timeout, turn limits, flow stack depth cap, and persistence backend/TTL. Without session limits, a runaway conversation can consume unbounded resources. The `max_flow_depth` prevents infinite flow-stacking bugs. Every production chatbot platform (Dialogflow, Lex, Rasa) enforces session timeouts.
-5. **`memory`**: Limits and backends for the memory tiers and the Session Scratchpad. The scratchpad (on the World) has capacity and eviction policy. Summarization triggers replace the previous "TBD" with concrete turn-count and token-count thresholds. User Preferences (L2) has backend and capacity. Business Context (L3) configures RAG retrieval (top-k, rerank-top-n, similarity threshold, embedding model). These values are tuned per domain everywhere.
+5. **`memory`**: Limits and backends for the memory tiers and the Session Scratchpad. The scratchpad (on the World) has capacity and eviction policy. Summarization triggers replace the previous "TBD" with concrete turn-count and token-count thresholds. User Preferences (L2) has backend and capacity. Business Knowledge (L3) configures RAG retrieval (top-k, rerank-top-n, similarity threshold, embedding model). These values are tuned per domain everywhere.
 6. **`resilience`**: Retry and recovery behavior for tool calls and LLM invocations. Tool retries (max attempts, backoff strategy/base/max), LLM retries (max attempts, backoff, retriable error types), optional fallback model, and max recovery attempts for the Agent re-route chain. Retry behavior is deployment-dependent (aggressive for batch, conservative for real-time). The `max_recovery_attempts` controls re-route attempts only; skip and escalate are the natural fallback chain after re-routes are exhausted.
 7. **`context_window`**: Prompt budget allocation — how the finite context window is divided among system prompt, conversation history, memory context, tool results, and response reserve. Allocation fractions are advisory (primarily relevant for PEX policy calls where tool results dominate), not hard-enforced. Includes `history_max_turns` and `priority_order` for graceful degradation when budget is tight. Context window management is the #1 operational concern for production LLM apps.
 8. **`logging`**: Observability configuration — log level (overrides environment default), OpenTelemetry trace export (endpoint, sampling rate), sensitive data toggles (prompts, responses, tool args), and evaluation signal export. Sensitive data toggles are a compliance requirement. You can't debug production issues if you can't turn up logging without redeploying code.

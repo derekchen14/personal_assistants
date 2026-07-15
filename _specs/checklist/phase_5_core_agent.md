@@ -7,7 +7,7 @@ Phase 4 stubs with working implementations.
 
 This is the largest phase. It implements the three-level system: 9 components that provide the infrastructure,
 3 continuous LLM-loops that run in parallel (NLU understands, PEX acts, MEM remembers), and the **main Agent**
-— deterministic code that governs the turn. There is **no RES**: the dispatched sub-agent builds the
+— deterministic code that governs the turn. There is **no RES**: the running sub-agent builds the
 TaskArtifact and the main Agent delivers it. Most components are reusable across domains, so much is copy-paste
 from the scaffolding. By the end, the agent handles simple interactions end-to-end with hard-coded test flows.
 
@@ -81,7 +81,7 @@ The append-only event stream. **File**: `backend/components/context_coordinator.
 Model-agnostic LLM interface. **File**: `backend/components/prompt_engineer.py`
 
 **Implement**:
-- Provider-agnostic dispatch (tier abstraction `low`/`med`/`high` via `ACTIVE_FAMILY`); prompt composition;
+- Provider-agnostic routing (tier abstraction `low`/`med`/`high` via `ACTIVE_FAMILY`); prompt composition;
   output parsing + guardrails; exponential backoff/retry; token-budget logging; prompt caching markers.
 
 **Reference**: [prompt_engineer.md](../components/prompt_engineer.md)
@@ -93,7 +93,7 @@ The A2A-aligned per-flow output. **File**: `backend/components/task_artifact.py`
 **Implement**:
 - **3 stored attributes** (`origin`, `parts: list[Part]`, `blocks: list[BuildingBlock]`) + **3 helper
   properties** (`data`, `thoughts`, `code`). Part oneof contract (exactly one of text/raw/url/data).
-- **Lifecycle**: built by the dispatched sub-agent; **PEX curates the concurrent sub-agents' N artifacts → one
+- **Lifecycle**: built by the running sub-agent; **PEX curates the concurrent sub-agents' N artifacts → one
   per turn** (stack order, dedup, single-flow-type origin is trivial, a failed sibling is dropped and logged);
   the main Agent delivers it. Pagination (first page 512 rows + reference id).
 
@@ -107,8 +107,8 @@ Four-level uncertainty. **File**: `backend/components/ambiguity_handler.py`
 - **4 levels**: general, partial, specific, confirmation.
 - **Gate → level mapping** (the 3 NLU gates): gate 1 intent/flow failure → `general`; gate 2 grounding-entity
   failure → `partial`; gate 3 slot-filling failure → `specific`.
-- **4 methods** (the `handle_ambiguity` tool dispatches to these): `declare(level, observation, metadata)`,
-  `present()` (predicate), `ask()` (clarification text), `resolve()`.
+- **4 methods** (the `handle_ambiguity` tool routes to these): `recognize(level, observation, metadata)`,
+  `is_present` (predicate), `ask()` (clarification text), `resolve()`.
 - Lives on the **World** (shared), beside the Session Scratchpad.
 
 **Reference**: [ambiguity_handler.md](../components/ambiguity_handler.md)
@@ -134,7 +134,7 @@ The append-only swarm ledger. **File**: lives on the World, beside the Ambiguity
 **Implement**:
 - **User Preferences (L2)**: per-account key-value rules (graph search / ID lookup); trajectory playbooks;
   reached via the `recall` skill.
-- **Business Context (L3)**: per-tenant docs in vector space, retrieve → re-rank top 10; reached via the
+- **Business Knowledge (L3)**: per-tenant docs in vector space, retrieve → re-rank top 10; reached via the
   `retrieve` skill.
 - Conversation summarization: MEM computes a rolling summary; CC stores it.
 
@@ -153,7 +153,7 @@ The append-only swarm ledger. **File**: lives on the World, beside the Ambiguity
 - **`think()`**: intent (one of 7), flow detection (3 escalating ensemble rounds → `general` ambiguity on no
   majority), slot-filling (domain intents only).
 - **Detect, don't push**: NLU **records** the detected flow (`detect_flow`); **PEX's Workflow Planner** decides
-  whether to `stackon`. NLU commits belief via the three write tools, or declares ambiguity instead of guessing.
+  whether to `stackon`. NLU commits belief via the three write tools, or recognizes ambiguity instead of guessing.
 - **Continuous loop**: always-running asyncio task. The await-critical set is the **3 NLU gates** — gate 1
   intent+flow (via `understand()`), gate 2 grounding-entity (via `read_from_scratchpad()`), gate 3 slot-filling.
   A **click awaits gates 1+2**; slot-filling stays **async**, alongside scratchpad review, triggered by
@@ -168,7 +168,7 @@ The append-only swarm ledger. **File**: lives on the World, beside the Ambiguity
 **File**: `backend/modules/pex.py`
 
 **Implement**:
-- **The acting loop** (`_run_loop`, bounded): tool-call hygiene (catalog validation, consecutive de-dup,
+- **The PEX Agent loop** (`_run_loop`, bounded): tool-call hygiene (catalog validation, consecutive de-dup,
   corrective cap, thinking nudge, no-tool-text-ends-turn, `_final_emit`). Consults NLU (`understand` + the
   belief writes) and MEM (`recap`/`recall`/`retrieve`) in parallel.
 - **`activate_flow`**: stack on + run a flow's policy as a **sub-agent** (level 2 — cannot nest). Every flow is
@@ -199,7 +199,7 @@ The append-only swarm ledger. **File**: lives on the World, beside the Ambiguity
 
 **Implement**:
 - **Three skills, one per tier**: `recap` (L1 Context Coordinator), `recall` (L2 User Preferences),
-  `retrieve` (L3 Business Context, KB + vector DB).
+  `retrieve` (L3 Business Knowledge, KB + vector DB).
 - **Read-mostly**: MEM does not write the belief file; its durable write path is the append-only event stream
   plus L2/L3 promotion. Pro-active prefetch runs async.
 - Compaction in the post-hook; long-term TaskArtifact storage (a copy handed in by the main Agent via World).
@@ -212,7 +212,7 @@ Wire the deterministic turn lifecycle in `backend/agent.py`.
 
 **Implement**:
 - **Pre-hook**: append the user turn to the event stream. The turn discriminator is the presence of a `dax`
-  (no `turn_type`): a `dax` present → **click** → run `NLU.react()` (fills required slots, no LLM) → dispatch,
+  (no `turn_type`): a `dax` present → **click** → run `NLU.react()` (fills required slots, no LLM) → route,
   no model loop. No `dax` → **utterance** → enter PEX's loop (await NLU on the gating path).
 - **Loop**: run PEX's tool-calling loop; plain text with no tool calls ends the turn.
 - **Post-hook**: record the agent turn, `serialize()` the Dialogue State, run the compaction check, **wait for**
@@ -251,7 +251,7 @@ control to the main Agent. (This replaces the removed `has_issues`.)
 | Create | `backend/components/user_preferences.py` | L2 tier (`recall`) |
 | Create | `backend/components/business_context.py` | L3 tier (`retrieve`) |
 | Modify | `backend/modules/nlu.py` | understand loop |
-| Modify | `backend/modules/pex.py` | acting loop + sub-agents |
+| Modify | `backend/modules/pex.py` | PEX Agent loop + sub-agents |
 | Modify | `backend/modules/mem.py` | recap/recall/retrieve |
 | Modify | `backend/agent.py` | deterministic main-Agent turn |
 
@@ -269,11 +269,11 @@ control to the main Agent. (This replaces the removed `has_issues`.)
 - [ ] Context coordinator stores/retrieves turns; `compile_history()` / `recent_turns()`
 - [ ] Prompt Engineer makes LLM calls and parses responses
 - [ ] TaskArtifact: Part oneof enforced; PEX curates N artifacts → 1 per turn
-- [ ] Ambiguity handler: 4 levels, `declare`/`present`/`ask`/`resolve`; on the World
+- [ ] Ambiguity handler: 4 levels, `recognize`/`is_present`/`ask`/`resolve`; on the World
 - [ ] Scratchpad: `append_to_scratchpad` stamps writer + triggers NLU; `update_scratchpad` NLU-only
 - [ ] MEM exposes `recap`/`recall`/`retrieve`; does not write the belief file
 - [ ] NLU `prepare()` rejects invalid input; `react()` fills required slots with no LLM call
 - [ ] NLU loop awaits on the gating path; async housekeeping settles at turn boundary
-- [ ] PEX loop dispatches sub-agents (no fourth level); aggregates artifacts
+- [ ] PEX loop runs sub-agents (no fourth level); aggregates artifacts
 - [ ] Main Agent: click-bypass vs. utterance loop; post-hook serialize + deliver to user + MEM
 - [ ] No `res.py`, no `memory_manager.py`, no Internal flows anywhere

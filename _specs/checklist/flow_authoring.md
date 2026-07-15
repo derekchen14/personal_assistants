@@ -37,7 +37,7 @@ the policy crashes on a missing skill). Author one flow end-to-end; copy the sha
    justify every slot's type and priority? (See "The slot-fill prompt" below for structure.)
 
 3. **The policy** — `backend/modules/policies/<intent>.py`, method `<flow>_policy(self, flow, state,
-   context, tools)`, dispatched by the intent policy's `execute` on `flow.name()`. (See "Writing the
+   context, tools)`, routed by the intent policy's `execute` on `flow.name()`. (See "Writing the
    policy".)
 
 4. **The skill** — `backend/prompts/pex/skills/<flow>.md`. **Agentic flows only.** A deterministic flow
@@ -68,7 +68,7 @@ elective filled (if any)" — trust it; don't re-derive it in policies or prompt
   `partial` ambiguity (a top-level grounding failure), early return.
 
 **Optional default-with-commit.** When an optional slot has a sensible default, commit it at policy entry
-and let downstream decide whether to clarify — don't declare ambiguity upfront (asking when a default
+and let downstream decide whether to clarify — don't recognize ambiguity upfront (asking when a default
 exists wastes a turn). Required/elective slots never get defaults; they drive routing.
 
 ```python
@@ -76,7 +76,7 @@ if not flow.slots['<optional>'].check_if_filled():
     flow.fill_slot_values({'<optional>': <default>})   # commit default; cite this convention
 ```
 
-### Deterministic vs agentic dispatch
+### Deterministic vs agentic routing
 
 Deterministic when `len(flow.tools) == 1` **and** the tool's args are fully derivable from `flow.slots` +
 grounding without LLM reasoning. Agentic when `len(flow.tools) >= 2` **or** any arg is prose the LLM must
@@ -91,7 +91,7 @@ compose. The split is **implied by the policy code** — never a flag on the flo
 
 If a flow produces findings another flow consumes, write them to the Session Scratchpad at policy entry;
 if it consumes, filter by key and increment `used_count`. Key = bare flow name; value = a dict with the
-required envelope + structured payload (lists of dicts, not prose). **Never add a `DialogueState` or
+required entry fields + structured payload (lists of dicts, not prose). **Never add a `DialogueState` or
 `TaskArtifact` attribute for cross-turn state.** Full convention: [session_scratchpad.md](../components/session_scratchpad.md).
 
 ### Transitions
@@ -149,18 +149,18 @@ grep the prompt and update the slots block, rules, and examples in lockstep.
 def <flow>_policy(self, flow, state, context, tools):
     # 1. Guard the entity slot — partial / general ambiguity use an EARLY return.
     if not flow.slots[flow.entity_slot].check_if_filled():
-        self.ambiguity.declare('partial', metadata={'missing': '<slot>', 'entity': '<entity>'})
+        self.ambiguity.recognize('partial', metadata={'missing': '<slot>', 'entity': '<entity>'})
         return TaskArtifact(flow.name())
 
     # 2. Branch on slot state — most policies spend their lines here.
     if <specific ambiguity condition>:
-        self.ambiguity.declare('specific', metadata={'missing': '<slot>'})
+        self.ambiguity.recognize('specific', metadata={'missing': '<slot>'})
         artifact = TaskArtifact(flow.name())
     elif <prerequisite missing>:
         self.flow_stack.stackon('<prereq>'); state.keep_going = True
         artifact = TaskArtifact(flow.name(), thoughts='<reason>')
     else:
-        # 3. Dispatch (agentic) or call the tool (deterministic), then persist.
+        # 3. Run the sub-agent (agentic) or call the tool (deterministic), then persist.
         text, tool_log = self.llm_execute(flow, state, context, tools)
         saved, _ = self.engineer.tool_succeeded(tool_log, '<tool>')
         if not saved:
@@ -191,7 +191,7 @@ semantics vary too much for a `guard_slot` helper); default-commit is rare and c
    many error artifacts have no `code`, and that's fine.
 6. **Keep metadata sparse** — classification only (violation category, missing-slot name). Specifics go
    in `thoughts`, not nested keys.
-7. **`ambiguity.declare` uses `observation`** for human text; metadata is classification only. Don't stuff
+7. **`ambiguity.recognize` uses `observation`** for human text; metadata is classification only. Don't stuff
    the question into metadata.
 8. **Never invent new keys without approval** — in metadata, block data, scratchpad payloads, or tool
    args. If what you want to pass doesn't fit an existing key, surface the design question.
@@ -209,7 +209,7 @@ Three failure modes, three distinct channels — conflating them hides root caus
 - **Tool failure** (network, permission, deterministic tool `_success=False`): error artifact with
   `parts={'violation': 'tool_error', 'failed_tool': '<tool>'}`, raw text in `code`. Retry once if
   transient (timeout, lock); otherwise return the error artifact. **No** ambiguity.
-- **Ambiguous user intent** (missing/unclear slot, unresolved entity): `ambiguity.declare(level,
+- **Ambiguous user intent** (missing/unclear slot, unresolved entity): `ambiguity.recognize(level,
   observation=..., metadata=...)` — the only channel that produces a clarification. One per turn; return
   immediately. Level per the grounding gradient in [ambiguity_handler.md](../components/ambiguity_handler.md).
 - **Skill contract violation** (output won't parse into the expected shape): `apply_guardrails(text,
@@ -248,7 +248,7 @@ what to accomplish and what to avoid, then let the model reason about how.
 
 ### Starter (user message)
 
-Envelope: `<task>` (one line: verb + target + tool sequence + optional end condition), an optional
+Contents: `<task>` (one line: verb + target + tool sequence + optional end condition), an optional
 content block preloading what the skill would otherwise re-fetch, `<resolved_details>` with **semantic
 labels** (never raw slot names — the LLM is in execution mode, grounding is done), and the recent
 conversation. Serialization helpers strip empty fields and internal flags; aim for a handful shared across
@@ -276,7 +276,7 @@ Same rubric keys, widening scope: **Tests** (a single decision), **Traces** (an 
 [evaluation_suite.md](../utilities/evaluation_suite.md). When wiring a new flow, confirm: the class
 resolves in `flow_classes`; the skill template loads (or is absent by design for a deterministic flow); a
 sample utterance routes to the flow; the tool trajectory matches the skill; grounding is set for any
-grounded flow; spoken text is composed by the acting loop from blocks/data, not stuffed into `thoughts`
+grounded flow; spoken text is composed by the PEX Agent from blocks/data, not stuffed into `thoughts`
 (unless the flow's whole contract is prose).
 
 ### LLM nondeterminism

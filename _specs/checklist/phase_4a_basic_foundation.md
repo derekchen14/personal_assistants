@@ -213,14 +213,14 @@ Create stub modules with all entry points. Each module method should log a messa
 
 **PEX** (`modules/pex.py`):
 - `check()` — policy pre-hook
-- the acting loop (`_run_loop`) — tool-calling; consults NLU + MEM; ends on no-tool text
+- the PEX Agent loop (`_run_loop`) — tool-calling; consults NLU + MEM; ends on no-tool text
 - `activate_flow()` — run a flow's policy as a sub-agent; aggregate the active flows' artifacts
 - `verify()` — policy post-hook
 
 **MEM** (`modules/mem.py`):
 - `recap()` — L1 Context Coordinator skill (session events)
 - `recall()` — L2 User Preferences skill (account defaults / playbooks)
-- `retrieve()` — L3 Business Context skill (KB + vector DB)
+- `retrieve()` — L3 Business Knowledge skill (KB + vector DB)
 
 ### Step 7 — Agent Class Shell
 
@@ -233,8 +233,8 @@ class Agent:                       # the deterministic main Agent (Level 0)
         self.nlu, self.pex, self.mem, self.world = nlu, pex, mem, world
 
     async def take_turn(self, message, conversation_id):
-        """Deterministic turn: pre-hook → PEX acting loop (consults NLU + MEM) → post-hook."""
-        # Pre-hook: append the user turn; a `dax` present → click → NLU.react() + dispatch; else utterance → PEX loop
+        """Deterministic turn: pre-hook → PEX Agent loop (consults NLU + MEM) → post-hook."""
+        # Pre-hook: append the user turn; a `dax` present → click → NLU.react() + route; else utterance → PEX loop
         # Loop:     PEX drives the tool-calling loop, awaiting NLU on the action-gating path
         # Post-hook: serialize() state, compact, await async tasks, deliver the aggregated artifact
         pass

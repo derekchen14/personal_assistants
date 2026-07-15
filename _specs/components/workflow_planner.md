@@ -9,10 +9,10 @@ the intent — see [Dialogue State § Predicting the Belief State](./dialogue_st
 FlowStack, whose contents are serialized in the Dialogue State document's `flow_stack` block — the one block
 the Workflow Planner owns and writes via the `manage_flows(op)` tool (`update` / `stackon` / `fallback` /
 `pop`; replaces the old `write_state` flow ops), distinct from the belief NLU maintains. Policy
-execution is **not** a separate planner op: `stackon` (whose `active` flag defaults to true), `fallback`,
+execution is **not** a separate planner op: `stackon` (whose `active` parameter defaults to true), `fallback`,
 and a `pop` that surfaces a Pending flow hand the top flow to the runtime, which runs its policy and
 feeds the result back to PEX. Passing `active=false` queues a plan step as Pending without running it
-(see [Automatic Policy Dispatch](#automatic-policy-dispatch-pending--active--policy-result)).
+(see [Automatic Policy Execution](#automatic-policy-execution-pending--active--policy-result)).
 
 The stack admits **multiple active flows running in parallel** (bounded — see
 [Data Structure](#data-structure)), so independent branches advance together while the stack discipline
@@ -112,7 +112,7 @@ The FlowStack's `push(flow_name)` method looks up the class by name, instantiate
 
 ## Slots, Tools, and the Flow-Execution Relationship
 
-A flow binds two concerns together:
+A flow ties two concerns together:
 
 - **Slots** — what NLU extracts from the user's utterance. Slots drive ambiguity detection and slot-filling. They determine *what* the user wants to act on.
 - **Tools** — what PEX can call to execute the action. Tools drive the policy's execution plan. They determine *how* the action gets carried out.
@@ -135,7 +135,7 @@ A **stack** holds the flows. Three operations drive it:
 - When a flow is incorrectly detected, we may **fall back** to other flows.
 
 **Stack Depth**: there is a hard limit of **16 flows** on the stack. If the work needs more than that, the
-planner does **not** branch unboundedly — it writes a note in the [Session Scratchpad](./session_scratchpad.md)
+planner does **not** branch unboundedly — it writes an entry in the [Session Scratchpad](./session_scratchpad.md)
 to revisit once some existing flows complete, then proceeds within the bound.
 
 **Multiple active flows**: more than one flow can be **Active** at once, but **all Active flows must be
@@ -155,8 +155,8 @@ Each flow on the stack is in exactly one of four states:
 
 | State | Description |
 |-------|-------------|
-| **Pending** | Stacked but not yet finished: a plan step waiting its turn, a parent that yielded to a prerequisite, or a flow reverted beneath a detour. |
-| **Active** | Claimed the conversation: executing now, OR stalled awaiting the user's answer. Top region of the stack. |
+| **Pending** | Stacked but not yet finished: a plan step waiting its turn, a parent that yielded to a prerequisite, or a flow reverted beneath a newer flow. |
+| **Active** | Claimed the conversation: executing now, OR waiting on the user's answer. Top region of the stack. |
 | **Completed** | Successfully finished; removed by the same-turn `pop` from the PEX agent. |
 | **Invalid** | Wrong flow (a fallback replaced it), abandoned by the user, or hit a hard failure; removed by the same-turn `pop`. |
 
@@ -168,7 +168,7 @@ that flow in place instead of stacking a new one) and PEX's pop discipline both 
 section is the current best understanding — where the code deviates, the gap is named at the end.
 
 NLU's order of operations never changes: all three ops (`react` / `think` / `contemplate`) run flow
-detection first (which indirectly classifies the intent), then slot-filling. A stalled Active flow
+detection first (which indirectly classifies the intent), then slot-filling. An incomplete Active flow
 does not reorder anything — it only changes where the fill lands.
 
 ### What Active and Pending actually mean
@@ -179,7 +179,7 @@ does not reorder anything — it only changes where the fill lands.
   a policy is executing at this instant: a flow that asked a clarification question and is waiting
   for the answer is still Active.
 - **Pending means queued and not yet completed**: plan steps awaiting their turn, a parent that
-  yielded to a prerequisite, or a flow reverted beneath a detour. A Pending flow never talks to the
+  yielded to a prerequisite, or a flow reverted beneath a newer flow. A Pending flow never talks to the
   user, and NLU never fills its slots.
 
 ### The turn-boundary invariant
@@ -199,8 +199,8 @@ Corollaries:
 - **No Completed or Invalid entry survives a turn.** They exist only transiently, between a policy's
   `complete_flow` and the planner's `pop`, inside a single turn.
 - The legal shape is always `[bottom: Pending…, top: Active(s)]` — Actives contiguous on top. With
-  parallel same-type batches, the planner should still end the turn with at most ONE stalled Active
-  (the batch either finishes in-turn or its open question is a single question).
+  parallel same-type batches, the planner should still end the turn with at most ONE incomplete Active
+  flow (the batch either finishes in-turn or its open question is a single question).
 
 ### Turn-start decision table — who gets the utterance
 
@@ -210,7 +210,7 @@ Detection always runs first; the table keys on how its result relates to the sta
 |---|---|---|
 | empty | a fresh task | `stackon` the detected flow |
 | Active flow; detection returns the SAME flow | an answer or elaboration for that task | none — nlu.think() fills that flow; its policy resumes |
-| Active flow; detection returns a DIFFERENT flow | a side task the user will return from (the default) | `stackon` the detected flow; the stalled flow reverts to Pending beneath it |
+| Active flow; detection returns a DIFFERENT flow | a side task the user will return from (the default) | `stackon` the detected flow; the prior Active flow reverts to Pending beneath it |
 | Active flow; explicit discard signal | a cancellation | `update` the flow to Invalid, `pop`, then the detected flow is stacked |
 
 `fallback` deliberately has no row here: it is not a turn-start response to the user. Fallback
@@ -235,20 +235,20 @@ on Claude → Gemini and GPT vote; PEX on GPT → Gemini and Claude; PEX on Gemi
 Continue is only a legal choice while an Active flow exists; on an empty stack it degenerates to a
 normal task intent.
 
-The detour row is what makes the stack a stack: the stalled flow keeps its position, its filled
-slots, and its open question (still unresolved in the AmbiguityHandler); the detour runs above it;
-the `pop` after the detour completes re-surfaces the stalled flow, whose policy re-asks its question.
-Nothing about the original task is re-derived.
+The stack-on row is what makes the stack a stack: the prior Active flow keeps its position, its filled
+slots, and its open question (still unresolved in the AmbiguityHandler); the new flow runs above
+it; the `pop` after the new flow completes re-surfaces the prior Active flow, whose policy re-asks its
+question. Nothing about the original task is re-derived.
 
-**Detour vs. abandonment is a judgment call, and the default is detour (`stackon`)** — it is
+**Stack-on vs. abandonment is a judgment call, and the default is `stackon`** — it is
 reversible (an abandoned flow beneath eventually gets marked Invalid and popped), while cancelling
-destroys the stalled flow's slot state. Treat as abandonment only on an explicit discard signal:
+destroys the prior Active flow's slot state. Treat as abandonment only on an explicit discard signal:
 "forget the outline", "cancel it", "never mind". Never `stackon` a duplicate of the Active flow —
 the Active flow IS that task (the FlowStack's same-type dedupe enforces this mechanically).
 
 ### Three writers, one owner
 
-- **NLU stages**: NLU programmatically places the detected flow onto the stack so PEX can see the
+- **NLU places**: NLU programmatically places the detected flow onto the stack so PEX can see the
   change directly. During the same pass, NLU also runs slot-filling on this flow before handing
   control back to PEX. NLU never pops or runs fallback.
 - **Policies self-report**: a policy pushes its own prerequisites onto the stack (`stackon`) and marks
@@ -297,7 +297,7 @@ a flow policy and not a returning call. Following it, PEX issues the stack ops i
 
 ### Execution
 On approval the Planner stacks the sub-flows in order with `stackon` and runs them through the ordinary flow
-lifecycle (Active → Completed → `pop`). Each completed flow appends its completion record
+lifecycle (Active → Completed → `pop`). Each completed flow appends its completion entry
 `{flow, summary, metadata}` to the [Session Scratchpad](./session_scratchpad.md), so a later sub-flow can read
 what an earlier one produced. Mid-plan, PEX keeps going across the sub-flows on the same turn — a Plan is the
 sanctioned chaining path; a lone flow stacked outside a plan exits for user review instead.
@@ -305,7 +305,7 @@ sanctioned chaining path; a lone flow stacked outside a plan exits for user revi
 ### Goal completion — owned by PEX
 There is **no completion-assessment flow** and **no automatic "all sub-flows popped ⇒ done" rule**: the PEX
 orchestrator decides whether the user's goal has been met. After each sub-flow completes, PEX judges whether
-the goal is satisfied — if not, it stages and runs the next flow (or stacks a new one the work revealed); if
+the goal is satisfied — if not, it stacks and runs the next flow (or stacks a new one the work revealed); if
 so, it concludes and reports what was accomplished. This is the same judgment PEX makes on any multi-step
 turn, stated here for plans; it is a prompted decision, never automatic.
 
@@ -313,7 +313,7 @@ turn, stated here for plans; it is a prompted decision, never automatic.
 
 ## Transitions
 
-Three transition channels, each with different UX. There is no `keep_going` flag anywhere: the PEX
+Three transition channels, each with different UX. There is no `keep_going` field anywhere: the PEX
 orchestrator ALWAYS keeps going to the next flow, applying one rule per stack top until it runs out
 of work or must ask the user:
 
@@ -327,14 +327,14 @@ of work or must ask the user:
 ends in exactly two ways: no flows left on the stack, or an Active flow that needs information only
 the user can provide.
 
-### Automatic Policy Dispatch (pending → active → policy result)
+### Automatic Policy Execution (pending → active → policy result)
 
 `activate()` is an internal runtime function, not a planner tool. PEX never asks to activate a flow.
 Exactly three stack events hand the top flow to the runtime, which runs its policy and returns the
 result to PEX:
 
 1. **`stackon`** — pushes the flow and, by default (`active=true`), runs it immediately, so most
-   turns never mention the flag. Pass `active=false` to queue a plan step as Pending without
+   turns never mention the parameter. Pass `active=false` to queue a plan step as Pending without
    running it — that is what lets a plan stack several steps without running each one prematurely.
 2. **`fallback`** — the replacement takes over the conversation immediately, so it runs.
 3. **`pop` that surfaces a Pending flow** — the runtime promotes it to Active and runs it.
@@ -353,7 +353,7 @@ return {'status': top.status}
 ```
 
 This keeps the Workflow Planner focused on lifecycle judgment. It should never issue a separate
-activation command, and it should never "activate" a flow already in the Active state.
+run command, and it should never re-run a flow already in the Active state.
 
 ### Stack On (prerequisite setup)
 
@@ -400,7 +400,7 @@ flow audit converted them to tools and removed that case.)
 
 These scenarios are the cases the Workflow Planner skill should explicitly reason through. They are written
 against the current FlowStack implementation as the starting point, but the behavioral contract is the more
-important part: keep a single clear owner for lifecycle decisions, preserve unresolved work under detours, and
+important part: keep a single clear owner for lifecycle decisions, preserve unresolved work beneath newer flows, and
 avoid re-deriving state that is already on the stack.
 
 Stacks are shown **bottom → top**. Each scenario names the concrete user turn, the state the planner sees, the
@@ -434,7 +434,7 @@ This is the baseline case. The important detail is that a completed one-shot tas
 
 - User turn: "Outline a post."
 - Before: `[]`; NLU predicts `Draft(outline)` but does not fill `topic` or `source`.
-- Planner action: stack `outline`; the runtime runs its policy, which should declare ambiguity
+- Planner action: stack `outline`; the runtime runs its policy, which should recognize ambiguity
   rather than complete.
 - Expected result: the stack remains `[outline·active]`; PEX asks the clarification and stops.
 
@@ -442,7 +442,7 @@ This is the baseline case. The important detail is that a completed one-shot tas
 [] → stackon(outline)
 → runtime runs outline policy
 → [outline·active source missing, topic missing]
-→ policy declares ambiguity: "What should the outline be about?"
+→ policy recognizes ambiguity: "What should the outline be about?"
 → [outline·active source missing, topic missing]
 ```
 
@@ -526,21 +526,21 @@ this turn: "Actually make it a detailed outline"
 ```
 
 What should NOT happen: treating this as an update to a still-Active outline. The outline never
-stalled — it completed. A flow only remains Active across a turn boundary when it is missing
-information; if it genuinely were stalled (rare here), decision-table row two applies and the fill
+remained incomplete — it completed. A flow only remains Active across a turn boundary when it is missing
+information; if it genuinely were still incomplete (rare here), decision-table row two applies and the fill
 lands on it in place.
 
 Note on `depth`: it is the outline's depth (section, sub-section, bullet, sub-bullet), NOT the
 number of sections. "Six sections" would fill `sections`; "detailed" deepens `depth`.
 
-**6a — Detour from a stalled flow: run it, then resume with its results.**
+**6a — Stack a helper beneath an incomplete Active flow, run it, then resume with its results.**
 
 - User turn: "The one I want updated is my outline about oceans."
 - Before: `[outline·active source missing]`; the user has provided details to fill the missing slot
 - Planner action: `stackon(find)`; `outline` reverts to Pending beneath it and the runtime runs the
   new top `find` policy. After `find` completes, `pop` promotes `outline` and re-runs its policy —
   and if `find` returned exactly one strong candidate, PEX fills `outline.source` with it.
-- Expected result: the original flow is preserved rather than re-created, and when the detour's
+- Expected result: the original flow is preserved rather than re-created, and when `find`'s
   result is unambiguous, no extra clarification is needed.
 
 ```
@@ -556,10 +556,10 @@ number of sections. "Six sections" would fill `sections`; "detailed" deepens `de
 → complete `outline` flow 
 ```
 
-The open source ambiguity belongs to `outline` the whole time. The detour is not the end goal — it
-exists to gather information for the flow underneath it.
+The open source ambiguity belongs to `outline` the whole time. The stacked-on `find` is not the end
+goal — it exists to gather information for the flow underneath it.
 
-**6b — Detour result does not satisfy the stalled flow.**
+**6b — The stacked-on flow's result does not satisfy the incomplete Active flow.**
 
 - User turn: "The one I want updated is my outline about oceans."
 - Before: `[outline·active source missing]`. the user has provided details to fill the missing slot
@@ -601,7 +601,7 @@ popping the parent is not.
 → [release·active]
 ```
 
-Default to detour when abandonment is unclear. Treat as abandonment only on an explicit discard
+Default to `stackon` when abandonment is unclear. Treat as abandonment only on an explicit discard
 phrase ("forget that", "cancel it", "never mind").
 
 **8 — NLU detects a sibling flow but the active flow context explains the utterance.**
@@ -627,7 +627,7 @@ compose clarification.
 
 - User turn: "Once it is cleaned up, schedule it for next Friday morning."
 - Before: `[rework·active suggestions missing]` — rework asked what to change; no open
-  scheduling-related question. (The stalled flow is a Revise flow on purpose: a filled outline would
+  scheduling-related question. (The incomplete Active flow is a Revise flow on purpose: a filled outline would
   have completed and popped, and revise-then-publish is the realistic sequence.)
 - NLU predicts: `Publish(schedule)`.
 - Planner action: if the user had said "forget the edits, just schedule it as is",
@@ -658,7 +658,7 @@ top; PEX cannot directly insert `schedule` underneath an already Active `rework`
 
 ```
 [compose·active source=post-A]
-→ compose yields: stackon(outline) demotes it to Pending
+→ compose yields: stackon(outline) reverts it to Pending
 → [compose·pending source=post-A, outline·active source=post-A]
 → runtime runs outline policy, but immediately raise 'specific' ambiguity
 → missing content, so ask the user for details about what goes in the outline
@@ -669,7 +669,7 @@ top; PEX cannot directly insert `schedule` underneath an already Active `rework`
 → [compose·active source=post-A]
 ```
 
-Mechanically, `FlowStack.stackon()` pushes the child and demotes the parent to Pending.
+Mechanically, `FlowStack.stackon()` pushes the child and reverts the parent to Pending.
 
 **11 — Multi-step plan that should run in one continuous chain.**
 
@@ -821,12 +821,12 @@ were never in question, only the flow choice was.
 
 - User turn: "Publish it."
 - Before: `[]` or `[release·active source missing]`; grounding has no active post.
-- Planner action: run/keep `release` Active; policy declares partial ambiguity for the missing post.
+- Planner action: run/keep `release` Active; policy recognizes partial ambiguity for the missing post.
 - Expected result: ask which post to publish. Do not pop; do not mark Invalid; do not invent a source.
 
 ```
 [release·active source missing]
-→ policy declares partial ambiguity: missing source/post
+→ policy recognizes partial ambiguity: missing source/post
 → [release·active source missing]
 → nlu.think() fills release.source from the next user answer
 ```
@@ -864,7 +864,7 @@ The user provided the required semantic information; the failure is infrastructu
 → planner adds 15 flows (in reverse order since we are dealing with a stack, rather than a queue)
 [cite·pending post-5, rework·pending post-5, audit·pending post-5, cite·pending post-4, rework·pending post-4, audit·pending post-4, cite·pending post-3, rework·pending post-3, audit·pending post-3, cite·pending post-2, rework·pending post-2, audit·pending post-2, cite·pending post-1, rework·pending post-1, audit·pending post-1]
 → stack only 15 flows. We don't need to go to 16, since each set of flows naturally comes in batches of 3.
-→ scratchpad note: remaining requested work still pending for 3 remaining posts.
+→ scratchpad entry: remaining requested work still pending for 3 remaining posts.
 ```
 
 The stack is an execution structure, not an unbounded project plan. The planner should use the scratchpad for
@@ -892,7 +892,7 @@ overflow memory.
 → PEX runs pop again → [] → PEX forms the agent response covering both clauses
 ```
 
-**19 — Cancel everything while a detour is running.**
+**19 — Cancel everything while a stacked-on flow is running.**
 
 - User turn: "Never mind all of it."
 - Before: `[outline·pending, find·active]`.
@@ -928,18 +928,18 @@ overflow memory.
 → complete_flow → pop → []
 ```
 
-**21 — Two stalled questions, one ambiguity frame.**
+**21 — Two open questions share one ambiguity.**
 
-- User turn: (mid-detour) `find` itself stalls: "What should I search for?"
+- User turn: (while `find` runs above `outline`) `find` itself asks: "What should I search for?"
 - Before: `[outline·pending (open question: which draft?), find·active]`.
 - Resolution: the Ambiguity Handler scales to concurrent ambiguities. `metadata` is a dict — new
   information is ADDED without kicking out what is already there — and `counts` increments to show
   several ambiguities are open at once. Only the `observation` string is immutable; it may be lost
-  in the overlap, which is acceptable: the durable record is metadata plus each flow's own slot
+  in the overlap, which is acceptable: the durable signal is metadata plus each flow's own slot
   state, so a promoted flow re-asks from those.
 
 ```
-find declares its ambiguity
+find recognizes its ambiguity
 → metadata carries both questions' info; counts show two ambiguities open
 → user answers find's question → find completes → pop promotes outline
 → outline re-asks from its slot state and metadata
@@ -949,10 +949,10 @@ find declares its ambiguity
 
 Failure recovery is owned by [PEX](../modules/pex.md), not the Workflow Planner itself. The flow of recovery:
 
-1. **Policy classifies the failure** — tool-call failure → error artifact with `parts={'violation': 'tool_error', ...}`; ambiguous user intent → `ambiguity.declare(level, observation=, metadata=)` (note: `declare()`'s `metadata=` parameter stays — it's the ambiguity component's input, not the artifact attribute); malformed skill output → error artifact with `parts={'violation': 'parse_failure'}`.
+1. **Policy classifies the failure** — tool-call failure → error artifact with `parts={'violation': 'tool_error', ...}`; ambiguous user intent → `ambiguity.recognize(level, observation=, metadata=)` (note: `recognize()`'s `metadata=` parameter stays — it's the ambiguity component's input, not the artifact attribute); malformed skill output → error artifact with `parts={'violation': 'parse_failure'}`.
 2. **PEX decides** based on what was returned:
    - Tool error and transient → retry once via `BasePolicy.retry_tool(tools, name, params, max_attempts=2)`.
    - Ambiguity that may indicate the wrong flow → `understand(op='contemplate')` to re-route; mark current flow Invalid; best-effort slot mapping to the new flow.
    - Otherwise → PEX surfaces the clarification so the user can answer.
 
-Tool failures are infrastructure, not user-facing questions — never declare ambiguity for them. Ambiguity is the only channel that produces a clarification question. Conflating the two channels hides root cause.
+Tool failures are infrastructure, not user-facing questions — never recognize ambiguity for them. Ambiguity is the only channel that produces a clarification question. Conflating the two channels hides root cause.

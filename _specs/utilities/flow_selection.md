@@ -110,7 +110,7 @@ Hex digit assignment is fluid — assign digits 0–F to the 16 core dacts in wh
 3. **Decompose complex actions into composable primitives.** Instead of one verb "cook", use "heat" and "mix" — this lets you compose specific methods (grill = heat + hot, steam = heat + wet, bake = heat + mix + ingredient). The compositionality of the grammar is its strength.
 4. **Each flow = a real task.** Every flow is a policy the agent executes. It should match something a user would actually ask for — not a theoretical composition. Quality test: MECE (mutually exclusive, collectively exhaustive), well-scoped (not too trivial or too broad).
 5. **Flows are defined by their slots.** Each flow is uniquely identified by its slot signature — the set of slots it needs to fill, with their types (required, elective, optional). If two flows have the exact same slots with the same types, they are the same flow. Different slot type assignments (e.g., Slot B required in one flow vs optional in another) make them distinct. This is the ground-truth test for flow uniqueness.
-6. **Flows can compose across intents.** A flow that needs another flow's output **stacks it on** (PEX routes the stack-on — sub-agents don't activate flows directly). Composition spans all 7 intents, not just Plan. For example, a Source flow like `timing` can stack on a Cook flow to resolve a cooking method's temperature. Plan flows are distinguished by *composing* multi-flow sequences, but cross-intent composition is available to all flows.
+6. **Flows can compose across intents.** A flow that needs another flow's output **stacks it on** (PEX routes the stack-on — sub-agents don't stack on flows directly). Composition spans all 7 intents, not just Plan. For example, a Source flow like `timing` can stack on a Cook flow to resolve a cooking method's temperature. Plan flows are distinguished by *composing* multi-flow sequences, but cross-intent composition is available to all flows.
 
 ### Step D: Choose Remaining Dacts
 
@@ -181,7 +181,7 @@ After finalizing all flows (Step D), fully specify each flow's **slot signature*
 | Browse/search | query (opt), filter (opt) | `browse`: category (opt), cuisine (opt) |
 | Multi-entity read | entity (req), grouping (opt) | `aggregate`: dataset (req), group_by (req), metric (elective) |
 | Write/create | entity (req), content (req) | `write`: file (req), content (req) |
-| Mutate/update | entity (req), field (req), value (req) | `update`: dataset (req), column (req), row (opt), value (req) |
+| Change/update | entity (req), field (req), value (req) | `update`: dataset (req), column (req), row (opt), value (req) |
 | Delete | entity (req) | `discard`: recipe (req) |
 | Agent explain | topic (req) | `explain`: topic (req) |
 | Agent suggest | — | `recommend`: — |
@@ -329,7 +329,7 @@ Recurring patterns across domains, described by role (not specific dact names). 
 | **Scoped operation** | Act on a specific entity | verb + entity-noun | — |
 | **Batch operation** | Act on many at once | verb + batch-modifier | — |
 | **Deduplication** | Remove duplicates | delete-verb + entity + batch | — |
-| **Preview** | See what will happen first | read-verb + mutation-verb + target | Self-check gate |
+| **Preview** | See what will happen first | read-verb + change-verb + target | Self-check gate |
 | **Confirm gate** | Approve before destructive action | operation + positive | — |
 | **Reject gate** | Decline / cancel | operation + negative | — |
 | **Save preference** | Remember user settings | memory-verb + user | MEM L2 (`store_preference`) |
@@ -694,7 +694,7 @@ _No Internal section._ Its former members are not flows: memory → MEM `recap` 
 | | review + insert + paid | forecast | `{15D}` | Forecast future performance and plan budget allocation. ≠ budget (reviews past spend); forecast predicts forward | campaign (opt), budget (opt) | list |
 | | review + update + campaign | assess | `{16A}` | Evaluate a campaign's health and recommend adjustments | campaign (req), metrics (opt) | list |
 | | review + update + cut | diagnose | `{16F}` | Identify why a campaign is underperforming and pinpoint the cause | campaign (req), issue (req) | list |
-| | draft + post + campaign | rollout | `{23A}` | Plan the staged rollout of a campaign launch — timing, channels, creative | campaign (req), phases (req) | list |
+| | draft + post + campaign | rollout | `{23A}` | Plan the phased rollout of a campaign launch — timing, channels, creative | campaign (req), phases (req) | list |
 | | draft + update + campaign | calendar | `{26A}` | Build a content calendar mapping posts to dates. ≠ roadmap (strategic); calendar is tactical scheduling | channel (opt), date_range (opt) | list |
 | | draft + update + ad | experiment | `{26B}` | Design A/B test plan with variants and metrics. ≠ split (runs test); experiment plans the design | ad (req), hypothesis (req) | list |
 | | review + post + channel | post | `{13C}` | Review content quality then publish — a composed flow that calls publish after review passes. ≠ publish (single-step); post plans and executes | content (req), channel (opt) | list |
@@ -769,7 +769,7 @@ Reached directly by PEX — **not** flows in the catalog:
 |---|---|---|
 | `recap` | MEM L1 | Read from the session scratchpad |
 | `recall` | MEM L2 | Look up persistent user preferences |
-| `retrieve` | MEM L3 | Fetch unvetted business context |
+| `retrieve` | MEM L3 | Fetch unvetted Business Knowledge |
 | `web_search` (tool) | web | Look up vetted FAQs and curated content |
 
 Not every domain needs all of these — Kalli omits `undo` because onboarding actions aren't destructive. But most domains will want the full set of ~14 flows (8 universal + 6 converse), plus the universal MEM skills (`recap`/`recall`/`retrieve`) and the `web_search` tool, before designing domain-specific flows.

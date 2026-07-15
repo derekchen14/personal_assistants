@@ -85,11 +85,11 @@ Checkpoints are created automatically at the end of a conversation session. They
 
 Checkpoints are not user-visible — they are a developer/system tool for diagnostics and recovery.
 
-## Boundary with the higher MEM tiers
+## Boundary with the higher MEM Levels
 
 Within [MEM](../modules/mem.md), L1 (this event stream) is the per-session record; the higher tiers persist
 beyond the session — [User Preferences](./user_preferences.md) (L2, per-account) and
-[Business Context](./business_context.md) (L3, per-client). CC is the storage layer: it stores the raw event
+[Business Knowledge](./business_context.md) (L3, per-client). CC is the storage layer: it stores the raw event
 log and holds rolling conversation summaries as special turn entries, but it does not compute them.
 
 ## Conversation Summarization

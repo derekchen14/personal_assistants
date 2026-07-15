@@ -1,9 +1,9 @@
-# Business Context
+# Business Knowledge
 
-[MEM](../modules/mem.md)'s **L3** tier — the closest equivalent to RAG. It holds unstructured data the user
+[MEM](../modules/mem.md)'s **L3** Level — the closest equivalent to RAG. It holds unstructured data the user
 has provided (messages, PDFs, documents, emails, Slack threads, call transcripts) that explains business
 decisions, product launches, and contextual events. It is most commonly used for **answering FAQs**. Scope is
-the client organization, shared across that tenant's users. Sub-agents reach this tier through MEM's
+the client organization, shared across that tenant's users. Sub-agents reach this Level through MEM's
 **`retrieve`** skill (KB + vector-DB retrieval).
 
 ## Storage Format

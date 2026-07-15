@@ -109,7 +109,7 @@ The flow ontology is never right on the first pass. Below are patterns observed 
 
 Before designing domain-specific flows, copy in the mandatory universal flows. These are the same in every domain:
 
-- *MEM skills* (not flows): `recap` (L1 session events), `recall` (L2 user prefs), `retrieve` (L3 unvetted business context). `search` (vetted FAQs / curated content — strongly recommended) is a Converse flow; `calculate` and similar deterministic ops are **tools**, not flows.
+- *MEM skills* (not flows): `recap` (L1 session events), `recall` (L2 user prefs), `retrieve` (L3 unvetted Business Knowledge). `search` (vetted FAQs / curated content — strongly recommended) is a Converse flow; `calculate` and similar deterministic ops are **tools**, not flows.
 - *Plan*: A mandatory orchestrator that sequences flows across all domain intents (named `outline` in Dana, `blueprint` in Hugo — pick the domain-appropriate term)
 - *Converse*: `chat`, `preference`, `explain` (process transparency), `undo`, approve/reject pair, and a proactive suggestion flow (`recommend`/`suggest`)
 - *Clarify*: the universal ambiguity intent — when the request is unclear/underspecified, route to the Ambiguity Handler to resolve internally or ask
@@ -177,7 +177,7 @@ Two recurring parallel pairs appear across every domain. Recognizing this struct
 | Structured data | Unstructured data | Dimension |
 |---|---|---|
 | `lookup` — vetted definitions in semantic layer | `search` — vetted FAQs and curated content | Curated, team-approved |
-| `query` — general SQL against any data | `retrieve` — general business context from anywhere | Unvetted, broad scope |
+| `query` — general SQL against any data | `retrieve` — general Business Knowledge from anywhere | Unvetted, broad scope |
 
 Lesson: "Vetted vs general" is a first-class axis. Curated content (lookup, search) has been reviewed by someone on the team. General content (query, retrieve) pulls from any available source without quality guarantees.
 

@@ -117,7 +117,7 @@ Within each category, tools follow CRUD-style operation types:
 | update / patch | no | 10s |
 | delete | no | 5s |
 | analyze / compute | yes | 15–30s |
-| dispatch / run | no | varies |
+| route / run | no | varies |
 | validate / check | yes | 5s |
 
 ## Tool Implementation
@@ -157,7 +157,7 @@ class RecipeService:
 
 ### PEX Registration: `_tools` Dict with `(service, method_name)` Tuples
 
-PEX registers domain tools in a `_tools` dict that maps tool names to `(service_instance, method_name)` tuples. This pattern keeps dispatch simple and avoids a separate registry abstraction.
+PEX registers domain tools in a `_tools` dict that maps tool names to `(service_instance, method_name)` tuples. This pattern keeps routing simple and avoids a separate registry abstraction.
 
 ```python
 class PEX:
@@ -177,9 +177,9 @@ class PEX:
         }
 ```
 
-### Tool Dispatch
+### Tool Routing
 
-The `_dispatch_tool` method handles all tool calls. Domain tools are dispatched via `_tools` using `getattr`; component tools (the MEM skills `recap`/`recall`/`retrieve`/`store_preference`, the scratchpad tools, `understand`, and `handle_ambiguity`) are dispatched via internal methods.
+The `_dispatch_tool` method handles all tool calls. Domain tools are routed via `_tools` using `getattr`; component tools (the MEM skills `recap`/`recall`/`retrieve`/`store_preference`, the scratchpad tools, `understand`, and `handle_ambiguity`) are routed via internal methods.
 
 ```python
 def _dispatch_tool(self, tool_name: str, tool_input: dict) -> dict:
@@ -511,7 +511,7 @@ Each tool in the manifest declares these properties. PEX loads the manifest at s
 | `idempotent` | bool | Safe to auto-retry without side effects (drives PEX retry policy) |
 | `timeout_ms` | int | Max execution time in milliseconds |
 
-> **Hugo divergence (decided 2026-06-21):** `scope`, `dispatch`, and `output_schema` are **not** in Hugo's manifest — they live in code (provisioning via each flow's `self.tools`; routing via the code-side dispatch table). One source is enough; the manifest doesn't duplicate them.
+> **Hugo divergence (decided 2026-06-21):** `scope`, `dispatch`, and `output_schema` are **not** in Hugo's manifest — they live in code (provisioning via each flow's `self.tools`; routing via the code-side routing table). One source is enough; the manifest doesn't duplicate them.
 
 ### Capability Tags
 
@@ -679,7 +679,7 @@ Some components are exposed as tools to skills during [PEX § Skill Invocation](
 | `recap` / `recall` / `retrieve` / `store_preference` | MEM L1 / L2 / L3 reads (`store_preference` writes L2) | universal · internal (MEM) |
 | `append_to_scratchpad` / `read_from_scratchpad` | append findings (triggers NLU) / read | universal · internal (scratchpad) |
 | `understand` | read the serialized Dialogue State belief | universal · internal (Dialogue State) |
-| `handle_ambiguity` | declare / present / ask / resolve | universal · internal (Ambiguity Handler) |
+| `handle_ambiguity` | recognize / recover / ask / resolve | universal · internal (Ambiguity Handler) |
 | `flow_stack` | read slot values, prior flow results | universal · internal (FlowStack) |
 
 A skill receives the universal-scope tools it needs plus its 1–3 flow-specific (per-flow-declared) tools — all from the one manifest.
@@ -690,7 +690,7 @@ Handled by components and never exposed to skills or the manifest:
 
 - Dialogue State → read via `understand` (slot values also via flow_stack)
 - LLM calls → the skill IS the LLM; [Prompt Engineer](../components/prompt_engineer.md) is not needed as a tool
-- Ambiguity → reached via `handle_ambiguity`; a skill that cannot proceed returns the `uncertain` outcome, on which the policy either declares ambiguity (`handle_ambiguity`) or emits a violation
+- Ambiguity → reached via `handle_ambiguity`; a skill that cannot proceed returns the `uncertain` outcome, on which the policy either recognizes ambiguity (`handle_ambiguity`) or emits a violation
 - Task Artifact → policy responsibility; the skill returns data, the policy/sub-agent builds the artifact
 - Conversation management → NLU (belief) / MEM (event stream)
 

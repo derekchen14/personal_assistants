@@ -1,9 +1,9 @@
 # User Preferences
 
-[MEM](../modules/mem.md)'s **L2** tier — what the user normally wants, the good defaults that override the
+[MEM](../modules/mem.md)'s **L2** Level — what the user normally wants, the good defaults that override the
 agent's baseline behavior. This is the closest equivalent to Claude's memory: coding conventions, response
 verbosity, technical depth. Scope is a single user account; preferences persist across all conversations and
-are frozen into PEX's system prompt (tier 3) at session start. Sub-agents reach this tier through MEM's
+are frozen into PEX's system prompt (tier 3) at session start. Sub-agents reach this Level through MEM's
 **`recall`** skill.
 
 ## Storage Format
@@ -67,14 +67,14 @@ versus checking in. It is a normal typed preference whose `value` is one of thre
 
 | Level | Meaning |
 |---|---|
-| `ignore` | proceed on reasonable guesses; flag only the most severe issues |
+| `ignore` | proceed on reasonable guesses; surface only the most severe issues |
 | `warning` | the balanced default; ask when a key entity or required slot is unresolved |
 | `alert` | confirm aggressively; surface even minor issues before acting |
 
-The intent is to make **ask-vs-proceed** and **how aggressively to flag** a user setting rather than a fixed
+The intent is to make **ask-vs-proceed** and **how aggressively to surface issues** a user setting rather than a fixed
 constant. This release **defines the shape only** — the dial is **not yet read** by the
 [Ambiguity Handler](./ambiguity_handler.md)'s `nlu_confidence_min` threshold or by detector/audit strictness.
 Wiring is deferred so the record shape can be reviewed before any behavior changes. When wired, `alert` would
-raise the clarification threshold and loosen flag cutoffs; `ignore` would do the reverse.
+raise the clarification threshold and loosen the issue-surfacing cutoffs; `ignore` would do the reverse.
 
-_(Trajectory playbooks were considered for this tier and dropped — not part of the design.)_
+_(Trajectory playbooks were considered for this Level and dropped — not part of the design.)_

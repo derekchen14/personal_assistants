@@ -37,7 +37,7 @@ Converse is one sub-agent — its single policy handles all Converse flows. Each
 Each policy has two parts:
 
 **Deterministic skeleton** (class method):
-- Slot review: check required/elective/optional slots, fill from context/memory, declare ambiguity if missing
+- Slot review: check required/elective/optional slots, fill from context/memory, recognize ambiguity if missing
 - Skill invocation: call the skill with the right tools and context
 - Result processing: create TaskArtifact from skill output, route by intent
 - Flow completion: `complete_flow(flow, state, summary, metadata)`, post-hook verification
@@ -55,7 +55,7 @@ Each policy has two parts:
 |---|---|---|
 | `success` | Tools executed, results gathered | Create TaskArtifact, mark Completed |
 | `failure` | Tools returned errors, partial results may exist | Add warning to TaskArtifact, attempt degradation |
-| `uncertain` | Skill cannot proceed, needs clarification | Carry over previous Artifact; declare ambiguity (`handle_ambiguity`) or emit a violation |
+| `uncertain` | Skill cannot proceed, needs clarification | Carry over previous Artifact; recognize ambiguity (`handle_ambiguity`) or emit a violation |
 
 ### Step 3 — Per-Flow Checklist
 
@@ -166,8 +166,8 @@ Ensure the component tools are properly exposed to skills during PEX execution:
 |---|---|---|
 | `append_to_scratchpad` / `read_from_scratchpad` | Session Scratchpad | append findings (triggers NLU) / read prior findings |
 | `understand` | Dialogue State (NLU) | read the serialized belief (flow, intent, slots, grounding) |
-| `handle_ambiguity` | Ambiguity Handler | declare / present / ask / resolve |
-| `recap` / `recall` / `retrieve` | MEM | L1 events / L2 preferences / L3 business context |
+| `handle_ambiguity` | Ambiguity Handler | recognize / recover / ask / resolve |
+| `recap` / `recall` / `retrieve` | MEM | L1 events / L2 preferences / L3 Business Knowledge |
 | `flow_stack` | Workflow Planner | read slot values, prior flow results |
 
 These are universal-scope entries in the one unified manifest (`scope: universal`, `dispatch: internal`) — provided to every skill alongside flow-specific tools. Total tools per skill: 5–7.

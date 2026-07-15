@@ -81,7 +81,7 @@ checks (provider enum, temperature range, allocation sums, **flow integrity + da
 policy-path resolution) and a `config.flows` populated from `ontology.py` (step 4 of the spec's load) —
 which Hugo never merges.
 
-**Change.** Expand `_validate` into a real validating loader that **refuses to start on bad config**, staged
+**Change.** Expand `_validate` into a real validating loader that **refuses to start on bad config**, phased
 by `environment` (warn in dev, fail in prod — `configuration.md:428`). Add `compression` to
 `_REQUIRED_SECTIONS` (read but unvalidated) and **drop** `response_constraints` from it (removed in §6.2).
 Merge the ontology into `config.flows`.
@@ -199,7 +199,7 @@ turn end. Bounded — no change to how blocks are computed.
 
 ## 6.8 — Post/note CRUD routing + WS field names (E6)  · D2
 Post/note CRUD from UI buttons (`create_post` / `update_post` / `delete_post` / `create_note` / `update_note` /
-`delete_note`) is dispatched by the WS router (`chat_service.py:300-312`) to dedicated handlers that **bypass
+`delete_note`) is routed by the WS router (`chat_service.py:300-312`) to dedicated handlers that **bypass
 the agent** (no NLU/PEX) and `continue`. Wire naming has minor drift (`dax` vs `dialogueAct`, `payload` vs
 `lastAction`, `chat_service.py:314-316`).
 
@@ -241,7 +241,7 @@ app = FastAPI(lifespan=lifespan)
 ## 6.10 — Tool manifest Core Fields (E7)  · Flows-report divergence #1
 Manifest entries (`tools.yaml`) carry `tool_id/name/description/input_schema/idempotent/timeout_ms/
 capabilities` but omit the spec's `scope`/`dispatch`/`output_schema` Core Fields (`tool_smith.md:497-512`).
-Hugo routes via each flow's `self.tools` + a code-side dispatch table instead.
+Hugo routes via each flow's `self.tools` + a code-side routing table instead.
 
 **Decided 2026-06-21:** do **not** back-fill the manifest. `dispatch` (service vs internal) and `output_schema`
 stay **in code only** — one source is enough (same for `scope`). Document Hugo's code-side routing in
@@ -268,7 +268,7 @@ Each tool entry already carries a `capabilities` block (`accesses_private_data`,
 tool isn't on the approved list — pausing for a frontend approval round-trip.
 
 ```python
-# pex.py — before dispatching a flagged tool (designed-not-built; needs a FE round-trip)
+# pex.py — before calling a flagged tool (designed-not-built; needs a FE round-trip)
 def _needs_approval(self, tool_name:str) -> bool:
     cap = self.config['flows']... # tool capabilities from the manifest
     mode = self.config['human_in_the_loop']['tool_approval']['mode']    # off | trifecta | explicit_list
@@ -281,7 +281,7 @@ def _needs_approval(self, tool_name:str) -> bool:
 ```
 
 - **Why deferred:** the consume side needs a frontend approval UI + a suspend/resume turn path. The
-  capabilities metadata is captured now so the gate has its inputs when built. Mark the dispatch seam.
+  capabilities metadata is captured now so the gate has its inputs when built. Mark the routing seam.
 
 ### S-2 — Telemetry endpoint  (`/api/v1/telemetry`)
 A POST endpoint that records per-turn metrics (latency, rounds, tokens, flow, ambiguity level) to a sink for

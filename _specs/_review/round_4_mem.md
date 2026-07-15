@@ -1,5 +1,11 @@
 # Round 4 — MEM, the Head
 
+> **Status (round 4.1 shipped, 2026-07-10).** MEM landed as a **module** at `backend/modules/mem.py` — there
+> is no `MemoryManager` facade class; the module holds the three Levels (L1 Context Coordinator / L2
+> `user_preferences` / L3 Business Knowledge), and `store_turn` runs at turn end. Durable L2 preferences and
+> the grounding-entities redesign shipped with it. **Everything below is the pre-4.1 design record** kept for
+> reference; read it as the plan that produced the module, not the current shape.
+
 Maps to **Master Plan · Round 4**. Effort **L**. Depends on: the component shapes below (confirmed with the user
 2026-06-21). Foundational facade that Rounds 3/5 read.
 
@@ -134,7 +140,7 @@ class SessionScratchpad:
   it to PEX + the policies. Bind the session-file path where the session dir is set, replacing `agent.py:94`'s
   `memory._scratchpad_path` poke.
 - Re-point every call site: `pex.py` (`write_scratchpad`/`read_scratchpad`/`write_completion`/
-  `scratchpad_size` + the `append_to_scratchpad`/`read_scratchpad` dispatch + the `manage_memory` scratchpad
+  `scratchpad_size` + the `append_to_scratchpad`/`read_scratchpad` calls + the `manage_memory` scratchpad
   actions), `policies/{base,research,revise}.py`, and the `agent.py` reset.
 - The completion-record schema reconciliation (`write_completion` vs the minimal entry schema) stays in
   Round 3 §3.3.1.
@@ -143,7 +149,7 @@ class SessionScratchpad:
 - Strip scratchpad + preference storage out of `MemoryManager`; its `__init__` now takes the three tiers and
   holds them as `.context` / `.preferences` / `.business`.
 - Implement `recap` / `recall` / `retrieve` per 4.1. Keep the `manage_memory` / `search_faqs` /
-  `store_preference` tool names; route their dispatch through the facade or the tiers.
+  `store_preference` tool names; route their calls through the facade or the tiers.
 - Instantiate in `agent.py` alongside NLU/PEX: build `UserPreferences`, `BusinessContext`, and the
   `SessionScratchpad` (on the World), then `MemoryManager(world.context, preferences, business)`. The
   session-dir layout (`world.py`) is unchanged.

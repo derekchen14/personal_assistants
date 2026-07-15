@@ -125,7 +125,7 @@ Only logged when present — no empty lines for turns without tools or artifacts
 
 ### Level
 
-All turn diagnostics use `INFO`. Reserve `WARNING` for recoverable issues (self-check failures, fallback activations) and `ERROR` for unrecoverable failures.
+All turn diagnostics use `INFO`. Reserve `WARNING` for recoverable issues (self-check failures, fallbacks) and `ERROR` for unrecoverable failures.
 
 ---
 

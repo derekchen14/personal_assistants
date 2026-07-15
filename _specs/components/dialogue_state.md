@@ -62,7 +62,7 @@ prose — no tool call)              FLOW_ONTOLOGY[flow]['intent'] (System 2) an
           │
           ▼
         Workflow Planner orchestrates the flows
-        (manage_flows: stackon → activate → … → pop)
+        (manage_flows: stackon → … → pop)
 ```
 
 Step by step:
@@ -88,7 +88,7 @@ Step by step:
    and waits for NLU's answer before proceeding. These are the only two intents that block on NLU.
    *Why these two:* Plan decomposes into other flows and Clarify questions the user, so both need the
    settled belief; every other intent can start its read-only work safely while NLU confirms.
-4. **PEX orchestrates the flows using the Workflow Planner** — stack ops, activation, fallback, and
+4. **PEX orchestrates the flows using the Workflow Planner** — stack ops, fallback, and
    plan sequencing all live in [Workflow Planner](./workflow_planner.md); this document only covers
    the belief that routing reads.
 
@@ -162,7 +162,7 @@ Each domain defines its own grounding entity vocabulary:
 | Dana (Data Analysis) | `{tab, col, row, ver, rel}` — tab=table, col=column, row=row |
 | Hugo (Blog Writing) | `{post, sec, snip, chl, ver}` — post=post, sec=section, snip=snippet, chl=channel |
 
-`ver` is a **verified bool**, not a version int — it flags whether the entity was user-approved vs.
+`ver` is a **verified bool**, not a version int — it marks whether the entity was user-approved vs.
 agent-predicted. NLU does not predict `ver`; it is set by the grounding layer.
 
 **Canonical name.** A flow's grounding slot is always named `'source'` (matching
@@ -258,7 +258,7 @@ targeted extraction prompt and fills just that slot:
 text = self.engineer.call(history, system="Extract the topic the user wants to outline.")
 flow.fill_slots_by_label({'topic': parsed_value})
 if not flow.slots['topic'].filled:
-    self.ambiguity.declare('specific', metadata={'missing': 'topic'})
+    self.ambiguity.recognize('specific', metadata={'missing': 'topic'})
 ```
 
 **Summary of the distinction:**
@@ -306,7 +306,7 @@ key regardless of which sub-task failed.
 ### Idea (future) — recursive self-verifying slot values
 
 > **Status: future idea, not adopted.** Today a `SourceSlot` grounds a *flat* set of entity parts, each carrying
-> a `ver` flag. A legacy data-analysis system generalized this to a **recursive** slot value: a metric held a
+> a `ver` bool. A legacy data-analysis system generalized this to a **recursive** slot value: a metric held a
 > tree of sub-expressions down to leaf clauses, where (a) `ver` **cascaded** — a node is verified only when all
 > its children are; (b) a `drop_unverified` pass **pruned** unconfirmed branches; and (c) every node could
 > **self-describe** in natural language and **self-render** to SQL. This is the right model for a complex

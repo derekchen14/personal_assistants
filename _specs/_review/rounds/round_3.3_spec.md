@@ -90,7 +90,7 @@ where the fill lands.
    against that flow (the one with the unfilled or possibly incorrect slot) — not a fresh instance,
    and no new `stackon`.
    - Detection matches the Active flow → fill it; PEX resumes its policy.
-   - Detection returns a different flow → the user detoured or abandoned; the normal stack rules
+   - Detection returns a different flow → the user switched tasks or abandoned; the normal stack rules
      apply (see `_specs/components/workflow_planner.md`).
 2. **Write shown candidates to `grounding.choices`** when a policy displays them — typed records like
    `{'kind': 'post', 'label': ..., 'entity': {post, sec, snip, chl, ver}, 'source': 'find',
@@ -111,8 +111,8 @@ same flow:
   history and `grounding.choices`. This is also where NLU having `attempt_recovery()` is powerful:
   preferences and scratchpad can supply the referent when the words alone cannot.
 - **Task change** ("actually, when did I last publish anything?") — detection lands on a different
-  flow; `stackon` places it and `outline` reverts to Pending beneath it. Record why in the ambiguity
-  observation and in the SessionScratchpad, so every agent can see the detour. The ambiguity stays
+  flow; `stackon` places it and `outline` reverts to Pending beneath it. Record the transition in
+  the SessionScratchpad, so every agent can see why the stack changed. The ambiguity stays
   **unresolved** — the grounding goal was never met.
 - **On-task but non-selecting** ("neither is right, look again") — detection lands on `find`; also a
   `stackon`. Flows continue: when `find` completes, PEX pops it, `outline` is promoted back to
@@ -129,7 +129,7 @@ recoverable).
   flows and continues onto the next as long as there is work to do; a turn can only end with an Active
   (but incomplete) flow that needs more information, or an empty stack. So NLU's detection is always
   compared against a live Active flow, never a stale one.
-- The full detour/abandonment rules (detour `stackon` reverts the stalled flow to Pending; abandonment
+- The full stack-on/abandonment rules (`stackon` reverts the stalled flow to Pending; abandonment
   marks it Invalid; `fallback` is only for re-routing a wrongly predicted flow) live in
   `_specs/components/workflow_planner.md` — see its stack invariants and scenario matrix.
 
@@ -138,14 +138,14 @@ recoverable).
 ## Decisions (settled 2026-07-09)
 
 - **D1 — Answer vs. task-change:** flow detection decides — the same flow as the Active one means
-  answer/continuation; a different flow means detour or abandonment. The fill guidance stays
+  answer/continuation; a different flow means a task switch or abandonment. The fill guidance stays
   conservative within a match: an empty fill rather than a fabricated value. (Supersedes the earlier
   "empty fill = not an answer" routing rule.)
 - **D2 — Fill target:** always the top of the stack. That is what makes the stack useful to begin with.
   Naming a target flow in ambiguity metadata would be the Rejected Direction in miniature.
 - **D3 — Belief written on a successful fill:** `think()` writes the latest intent and flow to dialogue state — the
   same values already there, so effectively a no-op. A bit of extra work, not dangerous.
-- **D4 — Ambiguity across a detour:** the per-turn `counts` reset (new turn), but the ambiguity remains
+- **D4 — Ambiguity across a task switch:** the per-turn `counts` reset (new turn), but the ambiguity remains
   **unresolved** until grounding completes. An ambiguity that lives across turns and across tasks is
   exactly why the Handler is a separate object from the Flow Stack.
 - **D5 — `grounding.choices` lifecycle:** policies that display a pick-one list write. When the flow

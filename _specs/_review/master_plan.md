@@ -36,8 +36,8 @@ The recent cleanup landed most of the PEX/agent core. Verified present and spec-
   compaction (prune + middle-out summary + protect head/tail).
 - Flow/tool grammar fully conformant — all 16 dax codes valid ascending-order, 12+4 slot hierarchy,
   `_success/_error/_message` contract, service-raises→PEX-boundary validation.
-- `understand(op=react/think/contemplate)` single NLU entry + parallel-thread gating for the active-entity
-  branch (`agent.py:67-80`).
+- Sequential turn loop (round 0.3) — NLU and PEX run in sequence inside `take_turn`; NLU exposes no public
+  methods, its work reached through the Dialogue State and Ambiguity Handler via the World.
 - **Identity & dead-config cleanup (former Step 0, done 2026-06-21):** Hugo-local `naturalize` override +
   `_TASK_SUFFIXES` entry dropped; `key_entities`→`[post, section, snippet, channel]`; RES / template /
   file-identity comment residue removed. Offline suites green (324 passed / 0 skipped / 0 failed).
@@ -49,10 +49,11 @@ The recent cleanup landed most of the PEX/agent core. Verified present and spec-
 
 - **Scope = core now, defer aspirational.** Build the structural skeleton; ship the speculative tier
   as marked "designed-not-built" stubs. See the Deferred register below.
-- **New concepts = MEM approved.** Approved to create: the L2 `user_preferences` + L3 `business_context`
-  components and a typed `Preference` record, with `MemoryManager` as the facade over the three tiers. Each
-  approved concept's shape is described in its round plan before any code. There is **no Plan-flow object** — the
-  Plan is a skill that stacks existing flows, and PEX judges goal completion.
+- **New concepts = MEM approved.** Approved to create: the L2 `user_preferences` + L3 Business Knowledge
+  (`components/business_context.md`) components and a typed `Preference` record. Round 4.1 shipped this as a
+  MEM **module** at `backend/modules/mem.py` (not a `MemoryManager` facade class) holding the three Levels.
+  Each approved concept's shape is described in its round plan before any code. There is **no Plan-flow
+  object** — the Plan is a skill that stacks existing flows, and PEX judges goal completion.
 - **Intent model = adopt the spec's PEX System-1 hint.** PEX emits a coarse-intent hint inside its own
   reasoning; NLU drops its separate `_classify_intent` call (`nlu.py:259,309`) and flow-detection becomes the
   authoritative intent write. Highest-regression-risk change → gated behind the trace eval (Round 1).
@@ -65,7 +66,7 @@ The recent cleanup landed most of the PEX/agent core. Verified present and spec-
 ## The end in mind
 
 The whole point of Hugo: **a user collaborates across a multi-turn session to research, draft, revise, and
-publish a blog post** — Hugo remembers their style preferences, pulls in business context, asks a clarifying
+publish a blog post** — Hugo remembers their style preferences, pulls in business knowledge, asks a clarifying
 question when a request is ambiguous, and handles multi-step requests by planning and showing progress.
 
 Working backward, each milestone is the smallest slice that adds **one visible capability** on top of the
@@ -75,8 +76,8 @@ last. Build in round order:
 |---|---|---|
 | 1 | **Hugo is measurable.** Free suite in seconds; an ~8-scenario live gate in ≤10 min scores the 7 E2E criteria. | `round_1_evals.md` |
 | 2 | **Hugo replies.** A single-flow request ("draft an intro about X") returns a well-formed reply + an artifact the UI renders; the voice matches the style guide. | `round_2_pex.md` |
-| 3 | **Hugo clarifies.** An ambiguous request gets a targeted question; next turn the answer binds correctly; intent routing is right. | `round_3_nlu.md` |
-| 4 | **Hugo remembers.** "I prefer short paragraphs" changes the next draft; a business-context question is answered from L3; session recap works. | `round_4_mem.md` |
+| 3 | **Hugo clarifies.** An ambiguous request gets a targeted question; next turn detection routes the answer back to the incomplete Active flow and NLU fills it in place; intent routing is right. | `round_3_nlu.md` |
+| 4 | **Hugo remembers.** "I prefer short paragraphs" changes the next draft; a business-knowledge question is answered from L3; session recap works. | `round_4_mem.md` |
 | 5 | **Hugo plans.** A multi-step request decomposes into ordered flows and Hugo runs them to the goal, reporting what got done. | `round_5_plan.md` |
 | 6 | **Hugo ships.** Progress streams to the UI mid-turn; session limits are enforced; config is validated on load. | `round_6_infra.md` |
 
@@ -118,31 +119,37 @@ embedded decision (below). Sub-round file names in `rounds/` carry the owning ro
   note is prompt-only follow-through.
 
 ### Round 3 · Hugo clarifies — NLU belief, ambiguity & the intent rework, the Heart · **L** · `round_3_nlu.md`
-- **Demo unlocked:** an ambiguous request gets a targeted clarifying question; next turn the answer binds as
-  the *answer* (not re-detected); intent routing is right under the PEX-hint model.
+- **Demo unlocked:** an ambiguous request gets a targeted clarifying question; next turn detection routes the
+  answer back to the incomplete Active flow and NLU fills it in place; intent routing is right under the
+  PEX-hint model.
 - **Shipped:** **3.5** propose slot-fill prompt (was fix_2) · **3.6** fill_slots retry guardrail (was fix_3a)
   · **3.7** slot-fill repair (was fix_3b) — done 2026-07-08: `_parse_json` fallback is outermost-greedy
   (never a nested fragment) and the retry loop catches the parse-failure ValueError.
 - **Goal:** bring NLU belief + ambiguity behavior to spec and execute the intent-model change (PEX System-1
   hint) — sub-steps §3.1–§3.4.
-- **Deliverable:** PEX-hint intent model (remove `_classify_intent`); minimal-schema scratchpad entries
-  (`version`/`turn_number`/`used_count`) + synchronous NLU review at turn points; cross-turn ambiguity
-  binding; gate low-confidence entity repairs (`ver=False`) instead of committing silently; halt-on-intent
-  -split; wire the idle `contemplate` trigger (partially landed 2026-07-06 as the `understand` dispatch
-  tool); wire the unused `should_escalate` escalation; cap `pred_flows` to top-3 (`dialogue_state.md:131`).
+- **Deliverable:** PEX-hint intent model — `_classify_intent` stays as a tie-break callable only
+  (detection-first shipped in rounds 0.3/2.12); minimal-schema scratchpad entries
+  (`version`/`turn_number`/`used_count`) + synchronous NLU review at turn points; detection decides
+  answer-vs-task-change (the old "cross-turn ambiguity binding" is superseded — see `rounds/round_3.3_spec.md`);
+  gate low-confidence entity repairs (`ver=False`) instead of committing silently; halt-on-intent-split; wire
+  the idle `contemplate` trigger (partially landed 2026-07-06 as the `understand` tool); wiring the unused
+  `should_escalate` escalation is lower priority (its counts reset each turn start, so the wiring needs a
+  rethink — see `round_3_nlu.md` §3.2.3); cap `pred_flows` to top-3 (`dialogue_state.md:131`).
 - **Depends on:** the eval gate (Round 1, running) for the intent rework. The old MEM dependency is
   satisfied — `SessionScratchpad` already lives on the World. Riskiest change on the board.
 - **Gated:** continuous scratchpad review is the deferred (stub) variant.
 
 ### Round 4 · Hugo remembers — MEM, the Head · **L** · `round_4_mem.md`
 - **Demo unlocked:** "I prefer short paragraphs" changes the next draft (preference recall); a
-  business-context question is answered from L3 (`retrieve`); session recap works.
-- **Goal:** stand up memory as a real module — three tiers + the skill surface (synchronous facade; the
+  business-knowledge question is answered from L3 (`retrieve`); session recap works.
+- **Goal:** stand up memory as a real module — three Levels + the skill surface (synchronous; the
   continuous loop is deferred).
-- **Deliverable:** `MemoryManager` as the facade owning L1 (Context Coordinator) / L2 (`user_preferences`) /
-  L3 (`business_context`); `recap`/`recall`/`retrieve` as the public skill surface; a typed `Preference`
-  record with endorsed-vs-guessed rendering + the caution dial (shape only). Auto-promotion, proactive push,
-  and vector retrieval land as designed-not-built stubs. §4.4 (`SessionScratchpad`) already landed.
+- **Shipped:** **4.1** MEM as a module at `backend/modules/mem.py` (no `MemoryManager` class) holding L1
+  (Context Coordinator) / L2 (`user_preferences`, durable) / L3 (Business Knowledge); `store_turn` runs at
+  turn end; grounding entities redesign.
+- **Remaining:** `recap`/`recall`/`retrieve` as the public skill surface; a typed `Preference` record with
+  endorsed-vs-guessed rendering + the caution dial (shape only). Auto-promotion, proactive push, and vector
+  retrieval land as designed-not-built stubs. §4.4 (`SessionScratchpad`) already landed.
 - **Depends on:** the component shapes approved above (confirm in the round plan).
 
 ### Round 5 · Hugo plans — Plan / Workflow Planner (minimal) · **M** · `round_5_plan.md`
@@ -167,6 +174,8 @@ embedded decision (below). Sub-round file names in `rounds/` carry the owning ro
 
 | Sub-round | Was | What shipped |
 |---|---|---|
+| 0.2 | — | world wiring: modules own components, cross-module calls go through the World; one state/stack reset |
+| 0.3 | — | sequential turn loop: de-threaded `take_turn`, System-1 hint in the PEX loop prompt, MEM `store_turn` |
 | 1.1 | round E1 | fast eval mode: seeding all 96, timing reports, `--ids` gate subset; replay removed by design |
 | 1.2 | fix_4 | suite consolidated under `utils/evaluation_suite/`; dead trace/eval taxonomy deleted |
 | 2.2 | round 4.2 | closing reminder (slot 7) injected into every flow sub-agent prompt |
@@ -174,12 +183,14 @@ embedded decision (below). Sub-round file names in `rounds/` carry the owning ro
 | 2.5 | round 4.5 | loop bounds + call caps promoted to the `limits` config section (E10) |
 | 2.6 | round 4.6 | per-call model tier on the flow sub-agent call |
 | 2.7 | round 5.0 | PEX hook points; only Plan/Clarify block on NLU |
-| 2.8 | round 5.2 | one flow stack — `write_state` mutates the live `FlowStack`; saved copy on serialize |
+| 2.8 | round 5.2 | one flow stack — `write_state` changes the live `FlowStack`; saved copy on serialize |
 | 2.9 | round 5.3 | flow prompts to `pex/flows/`; starters render parameters only; `flow_reply`/`flow_execute` |
 | 2.10 | fix_1 | orchestrator activation; finale superseded by `understand(op='contemplate')` (169419e) |
+| 2.12 | — | detection-first NLU + Continue intent + the `manage_flows` run contract (`stackon` runs by default, `status='Active'` re-runs, entity-aware dedupe, deep `update_flow`) |
 | 3.5 | fix_2 | `propose` NLU slot-fill prompt |
 | 3.6 | fix_3a | fill_slots one-retry guardrail |
 | 3.7 | fix_3b | fill_slots retry (Decision B) + outermost-greedy `_parse_json` fallback (Decision A) |
+| 4.1 | — | MEM module at `modules/mem.py` + durable L2 preferences + grounding entities redesign |
 | 5.1 | round 5.1 | Workflow Planner skill + belief injection + stack-at-once plans + dead Plan-state removal |
 
 ---
@@ -189,13 +200,13 @@ embedded decision (below). Sub-round file names in `rounds/` carry the owning ro
 ```
   1. evals  ───►  2. PEX  ───►  3. NLU  ───►  4. MEM  ───►  5. Plan  ───►  6. infra
  (measurable)   (replies)    (clarifies)   (remembers)     (plans)        (ships)
-   ~done          ~done        ◄ NEXT      (5.1 shipped)
+   ~done          2.13 ◄       ◄ NEXT      (4.1 shipped)   (5.1 shipped)
 ```
 
 Build in round order. **Evals first** — every later round is judged with the gate, which keeps running
 alongside. **PEX second** — nothing is showable without a turn. Rounds 1 and 2 are largely shipped (see the
-ledger), so **the current front is Round 3 (NLU)** — its old MEM dependency is satisfied because
-`SessionScratchpad` already lives on the World. **Plan** needs working flows and reads better with clarify in
+ledger), so **the current front is Round 2.13 (grounding + stack-transition correctness) and Round 3
+(NLU)** — the old MEM dependency is satisfied because `SessionScratchpad` already lives on the World. **Plan** needs working flows and reads better with clarify in
 place (5.1 already shipped the Workflow Planner). **Infra** hardens what the earlier demos rely on.
 
 ---
@@ -246,7 +257,7 @@ ordering), landed-only guard on the stackon-active slot fold (torn-read), `appen
 name, plan-lifecycle regression test. Parked here as potential plans:
 
 - ~~**One source of truth for the flow stack.**~~ **DONE as round 2.8** — the live `FlowStack` is canonical;
-  `write_state` mutates it directly and the state file holds a saved copy refreshed on serialize.
+  `write_state` changes it directly and the state file holds a saved copy refreshed on serialize.
 - ~~**`read_state` blocking scope needs a ruling.**~~ **RULED in round 2.7's amendment** — only Plan and
   Clarify block on NLU; the other five intents proceed on standing belief with a non-blocking settle.
 - **Flow-internal bounding of repeated read actions (round 2.3 gate forensics, 2026-07-04):** the orchestrator
@@ -256,11 +267,11 @@ name, plan-lifecycle regression test. Parked here as potential plans:
   (or flow-prompt discipline for the read-heavy flows: browse, audit, find). Partially addressed in
   round 2.9: audit now gets the full post prose preloaded, and audit/compose carry no-re-read rules.
 - **Smaller parked items:** `execute()` carries 7 params (bundle dax/payload/text as one turn input);
-  dead `_llm_quality_check` + placeholder lines in `_validate_artifact`; dead `keep_going` writes in
-  draft/revise policies (Batch-2b scope); a test asserting the carrier-A message shape (belief note rides
-  the tool-results user message); a forced fallback landing on the loop's final round is not executed
-  until next turn; `SessionScratchpad.write_completion` crashes in in-memory mode (unreachable today);
-  live eval runs mutate the checked-in content database seeds (sandbox the content DB for eval runs).
+  dead `_llm_quality_check` + placeholder lines in `_validate_artifact`; a test asserting the carrier-A
+  message shape (the belief NLU wrote rides the tool-results user message); a forced fallback landing on
+  the loop's final round is not executed until next turn; `SessionScratchpad.write_completion` crashes in
+  in-memory mode (unreachable today); live eval runs change the checked-in content database seeds (sandbox
+  the content DB for eval runs).
 
 ---
 
@@ -272,6 +283,6 @@ name, plan-lifecycle regression test. Parked here as potential plans:
   `import backend` may resolve to another assistant's backend. Use the wrapper documented in the test round plans.
 - **Trace gate** (Round 1 deliverable) — the trace-replay runner gates the behavioral rounds (esp. Round 3).
 - **Live gate** — a fresh ~8-scenario sample via `utils/evaluation_suite/_evals/run_evals.py --ids …`,
-  ≤10 min; commit first, `git restore database/content` after (live runs mutate the seeds).
+  ≤10 min; commit first, `git restore database/content` after (live runs change the seeds).
 - The old parity harness (`run_parity.py`) was deleted in round 1.2; the E8 re-baseline is Round 1 work.
 - Each round plan ends with its own concrete verify commands.

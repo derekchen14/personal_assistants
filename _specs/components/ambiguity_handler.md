@@ -2,11 +2,11 @@
 
 The reliability of AI agents is the number one blocker to mass adoption. The best way around this is curated training data, but another method is to make ambiguity handling a first-class citizen — the agent explicitly recognizes when it is unsure, classifies the uncertainty, and decides how to respond. This is likely the most unique core component that differentiates our agent.
 
-This is one of [NLU](../modules/nlu.md)'s three sub-components: NLU recognizes and **resolves uncertainty internally before asking**, and authors the clarification when it can't. [PEX](../modules/pex.md) policies may also declare ambiguity mid-execution; PEX surfaces any clarification, which the main Agent delivers to the user.
+This is one of [NLU](../modules/nlu.md)'s three sub-components: NLU recognizes and **resolves uncertainty internally before asking**, and authors the clarification when it can't. [PEX](../modules/pex.md) policies may also recognize ambiguity mid-execution; PEX surfaces any clarification, which the main Agent delivers to the user.
 
-`Clarify` is an **NLU classification label** that the handler serves — the handler is the **mechanism** for handling that label (and any mid-execution ambiguity), not a policy. There are no Clarify policies or flows; a `general`-level declaration is the gate-1 / no-flow case the handler drives.
+`Clarify` is an **NLU classification label** that the handler serves — the handler is the **mechanism** for handling that label (and any mid-execution ambiguity), not a policy. There are no Clarify policies or flows; a `general`-level recognition is the gate-1 / no-flow case the handler drives.
 
-Like the [Session Scratchpad](./session_scratchpad.md), the handler is a shared resource on the **World** object. Sub-agents reach it through the `handle_ambiguity` tool, which routes to its four exposed methods: **`declare`** (record an ambiguity — level, observation, metadata), **`present`** (predicate: is there an unresolved ambiguity?), **`ask`** (generate the clarification text), and **`resolve`** (clear it once the user has answered).
+Like the [Session Scratchpad](./session_scratchpad.md), the handler is a shared resource on the **World** object. Sub-agents reach it through the `handle_ambiguity` tool, which routes to its exposed surface: **`recognize`** (record an ambiguity — level, observation, metadata), **`is_present`** (attribute: is there an unresolved ambiguity?), **`ask`** (generate the clarification text), and **`resolve`** (clear it once the user has answered).
 
 ## Levels of Ambiguity
 
@@ -16,7 +16,7 @@ Based on levels of grounding uncertainty (Horvitz & Paek, [Grounding Criterion](
 3. Uncertainty at signal
 4. Uncertainty at channel
 
-The handler maps these into a **closed set of four levels**, forming a gradient of decreasing uncertainty. The vocabulary is locked — `declare()` rejects any other level. Cite by name; never extend without explicit approval.
+The handler maps these into a **closed set of four levels**, forming a gradient of decreasing uncertainty. The vocabulary is locked — `recognize()` rejects any other level. Cite by name; never extend without explicit approval.
 
 | Level | What's unknown | Example | Artifact shape |
 |---|---|---|---|
@@ -33,7 +33,7 @@ The level maps one-to-one onto the NLU correctness gate that failed: **gate 1 (i
 **gate 2 (grounding) → `partial`**, **gate 3 (slot) → `specific`** (`confirmation` is the fork case, not a
 gate failure).
 
-| When the policy discovers... | Declare | Metadata |
+| When the policy discovers... | Recognize | Metadata |
 |---|---|---|
 | No entity slot filled, no candidate in scratchpad | `general` | none |
 | Entity is post/section but `post_id` unresolvable | `partial` | `{missing_entity: 'post'}` |
@@ -43,15 +43,15 @@ gate failure).
 
 ## Lifecycle
 
-1. **Recognize** — A component detects uncertainty. Two main entry points: NLU during `think()` (before the flow is stacked — cheap to re-route) or PEX during policy execution (flow already active). This is the hardest step — naive models are over-confident.
-2. **Declare** — The component calls `declare(level, observation=..., metadata=...)` to record the uncertainty. One clarification per turn — return immediately after declare.
+1. **Detect** — A component detects uncertainty. Two main entry points: NLU during `think()` (before the flow is stacked — cheap to re-route) or PEX during policy execution (flow already active). This is the hardest step — naive models are over-confident.
+2. **Recognize** — The component calls `recognize(level, observation=..., metadata=...)` to record the uncertainty. One clarification per turn — return immediately after recognize.
 3. **Respond** — Based on the level, the handler determines the response strategy: ask a clarification question, present multiple plausible options, or render UI for gathering feedback.
 4. **Resolve** — Uncertainty is cleared when the user provides clarification, the Agent re-routes successfully, or the flow completes. Calls `resolve()` to clear stored values.
 
-## Declare Signature
+## Recognize Signature
 
 ```python
-self.ambiguity.declare(level, observation=<human_text>, metadata=<classification>)
+self.ambiguity.recognize(level, observation=<human_text>, metadata=<classification>)
 ```
 
 - **`level`** — one of the four closed values.
@@ -60,12 +60,12 @@ self.ambiguity.declare(level, observation=<human_text>, metadata=<classification
 
 ```python
 # specific — value slot missing
-self.ambiguity.declare('specific',
+self.ambiguity.recognize('specific',
     observation='Which tone should I use, formal or casual?',
     metadata={'missing_slot': 'tone'})
 
 # partial — entity unresolved across alternatives
-self.ambiguity.declare('partial',
+self.ambiguity.recognize('partial',
     observation='Simplify needs either a section or an image to target.',
     metadata={'missing_entity': 'section_or_image'})
 ```
@@ -74,25 +74,25 @@ self.ambiguity.declare('partial',
 
 ### Uncertainty Counts
 
-Integer counts per level (general, partial, specific, confirmation). Each `declare()` call increments the count — this can represent distinct ambiguities (e.g. two missing slots) or repeated failures on the same issue (retries). Higher count signals greater severity.
+Integer counts per level (general, partial, specific, confirmation). Each `recognize()` call increments the count — this can represent distinct ambiguities (e.g. two missing slots) or repeated failures on the same issue (retries). Higher count signals greater severity.
 
 ### Public Attributes
 
-After `declare()`, the handler exposes `level`, `metadata`, and `observation` as plain attributes for downstream readers (PEX retry logic, `ask()`, debugging tools). These auto-clear at the end of every turn.
+After `recognize()`, the handler exposes `level`, `metadata`, and `observation` as plain attributes for downstream readers (PEX retry logic, `ask()`, debugging tools). These auto-clear at the end of every turn.
 
 ## Core Functions
 
-- **`declare(level, observation=, metadata=)`** — record uncertainty (closed-vocab level, free-text observation, classification metadata).
+- **`recognize(level, observation=, metadata=)`** — record uncertainty (closed-vocab level, free-text observation, classification metadata).
 - **`ask()`** — produce the clarification text; routes by level (`general_ask`, `partial_ask`, `specific_ask`, `confirmation_ask`). Its output is **folded into PEX's composed reply**, not delivered through a separate naturalize step.
-- **`present()`** — render helper for PEX; returns a renderable description of the unresolved ambiguity (text + optional confirmation block).
+- **`is_present`** — boolean attribute PEX reads; true while an unresolved ambiguity is stored.
 - **`needs_clarification()` / `should_escalate()`** — predicates PEX uses to decide whether to escalate to the user or attempt recovery first.
 - **`resolve()`** — clears stored level, observation, metadata.
 
 ## Component Interactions
 
-- **NLU `think()`**: Holds confidence over flows within each intent. The first round of slot-filling happens inside `think()`, giving NLU a chance to detect Partial or Specific ambiguity and declare it *before* the flow is stacked. This is good timing — re-routing is cheap. Low overall confidence → General. Entity grounding uncertainty → Partial.
-- **NLU `contemplate()`**: When re-routing after a failed flow, the declared ambiguity level + metadata inform re-prediction.
-- **PEX**: Policies declare ambiguity when slot review or skill execution surfaces unresolved user intent. Typically Specific or Confirmation, since the flow is already active.
-- **PEX**: When escalation is warranted, PEX calls `present()` / `ask()` and surfaces the clarification, which the main Agent delivers to the user.
+- **NLU `think()`**: Holds confidence over flows within each intent. The first round of slot-filling happens inside `think()`, giving NLU a chance to detect Partial or Specific ambiguity and recognize it *before* the flow is stacked. This is good timing — re-routing is cheap. Low overall confidence → General. Entity grounding uncertainty → Partial.
+- **NLU `contemplate()`**: When re-routing after a failed flow, the recognized ambiguity level + metadata inform re-prediction.
+- **PEX**: Policies recognize ambiguity when slot review or skill execution surfaces unresolved user intent. Typically Specific or Confirmation, since the flow is already active.
+- **PEX**: When escalation is warranted, PEX reads `is_present` and calls `ask()` and surfaces the clarification, which the main Agent delivers to the user.
 - **PEX (composition)**: PEX folds the handler's `observation` / `ask()` text into the final user-facing question directly via its voice Skill — there is no separate naturalize tool or response template.
 - **Dialogue State**: Stores top-N confidence scores for logging and debugging. Does not automatically trigger the handler — NLU and policies own that decision.

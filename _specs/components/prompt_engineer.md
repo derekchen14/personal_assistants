@@ -2,10 +2,10 @@
 
 A [PEX](../modules/pex.md) surface: the provider-agnostic prompt interface that every module's model call
 routes through (NLU detection, MEM summarization, PEX skills), owned by PEX as the module that executes. It
-assembles, executes, and validates prompts for any calling component, and owns model dispatch, prompt caching,
+assembles, executes, and validates prompts for any calling component, and owns model selection, prompt caching,
 retry/backoff, and structured-output parsing.
 
-## Provider-Agnostic Dispatch
+## Provider-Agnostic Model Selection
 
 `PromptEngineer` routes through a single-token family swap.
 
@@ -30,23 +30,23 @@ Swapping families is a one-line change. Domain code never references a concrete 
 
 ## Two Skill Entry Points
 
-`skill_call` and `tool_call` are siblings — both run a per-flow skill prompt; they differ only in whether tools are exposed.
+`flow_reply` and `flow_execute` are siblings — both run a per-flow skill prompt; they differ only in whether tools are exposed.
 
 ```python
-text = engineer.skill_call(flow, convo_history, scratchpad,
+text = engineer.flow_reply(flow, convo_history, scratchpad,
                            skill_name=..., skill_prompt=..., resolved=..., max_tokens=N)
 
-text, tool_log = engineer.tool_call(flow, convo_history, scratchpad, tool_defs,
-                                    tool_dispatcher, skill_name=..., skill_prompt=...,
+text, tool_log = engineer.flow_execute(flow, convo_history, scratchpad, tool_defs,
+                                    call_tool, skill_name=..., skill_prompt=...,
                                     resolved=..., max_tokens=N)
 ```
 
-- `skill_call` — single-shot LLM call; returns text only. Used when the skill produces prose or structured output that the policy parses.
-- `tool_call` — agentic loop with an 8-iteration cap; returns `(text, tool_log)`. Used when the skill must select tools and persist results.
+- `flow_reply` — single-shot LLM call; returns text only. Used when the skill produces prose or structured output that the policy parses.
+- `flow_execute` — agentic loop with an 8-iteration cap; returns `(text, tool_log)`. Used when the skill must select tools and persist results.
 
 `PromptEngineer` is also **callable** for one-shot prompts that don't go through a skill: `engineer(prompt, task='<task>', max_tokens=N)` uses `_TASK_SUFFIXES[task]` for the system prompt.
 
-The deterministic-vs-agentic split is implied by the policy code — a deterministic flow calls `tools(name, params)` directly and never enters the engineer's skill path. There is no `flow.deterministic` flag.
+The deterministic-vs-agentic split is implied by the policy code — a deterministic flow calls `tools(name, params)` directly and never enters the engineer's skill path. There is no `flow.deterministic` attribute.
 
 ## Three-Layer Prompt Architecture
 
@@ -109,8 +109,8 @@ Templates live under `backend/prompts/`, split by consumer:
 | `for_contemplate.py` | Re-routing prompts | NLU contemplate |
 | `nlu/<intent>_slots.py` | Per-intent slot-filling prompt blocks | NLU slot phase |
 | `pex/sys_prompts.py` | Per-intent Background blocks | Skill system prompt |
-| `pex/skills/<flow>.md` | Per-flow skill body | `skill_call` / `tool_call` |
-| `pex/starters/<flow>.py` | Per-flow user-message builder | `skill_call` / `tool_call` |
+| `pex/skills/<flow>.md` | Per-flow skill body | `flow_reply` / `flow_execute` |
+| `pex/starters/<flow>.py` | Per-flow user-message builder | `flow_reply` / `flow_execute` |
 
 ## Backoff & Retry
 
@@ -120,7 +120,7 @@ Templates live under `backend/prompts/`, split by consumer:
 
 ## Guardrails & Output Parsing
 
-`apply_guardrails(text, format=...)` parses LLM output into structured form, dispatching to `_parse_json` / `_parse_sql` / `_parse_markdown`. Failure-closed: malformed output raises rather than returning a degraded default, so the policy can route the caller through a `parse_failure` violation frame.
+`apply_guardrails(text, format=...)` parses LLM output into structured form, routing to `_parse_json` / `_parse_sql` / `_parse_markdown`. Failure-closed: malformed output raises rather than returning a degraded default, so the policy can route the caller through a `parse_failure` violation.
 
 - Strip markdown fences and disallowed imports (code formats)
 - Validate structured output against expected JSON shape

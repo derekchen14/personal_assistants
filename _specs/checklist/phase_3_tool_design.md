@@ -198,7 +198,7 @@ Some components are exposed as tools to skills during PEX execution. These ARE i
 |---|---|
 | `append_to_scratchpad` / `read_from_scratchpad` | append findings (triggers NLU) / read prior findings |
 | `understand` | read the serialized Dialogue State belief |
-| `handle_ambiguity` | declare / present / ask / resolve |
+| `handle_ambiguity` | recognize / recover / ask / resolve |
 | `recap` / `recall` / `retrieve` | MEM L1 / L2 / L3 |
 | `flow_stack` | read slot values, prior flow results |
 

@@ -74,7 +74,7 @@ shared/
 │   ├── modules/
 │   │   ├── __init__.py
 │   │   ├── nlu.py                  # understand loop: classify_intent/detect_flow/fill_slots [Phase 5]
-│   │   ├── pex.py                  # acting loop, activate_flow, sub-agents               [Phase 5]
+│   │   ├── pex.py                  # PEX Agent loop, activate_flow, sub-agents            [Phase 5]
 │   │   ├── mem.py                  # recap / recall / retrieve skills                     [Phase 5]
 │   │   └── policies/               # 5 policy files: converse + 4 domain (no plan/clarify) [Phase 6]
 │   │       └── __init__.py

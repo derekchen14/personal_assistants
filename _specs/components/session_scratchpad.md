@@ -21,16 +21,16 @@ The scratchpad is a **shared resource** that many components read from and write
 **World** object — beside the [Ambiguity Handler](./ambiguity_handler.md), not on any single module. Every
 writer reaches it directly (`world.scratchpad` / PEX's `session_scratchpad`) — there is no NLU write proxy.
 It is an **append-only** log of thoughts and observations. Four methods (plus `attach`, which
-`World.open_session` calls to bind the pad to its session file):
+`World.open_session` calls to connect the pad to its session file):
 
 | Method | Caller | Effect |
 |---|---|---|
 | `append_entry(origin, entry)` | any sub-agent / the PEX loop / NLU | append a new entry; `origin` is stamped **in code** so it can't be forged |
 | `read(origin=None, keys=None)` | any sub-agent / the PEX loop | read entries (by origin, by present keys, or walk the pad) — read-only |
 | `amend_entry(origin, turn_number, entry)` | **NLU only** | modify the EXISTING entry identified by origin + turn_number (the pad's unique ID) in place; raises when no entry carries that ID |
-| `prune_entry(origin, turn_number)` | **NLU only** | remove the entry identified by origin + turn_number — a stale note, a merged duplicate |
+| `prune_entry(origin, turn_number)` | **NLU only** | remove the entry identified by origin + turn_number — a stale entry, a merged duplicate |
 
-Only NLU may mutate existing entries — everyone else appends. This keeps the log honest while letting NLU
+Only NLU may change existing entries — everyone else appends. This keeps the log honest while letting NLU
 repair it. NLU reviews the pad once per turn at its own turn point (the end of `understand`), which also
 covers the previous turn's PEX/policy appends; a per-append review trigger is designed-not-built.
 
@@ -40,10 +40,10 @@ Entries are dicts. The required fields are intentionally minimal — far fewer t
 State — and producers add whatever payload keys they need. Producers and consumers depend on the payload
 shape; the shape is the contract. Each CODE writer stamps the required fields itself — nothing is added
 behind its back; the one exception is the LLM-authored `append_to_scratchpad` tool entry, which PEX's
-dispatch handler normalizes in code (and rejects when it lacks an `origin`).
+tool handler normalizes in code (and rejects when it lacks an `origin`).
 
 - **Storage**: always the append-only JSONL file `<session dir>/scratchpad.jsonl` (one stamped entry per
-  line), bound at `World.open_session` — the disk file is what makes the pad automatically shared across
+  line), connected at `World.open_session` — the disk file is what makes the pad automatically shared across
   all agents and sub-agents. When an origin is written more than once, the **newest entry wins** on read.
 
 | Required field | Type | Purpose |
@@ -54,9 +54,9 @@ dispatch handler normalizes in code (and rejects when it lacks an `origin`).
 | `used_count` | `int` | `0` at append; bumped by a consumer that explicitly reports using the entry |
 | _(payload keys)_ | varies | Flow-specific findings / output |
 
-Completion records add `summary` and `metadata` on top of the required fields; their `origin` is the
+Completion entries add `summary` and `metadata` on top of the required fields; their `origin` is the
 completed flow's name. There is no dedicated completion method — `complete_flow` (and
-`activate_flow`'s fallback) build the record and call `append_entry` like any other producer.
+`activate_flow`'s fallback) build the entry and call `append_entry` like any other producer.
 
 ```python
 # Producer — append at policy entry (the producer stamps the required fields itself)
@@ -72,7 +72,7 @@ findings = entries[-1]['findings'] if entries else []
 
 Target cap of 64 entries (typically fewer than 16); cap enforcement is designed-not-built — see
 Eviction below. Entries are appended by producers as soon as the finding
-exists, not buffered until end-of-flow. Reads never mutate `used_count` — a consumer that actually uses an
+exists, not buffered until end-of-flow. Reads never change `used_count` — a consumer that actually uses an
 entry (e.g. a Revise skill reporting `used` keys) writes the bump back explicitly; automatic `used_count`
 maintenance by NLU review is designed-not-built.
 
@@ -96,7 +96,7 @@ about **race conditions**. We resolve this through [NLU](../modules/nlu.md): `NL
 **once per turn at NLU's own turn point** (the end of `understand`) and keeps the pad conformant. The
 current pass is conservative — it losslessly repairs entries missing the required fields via the NLU-only
 `amend_entry` and returns diagnostics `{reviewed, size, repaired}`; the semantic pass (merging duplicates
-via `amend_entry` + `prune_entry`, reconciling contradictions, pruning stale notes) and the per-append /
+via `amend_entry` + `prune_entry`, reconciling contradictions, pruning stale entries) and the per-append /
 background review trigger are designed-not-built.
 
 Writes are **non-blocking** (fire-and-forget): a producer appends and proceeds without waiting for any
@@ -106,7 +106,7 @@ review, and readers **tolerate un-reconciled entries** (newest entry under a key
 
 When a user explicitly saves a finding, or when an entry meets one of the criteria below, the entry is
 evaluated for promotion to [User Preferences](./user_preferences.md) (L2) or
-[Business Context](./business_context.md) (L3).
+[Business Knowledge](./business_context.md) (L3).
 
 | Criterion | Metric |
 |---|---|
@@ -115,7 +115,7 @@ evaluated for promotion to [User Preferences](./user_preferences.md) (L2) or
 | Importance (explicit) | User-directed save via `store_preference` |
 
 Auto-promotion (the frequency counter plus the low-tier LLM-judge) runs as a **background MEM task**, off the
-turn's critical path; explicit saves go through `store_preference`. Promoted business context is written to
+turn's critical path; explicit saves go through `store_preference`. Promoted business knowledge is written to
 `agent.md`.
 
 ## Eviction

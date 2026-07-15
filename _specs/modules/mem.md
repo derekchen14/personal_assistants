@@ -39,7 +39,7 @@ fallbacks, trigger keywords, and a feedback-updated `confidence` — rendered in
 endorsed and tentatively when guessed; a reserved **caution / risk-tolerance** dial is specified but not yet
 wired (see [User Preferences](../components/user_preferences.md)).
 
-## L3 — Business Context
+## L3 — Business Knowledge
 
 The closest equivalent to RAG: unstructured data the user provides — messages, PDFs, documents — most
 commonly used for answering **FAQs**. Per-client, embedded in a shared vector space, and retrieved via an
@@ -91,7 +91,7 @@ event stream. # designed-not-built
 When the background MEM loop exists (# designed-not-built), retrieval can run ahead of need — surfacing the
 right preference or document *before* the user asks. The **push channel** is twofold: MEM **prefetches** likely-needed
 entries into its cache so the eventual `recall` / `retrieve` returns instantly, and when it judges an entry
-highly relevant it **appends a note to the [Session Scratchpad](../components/session_scratchpad.md)** — the
+highly relevant it **appends an entry to the [Session Scratchpad](../components/session_scratchpad.md)** — the
 existing swarm channel — so PEX sees it without a dedicated pull. There is no separate injection path into
 PEX's prompt. The three skills are also how the agent pulls memory on demand:
 a sub-agent calls `recap` / `recall` / `retrieve` rather than routing through a separate "Internal" intent
