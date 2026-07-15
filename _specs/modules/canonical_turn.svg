@@ -1,0 +1,189 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="1416" viewBox="0 0 1060 1416" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+  <style>
+    .frame { fill: #f9fafb; stroke: #6b7280; stroke-width: 2; }
+    .band { fill: #e5e7eb; stroke: #6b7280; }
+    .nluC { fill: #dcfce7; stroke: #16a34a; }
+    .nluA { fill: #16a34a; stroke: #166534; }
+    .pexC { fill: #dbeafe; stroke: #2563eb; }
+    .pexA { fill: #2563eb; stroke: #1e40af; }
+    .memC { fill: #f3e8ff; stroke: #9333ea; }
+    .memA { fill: #9333ea; stroke: #6b21a8; }
+    .t  { font-size: 12px; fill: #111827; text-anchor: middle; }
+    .tb { font-size: 12px; fill: #111827; text-anchor: middle; font-weight: bold; }
+    .ts { font-size: 11px; fill: #111827; text-anchor: middle; }
+    .tw  { font-size: 12px; fill: #ffffff; text-anchor: middle; }
+    .twb { font-size: 12px; fill: #ffffff; text-anchor: middle; font-weight: bold; }
+    .tsw { font-size: 11px; fill: #ffffff; text-anchor: middle; }
+    .lbl { font-size: 11px; fill: #374151; text-anchor: middle; font-style: italic; }
+    .arrow  { stroke: #4b5563; stroke-width: 1.5; marker-end: url(#arr); }
+    .msg { stroke: #4b5563; stroke-width: 1.5; stroke-dasharray: 5 4; marker-end: url(#arr); }
+    .life { stroke-width: 1.5; stroke-dasharray: 4 4; opacity: 0.45; }
+    .key { font-size: 11px; fill: #374151; }
+  </style>
+
+  <!-- Assistant wrapper frame -->
+  <rect class="frame" x="8" y="8" width="1044" height="1396" rx="10"/>
+  <text class="tb" x="530" y="34" font-size="15">Assistant · take_turn — the deterministic wrapper around the whole turn</text>
+
+  <!-- lifelines -->
+  <line class="life" x1="210" y1="74" x2="210" y2="1360" stroke="#16a34a"/>
+  <line class="life" x1="540" y1="74" x2="540" y2="1360" stroke="#2563eb"/>
+  <line class="life" x1="860" y1="74" x2="860" y2="1360" stroke="#9333ea"/>
+
+  <!-- column headers -->
+  <rect class="nluC" x="125" y="46" width="170" height="28" rx="6"/>
+  <text class="tb" x="210" y="65">NLU — the Heart</text>
+  <rect class="pexC" x="455" y="46" width="170" height="28" rx="6"/>
+  <text class="tb" x="540" y="65">PEX — the Hands</text>
+  <rect class="memC" x="775" y="46" width="170" height="28" rx="6"/>
+  <text class="tb" x="860" y="65">MEM — the Head</text>
+
+  <!-- Assistant opens the turn -->
+  <rect class="band" x="40" y="92" width="980" height="28" rx="6"/>
+  <text class="tb" x="530" y="110">Assistant · open the turn — ambiguity ask-count reset · route to PEX</text>
+
+  <!-- MEM: user turn added / PEX: prepare -->
+  <rect class="memC" x="720" y="134" width="280" height="26" rx="6"/>
+  <text class="t" x="860" y="151">add_turn(user utterance)</text>
+  <rect class="pexC" x="390" y="134" width="300" height="40" rx="6"/>
+  <text class="tb" x="540" y="150">module · prepare()</text>
+  <text class="ts" x="540" y="166">budgets reset · message appended · loop entered</text>
+
+  <!-- PEX 1 -->
+  <rect class="pexA" x="390" y="186" width="300" height="40" rx="6"/>
+  <text class="twb" x="540" y="202">PEX 1 · _run_loop</text>
+  <text class="tsw" x="540" y="218">System-1 intent sense, in the agent's own reasoning</text>
+
+  <!-- the hint -->
+  <text class="lbl" x="375" y="244">the hint — Assistant relays PEX's first-pass selection</text>
+  <line class="arrow" x1="540" y1="250" x2="216" y2="250"/>
+
+  <!-- NLU check -->
+  <rect class="nluC" x="60" y="262" width="300" height="40" rx="6"/>
+  <text class="tb" x="210" y="278">module · check()</text>
+  <text class="ts" x="210" y="294">store PEX's intent, hand control back</text>
+
+  <!-- control returns -->
+  <text class="lbl" x="375" y="320">control returns</text>
+  <line class="arrow" x1="210" y1="326" x2="534" y2="326"/>
+
+  <!-- PEX decision -->
+  <rect class="pexC" x="390" y="338" width="300" height="40" rx="6"/>
+  <text class="t" x="540" y="354">clear domain intent → proceed now</text>
+  <text class="t" x="540" y="370">Plan or Clarify → wait until hook point 1</text>
+
+  <!-- slot 2, concurrent -->
+  <rect class="pexA" x="390" y="390" width="300" height="54" rx="6"/>
+  <text class="twb" x="540" y="406">PEX 2 · manage_flows()</text>
+  <text class="tsw" x="540" y="421">gates a stackon over an Active flow</text>
+  <text class="tsw" x="540" y="436">(Workflow Planner skill · usually skipped)</text>
+  <rect class="nluA" x="60" y="390" width="300" height="54" rx="6"/>
+  <text class="twb" x="210" y="406">NLU 2 · _detect_flow + tally</text>
+  <text class="tsw" x="210" y="421">ensemble vote over the hinted candidates;</text>
+  <text class="tsw" x="210" y="436">tie-break on a cross-intent split</text>
+  <text class="lbl" x="375" y="420">∥ concurrent</text>
+
+  <!-- NLU think -->
+  <rect class="nluC" x="60" y="456" width="300" height="54" rx="6"/>
+  <text class="tb" x="210" y="472">module · think()</text>
+  <text class="ts" x="210" y="487">same flow → continue</text>
+  <text class="ts" x="210" y="502">else create + stackon() the new flow</text>
+
+  <!-- NLU 3 -->
+  <rect class="nluA" x="60" y="522" width="300" height="40" rx="6"/>
+  <text class="twb" x="210" y="538">NLU 3 · slot-fill (_fill_slots)</text>
+  <text class="tsw" x="210" y="553">the schema decides what needs filling</text>
+
+  <!-- NLU validate -->
+  <rect class="nluC" x="60" y="574" width="300" height="60" rx="6"/>
+  <text class="tb" x="210" y="590">module · validate() — one of two:</text>
+  <text class="ts" x="210" y="606">1 same flow → fill it · aligned entry</text>
+  <text class="ts" x="210" y="621">2 new flow → already stacked · entry announces it</text>
+
+  <!-- settled belief -->
+  <text class="lbl" x="375" y="654">settled belief — the Plan/Clarify blocking read (hook point 1)</text>
+  <line class="msg" x1="210" y1="660" x2="534" y2="660"/>
+
+  <!-- PEX execute -->
+  <rect class="pexC" x="390" y="672" width="300" height="54" rx="6"/>
+  <text class="tb" x="540" y="688">module · execute()</text>
+  <text class="ts" x="540" y="703">code stackon + policy start — no I/O wait</text>
+  <text class="ts" x="540" y="718">hook point 1 · pre-flow: the Plan/Clarify blocking read</text>
+
+  <!-- PEX 4 -->
+  <rect class="pexA" x="390" y="738" width="300" height="52" rx="6"/>
+  <text class="twb" x="540" y="754">PEX 4 · policy sub-agent (llm_execute)</text>
+  <text class="tsw" x="540" y="769">the flow's task with its scoped tools</text>
+  <text class="tsw" x="540" y="784">hooks 2 pre · 3 post · 4 retry wrap each tool call</text>
+
+  <!-- memory pulls -->
+  <text class="lbl" x="700" y="796">pull memory on demand — recap / recall / retrieve</text>
+  <line class="msg" x1="540" y1="802" x2="854" y2="802"/>
+  <text class="lbl" x="533" y="826">Ambiguity Handler recover reads L2 preferences (as needed)</text>
+  <line class="msg" x1="210" y1="832" x2="854" y2="832"/>
+
+  <!-- scratchpad entry lands -->
+  <text class="lbl" x="375" y="858">Scratchpad entry — aligned, or announcing the stacked flow</text>
+  <line class="msg" x1="210" y1="864" x2="534" y2="864"/>
+
+  <!-- hook read -->
+  <rect class="pexC" x="390" y="876" width="300" height="54" rx="6"/>
+  <text class="tb" x="540" y="892">module · hook point 3 (post-tool) or 5 (post-LLM)</text>
+  <text class="ts" x="540" y="907">read the Session Scratchpad</text>
+  <text class="ts" x="540" y="922">different intent → code re-routes, agent not notified</text>
+
+  <!-- PEX 5 -->
+  <rect class="pexA" x="390" y="942" width="300" height="54" rx="6"/>
+  <text class="twb" x="540" y="958">PEX 5 · manage_flows() — the resolution</text>
+  <text class="tsw" x="540" y="973">same-intent conflicts only, at hook 3/5 —</text>
+  <text class="tsw" x="540" y="988">run the new flow or pop() it; skipped when aligned</text>
+
+  <!-- verify -->
+  <rect class="pexC" x="390" y="1008" width="300" height="40" rx="6"/>
+  <text class="tb" x="540" y="1024">module · verify()</text>
+  <text class="ts" x="540" y="1039">hook point 6 · run checks + the code pop()</text>
+
+  <!-- PEX 6 -->
+  <rect class="pexA" x="390" y="1060" width="300" height="40" rx="6"/>
+  <text class="twb" x="540" y="1076">PEX 6 · respond</text>
+  <text class="tsw" x="540" y="1091">generate the reply from the popped flows</text>
+
+  <!-- Assistant wraps up -->
+  <rect class="band" x="40" y="1112" width="980" height="44" rx="6"/>
+  <text class="tb" x="530" y="1129">Assistant · wrap up — send the reply + artifact blocks · save the agent turn</text>
+  <text class="t" x="530" y="1146">Pending flows remain → back to PEX 2 · otherwise start_to_finish()</text>
+
+  <!-- MEM wrap-up -->
+  <rect class="memC" x="720" y="1170" width="280" height="26" rx="6"/>
+  <text class="t" x="860" y="1187">add_turn(agent utterance)</text>
+  <rect class="memC" x="720" y="1208" width="280" height="40" rx="6"/>
+  <text class="tb" x="860" y="1224">module · start() — add the system turn</text>
+  <text class="ts" x="860" y="1240">reset is_newborn · clear choices · turn count</text>
+  <rect class="memA" x="720" y="1260" width="280" height="40" rx="6"/>
+  <text class="twb" x="860" y="1276">MEM 7 · _compaction + _promote</text>
+  <text class="tsw" x="860" y="1292">summarize the middle · Scratchpad → L2/L3</text>
+  <rect class="memC" x="720" y="1312" width="280" height="40" rx="6"/>
+  <text class="tb" x="860" y="1328">module · finish()</text>
+  <text class="ts" x="860" y="1344">save state.json · turn-end shape check</text>
+
+  <!-- key -->
+  <rect class="nluC" x="60" y="1372" width="16" height="16" rx="3"/>
+  <text class="key" x="82" y="1384">NLU module code</text>
+  <rect class="nluA" x="200" y="1372" width="16" height="16" rx="3"/>
+  <text class="key" x="222" y="1384">NLU agent (LLM)</text>
+  <rect class="pexC" x="340" y="1372" width="16" height="16" rx="3"/>
+  <text class="key" x="362" y="1384">PEX module code</text>
+  <rect class="pexA" x="480" y="1372" width="16" height="16" rx="3"/>
+  <text class="key" x="502" y="1384">PEX agent (LLM)</text>
+  <rect class="memC" x="620" y="1372" width="16" height="16" rx="3"/>
+  <text class="key" x="642" y="1384">MEM module code</text>
+  <rect class="memA" x="760" y="1372" width="16" height="16" rx="3"/>
+  <text class="key" x="782" y="1384">MEM agent (LLM)</text>
+  <line class="msg" x1="900" y1="1380" x2="940" y2="1380"/>
+  <text class="key" x="948" y="1384">message / read</text>
+</svg>
