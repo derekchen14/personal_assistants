@@ -1,0 +1,16 @@
+{
+  "publish_channel_first": {
+    "value": "Substack",
+    "endorsed": true,
+    "rankings": [],
+    "triggers": [],
+    "confidence": 1.0
+  },
+  "publish_channel_priority": {
+    "value": "Always publish to Substack first before any other channel.",
+    "endorsed": true,
+    "rankings": [],
+    "triggers": [],
+    "confidence": 1.0
+  }
+}
