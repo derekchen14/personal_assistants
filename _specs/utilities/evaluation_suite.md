@@ -20,7 +20,7 @@ Each level widens the scope. **Tests** check a **single decision** in isolation.
 of decisions** where **order matters** — often a tool-call trajectory. **Evals** take the **broad end-to-end view**:
 less concerned with the specifics of what happened, and instead focused on the **final result**.
 
-| Level | Stage | LLM | Proves | Speed |
+| Tier | Stage | LLM | Proves | Speed |
 |---|---|---|---|---|
 | **Model Unit Tests** | Contract & property | none | components honor their contracts in isolation | ms |
 | | Component isolation | one call | a single module does its job (detect, fill, write) | sec |
@@ -83,7 +83,7 @@ unit tests, no model call) and **(b) probabilistic** model predictions (one mode
 - **Deterministic** — one file per module: `nlu_unit_tests.py`, `pex_unit_tests.py`, `mem_unit_tests.py`. Each
   **stores its checks inline** and also holds that module's owned component/service/infra tests — NLU: Dialogue
   State + Session Scratchpad; PEX: Task Artifact, FlowStack, the domain services, snapshots, the completion
-  gate, and the skill/schema lints; MEM: Context Coordinator (L1), sessions, Business Context (L3). Free tier
+  gate, and the skill/schema lints; MEM: Context Coordinator (L1), sessions, Business Knowledge (L3). Free tier
   (`pytest -m "not llm"`), millisecond-fast.
 - **Probabilistic** — one file for all three modules: `model_tests.py`, selected by
   `--module nlu,pex,mem,all`. It **stores no cases inline**: the labels already live in the eval corpus
@@ -102,7 +102,7 @@ The free-tier suite — must stay green throughout development. `pytest` + Hypot
 millisecond-fast. Covers component **contracts** and pure logic: the Dialogue State belief tools
 (`classify_intent` / `detect_flow` / `fill_slots` / `complete_flow`) and their grounding
 validation, Flow Stack reload (in-memory vs. file-backed in lockstep), slot typing, the Task Artifact
-`Part` oneof, `state.json` round-trips, scratchpad writer-stamping, and completion-record shape. This is the
+`Part` oneof, `state.json` round-trips, scratchpad writer-stamping, and completion-entry shape. This is the
 gate every other level assumes; if these contract tests are red, nothing above runs.
 
 ### Component isolation (one LLM call)
@@ -130,7 +130,7 @@ Model-accuracy testing lives here too: when a prompt's exemplars change, evaluat
 
 Replay the **human-approved tool-call trajectories** — the trace dev set (the approved trajectories +
 `tolerance_rules.md`). The recorder parses a session's `messages.jsonl` + `scratchpad.jsonl` into per-turn
-`(tool, key_args, ok)` sequences, activated flows, and completion records; replay compares against the
+`(tool, key_args, ok)` sequences, flows run, and completion entries; replay compares against the
 approved trace, allowing only the documented tolerances. Deterministic and cheap — this is trajectory
 correctness made reproducible.
 
@@ -149,13 +149,13 @@ Default to **full workflow** (strictest); report all four for diagnostics.
 
 The Traces runner (`utils/evaluation_suite/_traces/run_traces.py`) scores each user turn's tool calls against
 the following agent turn's `actions` with a **token-level Levenshtein similarity** — `1 − editDistance / max(len)`
-between the dispatched domain tools and the expected list (`utils/evaluation_suite/scoring.py`). It is **partial credit against
+between the called domain tools and the expected list (`utils/evaluation_suite/scoring.py`). It is **partial credit against
 a threshold** (target ~0.9), not strict pass/fail: a new feature passes once similarity clears the bar, so
 tool-name drift shows up as a graded red rather than a hard break. One live pass over the corpus emits **two**
 metrics from a single set of model calls — `completion_rate` and `tool_match_rate` (mean similarity). Only
-real domain tools count: dispatched names are filtered to the keys of `schemas/tools.yaml`, so orchestration
-plumbing is ignored. **Declaring ambiguity is not a tool** — NLU owns the Ambiguity Handler and PEX only
-declares it — so `handle_ambiguity` never appears in `actions`; ambiguity is scored separately from the
+real domain tools count: called names are filtered to the keys of `schemas/tools.yaml`, so orchestration
+plumbing is ignored. **Recognizing ambiguity is not a tool** — NLU owns the Ambiguity Handler and PEX only
+recognizes it — so `handle_ambiguity` never appears in `actions`; ambiguity is scored separately from the
 user turn's `ambiguity` level, not from the tool trace.
 
 ### Adversarial / robustness
@@ -202,7 +202,7 @@ offline embedding, not an LLM), so scoring adds no meaningful cost on top of run
 5. **Latency** — **ideal** targets we **measure** but do **not** gate on: time-to-first-token **≤ 5 s**,
    full turn **≤ 10 s**, whole conversation **≤ 60 s**, the 8-scenario gate **≤ 10 min**. Track distance to
    these goals rather than pass/fail them.
-6. **Ambiguity** — did the agent declare ambiguity when the label says the turn is ambiguous (no false positives)?
+6. **Ambiguity** — did the agent recognize ambiguity when the label says the turn is ambiguous (no false positives)?
    Deterministic: from the per-turn `ambiguity` level.
 7. **Planning** — did multi-flow plan turns complete? Deterministic: from the multi-item plan stacks.
 
@@ -243,7 +243,7 @@ ends with a closing agent turn holding `actions` only, until a future batch auth
 | Task completion rate | E2E Agent Evaluations | absolute 0.90, then diff |
 | End-state / grounding parity | E2E Agent Evaluations | any break (hard) |
 | Output rubric (mean) | E2E Agent Evaluations | > 0.5 level drop |
-| Ambiguity accuracy (declare when present, no false positives) | E2E Agent Evaluations | any drop |
+| Ambiguity accuracy (recognize when present, no false positives) | E2E Agent Evaluations | any drop |
 | Planning appropriateness (plan multi-flow, no over-stacking) | E2E Agent Evaluations | any drop |
 | Latency (TTFT ≤5s · turn ≤10s · convo ≤60s · 8-scenario ≤10min) | E2E Agent Evaluations | measure-only, non-gating |
 | Mean latency | E2E Agent Evaluations | > 20% increase |

@@ -66,7 +66,7 @@ findable per case. Each line is one API-shaped message in order:
 
 - `read_state` result + a `[belief]` line — NLU's detection for the turn (intent, flow, confidence,
   slots). This is where you see what the agent *thought* the user wanted.
-- `write_state` / `activate_flow` calls — what PEX actually dispatched, and the result (or the error).
+- `write_state` / `activate_flow` calls — the calls PEX actually made, and the result (or the error).
 - the final assistant text — the reply the user saw.
 
 Read three or four turns in order and the break point is visible: a wrong flow at `[belief]`, a
@@ -122,3 +122,23 @@ restore after:
 git restore assistants/Hugo/database/content
 git clean -fd assistants/Hugo/database/content
 ```
+
+## Corpus curation
+
+`curate_corpus.py` denoises and filters the train split in review rounds. Its audit and selection
+commands write reports only; corpus changes require a resolved round manifest or final selection.
+
+```bash
+python utils/evaluation_suite/curate_corpus.py audit
+python utils/evaluation_suite/curate_corpus.py judge --tier high --resume  # only when needed
+python utils/evaluation_suite/curate_corpus.py round --round 1 --limit 12
+python utils/evaluation_suite/review_app/server.py
+python utils/evaluation_suite/curate_corpus.py apply-round --dry-run
+python utils/evaluation_suite/curate_corpus.py apply-round
+python utils/evaluation_suite/curate_corpus.py select --target 128
+python utils/evaluation_suite/curate_corpus.py finalize --target 128 --dry-run
+```
+
+The review ledger has a hard budget of 32 review events. Re-reviewing one conversation in a later
+round consumes another event. An open round must be fully resolved before it can be applied, and an
+open round blocks finalization.
