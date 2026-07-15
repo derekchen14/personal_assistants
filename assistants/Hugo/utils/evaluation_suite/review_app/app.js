@@ -1,10 +1,19 @@
 let scenarios = [];
 let current = null;
 let currentVerdict = null;
+let curationState = null;
+let currentReview = null;
 
 async function loadList() {
+  curationState = await (await fetch('/api/curation')).json();
   scenarios = await (await fetch('/api/scenarios')).json();
-  document.getElementById('listHeading').textContent = 'Flagged for Review';
+  document.getElementById('listHeading').textContent = curationState.active
+    ? `Curation Round ${curationState.round.round}` : 'Flagged for Review';
+  const generalized = document.getElementById('generalized');
+  generalized.style.display = curationState.active ? 'block' : 'none';
+  if (curationState.active) {
+    document.getElementById('generalizedText').value = curationState.round.generalized_feedback || '';
+  }
   document.getElementById('searchHint').textContent = '';
   renderList();
   renderProgress();
@@ -23,11 +32,17 @@ async function runSearch(query) {
 function renderProgress() {
   const total = scenarios.length;
   const done = scenarios.filter(s => s.verdict).length;
-  const ok = scenarios.filter(s => s.verdict === 'approve').length;
-  const minor = scenarios.filter(s => s.verdict === 'minor').length;
-  const needs = scenarios.filter(s => s.verdict === 'needs').length;
-  document.getElementById('progress').textContent =
-    `${done}/${total} reviewed · ${ok} approve · ${minor} minor · ${needs} needs`;
+  if (curationState && curationState.active) {
+    const events = curationState.ledger ? curationState.ledger.events.length : total;
+    document.getElementById('progress').textContent =
+      `${done}/${total} resolved · ${events}/32 review events used`;
+  } else {
+    const ok = scenarios.filter(s => s.verdict === 'approve').length;
+    const minor = scenarios.filter(s => s.verdict === 'minor').length;
+    const needs = scenarios.filter(s => s.verdict === 'needs').length;
+    document.getElementById('progress').textContent =
+      `${done}/${total} reviewed · ${ok} approve · ${minor} minor · ${needs} needs`;
+  }
 }
 
 function itemMarkup(s) {
@@ -52,7 +67,10 @@ async function loadScenario(id) {
   renderList();
   const c = await (await fetch('/api/scenario/' + encodeURIComponent(id))).json();
   const fb = await (await fetch('/api/feedback/' + encodeURIComponent(id))).json();
-  renderScenario(c, fb);
+  const review = curationState && curationState.active
+    ? await (await fetch('/api/curation/' + encodeURIComponent(id))).json() : null;
+  const displayed = review && review.edited_case ? review.edited_case : c;
+  renderScenario(displayed, fb, review);
 }
 
 function esc(s) {
@@ -92,8 +110,9 @@ function genPanel(c) {
          `<pre class="gen-json">${esc(JSON.stringify(g, null, 2))}</pre></details>`;
 }
 
-function renderScenario(c, fb) {
-  currentVerdict = fb.verdict || null;
+function renderScenario(c, fb, review = null) {
+  currentReview = review;
+  currentVerdict = review ? review.decision : (fb.verdict || null);
   const main = document.getElementById('main');
   const kind = scanKind(c);
   const kindChip = kind ? chip(kind, kind.toLowerCase()) : '';
@@ -101,7 +120,15 @@ function renderScenario(c, fb) {
              `${metaTag(c.use_case, 'Use case')}${metaTag(c.topic, 'Topic')}${kindChip}</div>`;
   html += `<h2>${esc(c.title)}</h2>`;
   html += `<div class="meta"><span class="tag">${esc(c.convo_id)}</span></div>`;
+  if (review && review.edited_case) {
+    html += `<div class="seed">Showing the proposed edited conversation</div>`;
+  }
   html += genPanel(c);
+  if (review) {
+    html += `<details class="gen"><summary>Curation findings · score ${esc(review.score)}</summary>` +
+      `<pre class="gen-json">${esc(JSON.stringify({audit: review.audit, judgment: review.judgment,
+        existing_feedback: review.existing_feedback, proposed_case: review.edited_case}, null, 2))}</pre></details>`;
+  }
   if (c.available_data && Object.keys(c.available_data).length) {
     html += `<div class="seed">seeded: ${esc(JSON.stringify(c.available_data))}</div>`;
   }
@@ -123,12 +150,16 @@ function renderScenario(c, fb) {
     html += `<div class="turn ${who}"><div class="bubble"><div class="who">${who}</div>` +
             `${esc(t.utterance)}${labels}${note}</div></div>`;
   }
-  html += `<div class="feedback">
-    <button class="needs ${currentVerdict==='needs'?'sel':''}" data-v="needs">✗ Needs work</button>
-    <button class="minor ${currentVerdict==='minor'?'sel':''}" data-v="minor">~ Minor edit</button>
-    <button class="approve ${currentVerdict==='approve'?'sel':''}" data-v="approve">✓ Approve</button>
+  const buttons = review
+    ? `<button class="needs ${currentVerdict==='delete'?'sel':''}" data-v="delete">✗ Delete</button>
+       <button class="minor ${currentVerdict==='fix'?'sel':''}" data-v="fix">~ Fix</button>
+       <button class="approve ${currentVerdict==='keep'?'sel':''}" data-v="keep">✓ Keep</button>`
+    : `<button class="needs ${currentVerdict==='needs'?'sel':''}" data-v="needs">✗ Needs work</button>
+       <button class="minor ${currentVerdict==='minor'?'sel':''}" data-v="minor">~ Minor edit</button>
+       <button class="approve ${currentVerdict==='approve'?'sel':''}" data-v="approve">✓ Approve</button>`;
+  html += `<div class="feedback">${buttons}
     <button class="save" id="saveBtn">Save</button>
-    <textarea id="comment" placeholder="Feedback / what to fix…">${esc(fb.comment || '')}</textarea>
+    <textarea id="comment" placeholder="Feedback / what to fix…">${esc(review ? review.correction || '' : fb.comment || '')}</textarea>
   </div>`;
   main.innerHTML = html;
   main.querySelectorAll('.feedback button[data-v]').forEach(b => {
@@ -138,7 +169,31 @@ function renderScenario(c, fb) {
       b.classList.add('sel');
     };
   });
-  document.getElementById('saveBtn').onclick = () => saveFeedback(c.convo_id);
+  document.getElementById('saveBtn').onclick = () => review ? saveCuration(c.convo_id) : saveFeedback(c.convo_id);
+}
+
+async function saveCuration(id) {
+  const editedCase = currentReview && currentReview.edited_case ? currentReview.edited_case : null;
+  const body = { decision: currentVerdict, correction: document.getElementById('comment').value,
+                 edited_case: editedCase };
+  await fetch('/api/curation/' + encodeURIComponent(id),
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const item = scenarios.find(s => s.id === id);
+  if (item) item.verdict = currentVerdict;
+  renderList();
+  renderProgress();
+  const btn = document.getElementById('saveBtn');
+  btn.textContent = 'Saved ✓';
+  setTimeout(() => { btn.textContent = 'Save'; }, 1200);
+}
+
+async function saveGeneralized() {
+  const body = { generalized_feedback: document.getElementById('generalizedText').value };
+  await fetch('/api/curation',
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const button = document.getElementById('saveGeneralized');
+  button.textContent = 'Saved ✓';
+  setTimeout(() => { button.textContent = 'Save generalized feedback'; }, 1200);
 }
 
 async function saveFeedback(id) {
@@ -160,5 +215,6 @@ document.getElementById('searchBox').addEventListener('input', event => {
   const query = event.target.value;
   searchTimer = setTimeout(() => runSearch(query), 200);
 });
+document.getElementById('saveGeneralized').onclick = saveGeneralized;
 
 loadList();
