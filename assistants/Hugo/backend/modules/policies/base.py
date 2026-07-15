@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 # The six sub-agent hook points (pex.md). A policy runs a sub-agent that can take destructive
 # action, so each point is an interception hook for an NLU signal (read from belief) or a user
 # interrupt. Three already have bodies elsewhere: pre_tool ← PEX._security_check,
-# verification ← PEX._validate_artifact, tool_retry ← retry_tool. pre_llm/post_llm are wired
+# verification ← PEX._verify_artifact, tool_retry ← retry_tool. pre_llm/post_llm are wired
 # live in llm_execute; post_tool's body lives in the engineer.flow_execute loop (integration point).
 HOOK_POINTS = ('pre_llm', 'pre_tool', 'post_tool', 'tool_retry', 'post_llm', 'verification')
 
@@ -39,7 +39,7 @@ class BasePolicy:
         self._get_tools_fn = components['get_tools']
         self.flow_stack = components['flow_stack']
         self._state_file = components['state_file']  # callable → path of the session state.json
-        self._completion = None  # record written by complete_flow, handed off via pop_completion
+        self._completion = None  # entry written by complete_flow, handed off via pop_completion
 
     # -- Sub-agent hook framework ------------------------------------------
 
@@ -221,7 +221,7 @@ class BasePolicy:
     def complete_flow(self, flow, state, context, summary:str, metadata:dict|None=None) -> dict|None:
         """The single call a policy makes at the moment its flow finishes. The status change goes
         through write_state op='update_flow' (so the grounding validation fires and state.json is
-        rewritten) and the completion record {summary, metadata} is appended to the session
+        rewritten) and the completion entry {summary, metadata} is appended to the session
         scratchpad under the flow's origin; activate_flow collects it via pop_completion and
         returns it as the tool result. Call it before stacking any follow-up flow — the completing
         flow must be top of stack."""
@@ -230,16 +230,16 @@ class BasePolicy:
                              f'pop the flows above it first')
         state.write_state(self._state_file(), 'update_flow', stack=self.flow_stack,
                           status='Completed')
-        record = {'version': 1, 'turn_number': context.turn_id, 'used_count': 0,
-                  'summary': summary, 'metadata': metadata or {}}
-        self.scratchpad.append_entry(flow.name(), record)
-        self._completion = {**record, 'origin': flow.name()}
+        entry = {'version': 1, 'turn_number': context.turn_id, 'used_count': 0,
+                 'summary': summary, 'metadata': metadata or {}}
+        self.scratchpad.append_entry(flow.name(), entry)
+        self._completion = {**entry, 'origin': flow.name()}
         return self._completion
 
     def pop_completion(self) -> dict|None:
-        """Hand the record written by complete_flow to activate_flow exactly once."""
-        record, self._completion = self._completion, None
-        return record
+        """Hand the entry written by complete_flow to activate_flow exactly once."""
+        entry, self._completion = self._completion, None
+        return entry
 
     # -- Helper Functions --------------------------------------
 

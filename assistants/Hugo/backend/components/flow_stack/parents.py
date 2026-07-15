@@ -4,6 +4,8 @@ class BaseFlow(object):
   def __init__(self):
     self.slots = {}
     self.tools = []
+    # is_newborn: placed this turn and untouched — policy verification and the turn end flip
+    # it off. is_uncertain: the policy hit an ambiguity or other issue; cleared on resolution.
     self.is_newborn = True
     self.is_uncertain = False
 
@@ -52,8 +54,7 @@ class BaseFlow(object):
     return all_required and at_least_one_elective
 
   def fill_slots_by_label(self, labels: dict):
-    """System 1: Targeted single-slot fill from PEX label extraction.
-    Labels format: {slot_name: extracted_value}
+    """Targeted single-slot fill from policy side; Labels format: {slot_name: extracted_value}
     The entity-slot branch is the entity-extraction path: it routes the value
     through `extract_entity` so domain parents can override for early validation
     (e.g. checking post existence). All other slots go through `fill_slot_values`."""
@@ -68,6 +69,7 @@ class BaseFlow(object):
     return self.is_filled()
 
   def fill_slot_values(self, values: dict):
+    """Broader slot-filling function used by NLU when first encountering a new flow"""
     raise NotImplementedError(f'{self.flow_type} must implement fill_slot_values')
 
   def slot_values_dict(self) -> dict:
@@ -96,14 +98,6 @@ class BaseFlow(object):
   def entity_values(self, size=False):
     values = self.slots[self.entity_slot].values
     return len(values) if size else values
-
-  def needs_to_think(self):
-    if self.is_uncertain or self.is_filled():
-      return False
-    return True
-
-  def match_action(self, action_name):
-    return action_name.startswith(self.parent_type.upper())
 
 
 # ── Domain Parents ───────────────────────────────────────────────────────

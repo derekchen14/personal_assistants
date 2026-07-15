@@ -150,7 +150,7 @@ def _serialize_for_summary(middle:list[dict]) -> str:
     return '\n\n'.join(parts)
 
 
-def build_compression_prompt(middle:list[dict], previous_summary:str|None, budget:int) -> str:
+def build_compaction_prompt(middle:list[dict], previous_summary:str|None, budget:int) -> str:
     """First compaction summarizes from scratch; re-compaction iteratively updates the previous
     summary so information survives multiple compactions. `budget` is the summary token target
     computed by the caller."""

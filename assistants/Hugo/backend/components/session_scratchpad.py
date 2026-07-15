@@ -29,19 +29,6 @@ class SessionScratchpad:
         with open(self._scratchpad_path, 'a', encoding='utf-8') as file:
             file.write(json.dumps(stamped) + '\n')
 
-    def append_completion(self, origin:str, summary:str, metadata:dict|None=None,
-                          turn_number:int=0) -> dict:
-        """Append the structured completion record a finished flow hands back to PEX."""
-        record = {
-            'version': 1,
-            'turn_number': turn_number,
-            'used_count': 0,
-            'summary': summary,
-            'metadata': metadata or {},
-        }
-        self.append_entry(origin, record)
-        return {**record, 'origin': origin}
-
     def read(self, origin:str|None=None, keys:list[str]|None=None) -> list[dict]:
         """Entries in append order (newest last), optionally filtered by `origin` and/or by `keys`
         that must all be present on an entry."""

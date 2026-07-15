@@ -14,12 +14,12 @@ _HEADING_LINE = re.compile(r'^\s*#{1,6}\s')
 
 class OutlineValidationError(ValueError):
     """Raised when a section write would produce a structurally invalid outline (duplicate
-    headings, depth overflow, orphaned bullets, etc.). Caught at the PEX dispatch boundary and
+    headings, depth overflow, orphaned bullets, etc.). Caught at PEX's tool boundary and
     surfaced as `_error: 'validation'` in the tool result so the skill can retry."""
 
 
 class PostNotFoundError(LookupError):
-    """Raised when a `post_id` does not match any entry in metadata. Caught at the PEX dispatch
+    """Raised when a `post_id` does not match any entry in metadata. Caught at PEX's tool
     boundary and surfaced as `_error: 'not_found'`."""
 
 

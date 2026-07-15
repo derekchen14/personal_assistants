@@ -39,7 +39,7 @@ _SPECIFIC_REASON = {'invalid_value', 'unclear_value', 'wrong_slot'}
 
 # Read-only domain tools the orchestrator may call directly for trivial lookups. Every write
 # still goes through a flow via manage_flows, preserving policy invariants, grounding
-# discipline, and completion records.
+# discipline, and completion entries.
 READ_ONLY_DOMAIN_TOOLS = ('find_posts', 'read_metadata', 'read_section', 'search_notes',
                           'list_channels', 'channel_status')
 
@@ -139,7 +139,7 @@ class PolicyExecutor:
             'channel_status':    (self._platform_service, 'channel_status'),
         }
 
-        # Real prompt-token usage off the last acting-loop API response — MEM's compression
+        # Real prompt-token usage off the last agent-loop API response — MEM's compaction
         # check reads it in the end-of-turn store (MEM.store_turn).
         self.last_prompt_tokens = 0
         # Flows that reached Completed during the current turn — reset per execute(), read by the
@@ -150,12 +150,12 @@ class PolicyExecutor:
         # Orchestrator hot-path tools — wiring only; the implementations live in
         # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
         self._orchestrator_toolset = {
-            'manage_flows':             self._dispatch_manage_flows,
-            'understand':               self._dispatch_understand,
-            'append_to_scratchpad':     self._dispatch_append_scratchpad,
-            'store_preference':         self._dispatch_store_preference,
-            'ask_clarification_question': self._dispatch_ask_clarification,
-            'recover_from_ambiguity':   self._dispatch_recover_ambiguity,
+            'manage_flows':             self._manage_flows,
+            'understand':               self._understand_user,
+            'append_to_scratchpad':     self._append_scratchpad,
+            'store_preference':         self._store_preference,
+            'ask_clarification_question': self._ask_clarification,
+            'recover_from_ambiguity':   self._recover_ambiguity,
         }
         self._policies: dict[str, object] = {}  # built when the world is attached (setter below)
         self.initialization()
@@ -224,7 +224,7 @@ class PolicyExecutor:
 
     # -- Validation -------------------------------------------------------
 
-    def _validate_artifact(self, artifact, flow):
+    def _verify_artifact(self, artifact, flow):
         """Check whether a artifact is good enough to show to the user. A artifact with a 'violation'
         set is already recognized as an error artifact, so it does NOT need Tier-1 retry. Return
         passed=False + is_error_frame=True so the outer caller routes it directly to the error path."""
@@ -281,7 +281,7 @@ class PolicyExecutor:
         """The acting loop the Assistant calls once per turn, after NLU has written belief. A
         pure click (dax, no text) is resolved deterministically — no LLM. Otherwise the bounded
         orchestrator loop reads belief (understand) and decides by intent per the system prompt,
-        dispatching tool calls through `_dispatch_tool`. Returns the spoken utterance."""
+        calling tools through `_tool`. Returns the spoken utterance."""
         state, context = self.world.state, self.world.context
         self.completed_this_turn = []
         self._injected = False  # belief injected once per turn (whether or not it matches)
@@ -311,6 +311,8 @@ class PolicyExecutor:
         if active_post:
             parts.append(f"post: {active_post}")
         context.add_turn('System', f"[checkpoint] {' | '.join(parts)}", turn_type='checkpoint')
+        for flow in self.flow_stack._stack:  # the turn is over: nothing on the stack is newborn
+            flow.is_newborn = False
 
     def _execute_click(self, state, context, dax:str, payload:dict) -> str:
         """Pure click: the dax names the flow and NLU.react already filled belief. Stack the
@@ -331,7 +333,7 @@ class PolicyExecutor:
 
     def _run_loop(self, system_prompt:str) -> str:
         """The bounded acting loop: call the LLM with the frozen system prompt + persistent
-        message list + orchestrator tool catalog; dispatch tool calls through `_dispatch_tool`;
+        message list + orchestrator tool catalog; call tools through `_tool`;
         append results. A plain-text response with no tool calls ends the turn and IS the
         utterance, verbatim."""
         context = self.world.context
@@ -373,12 +375,12 @@ class PolicyExecutor:
             results = []
             for tool_use in tool_uses:
                 # Pairing invariant: every appended tool_use MUST get a tool_result in the next
-                # message, even if the dispatch path itself crashes — a dangling tool_use poisons
+                # message, even if the tool call itself crashes — a dangling tool_use poisons
                 # messages.jsonl for every later turn of the session.
                 try:
                     result, last_call = self._guarded_call(tool_use, valid, last_call)
                 except Exception as ecp:  # noqa: BLE001 — convert to a corrective tool error
-                    log.exception('tool dispatch crashed: %s', ecp)
+                    log.exception('tool call crashed: %s', ecp)
                     result = {'_success': False, '_error': 'server_error',
                               '_message': f'{type(ecp).__name__}: {ecp}'}
                     last_call = None
@@ -416,8 +418,8 @@ class PolicyExecutor:
 
     def _guarded_call(self, tool_use, valid:set, last_call) -> tuple[dict, tuple]:
         """Guardrails around one tool call: hallucinated names and identical consecutive calls
-        return corrective errors instead of dispatching. Everything else routes through
-        `_dispatch_tool`, which already converts bad args into corrective tool errors the model
+        return corrective errors instead of calling the tool. Everything else routes through
+        `_tool`, which already converts bad args into corrective tool errors the model
         can retry on. These guards are the legitimate exception to the no-defensive-code rule —
         LLM output is unpredictable input.
 
@@ -438,13 +440,13 @@ class PolicyExecutor:
                       '_message': f'Already used {self.max_reads} read-only lookups this turn. '
                                   'Stack on and activate a flow, or respond to the user.'}
         else:
-            result = self._dispatch_tool(tool_use.name, dict(tool_use.input or {}))
+            result = self._tool(tool_use.name, dict(tool_use.input or {}))
             if tool_use.name in READ_ONLY_DOMAIN_TOOLS and result['_success']:
                 self._reads += 1
         return result, (call, result['_success'])
 
     def _track_usage(self, response):
-        """Record real prompt-token usage off an acting-loop API response (MEM's compression
+        """Record real prompt-token usage off an agent-loop API response (MEM's compaction
         trigger reads it, never estimates). Cache reads/writes count toward the window."""
         usage = response.usage
         if usage:
@@ -452,9 +454,9 @@ class PolicyExecutor:
                                        + (usage.cache_creation_input_tokens or 0)
                                        + (usage.cache_read_input_tokens or 0))
 
-    # -- Tool dispatch ----------------------------------------------------
+    # -- Tool calls -------------------------------------------------------
 
-    def _dispatch_tool(self, tool_name:str, tool_input:dict) -> dict:
+    def _tool(self, tool_name:str, tool_input:dict) -> dict:
         self.world.context.add_turn(
             'Agent', f'[tool:{tool_name}] {json.dumps(tool_input)[:200]}',
             turn_type='action',
@@ -465,19 +467,19 @@ class PolicyExecutor:
                 method = getattr(service, method_name)
                 return method(**tool_input)
             elif tool_name == 'declare_ambiguity':
-                return self._dispatch_declare_ambiguity(tool_input)
+                return self._declare_ambiguity(tool_input)
             elif tool_name == 'coordinate_context':
-                return self._dispatch_context_tool(tool_input)
+                return self._context_tool(tool_input)
             elif tool_name == 'read_scratchpad':
-                return self._dispatch_read_scratchpad(tool_input)
+                return self._read_from_scratchpad(tool_input)
             elif tool_name == 'read_flow_stack':
-                return self._dispatch_read_flow_stack(tool_input)
+                return self._read_flow_stack(tool_input)
             elif tool_name == 'stackon_flow':
-                return self._dispatch_stackon_flow(tool_input)
+                return self._stackon_flow(tool_input)
             elif tool_name == 'fallback_flow':
-                return self._dispatch_fallback_flow(tool_input)
+                return self._fallback_flow(tool_input)
             elif tool_name == 'save_findings':
-                return self._dispatch_save_findings_tool(tool_input)
+                return self._save_findings_tool(tool_input)
             elif tool_name in self._orchestrator_toolset:
                 return self._orchestrator_toolset[tool_name](tool_input)
             else:
@@ -495,7 +497,7 @@ class PolicyExecutor:
                 '_message': f'{type(ecp).__name__}: {ecp}',
             }
 
-    def _dispatch_context_tool(self, params:dict) -> dict:
+    def _context_tool(self, params:dict) -> dict:
         action = params.get('action', '')
         if action == 'get_history':
             turns = params.get('turns', 3)
@@ -511,7 +513,7 @@ class PolicyExecutor:
             return {'_success': True, 'checkpoint': cp}
         return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
 
-    def _dispatch_read_flow_stack(self, params:dict) -> dict:
+    def _read_flow_stack(self, params:dict) -> dict:
         details = params.get('details', 'flows')
         if details == 'slots':
             return {'_success': True, 'slots': self.flow_stack.get_flow().slot_values_dict()}
@@ -522,15 +524,15 @@ class PolicyExecutor:
         return {'_success': False, '_error': 'invalid_input',
                 '_message': f"details must be 'flows', 'slots', or 'flow_meta'; got {details!r}"}
 
-    def _dispatch_stackon_flow(self, params:dict) -> dict:
+    def _stackon_flow(self, params:dict) -> dict:
         self.flow_stack.stackon(params['flow'])
         return {'_success': True, 'stacked': params['flow']}
 
-    def _dispatch_fallback_flow(self, params:dict) -> dict:
+    def _fallback_flow(self, params:dict) -> dict:
         self.flow_stack.fallback(params['flow'])
         return {'_success': True, 'fell_back_to': params['flow']}
 
-    def _dispatch_declare_ambiguity(self, params:dict) -> dict:
+    def _declare_ambiguity(self, params:dict) -> dict:
         level, metadata = params['level'], params['metadata']
         err = _validate_ambig_metadata(level, metadata)
         if err:
@@ -540,7 +542,7 @@ class PolicyExecutor:
         self.world.ambiguity.recognize(level, metadata=metadata, observation=params.get('observation', ''))
         return {'_success': True}
 
-    def _dispatch_save_findings_tool(self, params:dict) -> dict:
+    def _save_findings_tool(self, params:dict) -> dict:
         """Persist structured findings to the scratchpad under the active flow's name.
 
         Tool-call-shaped replacement for skills that would otherwise emit a JSON blob as their
@@ -567,9 +569,9 @@ class PolicyExecutor:
             'references_used': references_used,
         }
 
-    # -- Orchestrator hot-path dispatch -----------------------------------
+    # -- Orchestrator hot-path tools --------------------------------------
     # Thin wiring onto the state, memory, and NLU surfaces. Errors raised below (bad
-    # write_state op, unknown flow, grounding violation) are caught by _dispatch_tool's
+    # write_state op, unknown flow, grounding violation) are caught by _tool's
     # try/except and returned as corrective tool errors for the orchestrator loop to retry on.
 
     def read_state(self, params:dict) -> dict:
@@ -577,22 +579,14 @@ class PolicyExecutor:
         state.flow_stack = self.flow_stack.to_list()  # saved copy tracks the one stack
         return {'_success': True, 'state': state.read_state()}
 
-    def _dispatch_manage_flows(self, params:dict) -> dict:
+    def _manage_flows(self, params:dict) -> dict:
         """The orchestrator's one flow tool — ops [update, stackon, fallback, pop].
         `update` changes a flow in place at any depth (flow_name targets a buried flow; blank means
         the top flow) and `pop` removes Completed AND Invalid flows in one sweep. Policy execution
         is runtime-owned: stackon (active defaults true), fallback, and a pop that surfaces a
         Pending flow run the top policy; `activate_flow` is internal plumbing, not a tool op.
         Belief and grounding stay NLU's job — no op here touches them."""
-        if params['op'] == 'activate':
-            return {'_success': False, '_error': 'invalid_input',
-                    '_message': "manage_flows no longer accepts op='activate'; stackon/fallback/"
-                                "pop run the top policy themselves, and an update that sets "
-                                "status='Active' re-runs the flow."}
-        op = {'update': 'update_flow'}.get(params['op'], params['op'])
-        return self._dispatch_write_state({**params, 'op': op})
-
-    def _dispatch_write_state(self, params:dict) -> dict:
+        params = {**params, 'op': {'update': 'update_flow'}.get(params['op'], params['op'])}
         state = self.world.state
         kwargs = dict(params.get('fields', {}))
         if 'flow_name' in params:
@@ -606,7 +600,7 @@ class PolicyExecutor:
                         '_message': f'flow {target.name()!r} has no slot(s) {unknown}; '
                                     f'valid slots: {list(target.slots)}'}
         if params['op'] == 'stackon':
-            # No slot hand-over while an ambiguity is open — the stalled flow's values are
+            # No slot hand-over while an ambiguity is open — the incomplete flow's values are
             # exactly what is in question (planner spec scenario 15 discussion).
             kwargs['transfer'] = not self.world.ambiguity.is_present
         document = state.write_state(self.world.state_file(), params['op'],
@@ -620,10 +614,10 @@ class PolicyExecutor:
                or (params['op'] == 'stackon' and params.get('active', True))
                or (params['op'] == 'update_flow' and kwargs.get('status') == 'Active'))
         if run:
-            return self._dispatch_top_policy(state, document)
+            return self._top_policy(state, document)
         return {'_success': True, 'state': document}
 
-    def _dispatch_top_policy(self, state, document:dict|None=None) -> dict:
+    def _top_policy(self, state, document:dict|None=None) -> dict:
         """Run the policy for the top runnable flow after a stack mutation. This is the
         runtime-owned activation path; it is intentionally not exposed as a planner tool."""
         top = self.flow_stack.get_flow()
@@ -677,8 +671,8 @@ class PolicyExecutor:
 
     def activate_flow(self, params:dict) -> dict:
         """Run the named flow's policy inline — the delegate_task analogue. Grounding comes
-        from the state file's grounding block; _security_check and _validate_artifact re-attach
-        around the policy run. On completion the flow's completion record is written to the
+        from the state file's grounding block; _security_check and _verify_artifact re-attach
+        around the policy run. On completion the flow's completion entry is written to the
         session scratchpad and returned as the tool result. State-file persistence stays with
         write_state."""
         state = self.world.state
@@ -693,18 +687,21 @@ class PolicyExecutor:
                     '_message': approval.blocks[0].data['prompt']}
 
         policy = self._policies[flow.intent]
-        artifact = policy.execute(state, self.world.context, self._dispatch_tool)
-        record = policy.pop_completion()  # set when the policy completed via complete_flow
+        artifact = policy.execute(state, self.world.context, self._tool)
+        entry = policy.pop_completion()  # set when the policy completed via complete_flow
         self.world.insert_artifact(artifact)
 
         # hook: post-flow
-        check = self._validate_artifact(artifact, flow)
+        check = self._verify_artifact(artifact, flow)
+        flow.is_newborn = False  # verification counts as touched, whatever the outcome
         if not check.passed:
+            flow.is_uncertain = True  # the policy hit an issue; cleared on resolution
             if check.is_error_frame:
                 return {'_success': False, '_error': 'execution_error',
                         '_message': artifact.data['violation'], 'thoughts': artifact.thoughts}
             return {'_success': False, '_error': 'validation', '_message': check.reason}
 
+        flow.is_uncertain = self.world.ambiguity.is_present
         state.flow_stack = self.flow_stack.to_list()
         blocks = _block_summaries(artifact)
         if flow.status != 'Completed':
@@ -712,25 +709,25 @@ class PolicyExecutor:
             return {'_success': True, 'status': flow.status, 'thoughts': artifact.thoughts,
                     'question': question, 'blocks': blocks}
         self.completed_this_turn.append(flow)  # for the end-of-turn checkpoint + MEM's store
-        if record is None:  # policy completed without calling complete_flow — synthesize a record
+        if entry is None:  # policy completed without calling complete_flow — synthesize an entry
             summary = artifact.thoughts or f'{flow.name()} completed'
-            record = {'version': 1, 'turn_number': self.world.context.turn_id, 'used_count': 0,
-                      'summary': summary, 'metadata': artifact.data or {}}
-            self.session_scratchpad.append_entry(flow.name(), record)
-            record = {**record, 'origin': flow.name()}
-        return {'_success': True, 'status': flow.status, 'completion': record, 'blocks': blocks}
+            entry = {'version': 1, 'turn_number': self.world.context.turn_id, 'used_count': 0,
+                     'summary': summary, 'metadata': artifact.data or {}}
+            self.session_scratchpad.append_entry(flow.name(), entry)
+            entry = {**entry, 'origin': flow.name()}
+        return {'_success': True, 'status': flow.status, 'completion': entry, 'blocks': blocks}
 
-    def _dispatch_understand(self, params:dict) -> dict:
+    def _understand_user(self, params:dict) -> dict:
         """The orchestrator's belief READ — invokes the Dialogue State component directly. NLU
         writes the belief before the loop runs, so every read sees this turn's detection. PEX
         never invokes the NLU module: think/react are the Assistant's calls."""
         return self.read_state(params)
 
-    def _dispatch_read_scratchpad(self, params:dict) -> dict:
+    def _read_from_scratchpad(self, params:dict) -> dict:
         entries = self.session_scratchpad.read(origin=params.get('origin'), keys=params.get('keys'))
         return {'_success': True, 'entries': entries}
 
-    def _dispatch_append_scratchpad(self, params:dict) -> dict:
+    def _append_scratchpad(self, params:dict) -> dict:
         if 'origin' not in params['entry']:
             return {'_success': False, '_error': 'invalid_input',
                     '_message': "entry needs a stable 'origin' to file it under."}
@@ -740,12 +737,12 @@ class PolicyExecutor:
         self.session_scratchpad.append_entry(entry.pop('origin'), entry)
         return {'_success': True, 'size': self.session_scratchpad.size}
 
-    def _dispatch_store_preference(self, params:dict) -> dict:
+    def _store_preference(self, params:dict) -> dict:
         """Persist a durable user preference to L2."""
         self.world.prefs.store_preference(params['key'], params['value'])
         return {'_success': True, 'key': params['key']}
 
-    def _dispatch_ask_clarification(self, params:dict) -> dict:
+    def _ask_clarification(self, params:dict) -> dict:
         """Generate the level-specific clarification question for the pending ambiguity — NLU
         authors it (wider view of the session than the orchestrator)."""
         if self.world.ambiguity.is_present:
@@ -754,7 +751,7 @@ class PolicyExecutor:
         return {'_success': False, '_error': 'invalid_input',
                 '_message': 'No pending ambiguity to ask about.'}
 
-    def _dispatch_recover_ambiguity(self, params:dict) -> dict:
+    def _recover_ambiguity(self, params:dict) -> dict:
         """Resolve the pending ambiguity internally (preferences + scratchpad) before escalating
         to the user — direct component calls, no NLU module invocation."""
         if not self.world.ambiguity.is_present:
@@ -804,7 +801,7 @@ class PolicyExecutor:
                     "Raise an ambiguity flag back to the user when a slot is missing, an entity "
                     "can't be resolved, or something needs confirming and you truly cannot "
                     "proceed.\n\n"
-                    "Per-level metadata shape (validated at dispatch — wrong shape returns invalid_input):\n"
+                    "Per-level metadata shape (validated at call time — wrong shape returns invalid_input):\n"
                     "- `general`      → metadata.missing ∈ {intent, flow}; metadata.error ∈ {misclassified, misdetected, user_error} (optional).\n"
                     "- `partial`      → metadata.missing ∈ {source, target, title, query}; metadata.entity ∈ {post, section, snippet, channel} (optional).\n"
                     "- `specific`     → metadata.missing = <slot name>; metadata.reason ∈ {invalid_value, unclear_value, wrong_slot} (optional).\n"
@@ -856,7 +853,7 @@ class PolicyExecutor:
                     "Read session scratchpad entries, newest last. Optional filters: `origin` "
                     "(a flow name, 'orchestrator', or a topic like 'recovery') and `keys` (only "
                     "entries carrying every named key — e.g. ['summary', 'metadata'] selects "
-                    "completion records). Pick up prerequisites left by earlier flows here."
+                    "completion entries). Pick up prerequisites left by earlier flows here."
                 ),
                 'input_schema': {
                     'type': 'object',
@@ -1038,7 +1035,7 @@ class PolicyExecutor:
                     "beliefs (intent, goal, confirmed/rejected, workflow_step), the grounding "
                     "block (the active post/sec/snip/chl entity), the flow stack, and flags — "
                     "cheap, call it whenever you need current state rather than guessing. NLU "
-                    "writes the belief before your loop runs; a stalled flow returns a "
+                    "writes the belief before your loop runs; an incomplete flow returns a "
                     "clarification `question` you can relay, or try `recover_from_ambiguity` "
                     "first."
                 ),

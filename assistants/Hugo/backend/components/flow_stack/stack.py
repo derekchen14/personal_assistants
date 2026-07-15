@@ -23,7 +23,7 @@ class FlowStack:
         """Push a flow on top of the stack. An in-flight flow beneath reverts to Pending and
         resumes after the new flow completes (pop promotes it back). Transfers filled slot values
         to the new flow when slot names match — callers pass transfer=False while an ambiguity is
-        open, since the stalled flow's values are exactly what is in question.
+        open, since the incomplete flow's values are exactly what is in question.
 
         Same-type dedupe: pushing the type already in flight returns the existing flow ONLY while
         that flow's entity slot is still empty — once it is grounded to an entity, a same-type

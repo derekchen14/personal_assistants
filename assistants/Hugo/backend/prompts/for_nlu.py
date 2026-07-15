@@ -248,9 +248,9 @@ def _render_filled_slots(flow) -> list[str]:
 
 
 def build_pending_question(question:str, choices:list) -> str:
-    """Appended to the slot-filling prompt when detection landed on a flow that is stalled on an
+    """Appended to the slot-filling prompt when detection landed on a flow that is waiting on an
     open question. Conservative-fill contract — an empty fill is always better than a fabricated
-    value; the stalled flow simply keeps asking."""
+    value; the incomplete flow simply keeps asking."""
     import json
     lines = ['<pending_question>']
     if question:

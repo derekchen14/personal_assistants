@@ -3,7 +3,7 @@ import logging
 from backend.components.context_coordinator import ContextCoordinator
 from backend.components.user_preferences import UserPreferences
 from backend.components.business_knowledge import BusinessKnowledge
-from backend.prompts.for_compressor import build_compression_prompt
+from backend.prompts.for_compactor import build_compaction_prompt
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class MemoryExtensionModule:
     def store_turn(self, utterance:str, prompt_tokens:int=0, completed:tuple=()):
         """The end-of-turn store (take_turn step 5): record the agent turn, bump the turn count,
         snapshot the stack onto the state and save state.json — the record of what actually
-        happened this turn, MEM's per the time rule — then run the compression check.
+        happened this turn, MEM's per the time rule — then run the compaction check.
         `prompt_tokens` is PEX's real acting-loop usage and `completed` the flows that reached
         Completed this turn, both passed by the Assistant (the World holds components, not
         modules). Promotion beyond explicit saves (PEX's store_preference tool writes L2 during
@@ -34,9 +34,9 @@ class MemoryExtensionModule:
         self.context_coordinator.add_turn('Agent', utterance, turn_type='utterance')
         state = self.world.state
         # Round 3.3 (D5): a completed flow other than the choices' writer has consumed them —
-        # the chosen value now lives in that flow's slots and completion record, so the
-        # candidates clear. Converse detours don't clear (a stalled question may still need
-        # its candidates when the user comes back).
+        # the chosen value now lives in that flow's slots and completion entry, so the
+        # candidates clear. A completed Converse flow doesn't clear them (an open question may
+        # still need its candidates when the user comes back).
         choices = state.grounding['choices']
         sources = {choice['source'] for choice in choices if isinstance(choice, dict)}
         if choices and any(flow.name() not in sources and flow.intent != 'Converse'
@@ -48,7 +48,7 @@ class MemoryExtensionModule:
         state.save(self.world.state_file())
         # artifact long-term storage (append world.latest_artifact() to artifacts.jsonl in the
         # session dir) # designed-not-built
-        self._compression_check(prompt_tokens)
+        self._compaction_check(prompt_tokens)
 
     @staticmethod
     def _check_turn_end_shape(stack:list):
@@ -63,24 +63,24 @@ class MemoryExtensionModule:
             log.warning('turn-end stack shape violated: top=%s terminal_leftovers=%s',
                         stack[-1]['status'] if stack else 'empty', terminal)
 
-    def _compression_check(self, prompt_tokens:int):
+    def _compaction_check(self, prompt_tokens:int):
         """Compactor trigger: real prompt-token usage from PEX's last acting-loop API response
         against the configured threshold, checked at the end-of-turn store, never mid-loop. A
         summarizer failure aborts the compaction — the message list stays unchanged and the
         turn's reply still goes out."""
-        compression = self.config['compression']
-        if prompt_tokens < compression['threshold_tokens']:
+        compaction = self.config['compaction']
+        if prompt_tokens < compaction['threshold_tokens']:
             return
         try:
-            self.context_coordinator.compress_messages(self._summarize_middle,
-                                                       compression['protect_tail'], prompt_tokens)
+            self.context_coordinator.compact_messages(self._summarize_middle,
+                                                      compaction['protect_tail'], prompt_tokens)
         except Exception as ecp:  # noqa: BLE001 — aux-LLM failure must not eat the reply
-            log.warning('compression aborted, messages unchanged: %s', ecp)
+            log.warning('compaction aborted, messages unchanged: %s', ecp)
 
     def _summarize_middle(self, middle:list[dict], previous_summary:str|None, budget:int) -> str:
         """The auxiliary middle-summarizer — the cheap aux model is PromptEngineer's LOW tier.
-        The prompt lives in backend/prompts/for_compressor.py."""
-        prompt = build_compression_prompt(middle, previous_summary, budget)
+        The prompt lives in backend/prompts/for_compactor.py."""
+        prompt = build_compaction_prompt(middle, previous_summary, budget)
         return self.engineer(prompt, task='compress', tier='low', max_tokens=int(budget * 1.3))
 
     def recap(self, n_turns:int|None=None, filter:str|None=None) -> str:

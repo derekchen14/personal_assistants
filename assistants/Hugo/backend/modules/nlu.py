@@ -113,50 +113,44 @@ class NaturalLanguageUnderstanding:
         if flow_name not in flow_classes:
             return self._write_non_policy_belief(flow_name, detection['confidence'], predicted_flows)
 
-        top = self.world.flows.get_flow()
-        stalled = top if top and top.status == 'Active' else None
-        if stalled and stalled.name() == flow_name:
-            return self._fill_active_flow(stalled, payload, detection)
+        curr_flow = self.world.flows.get_flow()
+        active_flow = curr_flow if curr_flow and curr_flow.status == 'Active' else None
+        if active_flow:
+            if active_flow.name() == flow_name:
+                return self._fill_active_flow(active_flow, payload, detection)
+            else:
+                prev_flow_name = active_flow.name()
+                new_entry = {
+                    'version': 1, 'turn_number': self.world.context.turn_id, 'used_count': 0,
+                    'prev_flow': prev_flow_name, 'new_flow': flow_name,
+                    'summary': f'added {flow_name} to stack before completing {prev_flow_name}',
+                    'question': self.ambiguity_handler.observation}
+                self.world.scratchpad.append_entry('nlu', new_entry)
 
         flow = flow_classes[flow_name]()
         self._fill_slots(flow, payload)
         self._repair_entities(self.world.state, flow)
         state = self._write_belief(flow_name, detection['confidence'], predicted_flows, flow)
         self._stack_detected_flow(flow, state)
-        if stalled and self.ambiguity_handler.is_present:
-            self._note_detour(stalled, flow_name)
 
         if self.ambiguity_handler.needs_clarification(state.confidence):
-            self.ambiguity_handler.recognize(
-                'general',
-                metadata={'top_detection': flow_name},
-                observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"',
-            )
+            self.ambiguity_handler.recognize('general', metadata={'top_detection': flow_name},
+                observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"')
         return state
 
     def _fill_active_flow(self, flow, payload:dict, detection:dict):
         """Detection landed on the flow already Active on the stack: slot-filling applies to THAT
         flow in place — no new stackon — and PEX resumes it. Belief is written from the detection
         tally as on any other turn; a fill that readies the flow resolves the open ambiguity."""
-        self._fill_slots(flow, payload, stalled=True)
+        self._fill_slots(flow, payload, incomplete=True)
         self._repair_entities(self.world.state, flow)
         if flow.is_filled() and self.ambiguity_handler.is_present:
             self.ambiguity_handler.resolve(explanation=f'answer filled {flow.name()}')
+            flow.is_uncertain = False
         state = self._write_belief(flow.name(), detection['confidence'],
                                    detection['pred_flows'], flow)
         state.flow_stack = self.world.flows.to_list()
         return state
-
-    def _note_detour(self, stalled, flow_name:str):
-        """A task change while a grounding question is open: the ambiguity stays unresolved, the
-        detour lands in the (additive) metadata — the observation string is immutable — and a
-        scratchpad note tells every agent why a new flow jumped the stalled one."""
-        note = f'user turned to {flow_name} before answering'
-        self.ambiguity_handler.metadata['detour'] = note
-        self.world.scratchpad.append_entry('detour', {
-            'version': 1, 'turn_number': self.world.context.turn_id, 'used_count': 0,
-            'stalled_flow': stalled.name(), 'detour_flow': flow_name,
-            'question': self.ambiguity_handler.observation})
 
     def _write_non_policy_belief(self, flow_name:str, confidence:float, pred_flows:list):
         state = self._write_belief(flow_name, confidence, pred_flows, flow=None)
@@ -232,7 +226,7 @@ class NaturalLanguageUnderstanding:
         state.flow_stack = self.world.flows.to_list()
         return stacked
 
-    def attempt_recovery(self):
+    def recover(self):
         result, success = self.ambiguity_handler.recover(self.world.prefs, self.world.scratchpad)
         entry = {'version': 1, 'turn_number': self.world.context.turn_id,
                  'used_count': 0, 'found' if success else 'missing': result}
@@ -494,7 +488,7 @@ class NaturalLanguageUnderstanding:
         edges = _get_edge_flows_for_intent(hint)
         return [name for name, cat in FLOW_ONTOLOGY.items() if cat['intent'] == hint or name in edges]
 
-    def _fill_slots(self, flow, payload:dict={}, stalled:bool=False):
+    def _fill_slots(self, flow, payload:dict={}, incomplete:bool=False):
         last_turn = self.world.context.last_user_turn
 
         if payload:
@@ -519,7 +513,7 @@ class NaturalLanguageUnderstanding:
         if not flow.is_filled():
             convo_history = self.world.context.compile_history()
             prompt = build_slot_filling_prompt(flow, convo_history, self._active_post_dict())
-            if stalled:  # the open question + shown candidates, with conservative-fill guidance
+            if incomplete:  # the open question + shown candidates, with conservative-fill guidance
                 prompt += '\n\n' + build_pending_question(self.ambiguity_handler.observation,
                                                           self.world.state.grounding['choices'])
             for attempt in (1, 2):

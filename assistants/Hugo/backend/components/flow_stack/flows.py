@@ -243,7 +243,7 @@ class WriteFlow(ReviseParentFlow):
     self.dax = '{003}'
     self.goal = 'sentence-level editing of a paragraph, sentence, or phrase — improves word choice, tightens sentences, fixes transitions, smooths flow, and trims or simplifies wording. Input is a section, output is a section; scope stays within a single paragraph or image, not the whole post (use rework for that)'
     self.slots = {
-      'source': SourceSlot(1, 'sec'),
+      'source': SourceSlot(1, 'snip'),
       'style_notes': FreeTextSlot(priority='optional'),
       'image': ImageSlot(priority='elective'),
       'suggestions': ChecklistSlot(priority='elective'),

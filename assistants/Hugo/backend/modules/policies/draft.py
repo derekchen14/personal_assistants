@@ -83,7 +83,7 @@ class DraftPolicy(BasePolicy):
         if not flow.slots['source'].check_if_filled() and not flow.slots['topic'].check_if_filled():
             convo_history = context.compile_history(look_back=3)
             prompt = f'{convo_history}\n\nExtract the topic the user wants to outline for the blog post or note. Reply with JSON: {{"topic": "..."}}.'
-            parsed = self.engineer.apply_guardrails(self.engineer(prompt, 'fill_slots'))
+            parsed = self.engineer.parse(self.engineer(prompt, 'fill_slots'))
             flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})
 
         if not flow.slots['source'].check_if_filled() and not flow.slots['topic'].check_if_filled():
@@ -159,7 +159,7 @@ class DraftPolicy(BasePolicy):
         raw, tool_log = self.llm_execute(flow, state, context, tools,
             extra_resolved={'depth': depth, 'propose_mode': True},
             exclude_tools=('generate_outline',))
-        candidates = self.engineer.apply_guardrails(raw, format='markdown', shape='candidates')
+        candidates = self.engineer.parse(raw, format='markdown', shape='candidates')
         flow.slots['proposals'].options = candidates
 
         if candidates:
@@ -192,7 +192,6 @@ class DraftPolicy(BasePolicy):
         # operate on.
         if _count_bullets(content) == 0:
             self.flow_stack.stackon('outline')
-            state.keep_going = True
             return TaskArtifact(thoughts='No bullets in the outline yet, outlining first.')
 
         self.record_snapshot(self.content, flow, context, post_id)
@@ -229,7 +228,6 @@ class DraftPolicy(BasePolicy):
         result = tools('read_metadata', {'post_id': post_id, 'include_outline': True})
         if _count_bullets(result['outline']) == 0:
             self.flow_stack.stackon('outline')
-            state.keep_going = True
             return TaskArtifact(thoughts='No outline to compose from yet — outlining first.')
 
         self.record_snapshot(self.content, flow, context, post_id)
@@ -263,7 +261,7 @@ class DraftPolicy(BasePolicy):
             convo_history = context.compile_history(look_back=3)
             prompt = f'{convo_history}\n\nExtract the topic the user wants to brainstorm about. Reply with JSON: {{"topic": "..."}}.'
             raw_output = self.engineer(prompt, 'fill_slots')
-            parsed = self.engineer.apply_guardrails(raw_output)
+            parsed = self.engineer.parse(raw_output)
             flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})
             if not flow.slots['topic'].filled:
                 self.ambiguity.recognize('specific', metadata={'missing': 'topic'})
@@ -272,6 +270,6 @@ class DraftPolicy(BasePolicy):
                 text, _ = self.llm_execute(flow, state, context, tools, tier='high', schema=schema)
 
         self.complete_flow(flow, state, context, f'Brainstormed ideas on "{flow.slots["topic"].term}".')
-        parsed = self.engineer.apply_guardrails(text)
+        parsed = self.engineer.parse(text)
         thoughts = _format_brainstorm(parsed) if isinstance(parsed, dict) else text
         return TaskArtifact(origin='brainstorm', thoughts=thoughts)

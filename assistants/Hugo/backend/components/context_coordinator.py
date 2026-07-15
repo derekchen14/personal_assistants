@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from backend.prompts.for_compressor import END_OF_SUMMARY, SUMMARY_PREFIX
+from backend.prompts.for_compactor import END_OF_SUMMARY, SUMMARY_PREFIX
 
 # Compactor defaults. The trigger threshold and the protected-tail size are config values read
 # by the Agent post-hook; the rest are the compaction constants.
@@ -13,21 +13,6 @@ _MAX_SUMMARY_TOKENS = 12000          # summary ceiling
 _CHARS_PER_TOKEN = 4                 # rough token estimate
 _PRUNE_MIN_CHARS = 200               # tool results at or below this size are kept as-is
 _PRUNED_TOOL_PLACEHOLDER = '[Old tool output cleared to save context space]'
-
-
-def _is_tool_results(message:dict) -> bool:
-    """True for the user-role message that carries a loop round's tool_result blocks."""
-    content = message['content']
-    return isinstance(content, list) and content[0]['type'] == 'tool_result'
-
-
-def _estimate_tokens(messages:list[dict]) -> int:
-    """Rough chars-per-token estimate over message contents."""
-    chars = 0
-    for message in messages:
-        content = message['content']
-        chars += len(content) if isinstance(content, str) else len(json.dumps(content, default=str))
-    return chars // _CHARS_PER_TOKEN
 
 
 class Turn:
@@ -69,8 +54,6 @@ class ContextCoordinator:
         self.recent: list[Turn] = []
         self.lookback_count: int = 7
         self.num_utterances: int = 0
-        self.bookmark:int|None = None
-        self.completed_flows: list[str] = []
         self.last_actions: dict[str, list[str]] = {}
         self.messages: list[dict] = []
         self._messages_path: Path|None = None
@@ -113,6 +96,10 @@ class ContextCoordinator:
                 return turn
         return None
 
+    @property
+    def turn_count(self):
+        return len(self._history)
+
     def save_checkpoint(self, label:str, data:dict|None=None):
         self._checkpoints.append({
             'label': label,
@@ -131,10 +118,8 @@ class ContextCoordinator:
         self._history.clear()
         self._checkpoints.clear()
         self.recent.clear()
-        self.completed_flows.clear()
         self.last_actions.clear()
         self.num_utterances = 0
-        self.bookmark = None
         self.messages.clear()
         self.previous_summary = None
         if self._messages_path is not None and self._messages_path.exists():
@@ -143,7 +128,7 @@ class ContextCoordinator:
     # ── Persistent message list ─────
     # The API-shaped orchestrator transcript: user / assistant / tool-call / tool-result
     # messages in order, resumed every loop round and every turn. Turn records above stay
-    # the human-readable view (compile_history is unchanged and feeds compression).
+    # the human-readable view (compile_history is unchanged and feeds compaction).
 
     def attach_messages(self, path):
         """Bind the message list to messages.jsonl in the session dir (path passed in from
@@ -164,16 +149,16 @@ class ContextCoordinator:
                 file.write(json.dumps(message) + '\n')
         return message
 
-    # ── Context compression ──────
+    # ── Context compaction ──────
     # Strategy: prune old tool outputs (cheap, no LLM), protect the head and the
     # recent tail with tool pairs intact, summarize the middle on the cheap auxiliary model,
     # splice in ONE reference-only handoff message. The trigger (real prompt-token usage vs
     # the configured threshold) is checked by the Agent post-hook, never mid-loop.
 
-    def compress_messages(self, summarize, protect_tail:int, prompt_tokens:int=0) -> bool:
+    def compact_messages(self, summarize, protect_tail:int, prompt_tokens:int=0) -> bool:
         """Middle-out compaction of the persistent message list. `summarize(middle,
         previous_summary, budget)` is the auxiliary summarizer (LOW tier through
-        PromptEngineer). A checkpoint records the compression event. Returns True when a
+        PromptEngineer). A checkpoint records the compaction event. Returns True when a
         compaction happened."""
         before = len(self.messages)
         if before <= _PROTECT_HEAD + protect_tail + 1:
@@ -193,7 +178,7 @@ class ContextCoordinator:
         handoff = {'role': 'user', 'content': f'{SUMMARY_PREFIX}\n{summary}{END_OF_SUMMARY}'}
         self.messages = self.messages[:start] + [handoff] + self.messages[cut:]
         self._rewrite_messages_file()
-        self.save_checkpoint('compression', data={
+        self.save_checkpoint('compaction', data={
             'messages_before': before, 'messages_after': len(self.messages),
             'pruned_tool_results': pruned, 'prompt_tokens': prompt_tokens})
         return True
@@ -292,13 +277,6 @@ class ContextCoordinator:
                 turn.add_revision(revised)
                 return
 
-    def set_bookmark(self, speaker:str=''):
-        """Set bookmark to the most recent turn_id, optionally filtered by speaker."""
-        for turn in reversed(self._history):
-            if not speaker or turn.speaker == speaker:
-                self.bookmark = turn.turn_id
-                return
-
     def contains_keyword(self, keyword:str, look_back:int=3) -> bool:
         """Check recent turns for a keyword (splits on space/hyphen/underscore)."""
         tokens = set()
@@ -311,22 +289,24 @@ class ContextCoordinator:
                 return True
         return False
 
-    def store_completed_flows(self, completed_flows:list[str]):
-        self.completed_flows = list(completed_flows)
-
-    def find_action_by_name(self, action_name:str):
-        """Reverse scan history for action turns matching name."""
-        for turn in reversed(self._history):
-            if turn.turn_type == 'action' and action_name in turn.text:
-                return turn
-        return None
-
-    def actions_include(self, target_actions:list[str], speaker:str='Agent') -> bool:
-        actions = self.last_actions.get(speaker, [])
-        return any(act in actions for act in target_actions)
-
     def add_actions(self, actions:list[str], actor:str):
         self.last_actions[actor] = []
         for action in actions:
             turn = self.add_turn(actor, action, turn_type='action')
             self.last_actions[actor].append(action)
+
+
+
+def _is_tool_results(message:dict) -> bool:
+    """True for the user-role message that carries a loop round's tool_result blocks."""
+    content = message['content']
+    return isinstance(content, list) and content[0]['type'] == 'tool_result'
+
+
+def _estimate_tokens(messages:list[dict]) -> int:
+    """Rough chars-per-token estimate over message contents."""
+    chars = 0
+    for message in messages:
+        content = message['content']
+        chars += len(content) if isinstance(content, str) else len(json.dumps(content, default=str))
+    return chars // _CHARS_PER_TOKEN

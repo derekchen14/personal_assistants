@@ -45,9 +45,9 @@ class RevisePolicy(BasePolicy):
         if type_slot.check_if_filled() and type_slot.value in ('post', 'draft', 'note'):
             return self._rework_delete(flow, state, context, post_id, tools)
 
-        # Category dispatch: each option resolves deterministically (move, fallback, or ambiguity).
+        # Category routing: each option resolves deterministically (move, fallback, or ambiguity).
         if flow.slots['category'].check_if_filled():
-            return self._dispatch_rework_category(flow, state, post_id, context, tools)
+            return self._rework_category(flow, state, post_id, context, tools)
 
         # Null-category agentic path: skill handles itemized changes via `suggestions` / `remove`.
         if not flow.slots['suggestions'].check_if_filled() and not flow.slots['remove'].check_if_filled():
@@ -56,7 +56,7 @@ class RevisePolicy(BasePolicy):
 
         self.record_snapshot(self.content, flow, context, post_id)
         text, tool_log = self.llm_execute(flow, state, context, tools, include_preview=True)
-        parsed = self.engineer.apply_guardrails(text)
+        parsed = self.engineer.parse(text)
         saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
 
         artifact = TaskArtifact(flow.name(), thoughts=text)
@@ -73,7 +73,7 @@ class RevisePolicy(BasePolicy):
 
     def _rework_delete(self, flow, state, context, post_id, tools):
         """Whole-entity deletion. Published posts aren't deletable —
-        confirm an unpublish intent first. delete_post runs through the dispatcher (not the skill's
+        confirm an unpublish intent first. delete_post runs through the `tools` callable (not the skill's
         tool registry); the post is gone afterward, so emit a toast and skip any content readback.
         Grounding is left on the now-deleted id because _check_grounding only forbids an EMPTY
         grounding.post at completion — it does no existence check."""
@@ -93,7 +93,7 @@ class RevisePolicy(BasePolicy):
         artifact.add_block({'type': 'toast', 'data': {'message': f'Deleted the {kind}.', 'level': 'success'}})
         return artifact
 
-    def _dispatch_rework_category(self, flow, state, post_id, context, tools):
+    def _rework_category(self, flow, state, post_id, context, tools):
         cat = flow.slots['category'].value
         if cat == 'swap':
             return self._rework_swap(flow, state, context, post_id, tools)
@@ -101,11 +101,9 @@ class RevisePolicy(BasePolicy):
             return self._rework_move(flow, state, context, post_id, tools)
         if cat == 'trim':
             self.flow_stack.fallback('write')
-            state.keep_going = True
             return TaskArtifact(flow.name(), thoughts='Trimming reads as a write edit, rerouting.')
         if cat == 'sharpen':
             self.flow_stack.fallback('refine')
-            state.keep_going = True
             return TaskArtifact(flow.name(), thoughts='Sharpening reads as Refine, rerouting.')
         # cat == 'reframe'
         self.ambiguity.recognize(
@@ -157,7 +155,7 @@ class RevisePolicy(BasePolicy):
         return artifact
 
     def _rework_move(self, flow, state, context, post_id, tools):
-        where = flow.slots['category'].value  # 'to_top' or 'to_end' — guaranteed by the dispatch
+        where = flow.slots['category'].value  # 'to_top' or 'to_end' — guaranteed by _rework_category
         raw_secs = [e['sec'] for e in flow.slots['source'].values if e['sec']]
         if not raw_secs:
             self.ambiguity.recognize('specific', metadata={'missing': 'section'})
@@ -196,7 +194,7 @@ class RevisePolicy(BasePolicy):
             return TaskArtifact(origin=flow.name())
 
         # Bump used_count on scratchpad entries the skill actually consumed.
-        parsed = self.engineer.apply_guardrails(text)
+        parsed = self.engineer.parse(text)
         if isinstance(parsed, dict):
             for key in parsed.get('used', []):
                 entry = self._read_scratch_value(str(key))
@@ -209,7 +207,6 @@ class RevisePolicy(BasePolicy):
         inspect_result = self.engineer.extract_tool_result(tool_log, 'inspect_post')
         if inspect_result.get('structural_issues'):
             self.flow_stack.fallback('rework')
-            state.keep_going = True
             return TaskArtifact(flow.name(), thoughts='Structural issues found, rerouting to rework.')
 
         saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')

@@ -8,7 +8,6 @@ class AmbiguityHandler:
         self.engineer = engineer
         thresholds = config.get('thresholds', {})
         self.confidence_min = thresholds.get('nlu_confidence_min', 0.64)
-        self.max_turns = thresholds.get('ambiguity_escalation_turns', 3)
 
         self.is_present: bool = False
         self.metadata: dict = {}
@@ -72,9 +71,6 @@ class AmbiguityHandler:
 
     def needs_clarification(self, confidence:float) -> bool:
         return confidence < self.confidence_min
-
-    def should_escalate(self) -> bool:
-        return sum(self.counts.values()) >= self.max_turns
 
     def _general_ask(self) -> str:
         missing = self.metadata.get('missing', 'intent')

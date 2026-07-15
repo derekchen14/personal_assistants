@@ -91,14 +91,14 @@ class Assistant:
     def _ensure_session(self):
         """Orchestrator session start. Runs once per session: bind a session dir when
         none is open (the dir IS the persistence format), bind the shared scratchpad to the
-        session's scratchpad.jsonl so completion records land on disk, then build
+        session's scratchpad.jsonl so completion entries land on disk, then build
         and FREEZE the three-tier system prompt."""
         if self.system_prompt is not None:
             return
         if self.world.conversation_id is None:
             self.world.open_session(datetime.now().strftime(f'{self.username}_%Y%m%d_%H%M%S'))
         # The shared scratchpad (owned by the World; seen by NLU/PEX/policies) is bound to the
-        # session's file so completion records land on disk.
+        # session's file so completion entries land on disk.
         self.world.scratchpad._scratchpad_path = self.world.session_dir() / 'scratchpad.jsonl'
         state = self.world.state
         state.conversation_id = self.world.conversation_id

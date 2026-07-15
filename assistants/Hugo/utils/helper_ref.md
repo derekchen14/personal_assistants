@@ -10,7 +10,7 @@ Every capability Hugo needs to operate likely already lives somewhere. Ask **whi
 ```python
 prompt = build_*_prompt(...)
 raw_output = self.engineer(prompt, '<task_name>')
-parsed = self.engineer.apply_guardrails(raw_output)
+parsed = self.engineer.parse(raw_output)
 ```
 self.engineer() also takes in parameters for `model` and `max_tokens` when deviating from defaults.
 Modules import `build_*_prompt` helpers directly from `backend/prompts/`.
@@ -18,11 +18,11 @@ Use `raw_output` before parsing, with meaningful name (`parsed`, `pred_slots`, `
 
 Special LLM calls:
 2. `flow_reply(flow, convo_history, scratchpad, skill_name=None, flow_prompt=None, resolved=None, max_tokens=1024, user_text=None, tier='med') -> str`  →  flow sub-agent turn WITHOUT tools (sibling of flow_execute). Loads `prompts/pex/flows/<skill_name or flow.name()>.md`, builds `[system, user]`, returns LLM text. Pass `flow_prompt=` to override the loaded prompt.
-3. `flow_execute(flow, convo_history, scratchpad, tool_defs, tool_dispatcher, skill_name=None, flow_prompt=None, resolved=None, max_tokens=4096, user_text=None, tier='med', schema=None) -> tuple[str, list[dict]]`  →  flow sub-agent turn WITH tools (sibling of flow_reply). Same assembly API; adds `tool_defs` and `tool_dispatcher` for the agentic loop; `schema=` forces a schema-constrained final emit.
+3. `flow_execute(flow, convo_history, scratchpad, tool_defs, call_tool, skill_name=None, flow_prompt=None, resolved=None, max_tokens=4096, user_text=None, tier='med', schema=None) -> tuple[str, list[dict]]`  →  flow sub-agent turn WITH tools (sibling of flow_reply). Same assembly API; adds `tool_defs` and `call_tool` for the agentic loop; `schema=` forces a schema-constrained final emit.
 4. `stream(prompt:str, task='skill', model='sonnet', max_tokens=4096)`  →  async token streaming (future scaffolding).
 
-Output parsing (dispatched via `apply_guardrails`):
-5. `apply_guardrails(text, format='json', shape=None)`  →  router. Strips fences, dispatches to:
+Output parsing (routed via `parse`):
+5. `parse(text, format='json', shape=None)`  →  router. Strips fences, routes to:
   * `_parse_json(text) -> dict | None`  →  JSON parse with fallback regex for embedded `{}`.
   * `_parse_sql(text) -> str`  →  strip whitespace, return cleaned SQL (stub for Dana).
   * `_parse_markdown(text, shape)`  →  `shape='outline'` extracts `##` sections; `shape='candidates'` parses `### Option N / ## Section`.
@@ -203,13 +203,13 @@ Hugo entity parts inside SourceSlot entities: `{post, sec, snip, chl, ver}`.
 - `_resolve_source_ids(flow, state, tools) -> tuple[str|None, str|None]`  →  extracts `(post_id, sec_id)` from entity slot; side-effect: syncs `state.active_post`  (:86)
 - `_build_resolved_context(flow, state, tools) -> dict | None`  →  pre-resolve entities for the LLM, falls back to `state.active_post`  (:99)
 - `_persist_section(post_id, sec_id, text, tools)`  →  wraps `revise_content` tool  (:118)
-- `_persist_outline(post_id, text, tools)`  →  parse `##` sections via `engineer.apply_guardrails(text, format='markdown', shape='outline')` then call `generate_outline` tool  (:123)
+- `_persist_outline(post_id, text, tools)`  →  parse `##` sections via `engineer.parse(text, format='markdown', shape='outline')` then call `generate_outline` tool  (:123)
 
 Class constant: `_STATUS_SUFFIXES = (' draft', ' post', ' note', ' published')`.
 
 ## 11. PEX tool registry — 33 domain tools + component/orchestrator tools
 
-`backend/modules/pex.py:106–144` (domain dispatch table), `:888–998` (orchestrator tool definitions).
+`backend/modules/pex.py:106–144` (domain tool table), `:888–998` (orchestrator tool definitions).
 
 Before proposing a new tool, grep for the capability here first.
 

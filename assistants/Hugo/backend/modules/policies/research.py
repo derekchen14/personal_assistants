@@ -22,7 +22,7 @@ class ResearchPolicy(BasePolicy):
     def inspect_policy(self, flow, state, context, tools):
         """Report metrics or metadata (planner spec scenario 18): the sub-agent gathers the
         answer through its read tools (read_metadata / find_posts / channel_status), the
-        completion record lands on the session scratchpad, and PEX pops the flow."""
+        completion entry lands on the session scratchpad, and PEX pops the flow."""
         text, tool_log = self.llm_execute(flow, state, context, tools)
         if self.ambiguity.is_present:
             return TaskArtifact(flow.name())
@@ -140,10 +140,14 @@ class ResearchPolicy(BasePolicy):
             part = part.strip()
             if not part:
                 continue
-            head = part.split()[-1]
-            for sub_term in (part, head) if len(head) >= 5 else (part,):
-                if sub_term not in terms:
-                    terms.append(sub_term)
+            # A hyphenated phrase ('Roman-engineering') must also match its spaced form —
+            # find_posts is a verbatim substring match, so the hyphen alone kills recall.
+            variants = [part, part.replace('-', ' ')] if '-' in part else [part]
+            for variant in variants:
+                head = variant.split()[-1]
+                for sub_term in (variant, head) if len(head) >= 5 else (variant,):
+                    if sub_term not in terms:
+                        terms.append(sub_term)
         return terms or [query]
 
     def compare_policy(self, flow, state, context, tools):
@@ -155,7 +159,7 @@ class ResearchPolicy(BasePolicy):
         if artifact := self._guard_entity(flow): return artifact
 
         # Comparison kind drives both the metrics surfaced and the prose framing.
-        # Ask before dispatching when none was named.
+        # Ask before running the skill when none was named.
         if not flow.slots['category'].check_if_filled():
             self.ambiguity.recognize('specific',
                 observation='Should I compare metrics, metadata, or tone?',

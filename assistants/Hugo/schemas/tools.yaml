@@ -28,7 +28,7 @@ models:
       provider: anthropic
       model_id: claude-sonnet-4-6
 
-compression:                         # context compactor, scaled to the model context window
+compaction:                          # context compactor, scaled to the model context window
   threshold_tokens: 64000            # 50% trigger x context_window.max_input_tokens (128k)
   protect_tail: 20                   # protect the last ~6 turns, tool calls intact
 

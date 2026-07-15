@@ -42,7 +42,7 @@ FAMILY_TIERS = {
     'claude':   ('claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-4-8'),
     'gemini':   ('gemini-3.1-flash-lite-preview', 'gemini-3.5-flash', 'gemini-3.1-pro-preview'),
     'gpt':      ('gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4'),
-    'together': ('Qwen/Qwen3.6-35B-A3B-FP8', 'Qwen/Qwen3.5-397B-A17B', 'moonshotai/Kimi-K2.6'),
+    'together': ('google/gemma-4-31b-it', 'deepseek-ai/DeepSeek-V4-Pro', 'zai-org/GLM-5.2'),
     'typesafe': ('noul', 'score', 'choice'),   # TypeSafe question types stand in for the tier ladder
 }
 _TIER_IDX = {'low': 0, 'med': 1, 'high': 2}
@@ -140,7 +140,7 @@ class PromptEngineer:
                 text = self._call_gpt(system, messages, model_id, max_tokens, schema_dict=schema_dict)
         if schema is None:
             return text
-        parsed = self.apply_guardrails(text, format='json')
+        parsed = self.parse(text, format='json')
         if parsed is None:
             raise ValueError(f'schema-constrained call returned unparseable JSON: {text!r}')
         if isinstance(schema, type) and issubclass(schema, BaseModel):
@@ -173,7 +173,7 @@ class PromptEngineer:
             case 'together': return self._call_together(system, messages, model_id, max_tokens)
             case 'gpt':      return self._call_gpt(system, messages, model_id, max_tokens)
 
-    def flow_execute(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], tool_dispatcher,
+    def flow_execute(self, flow, convo_history:str, scratchpad:dict, tool_defs:list[dict], call_tool,
                   skill_name:str|None=None, flow_prompt:str|None=None, resolved:dict|None=None,
                   max_tokens:int=4096, user_text:str|None=None,
                   tier:str='med', schema:dict|None=None) -> tuple[str, list[dict]]:
@@ -195,12 +195,12 @@ class PromptEngineer:
         family = ACTIVE_FAMILY
         adapted = self._adapt_tool_defs(family, tool_defs)
         match family:
-            case 'claude':   return self._call_claude_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
-            case 'gemini':   return self._call_gemini_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls, schema_dict=schema)
-            case 'gpt':      return self._call_gpt_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
-            case 'together': return self._call_together_with_tools(system, msgs, model_id, adapted, tool_dispatcher, max_tokens, max_num_calls)
+            case 'claude':   return self._call_claude_with_tools(system, msgs, model_id, adapted, call_tool, max_tokens, max_num_calls)
+            case 'gemini':   return self._call_gemini_with_tools(system, msgs, model_id, adapted, call_tool, max_tokens, max_num_calls, schema_dict=schema)
+            case 'gpt':      return self._call_gpt_with_tools(system, msgs, model_id, adapted, call_tool, max_tokens, max_num_calls)
+            case 'together': return self._call_together_with_tools(system, msgs, model_id, adapted, call_tool, max_tokens, max_num_calls)
 
-    def _call_claude_with_tools(self, system, msgs, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):
+    def _call_claude_with_tools(self, system, msgs, model_id, tool_defs, call_tool, max_tokens, max_num_calls):
         msgs = list(msgs)
         tool_log: list[dict] = []
         text_parts: list[str] = []
@@ -220,7 +220,7 @@ class PromptEngineer:
             for tool_use in tool_uses:
                 log.info('  skill tool=%s  input=%s', tool_use.name,
                          {key: val for key, val in tool_use.input.items()} if tool_use.input else {})
-                result = tool_dispatcher(tool_use.name, tool_use.input)
+                result = call_tool(tool_use.name, tool_use.input)
                 tool_log.append({'tool': tool_use.name, 'input': tool_use.input, 'result': result})
                 tool_results.append({
                     'type': 'tool_result', 'tool_use_id': tool_use.id,
@@ -426,7 +426,7 @@ class PromptEngineer:
                 out[key] = val
         return out
 
-    def _call_gemini_with_tools(self, system, messages, model_id, tool_defs, tool_dispatcher,
+    def _call_gemini_with_tools(self, system, messages, model_id, tool_defs, call_tool,
                                 max_tokens, max_num_calls, schema_dict=None):
         from google.genai import types
         contents = [
@@ -461,7 +461,7 @@ class PromptEngineer:
             for fc in function_calls:
                 args = dict(fc.args) if fc.args else {}
                 log.info('  skill tool=%s  input=%s', fc.name, args)
-                result = tool_dispatcher(fc.name, args)
+                result = call_tool(fc.name, args)
                 tool_log.append({'tool': fc.name, 'input': args, 'result': result})
                 response_parts.append(types.Part.from_function_response(
                     name=fc.name, response={'result': result},
@@ -482,23 +482,23 @@ class PromptEngineer:
             text = response.text or ''
         return text, tool_log
 
-    def _call_gpt_with_tools(self, system, messages, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):
+    def _call_gpt_with_tools(self, system, messages, model_id, tool_defs, call_tool, max_tokens, max_num_calls):
         return self._openai_tool_loop(
             client=self._get_client('openai'), system=system, messages=messages,
-            model_id=model_id, tool_defs=tool_defs, tool_dispatcher=tool_dispatcher,
+            model_id=model_id, tool_defs=tool_defs, call_tool=call_tool,
             max_tokens=max_tokens, max_num_calls=max_num_calls,
             completion_tokens_param=True, allow_streaming_fallback=False,
         )
 
-    def _call_together_with_tools(self, system, messages, model_id, tool_defs, tool_dispatcher, max_tokens, max_num_calls):
+    def _call_together_with_tools(self, system, messages, model_id, tool_defs, call_tool, max_tokens, max_num_calls):
         return self._openai_tool_loop(
             client=self._get_client('together'), system=system, messages=messages,
-            model_id=model_id, tool_defs=tool_defs, tool_dispatcher=tool_dispatcher,
+            model_id=model_id, tool_defs=tool_defs, call_tool=call_tool,
             max_tokens=max_tokens, max_num_calls=max_num_calls,
             completion_tokens_param=False, allow_streaming_fallback=True,
         )
 
-    def _openai_tool_loop(self, *, client, system, messages, model_id, tool_defs, tool_dispatcher,
+    def _openai_tool_loop(self, *, client, system, messages, model_id, tool_defs, call_tool,
                           max_tokens, max_num_calls, completion_tokens_param, allow_streaming_fallback):
         msgs = [{'role': 'system', 'content': system}]
         msgs.extend({'role': m['role'], 'content': m['content']} for m in messages)
@@ -532,7 +532,7 @@ class PromptEngineer:
             for tc in tool_calls:
                 args = json.loads(tc.function.arguments) if tc.function.arguments else {}
                 log.info('  skill tool=%s  input=%s', tc.function.name, args)
-                result = tool_dispatcher(tc.function.name, args)
+                result = call_tool(tc.function.name, args)
                 tool_log.append({'tool': tc.function.name, 'input': args, 'result': result})
                 msgs.append({
                     'role': 'tool', 'tool_call_id': tc.id,
@@ -573,8 +573,8 @@ class PromptEngineer:
     # ── Output parsers ───────────────────────────────────────────────
 
     @classmethod
-    def apply_guardrails(cls, text:str, format:str='json', shape:str|None=None):
-        """Strip fences, then dispatch to the right format parser. `format` is one of
+    def parse(cls, text:str, format:str='json', shape:str|None=None):
+        """Strip fences, then route to the right format parser. `format` is one of
         'json' | 'sql' | 'markdown'; `shape` is an optional hint passed to the format parser
         (e.g. 'outline', 'candidates')."""
         text = cls._strip_fences(text)
@@ -692,4 +692,3 @@ class PromptEngineer:
         if not all(tc['result']['_success'] for tc in calls):
             return False, {}
         return True, {k: v for k, v in calls[-1]['result'].items() if not k.startswith('_')}
-
