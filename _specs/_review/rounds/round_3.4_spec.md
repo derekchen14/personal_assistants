@@ -840,12 +840,12 @@ def think(self, user_text:str, payload:dict={}):
         state = self._write_non_policy_belief(flow_name, detection['confidence'], predicted)
     else:
         top = self.world.flows.get_flow()
-        # A live top counts whether Active or Pending: execute's code stackon is Active from
-        # the push, and a queued plan step waiting as Pending is still what PEX runs next
+        # An in-flight top counts whether Active or Pending — a plan step stacked with
+        # active=False waits as Pending and is still the flow PEX runs next
         # (T21 fix: an Active-only check wrote a false announcement on every fresh turn).
-        live = bool(top) and top.status in ('Active', 'Pending')
-        prev = top.name() if live else ''
-        if not (live and top.name() == flow_name):
+        in_flight = bool(top) and top.status in ('Active', 'Pending')
+        prev = top.name() if in_flight else ''
+        if not (in_flight and top.name() == flow_name):
             top = self.world.flows.stackon(flow_name,
                                            transfer=not self.ambiguity_handler.is_present)
         state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
@@ -1485,10 +1485,12 @@ later).
   claim in the Major Themes + Canonical Turn against code; one statically traced S1-S11
   through the turn path. Verdict: 3.4.3/3.4.5/3.4.7/3.4.8 clean; S2/S4/S6/S10/S11 hold;
   S7/S8 hold modulo the accepted round 3.5 gaps. **Fixes landed (suites 230 green after):**
-  (1) think's same-flow check accepts a live Active-or-Pending top — the Active-only check
-  wrote a false announcement on every fresh turn, since execute's code stackon left the
-  basic flow Pending (execute now marks it Active from the push — Derek, 2026-07-17 — and
-  the Pending acceptance still covers queued plan steps) (nlu.py); (2) `complete_flow` no longer
+  (1) think's same-flow check accepts an in-flight (Active or Pending) top — the Active-only
+  check wrote a false announcement on every fresh turn while the code-stacked basic flow
+  waited as Pending. Superseded rulings the same day: `stackon` now sets the new flow Active
+  by default (active=False stacks a Pending plan step), and `pop` is a while loop from the
+  top of the stack down to the first Pending/Active flow — a buried terminal flow waits for
+  the flows above it to resolve (nlu.py, stack.py); (2) `complete_flow` no longer
   requires being top of stack — NLU stacking mid-run made every such completion crash into a
   corrective server_error (policies/base.py); (3) the missing `chl` preservation rule landed
   in `_repair_slots` (the one 3.4.2 contract line with no code counterpart); (4) the

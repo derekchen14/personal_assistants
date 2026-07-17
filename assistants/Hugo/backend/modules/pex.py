@@ -292,9 +292,7 @@ class PolicyExecutor:
             basic = intent2flow(state.pred_intent)
             top = self.flow_stack.get_flow()
             if basic and not (top and top.status == 'Active'):
-                # Active from the push (Derek, 2026-07-17): this IS the turn's flow, and a
-                # turn may end on an incomplete Active top but never a Pending one.
-                self.flow_stack.stackon(basic).status = 'Active'
+                self.flow_stack.stackon(basic)   # Active by default — this IS the turn's flow
             utterance = self._run_loop(system_prompt)
         return utterance
 
@@ -567,8 +565,8 @@ class PolicyExecutor:
     def _manage_flows(self, params:dict) -> dict:
         """The orchestrator's one flow tool — ops [update, stackon, fallback, pop].
         `update` changes a flow's status/stage in place at any depth (flow_name targets a
-        buried flow; blank means the top flow) and `pop` removes Completed AND Invalid flows
-        in one sweep. Policy execution is runtime-owned: stackon (active defaults true),
+        buried flow; blank means the top flow) and `pop` clears Completed and Invalid flows
+        from the top of the stack down to the first Pending or Active flow. Policy execution is runtime-owned: stackon (active defaults true),
         fallback, and a pop that surfaces a Pending flow run the top policy; `activate_flow`
         is internal plumbing, not a tool op. Belief, grounding, and slots stay NLU's job — no
         op here touches them (T18: Continue is a pure status write)."""
@@ -588,7 +586,8 @@ class PolicyExecutor:
                 # No slot hand-over while an ambiguity is open — the incomplete flow's values
                 # are exactly what is in question (planner spec scenario 15 discussion).
                 self.flow_stack.stackon(kwargs['flow_name'],
-                                        transfer=not self.world.ambiguity.is_present)
+                                        transfer=not self.world.ambiguity.is_present,
+                                        active=params.get('active', True))
             case 'fallback':
                 self.flow_stack.fallback(kwargs['flow_name'])
             case 'update_flow':
@@ -600,7 +599,7 @@ class PolicyExecutor:
         document = state.read_state()
         document['flow_stack'] = self.flow_stack.to_list()
         # Exactly three stack events run the top policy: stackon (active defaults true —
-        # active=false queues a plan step), fallback, and pop. A status write of 'Active' through
+        # active=false stacks a plan step as Pending), fallback, and pop. A status write of 'Active' through
         # update is the manual run button (planner spec scenario 20); slot-only updates never run.
         run = (params['op'] in ('fallback', 'pop')
                or (params['op'] == 'stackon' and params.get('active', True))
@@ -866,7 +865,7 @@ class PolicyExecutor:
                 'name': 'read_flow_stack',
                 'description': (
                     "Inspect the flow stack. `details` picks what to read: "
-                    "'flows' (the full stack of queued and active flows, the default), "
+                    "'flows' (the full stack of Pending and Active flows, the default), "
                     "'slots' (the active flow's filled slot values), "
                     "or 'flow_meta' (the active flow's class-level metadata)."
                 ),
@@ -1000,13 +999,14 @@ class PolicyExecutor:
                     "- `stackon`  — push `flow_name` on top of the stack and run its policy "
                     "(`active` defaults to true; the flow beneath reverts to Pending and resumes "
                     "later). Matching slot values hand over from the prior flow automatically. "
-                    "Pass `active: false` to queue a plan step as Pending WITHOUT running it — "
+                    "Pass `active: false` to stack a plan step as Pending WITHOUT running it — "
                     "stack a plan in reverse execution order with active=false, then push the "
                     "first step plain.\n"
                     "- `fallback` — replace the top flow with `flow_name`, transferring matching "
                     "slot values; the replacement policy runs immediately.\n"
-                    "- `pop`      — remove Completed and Invalid flows all at once. If a Pending "
-                    "flow is surfaced, it is promoted to Active and its policy runs.\n"
+                    "- `pop`      — clear Completed and Invalid flows from the top of the stack down "
+                    "to the first live flow. A surfaced Pending flow is promoted to Active and its "
+                    "policy runs.\n"
                     "There is no `activate` op — stackon/fallback/pop run the top policy "
                     "themselves; inspect the returned policy result."
                 ),
@@ -1020,7 +1020,7 @@ class PolicyExecutor:
                         'fields': {'type': 'object',
                                    'description': 'for update — the flow fields to set (stage / status)'},
                         'active': {'type': 'boolean',
-                                   'description': 'for stackon — defaults true (push and run); false queues a plan step as Pending without running it'},
+                                   'description': 'for stackon — defaults true (push and run); false stacks a plan step as Pending without running it'},
                     },
                     'required': ['op'],
                 },

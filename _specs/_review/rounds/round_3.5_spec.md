@@ -89,7 +89,8 @@ if flow_name == 'plan':
     state.has_plan = True
     steps = state.decompose_plan(self.engineer, context, user_text)   # [{flow_name, goal}, ...]
     for step in reversed(steps):                                       # last step first → first on top
-        self.world.flows.stackon(step['flow_name'], transfer=False)
+        self.world.flows.stackon(step['flow_name'], transfer=False, active=False)
+    self.world.flows.get_flow().status = 'Active'   # the first step runs now; the rest wait
 ```
 
 The per-step `goal` rides the scratchpad plan entry (validate already writes the step list; extend

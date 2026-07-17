@@ -77,11 +77,11 @@ class NaturalLanguageUnderstanding:
             state = self._write_non_policy_belief(flow_name, detection['confidence'], predicted)
         else:
             top = self.world.flows.get_flow()
-            # A live top counts whether Active or Pending: execute's code stackon is Active from
-            # the push, and a queued plan step waiting as Pending is still what PEX runs next.
-            live = bool(top) and top.status in ('Active', 'Pending')
-            prev = top.name() if live else ''
-            if not (live and top.name() == flow_name):
+            # An in-flight top counts whether Active or Pending — a plan step stacked with
+            # active=False waits as Pending and is still the flow PEX runs next.
+            in_flight = bool(top) and top.status in ('Active', 'Pending')
+            prev = top.name() if in_flight else ''
+            if not (in_flight and top.name() == flow_name):
                 top = self.world.flows.stackon(flow_name,
                                                transfer=not self.ambiguity_handler.is_present)
             state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)

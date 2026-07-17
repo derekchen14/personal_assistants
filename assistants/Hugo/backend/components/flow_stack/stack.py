@@ -19,9 +19,11 @@ class FlowStack:
 
     # ── Public API ──────────────────────────────────────────────────
 
-    def stackon(self, flow_name:str, transfer:bool=True):
-        """Push a flow on top of the stack. An in-flight flow beneath reverts to Pending and
-        resumes after the new flow completes (pop promotes it back). Transfers filled slot values
+    def stackon(self, flow_name:str, transfer:bool=True, active:bool=True):
+        """Push a flow on top of the stack, Active by default — the new flow claims the
+        conversation (Derek, 2026-07-17); pass active=False to stack it as Pending without
+        running it (plan steps). An in-flight flow beneath reverts to Pending and resumes
+        after the new flow completes (pop promotes it back). Transfers filled slot values
         to the new flow when slot names match — callers pass transfer=False while an ambiguity is
         open, since the incomplete flow's values are exactly what is in question.
 
@@ -37,6 +39,8 @@ class FlowStack:
             if not (entity and entity.check_if_filled()):
                 return curr_flow
         new_flow = self._push(flow_name)
+        if active:
+            new_flow.status = FlowLifecycle.ACTIVE.value
         if in_flight:
             if transfer:
                 for slot_name, slot in curr_flow.slots.items():
@@ -97,19 +101,17 @@ class FlowStack:
         return sum(1 for entry in self._stack if entry.status in live)
 
     def pop(self):
-        """Remove all Completed and Invalid flows. Returns only the
-        Completed ones (Invalid are silently discarded). Activates the
-        next Pending flow if one is now on top."""
+        """A while loop from the top of the stack: remove Completed and Invalid flows until
+        the code reaches a Pending or Active flow, or an empty stack (Derek, 2026-07-17) — a
+        terminal flow buried under live work is out of reach until the flows above it resolve.
+        Returns only the Completed ones (Invalid are silently discarded). Activates the next
+        Pending flow if one is now on top."""
         completed = []
-        remaining = []
-        for entry in self._stack:
+        terminal = (FlowLifecycle.COMPLETED.value, FlowLifecycle.INVALID.value)
+        while self._stack and self._stack[-1].status in terminal:
+            entry = self._stack.pop()
             if entry.status == FlowLifecycle.COMPLETED.value:
                 completed.append(entry)
-            elif entry.status == FlowLifecycle.INVALID.value:
-                pass
-            else:
-                remaining.append(entry)
-        self._stack = remaining
         if self._stack and self._stack[-1].status == FlowLifecycle.PENDING.value:
             self._stack[-1].status = FlowLifecycle.ACTIVE.value
         return completed
@@ -129,8 +131,8 @@ class FlowStack:
             raise ValueError(f'Unknown flow: {flow_name}')
         flow = cls()
         flow.flow_id = str(uuid4())[:8]
-        # Pushed flows wait as Pending (the user 2026-07-03) — activation promotes to Active
-        # (activate_flow, or pop surfacing the next top).
+        # A bare push waits as Pending; stackon sets Active by default (Derek, 2026-07-17) and
+        # activation promotes the rest (activate_flow, or pop surfacing the next top).
         flow.status = FlowLifecycle.PENDING.value
         self._stack.append(flow)
         return flow

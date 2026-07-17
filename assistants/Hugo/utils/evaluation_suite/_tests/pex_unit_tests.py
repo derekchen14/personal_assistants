@@ -1569,12 +1569,13 @@ def _build_flowstack_machine():
                 top_before = self.stack._stack[-1] if self.stack._stack else None
                 self._apply('stackon', flow_name=name)
                 new_flow = self.stack._stack[-1]
-                # Two valid outcomes: pushed a new Pending flow (activation promotes),
+                # Two valid outcomes: pushed a new Active flow (Active by default — the new
+                # flow claims the conversation; active=False stacks a Pending plan step),
                 # OR returned the existing in-flight top (no-consecutive-same-type).
                 assert new_flow.flow_id and len(new_flow.flow_id) >= 6
                 assert self.stack._stack[-1] is new_flow
                 if new_flow is not top_before:
-                    assert new_flow.status == 'Pending'
+                    assert new_flow.status == 'Active'
 
         @rule(name=st.sampled_from(_NAMES))
         def fallback(self, name):
@@ -1613,10 +1614,12 @@ def _build_flowstack_machine():
 
         @rule()
         def pop_completed(self):
+            # pop is a while loop from the top of the stack down to the first Pending/Active
+            # flow — a terminal flow buried under live work legitimately survives the pop.
             self._apply('pop')
-            for entry in self.stack._stack:
-                assert entry.status not in ('Completed', 'Invalid'), \
-                    f'pop_completed left a {entry.status} flow on the stack'
+            if self.stack._stack:
+                assert self.stack._stack[-1].status not in ('Completed', 'Invalid'), \
+                    f'pop left a {self.stack._stack[-1].status} flow on TOP of the stack'
             # Pending top auto-activates after pop_completed.
             if self.stack._stack and self.stack._stack[-1].status == 'Pending':
                 pytest.fail('pop_completed did not activate the new top Pending flow')

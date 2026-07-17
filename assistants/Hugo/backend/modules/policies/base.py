@@ -183,8 +183,9 @@ class BasePolicy:
         Completed on the live flow (MEM saves state.json at turn end) and the completion entry
         {summary, metadata} is appended to the session scratchpad under the flow's origin;
         activate_flow collects it via pop_completion and returns it as the tool result. NLU may
-        stack a divergent flow above mid-run (round 3.4) — the pop clears a Completed flow at
-        any depth, so completion never requires being top of stack."""
+        stack a divergent flow above mid-run (round 3.4), so completion never requires being
+        top of stack — a Completed flow buried under live work waits there, and pop's top-down
+        loop clears it once the flows above it resolve."""
         flow.status = 'Completed'
         entry = {'version': 1, 'turn_number': context.turn_id, 'used_count': 0,
                  'summary': summary, 'metadata': metadata or {}}
