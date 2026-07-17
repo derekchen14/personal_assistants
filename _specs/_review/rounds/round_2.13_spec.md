@@ -363,3 +363,90 @@ Auto-running would override the PEX agent's judgment mid-reply and can surprise 
 4. Focused transition-record tests for 2.13.4: with and without ambiguity, plus negative cases for
    same-flow fills and failed pushes. Assert that no dedicated detour origin or ambiguity mutation
    remains.
+
+---
+
+## Audit against current code (2026-07-17, post rounds 3.4/3.5)
+
+This spec was written 2026-07-09; rounds 3.4 (NLU↔PEX flow handoff) and 3.5 (list detection)
+rebuilt much of the code it targets. Per-section status:
+
+- **2.13.1 — VALID, still the biggest win.** The mechanism moved but the gap is identical:
+  slot-fill is now `DialogueState.fill_slots` (not `NLU._fill_slots`), and the gate is
+  `ambiguity.is_present` (not a `stalled=True` flag) — candidates still ride the fill prompt only
+  through `build_pending_question` when an ambiguity is open (`dialogue_state.py:295-297`). A
+  fresh flow still never sees the shown list. One addition the spec predicted: the choice record
+  (`research.py:93-97`) carries `{kind, label, entity, source, turn_number}` but NO `status` —
+  "the published ones" cannot resolve until the record gains it.
+- **2.13.2 — VALID, confirmed live.** `_manage_flows` still runs `_top_policy` on every pop
+  (`pex.py:604`), and `_top_policy` accepts a Pending OR Active top — the accidental-pop re-run
+  is real today. Two stale details: `DialogueState.write_state` no longer exists (manage_flows
+  owns stack ops since 3.4), so the recommended plumbing shape needs rewording; and `pop()`'s
+  return (the Completed list) is consumed by `activate_flow`'s `popped` field and the round-3.5
+  plan-marker handling, so a changed return shape touches those too.
+- **2.13.3 — problem VALID, prescribed fix STALE.** The dedupe in `stackon` still compares
+  entity presence, not identity. But the fix as written cannot be applied: there is no transient
+  flow anymore — since 3.4, think stacks the LIVE flow first and `fill_slots` fills it afterward,
+  so slot values do not exist at the stackon decision point at all. The `stackon(flow_name,
+  slots=...)` signature has nothing to feed it from NLU's call site. Needs a design ruling — see
+  Unresolved Issues U1.
+- **2.13.4 — ALREADY SATISFIED by round 3.4.** `_note_detour` and every trace of `detour`
+  vocabulary are gone. validate's announcement entry now records every stackon over an in-flight
+  top unconditionally — `{prev_flow, new_flow, is_newborn, summary, rationale, question, tally}`
+  with no ambiguity gate (`nlu.py` validate). `prev_flow` carries what `stacked_over` was
+  proposed for. Remaining work is the verification list only, confirming the negative cases.
+- **2.13.5 — LARGELY DISSOLVED by rounds 3.4/3.5.** The B02.C15 Pending-tower mechanism was
+  "NLU places every detection as Pending"; since 3.4, `stackon` sets the new flow Active by
+  default, so detections land Active and plan steps sit beneath an Active top. MEM's turn-end
+  check was aligned 2026-07-17 to warn only on a non-Active top. What remains is the narrower
+  boundary decision (U2) and a re-measurement before building anything.
+
+## Unresolved Issues
+
+- **U1 — where does 2.13.3's incoming entity come from?** The dedupe comparison needs the NEW
+  task's entity at the stackon decision point, but under the 3.4 design NLU stacks first and
+  fills afterward — the values genuinely do not exist yet. Candidate resolutions: (a) pass what
+  IS known at decision time (the session's grounded active entity + any payload entity) as a
+  partial identity for the comparison; (b) move the dedupe decision to after `fill_slots`, and
+  merge/split flows post-fill when identity turns out equal/different; (c) NLU runs a cheap
+  entity pre-extraction before stackon on same-type collisions only. Each has costs: (a) can
+  compare stale grounding, (b) re-opens the stack after the announcement entry was written,
+  (c) adds a model call to a hot path.
+  **RESOLUTION (pending Derek).**
+- **U2 — 2.13.5 boundary enforcement: still needed, and if so, invalidate or auto-run?** The
+  Pending-tower mechanism is gone with stackon-Active; a Pending top can still form only through
+  the agent's own `active=false` stackon it never runs. Options: measure first and drop the task
+  if the warning stays quiet across a fresh 8-sample run (recommended); or land the spec's
+  invalidate-and-pop enforcement anyway as a cheap invariant.
+  **RESOLUTION (pending Derek).**
+- **U3 — 2.13.1 prompt shape: one candidates block or two?** The spec adds a `<shown_candidates>`
+  block alongside the existing `<pending_question>` (which already renders the same records when
+  an ambiguity is open). Two blocks can render the same list twice with different guidance.
+  Recommendation: one rendering — always append the candidates block when `grounding['choices']`
+  is non-empty, with the pending-question framing added on top only when an ambiguity is open.
+  **RESOLUTION (pending Derek).**
+
+## Todo List
+
+Ordered by dependency; U-numbers reference the Unresolved Issues above.
+
+- [ ] **T1 — design rulings (Derek).** U1 (the 2.13.3 identity source — blocks T4), U2 (whether
+  2.13.5 still gets built), U3 (the 2.13.1 block shape — cheap to settle, affects T2).
+- [ ] **T2 — 2.13.1 plural grounding.** Add `status` to the choice record at the write site
+  (`research.py:93`); render the candidates into the fill prompt whenever `grounding['choices']`
+  is non-empty (per the U3 ruling); plural-selection guidance (one entity per pick; status/ordinal
+  filters resolve against the shown records only). Deterministic cases: "both", "all of them",
+  "the drafts", ordinal subsets; consumed-choice clearing unchanged. No dependency on T3/T4.
+- [ ] **T3 — 2.13.2 pop-promotion contract.** `FlowStack.pop()` makes the promotion explicit;
+  `_manage_flows` runs `_top_policy` only when a promotion happened; `_top_policy` receives the
+  promoted flow so it cannot select a different Active entry. Reconcile the call sites the 3.4/3.5
+  work added: `activate_flow`'s `popped` list, the plan-marker removal (both spots), and the
+  `_execute_click` path. Verification: the five stack cases + invocation counts.
+- [ ] **T4 — 2.13.3 entity-identity dedupe.** Per U1's ruling. Depends: T1.
+- [ ] **T5 — 2.13.4 verification only.** Confirm the 3.4 announcement entry satisfies every case
+  in the section's list (with/without ambiguity, confirmation-waiting, same-flow fill, failed
+  stackon) — tests only, no production change expected.
+- [ ] **T6 — 2.13.5 per U2's ruling.** Either drop with a recorded measurement, or the
+  invalidate-and-pop boundary enforcement. Depends: T1.
+- [ ] **T7 — verification.** Suites green; seed-212 8-sample run read against the 2026-07-09
+  baseline; expect B01.C07 to flip on T2.
