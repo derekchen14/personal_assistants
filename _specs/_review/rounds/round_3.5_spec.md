@@ -1,219 +1,161 @@
-# Round 3.5 (was fix 2) — Add the missing `propose` NLU slot-fill prompt
+# Round 3.5 — Plan decomposition and the missing NLU prompts
 
-Status: DONE 2026-07-03 (PR #5). Discovered by the 2026-07-03 evaluation-suite run.
-Owner module: **NLU** (slot-fill prompt registry). See also [[round_3_nlu.md]], [[round_2.10_orchestrator_activation.md]].
+Status: EXPANDED 2026-07-17. The original scope (the `propose` slot-fill prompt) shipped 2026-07-03
+in PR #5 and survives in the current registry — its record is preserved at the bottom. The round now
+covers plan decomposition from NLU plus every remaining NLU prompt gap for the no-policy flows.
+Owner module: **NLU**. See also [[round_3.4_spec.md]] (T8's plan branch, the detection snippet).
 
 ---
 
-## What is being changed
+## What is missing today (audited 2026-07-17)
 
-Add a `PROPOSE_PROMPT` entry to `backend/prompts/nlu/revise_slots.py` and register it in that module's
-`PROMPTS` dict, so `propose` has a slot-fill prompt like every other live flow. That is the entire change:
-one authored prompt entry (four fields) plus one dict key.
+Derek's working assumption was that {29D}, {000}, {09F}, and {39B} are all missing. The audit says
+two of the four already exist:
 
-## Background and motivation
+| Flow | dax | Slot-fill prompt (`backend/prompts/nlu/`) | Detection prompt (`backend/prompts/experts/`) | Flow class |
+|---|---|---|---|---|
+| `chat` | {000} | **exists** (`converse_slots.py`) | **exists** (`converse_flows.py`, keyed 'Converse') | exists (`topic` slot) |
+| `propose` | {39B} | **exists** (`revise_slots.py` — the PR #5 fix survived the Phoenix rewrite) | **exists** (exemplar in `revise_flows.py:50`) | exists (`source` + `context`) |
+| `plan` | {29D} | missing | **missing — `get_prompt('Plan')` raises KeyError** | none (by design, see below) |
+| `clarify` | {09F} | missing | **missing — `get_prompt('Clarify')` raises KeyError** | none (by design, see below) |
 
-### The crash
+Verification commands:
 
-Whenever NLU detects the `propose` flow, the turn crashes:
 ```
-File ".../backend/prompts/nlu/__init__.py", line 35, in get_prompt
-    return PROMPTS[flow_name]
-KeyError: 'propose'
-take_turn crashed: 'propose'
+python -c "from backend.prompts.nlu import PROMPTS; from schemas.ontology import FLOW_ONTOLOGY; \
+  print(sorted(set(FLOW_ONTOLOGY) - set(PROMPTS)))"        # → ['clarify', 'plan']
+python -c "from backend.prompts.experts import PROMPTS; print(sorted(PROMPTS))"
+  # → ['Converse', 'Draft', 'Publish', 'Research', 'Revise'] — no Plan, no Clarify
 ```
-- `NLU.think` builds a transient `propose` flow and calls `_fill_slots` (`backend/modules/nlu.py:106`).
-- `_fill_slots` calls `build_slot_filling_prompt(flow, ...)` (`nlu.py:391`).
-- That calls `get_prompt('propose')` → `PROMPTS['propose']` (`backend/prompts/for_nlu.py:249` →
-  `backend/prompts/nlu/__init__.py:34-35`), which raises `KeyError`.
-- `agent.take_turn`'s top-level `except` (`backend/agent.py:49-51`) swallows it into the canned
-  "Something went wrong on my end. Please try again." fallback.
 
-### Why the gap exists
+Two standing decisions carried in from round 3.4 shape what "missing" means for plan and clarify:
 
-`propose` is the flow the 48→16 refactor **added** (`ProposeFlow`, `backend/components/flow_stack/
-flows.py:285`). The refactor registered it in `FLOW_CATALOG` and `flow_classes`, wrote its PEX skill
-(`backend/prompts/pex/skills/propose.md`), and gave it a dax — but never authored its NLU slot-fill
-prompt. The registry proves it is the only gap:
-```
-$ python -c "from backend.prompts.nlu import PROMPTS; from schemas.ontology import FLOW_CATALOG; \
-  print(sorted((set(FLOW_CATALOG)-{'plan','clarify'}) - set(PROMPTS)))"
-['propose']
-```
-Every other flow (`research_slots`, `draft_slots`, `revise_slots`, `publish_slots`, `converse_slots`,
-`nlu/__init__.py:19-27`) has an entry; `revise_slots.py` currently exports `rework`, `write`, `audit`
-(`revise_slots.py:821-825`) but not `propose`.
+- **`plan` is never stacked.** A Plan detection stackons the decomposed STEPS (domain flows), never a
+  `plan` flow — so `plan` needs no flow class and no slot-fill prompt. Its gap is the decomposition
+  prompt (this round's centerpiece) plus surviving `get_prompt('Plan')`.
+- **`clarify` is never stacked.** `think` routes it through `_write_non_policy_belief`
+  (`nlu.py:132-146`): the Ambiguity Handler recognizes a general ambiguity and the scratchpad entry
+  says "detected clarify; nothing stacked". So `clarify` needs no flow class and no slot-fill prompt
+  either. Its gap is surviving `get_prompt('Clarify')` and a sane candidate list.
 
-### Why it matters
+So the deliverables are: (1) the plan decomposition prompt + schema + the `think` wiring that stacks
+the steps, (2) detection-prompt coverage for the Plan and Clarify intents, (3) a fix to Clarify's
+candidate narrowing. Nothing to author for {000} or {39B}.
 
-- **It is a hard crash**, not a soft miss: every `propose` turn dies. In the traces run it surfaced twice
-  directly (`B01.C04 turn 3` crashed; `B03.C01 turns 3-4` fell to the crash fallback).
-- `propose` is a normal, expected flow (generate 2–3 alternatives for a placeholder gap; the "options+
-  select" arc leans on it). It will keep being detected, so it will keep crashing until the prompt exists.
-- This is the cheapest high-severity fix in the suite: one authored entry, no design decisions.
+## 3.5.1 — Plan decomposition from NLU
 
-## Connected files
+### Problem
 
-| File | Role |
-|---|---|
-| `backend/prompts/nlu/revise_slots.py:821-825` | `PROMPTS` dict for the Revise intent — add `'propose'` here |
-| `backend/prompts/nlu/__init__.py:19-31` | merges every intent module's `PROMPTS`, then filters to live flows |
-| `backend/prompts/for_nlu.py:248-285` | `build_slot_filling_prompt` — consumes the four authored fields |
-| `backend/components/flow_stack/flows.py:285-301` | `ProposeFlow` — the slots the prompt must cover |
-| `backend/modules/nlu.py:59-72` | `_fill_slots_schema` — derives the output schema from `flow.slots` |
-| `utils/tests/nlu_unit_tests.py` | `test_prompt_slot_headings_match_flow_slots`, `test_few_shot_example_keys_match_flow_slots` — the lints that will police this entry |
+Detection returns ONE flow (`_flow_detection_schema`, `dialogue_state.py:19-31`). Round 3.4's T8
+promises "a Plan detection stackons every step in reverse execution order", but no prompt or schema
+exists that returns a step list — S7's find → outline → schedule has nowhere to come from. Today
+`_write_non_policy_belief('plan')` sets `state.has_plan = True`, stacks nothing, and validate's plan
+entry records the empty decomposition (`nlu.py:132-139` carries the TODO).
 
-## The flow being filled
+### Solution Contract
 
-`ProposeFlow` (`flows.py:285-301`) declares exactly two slots:
+Decomposition is a separate NLU call after detection lands `plan`, not a change to the detection
+schema — the detection snippet already tells voters "the plan is decomposed elsewhere; your job is
+only the entry flow" (`for_experts.py:368-371`). One LLM call returns the ordered steps; `think`
+stackons them in reverse execution order (last step first, so the first step ends up on top); each
+step is a real domain flow that the existing per-flow machinery fills and runs. No slot fill at
+decompose time — S7's NLU 3 row is "skipped, since state.has_plan": each step's policy fills its own
+slots with `fill_slots_by_label` when it runs, and step inputs usually depend on earlier steps'
+outputs anyway. Validate's plan
+entry then lists the stacked steps exactly as T9 already writes it (summary only, no `new_flow` key,
+so PEX's hook 3/5 reads skip it); PEX's hook-point-1 read sees the steps on the stack directly.
+
+Proposed new surface (needs Derek's sign-off before building — no new concepts without approval):
+
+- `DialogueState.decompose_plan(engineer, context, user_text)` — sits beside `classify_intent` /
+  `detect_flows` / `fill_slots` as the fourth prediction method on the component.
+- `_plan_decomposition_schema` (module-level in `dialogue_state.py`, beside
+  `_flow_detection_schema`): `{reasoning, steps: [{flow_name (enum of stackable flows), goal}]}`,
+  2-5 steps. `goal` is one sentence of what the step should accomplish — it seeds the step's
+  slot-fill later, it is NOT a slot write. Run the shape through the offline schema linter
+  (`test_nlu_schemas.py`) — nested arrays of enum-bearing objects are near the known-rejected zone.
+- `PLAN_PROMPT` in a new `backend/prompts/experts/plan_flows.py`, exporting
+  `PROMPTS = {'Plan': PLAN_PROMPT}` like every other intent module — which also closes the
+  `get_prompt('Plan')` KeyError for free. The prompt's `instructions`/`rules`/`examples` teach
+  decomposition: steps are stackable domain flows only (never `plan`, `clarify`, or `chat`), 2-5
+  steps, forward through the pipeline, one S7-style exemplar (find → outline → schedule) and one
+  two-step exemplar.
+
+### Implementation sketch
+
 ```python
-self.slots = {
-  'source':  SourceSlot(1, 'sec'),         # required — the section holding the placeholder gap
-  'context': FreeTextSlot(priority='optional'),  # optional — user guidance on what should fill the gap
-}
-self.tools = ['read_metadata', 'read_section', 'revise_content']
-```
-So the authored prompt only needs to cover `source` (required, entity part `sec`) and `context`
-(optional). `fill_slot_values` (`flows.py:297-301`) reads `values['source']` (list of entity dicts) and
-`values['context']` (list of strings).
-
-## The change (fully specified stub)
-
-Add to `backend/prompts/nlu/revise_slots.py`, then extend the module's `PROMPTS`:
-
-```python
-PROPOSE_PROMPT = {
-    'instructions': (
-        "The Propose Flow fills a specific placeholder gap in existing content — a `<fill in here>`, a "
-        "TODO, or a blank slot inside a section — by generating 2-3 targeted alternatives for the user to "
-        "pick. It is like Brainstorm, but scoped to ONE spot in a draft rather than the whole post.\n\n"
-        "Extract `source` (the section that contains the gap; usually inherits the post from active_post) "
-        "and, when the user gives direction on what the gap should contain, `context` (their guidance, "
-        "captured verbatim). When the user only points at the gap with no direction, leave `context` null."
-    ),
-    'rules': (
-        "1. `source` names the SECTION holding the gap. Fill `sec` when the user names a section ('the "
-        "intro', 'the methods section'); `post` inherits from active_post unless the user names a "
-        "different post. A bare 'fill in the blank here' with a grounded active post fills source from "
-        "grounding and leaves `sec` for the policy to resolve.\n"
-        "2. `context` (optional) captures the user's direction for the gap verbatim — 'something about "
-        "cost savings', 'a concrete example'. Vague pointers with no direction ('finish this', 'fill it "
-        "in') leave `context` null so the flow proposes from the surrounding content alone.\n"
-        "3. Treat propose directives as current-turn-only; prior-turn direction is assumed applied. "
-        "`source` is the exception — it carries forward from `state.active_post`."
-    ),
-    'slots': '',   # empty → procedural rendering from flow.slots (for_nlu.py:266); source+context are simple
-    'examples': '''<positive_example>
-## Conversation History
-
-User: "Fill in the placeholder in my sleeper-trains post's comfort section — lead with the overnight time saved."
-
-## Input
-Active post: None
-
-## Output
-
-```json
-{
-  "reasoning": "User points at a gap in a named section (comfort) and gives direction (overnight time saved). source fills post+sec; context captures the direction verbatim.",
-  "slots": {
-    "source": {"post": "sleeper-trains", "sec": "comfort"},
-    "context": "lead with the overnight time saved"
-  }
-}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "There's a TODO in the intro — give me a couple options for it."
-
-## Input
-
-Active post: **The Case for Sleepers Over Hotels** (id: `9f8e7d6c`)
-
-Filled slots are shown as part of the input; slots not shown are empty so far.
-source slot: {"post": "9f8e7d6c", "sec": "", "snip": "", "chl": ""}
-
-## Output
-
-```json
-{
-  "reasoning": "Active post is grounded — copy post_id verbatim from the source slot. Section named (intro). No direction on what the TODO should say → context null.",
-  "slots": {
-    "source": [{"post": "9f8e7d6c", "sec": "intro"}],
-    "context": null
-  }
-}
-```
-</positive_example>
-
-<edge_case>
-## Conversation History
-
-User: "Fill in the blank."
-
-## Input
-Active post: My RL Primer
-
-## Output
-
-```json
-{
-  "reasoning": "Bare gap pointer with a grounded active post and no section or direction. source inherits the post; sec stays for the policy to resolve from the placeholder location; context null.",
-  "slots": {
-    "source": {"post": "My RL Primer"},
-    "context": null
-  }
-}
-```
-</edge_case>''',
-}
-```
-And extend the export at `revise_slots.py:821-825`:
-```python
-PROMPTS = {
-    'rework':  REWORK_PROMPT,
-    'write':   WRITE_PROMPT,
-    'audit':   AUDIT_PROMPT,
-    'propose': PROPOSE_PROMPT,   # ← add
-}
+# nlu.py — _write_non_policy_belief's plan branch becomes:
+if flow_name == 'plan':
+    state.has_plan = True
+    steps = state.decompose_plan(self.engineer, context, user_text)   # [{flow_name, goal}, ...]
+    for step in reversed(steps):                                       # last step first → first on top
+        self.world.flows.stackon(step['flow_name'], transfer=False)
 ```
 
-## Big-decision notes
+The per-step `goal` rides the scratchpad plan entry (validate already writes the step list; extend
+the summary line, no new entry key), so PEX and later steps can read what each step is for.
 
-Small change, but two choices worth recording:
+## 3.5.2 — Clarify {09F} detection coverage
 
-- **Procedural vs. hand-authored `## Slots` section.** `build_slot_filling_prompt` renders slot headings
-  procedurally from `flow.slots` when the `'slots'` field is empty (`for_nlu.py:263-266`). `propose` has
-  only two simple slots, so an empty `'slots': ''` is the lazy correct choice — it stays in sync with the
-  flow automatically and can never drift out of the heading lint. Hand-author a `## Slots` block only if a
-  later change needs per-slot extraction nuance the procedural render can't express.
-  - Pro (procedural): cannot drift from `flow.slots`; less to maintain.
-  - Con (procedural): no room for slot-specific guidance beyond the rules field — acceptable here.
+### Problem
 
-- **Do NOT reference a `ver` field** in the prompt or examples. `ver` is set by the grounding layer, never
-  predicted by NLU (`feedback_entity_slot_rule`, MEMORY grounding notes). The examples above omit it.
+Two breaks when the working intent is Clarify:
+
+1. `get_prompt('Clarify')` raises KeyError (`experts/__init__.py:97-98`) — the moment
+   `state.pred_intent` is 'Clarify' (round 3.4's T16 classifier, or a future tie-break value),
+   `_detection_prompt` crashes the think lane. Same for `get_prompt('Plan')`. T16 LANDED
+   2026-07-17, so the crash is live: every Plan/Clarify classification fails the turn until
+   the registry entries here (`plan_flows.py`, `clarify_flows.py`) land — they are this
+   round's most urgent piece, and should land with or before T17 (the TypeSafe swap) so the
+   real classifier is judged against a working detection path.
+2. `_candidate_names('Clarify')` narrows to `['clarify']` alone — clarify's ontology entry has no
+   edge flows, so detection would be a one-option vote. The Clarify snippet says the opposite:
+   "Detect the closest flow anyway — low agreement is expected and raises a clarification
+   downstream" (`for_experts.py:372-375`).
+
+### Solution Contract
+
+Author a small `CLARIFY_PROMPT` (new `backend/prompts/experts/clarify_flows.py`, exporting
+`PROMPTS = {'Clarify': CLARIFY_PROMPT}`): instructions say the turn is underspecified and the job is
+the closest reading over the FULL flow list; one exemplar where the vote lands on a domain flow with
+low agreement. And `_candidate_names` keeps the full candidate list when the intent maps to no
+stackable flow (Clarify's flow set minus non-stackables is empty) — a rule, not a special case:
+narrowing that produces zero stackable candidates falls back to the full list.
+
+No slot-fill prompt and no flow class: `clarify` is never stacked (see the table's standing
+decision). The `{09F}` dax stays label-only for eval ground truth.
 
 ## New concepts introduced
 
-**None.** This adds one entry to an existing registry using the existing four-field contract
-(`nlu/__init__.py:4-13`). No new field, key type, component, or mechanism.
+Proposed, pending approval: `DialogueState.decompose_plan` + `_plan_decomposition_schema`, and two
+new intent modules in the existing experts registry (`plan_flows.py`, `clarify_flows.py` — new files
+in an existing pattern, not a new pattern). Everything else reuses the current registries.
 
 ## How to verify
 
-1. **Import + registry:**
-   `python -c "from backend.prompts.nlu import PROMPTS; print('propose' in PROMPTS)"` → `True`.
-   The gap query above now prints `[]`.
-2. **Lints (deterministic, free):** `python utils/evals/run_evaluation_suite.py --tests nlu` stays green —
-   in particular `test_prompt_slot_headings_match_flow_slots` and `test_few_shot_example_keys_match_flow_slots`
-   (`nlu_unit_tests.py`) now cover `propose`. With `'slots': ''` the heading lint skips procedural flows,
-   so it passes; the example-keys lint checks the fenced-JSON `slots` keys ⊆ `{source, context}` — the
-   stub obeys this.
-3. **No crash, live:** rerun the two scenarios that crashed —
-   `python utils/evals/run_evals.py --ids B01.C04,B03.C01` — and confirm no `KeyError: 'propose'` and no
-   `Something went wrong on my end` fallback on the propose turns.
-4. **Detection sanity (paid, bounded):** `python utils/tests/model_tests.py --module nlu` on the standard 8
-   no longer errors on any propose turn; the propose turn either matches or is a normal near-miss, not a crash.
-5. Full deterministic suite stays green (208): `python utils/evals/run_evaluation_suite.py --tests`.
+1. `get_prompt('Plan')` and `get_prompt('Clarify')` return prompt dicts — no KeyError.
+2. The gap query prints `[]` for the experts registry against the Intent enum's live values.
+3. A plan turn (S7's "research X, outline it, then schedule it") stacks three steps in execution
+   order (find on top) and validate's entry lists them; `has_plan` is True.
+4. A clarify-intent detection runs over the full candidate list and returns a domain flow with low
+   confidence; the turn's entry reads "detected clarify; nothing stacked" only when the vote itself
+   lands on clarify.
+5. Unit suites stay green; the schema linter accepts `_plan_decomposition_schema`.
+
+---
+
+## Shipped 2026-07-03 (PR #5): the `propose` slot-fill prompt
+
+Preserved for history — file paths below are the pre-Phoenix Charlie layout. The fix itself carried
+forward: `propose` is in today's registry (`backend/prompts/nlu/revise_slots.py`).
+
+Discovered by the 2026-07-03 evaluation-suite run: whenever NLU detected `propose`, `get_prompt`
+raised `KeyError: 'propose'` and the turn fell to the crash fallback (`B01.C04 turn 3`, `B03.C01
+turns 3-4`). `propose` was the flow the 48→16 refactor added — registered in `FLOW_CATALOG` and
+`flow_classes` with its PEX skill and dax, but its NLU slot-fill prompt was never authored. The fix
+was one authored `PROPOSE_PROMPT` (instructions / rules / empty `slots` for procedural rendering /
+three exemplars covering a named section + direction, a grounded active post with a TODO, and a bare
+"fill in the blank") plus the `'propose'` key in the module's `PROMPTS` dict. Decisions of record:
+the `## Slots` section renders procedurally from `flow.slots` (cannot drift from the flow; the
+heading lint skips procedural flows), and no exemplar references `ver` — grounding sets it, NLU
+never predicts it.

@@ -312,10 +312,8 @@ Do not turn incidental prose into new object types or control actions. In partic
   keeps the stack clean; none of the three needs a name;
 - **acting loop**, **belief note** — say the **PEX Agent** and the **belief** it reads;
 - **frame** — the object is the **Task Artifact**;
-- **snippet**, **note** — a scratchpad item is an **entry**;
 - **record** for a scratchpad item — **records** are MEM's noun; the scratchpad holds **entries**;
-- **flag** — there is no belief flag block; completion is a flow status and failures use the
-  violation vocabulary.
+- **gate** - when there is branching, describe the actual logic rather than saying it is a gate
 
 ## Designed, not built
 
