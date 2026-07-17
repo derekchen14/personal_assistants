@@ -114,7 +114,7 @@ def _single_flow(turn:dict):
 
 def _top_pred_flow(agent):
     pred = agent.world.state.pred_flows
-    return pred[0]['flow_name'] if pred else None
+    return pred[0]['name'] if pred else None
 
 
 def _run_case(case:dict, domain_tools:set, report_path:Path) -> tuple[int, int, list, list, list]:

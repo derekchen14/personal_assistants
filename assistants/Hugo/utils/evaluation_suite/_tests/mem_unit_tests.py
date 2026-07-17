@@ -87,10 +87,11 @@ class TestMEMFacade:
         assert result['_success'] is True
         assert result['matches'][0]['question'] == 'What is X?'
 
-    def test_recap_returns_recent_history(self, minimal_config):
+    def test_recent_history_reads_through_the_component(self, minimal_config):
+        """T20: the L1 read is the Context Coordinator's — `recap` is the turn wrap now."""
         memory = MEM(minimal_config, None, 'test_user')
         memory.context_coordinator.add_turn('User', 'draft a post about otters', 'utterance')
-        assert 'otters' in memory.recap()
+        assert 'otters' in memory.context_coordinator.compile_history(keep_system=True)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -232,7 +233,7 @@ class TestCompression:
 
 
 class TestCompressionTrigger:
-    """The end-of-turn trigger (MEM._compaction_check, run by store_turn): real usage off
+    """The end-of-turn trigger (MEM._compaction_check, run by recap): real usage off
     response.usage against the configured threshold; the protected tail size rides in from
     config."""
 
@@ -278,19 +279,19 @@ class TestCompressionTrigger:
 
 
 
-class TestStoreTurn:
-    """MEM.store_turn — the end-of-turn store: records the agent turn to L1, bumps the turn
-    count, and saves state.json to the session dir."""
+class TestRecap:
+    """MEM.recap — the turn wrap (T20: store_turn renamed): records the agent turn to L1,
+    bumps the turn count, and saves state.json to the session dir."""
 
-    def test_store_turn_records_bumps_and_saves(self, sessions_dir, minimal_config):
+    def test_recap_records_bumps_and_saves(self, sessions_dir, minimal_config):
         config = dict(minimal_config)
         config['compaction'] = {'threshold_tokens': 64000, 'protect_tail': 20}
         world, memory = _make_world(MappingProxyType(config))
         world.open_session('convo-store')
         before = world.state.turn_count
-        memory.store_turn('Drafted the otter post.')
+        memory.recap('Drafted the otter post.')
         assert world.state.turn_count == before + 1
-        assert 'Drafted the otter post.' in memory.recap()
+        assert 'Drafted the otter post.' in memory.context_coordinator.compile_history(keep_system=True)
         saved = json.loads(world.state_file().read_text())
         assert saved['session']['turn_count'] == before + 1
 

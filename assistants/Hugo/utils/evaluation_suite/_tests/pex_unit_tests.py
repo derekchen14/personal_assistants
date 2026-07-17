@@ -24,7 +24,7 @@ from schemas.config import load_config
 from schemas.ontology import FLOW_ONTOLOGY
 
 _HOT_PATH_TOOLS = ('manage_flows', 'understand', 'append_to_scratchpad', 'store_preference',
-                   'ask_clarification_question', 'recover_from_ambiguity')
+                   'ask_clarification_question')
 
 
 # ==============================================================================
@@ -102,16 +102,17 @@ class TestOrchestratorDispatch:
     def test_understand_read_returns_document(self, mock_agent):
         result = mock_agent.pex._tool('understand', {'op': 'read'})
         assert result['_success'] is True
-        assert list(result['state']) == ['session', 'user_beliefs', 'grounding', 'flow_stack']
+        assert list(result['state']) == ['session', 'beliefs', 'grounding', 'flow_stack']
 
-    def test_manage_flows_stacks_and_saves(self, sessions_dir, mock_agent):
+    def test_manage_flows_stacks_and_updates_the_document(self, sessions_dir, mock_agent):
+        """state.json persistence moved to MEM's turn-end finish(); the tool result carries
+        the refreshed document."""
         mock_agent.world.open_session('wire-test')
         result = mock_agent.pex._tool('manage_flows',
                                                {'op': 'stackon', 'flow_name': 'outline',
                                                 'active': False})
         assert result['_success'] is True
         assert result['state']['flow_stack'][0]['flow_name'] == 'outline'
-        assert (sessions_dir / 'wire-test' / 'state.json').exists()
         assert mock_agent.pex.flow_stack.get_flow().flow_type == 'outline'
 
     def test_manage_flows_pop_clears_the_stack(self, sessions_dir, mock_agent):
@@ -128,18 +129,18 @@ class TestOrchestratorDispatch:
         mock_agent.world.open_session('wire-test')
         result = mock_agent.pex._tool('manage_flows', {'op': 'merge'})
         assert result['_success'] is False
-        assert 'Unknown write_state op' in result['_message']
+        assert 'Unknown manage_flows op' in result['_message']
 
-    def test_manage_flows_unknown_slot_returns_corrective_error(self, sessions_dir, mock_agent):
-        """LLM-invented slot names (e.g. create's `type` reread as genre) get a corrective
-        error naming the valid slots, instead of fill_slot_values dropping them silently."""
+    def test_manage_flows_rejects_slot_writes(self, sessions_dir, mock_agent):
+        """T18: slot writes left the tool — NLU owns slot filling. Any fields.slots gets a
+        corrective error instead of reaching the flow."""
         mock_agent.world.open_session('wire-test')
         mock_agent.pex._tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
         result = mock_agent.pex._tool(
-            'manage_flows', {'op': 'update', 'fields': {'slots': {'genre': 'tutorial'}}})
+            'manage_flows', {'op': 'update', 'fields': {'slots': {'source': [{'post': 'x'}]}}})
         assert result['_success'] is False
         assert result['_error'] == 'invalid_input'
-        assert "'source'" in result['_message']  # valid slots are listed for the retry
+        assert 'NLU fills slots' in result['_message']
 
     def test_read_and_append_scratchpad_tools(self, mock_agent, tmp_path):
         """The split scratchpad tools: append_to_scratchpad rejects an originless entry and stamps
@@ -182,16 +183,8 @@ class TestScopedToolSurface:
         result = pex._tool('ask_clarification_question', {})
         assert result['_success'] is True and result['question']
 
-    def test_recover_from_ambiguity_tool(self, mock_agent, tmp_path):
-        pex = mock_agent.pex
-        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')  # file-backed for recover
-        none = pex._tool('recover_from_ambiguity', {})
-        assert none['_success'] is False and none['_error'] == 'invalid_input'
-        mock_agent.world.prefs.store_preference('channel', 'substack')
-        mock_agent.world.ambiguity.recognize('partial', {'missing': 'channel'})
-        result = pex._tool('recover_from_ambiguity', {})
-        assert result['_success'] is True and result['recovery'] == 'substack'
-        assert mock_agent.world.ambiguity.is_present is False  # resolved internally
+    # test_recover_from_ambiguity_tool removed — T19 deleted the tool (recovery is NLU's or
+    # the sub-agents' call, never the orchestrator's).
 
     def test_flow_stack_tools_replace_call_flow_stack(self, mock_agent):
         pex = mock_agent.pex
@@ -268,32 +261,12 @@ class TestDispatchFlow:
                                         'turn_number': wired.world.context.turn_id, 'used_count': 0,
                                         'summary': 'Drafted the intro.', 'metadata': {}}
         assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == [result['completion']]
-        # The run is reflected back into the state's flow_stack block, grounding applied.
-        assert state.flow_stack[-1]['flow_name'] == 'outline'
-        assert state.flow_stack[-1]['status'] == 'Completed'
+        # T12: the completed flow left the stack in code — the pop is PEX's, never the agent's.
+        assert pex.flow_stack.to_list() == []
         assert state.get_active_post() == 'cafe01'
 
-    def test_write_state_slots_reach_the_policy_run(self, wired):
-        """slots written via write_state land on the live flow that activate_flow runs."""
-        pex = wired.pex
-        state = wired.world.state
-        state.write_state(wired.world.state_file(), 'stackon',
-                          stack=pex.flow_stack, flow_name='outline')
-        state.write_state(wired.world.state_file(), 'update_flow',
-                          stack=pex.flow_stack, slots={'source': [{'post': 'cafe01'}]})
-        state.set_active_entity(post='cafe01', ver=True)
-        captured = {}
-
-        class _CapturingPolicy(_StubPolicy):
-            def execute(self, policy_state, context, tools):
-                captured['slots'] = self.flow_stack.get_flow().slot_values_dict()
-                return super().execute(policy_state, context, tools)
-
-        pex._policies['Draft'] = _CapturingPolicy(pex.flow_stack)
-        assert pex.flow_stack.find_by_name('outline') is not None
-        result = pex.activate_flow({'flow_name': 'outline'})
-        assert result['status'] == 'Completed'
-        assert captured['slots']['source'][0]['post'] == 'cafe01'
+    # test_manage_flows_slots_reach_the_policy_run removed — T18 deleted the slot-write path
+    # through manage_flows (NLU fills the flow it stacks; policies fill the rest).
 
     def test_non_completed_returns_status_and_question(self, wired):
         pex = wired.pex
@@ -360,17 +333,10 @@ class TestPolicyCompletion:
                                         'summary': 'Wrote the intro.', 'metadata': {'sec': 'intro'}}
         # The policy's record IS the tool result — no fallback duplicate from activate_flow.
         assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == [result['completion']]
-        assert state.flow_stack[-1]['status'] == 'Completed'
+        assert pex.flow_stack.to_list() == []   # T12: the completed flow left the stack in code
 
-    def test_complete_flow_blocks_ungrounded_completion(self, wired):
-        pex = wired.pex
-        pex._policies['Draft'] = self._migrated_policy(wired, 'Done.')
-        # stackon runs the policy (active defaults true); the grounding rejection comes back
-        # through the corrective-error wrapper.
-        result = pex._tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
-        assert result['_success'] is False
-        assert 'grounding.post is empty' in result['_message']
-        assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == []  # no record written
+    # test_complete_flow_blocks_ungrounded_completion removed with write_state — the grounding
+    # check at completion moves to the round 3.4 verify() hook (post-flow), not the status write.
 
     def test_grounded_source_ids_continuity(self, wired):
         """Empty entity slot + filled grounding block: the active entity carries over."""
@@ -619,7 +585,9 @@ class TestOrchestratorLoop:
         monkeypatch.setattr('backend.assistant.load_config',
                             lambda: load_config(overrides={'debug': True, 'limits': limits}))
         agent = Assistant(username='test_user')
-        agent.nlu.understand = lambda *args, **kwargs: None
+        agent.nlu.think = lambda *args, **kwargs: None
+        agent.nlu.react = lambda *args, **kwargs: None
+        agent.nlu.dialogue_state.classify_intent = lambda *args, **kwargs: ''
         queue = _script(agent, [_response(_tool_block('understand', {'op': 'read'})),
                                 _response(_text_block('Wrapped up after one round.'))])
         result = agent.take_turn('walk the whole backlog')
@@ -729,9 +697,22 @@ from backend.utilities.services import (
     ToolService, PostService, ContentService, AnalysisService, PlatformService,
     split_sentences, join_sentences, _DB_DIR,
 )
-from backend.components.dialogue_state import DialogueState, rehydrate_flow
+from backend.components.dialogue_state import DialogueState
 from backend.components.flow_stack import FlowStack
 from utils.evaluation_suite.scoring import gate, grade
+
+
+def rehydrate_flow(entry:dict):
+    """Rebuild a BaseFlow from one flow_stack to_dict entry — the round-trip vocabulary
+    (instantiate from flow_classes, restore lifecycle fields, refill slots)."""
+    flow = flow_classes[entry['flow_name']]()
+    flow.flow_id = entry['flow_id']
+    flow.status = entry['status']
+    flow.stage = entry['stage']
+    flow.turn_ids = list(entry['turn_ids'])
+    flow.fill_slot_values(entry['slots'])
+    flow.is_filled()  # recompute every slot's .filled after the refill
+    return flow
 
 
 def _without_ids(entries:list) -> list:
@@ -1577,11 +1558,16 @@ def _build_flowstack_machine():
         def teardown(self):
             shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
+        def _apply(self, op, **kwargs):
+            """Run one stack op directly — the ONE stack is the FlowStack itself; nothing is
+            mirrored onto the DialogueState anymore."""
+            getattr(self.stack, op)(**kwargs)
+
         @rule(name=st.sampled_from(_NAMES))
         def stackon(self, name):
             if len(self.stack._stack) < self.stack._max_depth:
                 top_before = self.stack._stack[-1] if self.stack._stack else None
-                self.state.write_state(self.state_file, 'stackon', stack=self.stack, flow_name=name)
+                self._apply('stackon', flow_name=name)
                 new_flow = self.stack._stack[-1]
                 # Two valid outcomes: pushed a new Pending flow (activation promotes),
                 # OR returned the existing in-flight top (no-consecutive-same-type).
@@ -1601,7 +1587,7 @@ def _build_flowstack_machine():
             if len(self.stack._stack) >= self.stack._max_depth:
                 return
             old_top = self.stack._stack[-1]
-            self.state.write_state(self.state_file, 'fallback', stack=self.stack, flow_name=name)
+            self._apply('fallback', flow_name=name)
             assert old_top.status == 'Invalid'
             assert self.stack._stack[-1].status == 'Active'
             assert self.stack._stack[-1].flow_type == name
@@ -1611,27 +1597,23 @@ def _build_flowstack_machine():
             # Exercises slot round-trip fidelity: flows without a 'source' slot
             # ignore the fill on both implementations.
             if self.stack._stack:
-                self.state.write_state(self.state_file, 'update_flow',
-                                       stack=self.stack, slots={'source': [{'post': post}]})
+                self._apply('update_flow', slots={'source': [{'post': post}]})
 
         @rule()
         def complete_top(self):
             if self.stack._stack:
-                self.state.write_state(self.state_file, 'update_flow',
-                                       stack=self.stack, status='Completed')
+                self._apply('update_flow', status='Completed')
 
         @rule()
         def mark_pending(self):
             # Some flows are pushed Pending by plans; simulate that state by
             # marking top Pending. Then pop_completed should activate it.
             if self.stack._stack:
-                self.state.write_state(self.state_file, 'update_flow',
-                                       stack=self.stack, status='Pending')
+                self._apply('update_flow', status='Pending')
 
         @rule()
         def pop_completed(self):
-            before_completed = [e for e in self.stack._stack if e.status == 'Completed']
-            self.state.write_state(self.state_file, 'pop', stack=self.stack)
+            self._apply('pop')
             for entry in self.stack._stack:
                 assert entry.status not in ('Completed', 'Invalid'), \
                     f'pop_completed left a {entry.status} flow on the stack'
@@ -1660,15 +1642,6 @@ def _build_flowstack_machine():
             valid = {'Pending', 'Active', 'Completed', 'Invalid'}
             for entry in self.stack._stack:
                 assert entry.status in valid, f'unknown status {entry.status!r}'
-
-        @invariant()
-        def saved_copy_matches_the_stack(self):
-            # the saved copy and file track the one stack
-            in_memory = _without_ids(self.stack.to_list())
-            assert _without_ids(self.state.flow_stack) == in_memory
-            if self.state_file.exists():
-                saved = DialogueState.load(self.state_file).flow_stack
-                assert _without_ids(saved) == in_memory
 
     FlowStackMachine.TestCase.settings = settings(max_examples=50, deadline=2000)
     return FlowStackMachine
@@ -1788,7 +1761,7 @@ def test_skill_system_ends_with_reminder():
 
 def test_reminder_is_agentic():
     assert 'valid JSON' not in general.SLOT_7_REMINDER
-    assert 'valid JSON' in _TASK_SUFFIXES['classify_intent']
+    assert 'valid JSON' in _TASK_SUFFIXES['detect_flow']  # classify_intent moved to TypeSafe (T17)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1798,15 +1771,14 @@ def test_reminder_is_agentic():
 
 
 class TestSingleCallStackon:
-    """`write_state op=stackon active=true` stacks on, folds belief slots, and runs the
-    policy in one call."""
+    """`manage_flows op=stackon` runs the policy in one call unless active=false queues it.
+    (Belief-slot folding retired with _apply_belief_slots — NLU fills the stacked flow itself.)"""
 
     def _believe(self, state, flow_name, intent='Draft'):
         state.pred_intent = intent
         state.pred_flows = [{'flow_name': flow_name, 'confidence': 0.9, 'votes': 2}]
-        state.pred_slots = {'source': [{'post': 'p1'}]}
 
-    def test_stackon_active_folds_slots_and_activates(self, sessions_dir, mock_agent, monkeypatch):
+    def test_stackon_active_runs_the_policy(self, sessions_dir, mock_agent, monkeypatch):
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         state = mock_agent.world.state
@@ -1818,8 +1790,6 @@ class TestSingleCallStackon:
                                     {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True
         assert ran['flow_name'] == 'outline'   # active defaults true: the push runs the policy
-        top = pex.flow_stack.get_flow()
-        assert top.slots['source'].values[0]['post'] == 'p1'   # belief slots folded in
 
     def test_stackon_active_false_only_stacks(self, sessions_dir, mock_agent, monkeypatch):
         mock_agent.world.open_session('wire-test')
@@ -1833,50 +1803,10 @@ class TestSingleCallStackon:
         assert result['_success'] is True and not called
 
 
-class TestBeliefInjection:
-    """NLU belief state injection (round 5.1): once per turn the landed detection becomes a
-    [belief] note; intent-differs is forced in code, flow-differs is left to the orchestrator."""
 
-    def _believe(self, state, flow_name, intent='Draft'):
-        state.pred_intent = intent
-        state.pred_flows = [{'flow_name': flow_name, 'confidence': 0.9, 'votes': 2}]
-        state.pred_slots = {'source': [{'post': 'p1'}]}
-
-    def test_injection_fires_once(self, sessions_dir, mock_agent):
-        mock_agent.world.open_session('wire-test')
-        pex = mock_agent.pex
-        self._believe(mock_agent.world.state, 'outline')
-        note = pex.inject_belief_state()
-        assert note.startswith('[belief]') and 'outline' in note
-        assert pex.inject_belief_state() is None      # once per turn
-
-    def test_intent_differs_forces_fallback(self, sessions_dir, mock_agent):
-        mock_agent.world.open_session('wire-test')
-        pex = mock_agent.pex
-        state = mock_agent.world.state
-        pex._tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline',
-                                            'active': False})
-        live = pex.flow_stack.get_flow()
-        live.status = 'Active'   # queued as Pending; model a mid-turn running flow
-        self._believe(state, 'release', intent='Publish')
-        note = pex.inject_belief_state()
-        assert 'Intent changed' in note and 'Invalid' in note
-        assert live.status == 'Invalid'               # fallback: not coming back to it
-        assert pex.flow_stack.get_flow(status='Active').flow_type == 'release'
-        assert state.flow_stack[-1]['flow_name'] == 'release'   # NLU's flow took over
-
-    def test_flow_differs_same_intent_no_forcing(self, sessions_dir, mock_agent):
-        mock_agent.world.open_session('wire-test')
-        pex = mock_agent.pex
-        state = mock_agent.world.state
-        pex._tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline',
-                                            'active': False})
-        live = pex.flow_stack.get_flow()
-        live.status = 'Active'   # queued as Pending; model a mid-turn running flow
-        self._believe(state, 'refine', intent='Draft')
-        note = pex.inject_belief_state()
-        assert 'refine' in note and 'Intent changed' not in note
-        assert live.status == 'Active'                # the orchestrator decides, not code
+# TestBeliefInjection removed — inject_belief_state retired in round 3.4 (T10): the hook 3/5
+# scratchpad read (_read_nlu_entry) replaced the [belief] note, and the forced intent fallback
+# died with it (NLU stacks its detection directly; code re-routes at the hook read).
 
 
 class TestPlanLifecycle:
@@ -1905,12 +1835,14 @@ class TestPlanLifecycle:
         result = pex._tool('manage_flows',
                                     {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True and result['status'] == 'Completed'
-        entries = [(entry['flow_name'], entry['status']) for entry in state.flow_stack]
-        assert ('compose', 'Pending') in entries    # the plan survived the completion
+        # T12: outline left the stack via activate_flow's pop, which promoted compose to Active;
+        # the run-the-top loop always stops at a completion — the agent judges what runs next.
+        entries = [(entry['flow_name'], entry['status']) for entry in pex.flow_stack.to_list()]
+        assert ('compose', 'Active') in entries     # the plan survived the completion
         assert ('release', 'Pending') in entries
         result = pex._tool('manage_flows', {'op': 'pop'})
-        # pop promoted compose AND ran it — the runtime owns policy execution; the plan tail survives.
+        # The agent's pop re-enters the loop, which runs the Active compose; its completion pops
+        # it in code and promotes release — where the loop stops again. The plan tail survives.
         assert result['_success'] is True and result['status'] == 'Completed'
-        entries = [(entry['flow_name'], entry['status']) for entry in state.flow_stack]
-        assert ('compose', 'Completed') in entries
-        assert ('release', 'Pending') in entries
+        entries = [(entry['flow_name'], entry['status']) for entry in pex.flow_stack.to_list()]
+        assert entries == [('release', 'Active')]

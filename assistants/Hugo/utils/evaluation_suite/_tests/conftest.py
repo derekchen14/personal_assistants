@@ -139,12 +139,14 @@ def memory_dir(tmp_path, monkeypatch):
 
 @pytest.fixture
 def orch_agent(sessions_dir, monkeypatch):
-    """Agent with a tmp sessions root and scripted LLM calls. NLU.understand is stubbed to a
-    no-op so the Flow gate stays hermetic — these tests exercise PEX.execute (the acting loop),
+    """Agent with a tmp sessions root and scripted LLM calls. NLU think/react are stubbed to
+    no-ops so the Flow gate stays hermetic — these tests exercise PEX.execute (the acting loop),
     not ensemble detection; the belief stays at its session defaults."""
     monkeypatch.setattr('backend.assistant.load_config', lambda: load_config(overrides={'debug': True}))
     agent = Assistant(username='test_user')
-    agent.nlu.understand = lambda *args, **kwargs: None
+    agent.nlu.think = lambda *args, **kwargs: None
+    agent.nlu.react = lambda *args, **kwargs: None
+    agent.nlu.dialogue_state.classify_intent = lambda *args, **kwargs: ''  # NLU 1 stays hermetic
     yield agent
     agent.close()
 

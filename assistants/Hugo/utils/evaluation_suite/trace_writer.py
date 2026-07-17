@@ -28,7 +28,6 @@ def belief_snapshot(agent) -> dict:
         'intent': state.pred_intent,
         'pred_flows': list(state.pred_flows or []),
         'confidence': state.confidence,
-        'pred_slots': dict(state.pred_slots or {}),
     }
 
 

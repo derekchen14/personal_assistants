@@ -18,6 +18,7 @@ from backend.components.world import World
 from backend.components.session_scratchpad import SessionScratchpad
 from backend.components.dialogue_state import DialogueState
 from schemas.ontology import FLOW_ONTOLOGY
+from utils.helper import flow2dax
 
 
 # ==============================================================================
@@ -25,12 +26,12 @@ from schemas.ontology import FLOW_ONTOLOGY
 # ==============================================================================
 
 @pytest.fixture
-def nlu(minimal_config):
+def nlu(minimal_config, tmp_path):
     """Real module wiring (mirrors Assistant.__init__): NLU/PEX/MEM each build their own
     components, the World holds the shared references. Only the LLM call sites on nlu.engineer
     get mocked per-test, so every conditional branch in NLU stays reachable. The fixture seeds
     a User action turn so Phase 1c (last_user_turn.turn_type == 'action') is exercisable by
-    default; tests that need an utterance turn override it."""
+    default, and attaches a tmp scratchpad since validate writes an entry every turn."""
     engineer = PromptEngineer(minimal_config)
     nlu = NLU(minimal_config, engineer)
     pex = PEX(minimal_config, engineer)
@@ -40,6 +41,7 @@ def nlu(minimal_config):
     pex.world = world
     mem.world = world
     world.context.add_turn('User', '', 'action')
+    world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
     return nlu
 
 
@@ -94,7 +96,7 @@ class TestEnsembleVoting:
             {'flow_name': 'brainstorm', '_model': 'gemini', '_tier': 'med'},
             {'flow_name': 'brainstorm', '_model': 'gpt', '_tier': 'med'},
         ]
-        result = nlu._tally_votes(votes)
+        result = nlu.dialogue_state._tally_votes(votes)
         assert result['flow_name'] == 'brainstorm'
         assert result['confidence'] == pytest.approx(0.7)    # majority, not unanimous
 
@@ -103,7 +105,7 @@ class TestEnsembleVoting:
             {'flow_name': 'chat', '_model': 'claude', '_tier': 'med'},
             {'flow_name': 'chat', '_model': 'gemini', '_tier': 'med'},
         ]
-        result = nlu._tally_votes(votes)
+        result = nlu.dialogue_state._tally_votes(votes)
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == pytest.approx(0.9)    # all remaining voters agree
 
@@ -116,7 +118,8 @@ class TestEnsembleVoting:
             return {'flow_name': 'chat'}
 
         nlu.engineer = MagicMock(side_effect=mock_call)
-        result = nlu._detect_flow('hello', hint='Converse')
+        nlu.dialogue_state.pred_intent = 'Converse'
+        result = nlu.dialogue_state.detect_flows(nlu.engineer, nlu.world.context, 'hello')
 
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == pytest.approx(0.9)
@@ -126,7 +129,8 @@ class TestEnsembleVoting:
             raise RuntimeError('All down')
 
         nlu.engineer = MagicMock(side_effect=mock_call)
-        result = nlu._detect_flow('hello', hint='Converse')
+        nlu.dialogue_state.pred_intent = 'Converse'
+        result = nlu.dialogue_state.detect_flows(nlu.engineer, nlu.world.context, 'hello')
 
         assert result['flow_name'] == 'chat'
         assert result['confidence'] == 0.3
@@ -141,7 +145,8 @@ class TestEnsembleVoting:
             return {'flow_name': flows[(family, tier)]}
 
         nlu.engineer = MagicMock(side_effect=mock_call)
-        result = nlu._detect_flow('give me ideas', hint='Draft')
+        nlu.dialogue_state.pred_intent = 'Draft'
+        result = nlu.dialogue_state.detect_flows(nlu.engineer, nlu.world.context, 'give me ideas')
 
         assert result['flow_name'] == 'brainstorm'
         # 3 of 5 across 2 intents (Converse/Draft) = 0.7, +0.1 for the high pair agreeing.
@@ -150,43 +155,50 @@ class TestEnsembleVoting:
 
 def _detection(pairs, confidence):
     """Build a detection dict from (flow_name, weight) pairs at a given top-1 confidence."""
-    pred_flows = [{'flow_name': name, 'confidence': w, 'votes': 1} for name, w in pairs]
+    pred_flows = [{'name': name, 'dax': flow2dax(name), 'confidence': w} for name, w in pairs]
     return {'flow_name': pairs[0][0], 'confidence': confidence, 'pred_flows': pred_flows}
 
 
 def _stub_think_internals(nlu, detection):
     """Stub everything think() touches besides detection, so the routing logic runs alone."""
-    nlu._detect_flow = MagicMock(**detection)
-    nlu._classify_intent = MagicMock(return_value='Draft')
-    nlu._fill_slots = MagicMock()
-    nlu._repair_entities = MagicMock()
+    nlu.dialogue_state.detect_flows = MagicMock(**detection)
+    def _classify(*args, **kwargs):
+        nlu.dialogue_state.pred_intent = 'Draft'
+        return 'Draft'
+    nlu.dialogue_state.classify_intent = MagicMock(side_effect=_classify)
+    nlu.dialogue_state.fill_slots = MagicMock()
+    nlu._repair_slots = MagicMock()
 
 
 class TestThinkDispatch:
     """think() detects first and only pays for a classify + narrowed re-detect on a low-confidence
     cross-intent tie (§3.1.1; predict() was folded into think 2026-07-08). _intent_split is the
-    boolean that governs that escalation; `hint` is PEX's first-pass intent selection."""
+    boolean that governs that escalation; the working intent is read off
+    `dialogue_state.pred_intent`, never passed as a parameter (round 3.4)."""
 
     def test_think_skips_classify_on_confident_detection(self, nlu):
         _stub_think_internals(nlu, {'return_value': _detection([('outline', 0.9)], 0.9)})
         state = nlu.think('draft me an outline')
-        nlu._classify_intent.assert_not_called()
-        assert state.pred_flows[0]['flow_name'] == 'outline'
+        nlu.dialogue_state.classify_intent.assert_not_called()
+        assert state.pred_flows[0]['name'] == 'outline'
 
     def test_think_escalates_on_low_conf_cross_intent(self, nlu):
         low = _detection([('outline', 0.5), ('find', 0.5)], 0.4)
         high = _detection([('compose', 0.8)], 0.8)
         _stub_think_internals(nlu, {'side_effect': [low, high]})
         state = nlu.think('do the thing')
-        nlu._classify_intent.assert_called_once()
-        assert nlu._detect_flow.call_count == 2
-        assert nlu._detect_flow.call_args.kwargs['hint'] == 'Draft'
-        assert state.pred_flows[0]['flow_name'] == 'compose'
+        nlu.dialogue_state.classify_intent.assert_called_once()
+        assert nlu.dialogue_state.detect_flows.call_count == 2
+        assert nlu.dialogue_state.pred_intent == 'Draft'    # the tie-break writes the belief
+        assert 'Draft' in nlu.dialogue_state.detect_flows.call_args.args[3]  # re-detect snippet
+        assert state.pred_flows[0]['name'] == 'compose'
 
-    def test_think_passes_hint_to_detection(self, nlu):
+    def test_think_reads_pred_intent_for_detection(self, nlu):
         _stub_think_internals(nlu, {'return_value': _detection([('rework', 0.9)], 0.9)})
-        nlu.think('polish the intro', hint='Revise')
-        assert nlu._detect_flow.call_args.args == ('polish the intro', 'Revise')
+        nlu.dialogue_state.pred_intent = 'Revise'
+        nlu.think('polish the intro')
+        assert nlu.dialogue_state.detect_flows.call_args.args[2] == 'polish the intro'
+        assert 'Revise' in nlu.dialogue_state.detect_flows.call_args.args[3]  # check's snippet
 
     def test_intent_split_true_when_flows_span_intents_and_low_conf(self, nlu):
         assert nlu._intent_split(_detection([('outline', 0.5), ('find', 0.5)], 0.4)) is True
@@ -198,22 +210,27 @@ class TestThinkDispatch:
         assert nlu._intent_split(_detection([('outline', 0.6), ('compose', 0.4)], 0.4)) is False
 
     def test_classify_intent_still_callable(self, nlu):
-        nlu.engineer = MagicMock(return_value={'reasoning': 'improving', 'intent': 'Revise'})
-        assert nlu._classify_intent('polish the intro') == 'Revise'
+        engineer = MagicMock()
+        engineer.typesafe.return_value = {
+            'intent': {'choice': 'Revise', 'confidence': 0.91},
+            'has_plan': {'noul': 0.1}, 'needs_clarify': {'noul': 0.2}}
+        state = nlu.dialogue_state
+        assert state.classify_intent(engineer, nlu.world.context, 'polish the intro') == 'Revise'
+        assert state.pred_intent == 'Revise'
 
     def test_candidate_names_empty_hint_is_full_ontology(self, nlu):
-        assert nlu._flow_candidate_names('') == list(FLOW_ONTOLOGY)
+        assert nlu.dialogue_state._candidate_names('') == list(FLOW_ONTOLOGY)
 
     def test_candidate_names_hint_narrows_to_intent(self, nlu):
-        names = set(nlu._flow_candidate_names('Draft'))
+        names = set(nlu.dialogue_state._candidate_names('Draft'))
         assert {'outline', 'compose', 'refine', 'brainstorm'} <= names
         assert 'release' not in names
 
     def test_clarify_detection_declares_ambiguity_without_policy_flow(self, nlu):
         _stub_think_internals(nlu, {'return_value': _detection([('clarify', 0.9)], 0.9)})
         state = nlu.think('that thing')
-        assert state.pred_flows[0]['flow_name'] == 'clarify'
-        assert state.pred_slots == {}
+        assert state.pred_flows[0]['name'] == 'clarify'
+        assert nlu.world.flows.get_flow() is None  # non-policy detection stacks nothing
         assert nlu.ambiguity_handler.is_present is True
         assert nlu.ambiguity_handler.get_level() == 'general'
 
@@ -262,7 +279,7 @@ class TestNLUSpecificRegressions:
         mock = MagicMock(side_effect=[ValueError('unparseable'), good])
         mock._strip_nulls = nlu.engineer._strip_nulls
         nlu.engineer = mock
-        nlu._fill_slots(flow)
+        nlu.dialogue_state.fill_slots(nlu.engineer, nlu.world.context, flow, {}, nlu.ambiguity_handler)
         assert flow.slots['source'].values
         assert mock.call_count == 2
 
@@ -273,7 +290,7 @@ class TestNLUSpecificRegressions:
         mock = MagicMock(side_effect=ValueError('unparseable'))
         mock._strip_nulls = nlu.engineer._strip_nulls
         nlu.engineer = mock
-        nlu._fill_slots(flow)
+        nlu.dialogue_state.fill_slots(nlu.engineer, nlu.world.context, flow, {}, nlu.ambiguity_handler)
         assert not flow.slots['source'].values
         assert mock.call_count == 2
 
@@ -428,14 +445,11 @@ def test_nlu_react(nlu, monkeypatch, case):
     _stub_engineer(nlu, monkeypatch, case['phase3_slots'])
     nlu.react(case['gold_dax'], case['payload'])
 
-    # react writes belief only (no flow stacked). Reconstruct the flow from pred_slots —
-    # slot_values_dict round-trips through fill_slot_values — to inspect the filled slots.
+    # react stacks the detected flow with the filled slots — inspect it straight off the stack.
     state = nlu.world.state
-    assert state.pred_flows[0]['flow_name'] == case['expected_flow'], (
-        f"pred_flow expected {case['expected_flow']!r} got {state.pred_flows[0]['flow_name']!r}")
-    flow = flow_classes[case['expected_flow']]()
-    flow.fill_slot_values(state.pred_slots)
-    flow.is_filled()
+    assert state.pred_flows[0]['name'] == case['expected_flow'], (
+        f"pred_flow expected {case['expected_flow']!r} got {state.pred_flows[0]['name']!r}")
+    flow = nlu.world.flows.get_flow()
 
     assert flow.flow_type == case['expected_flow'], (
         f"flow_type expected {case['expected_flow']!r} got {flow.flow_type!r}")
@@ -571,23 +585,20 @@ class TestScratchpadReview:
 def _session_state() -> DialogueState:
     state = DialogueState({})
     state.pred_intent = 'Draft'
+    state.pred_flows = [{'name': 'compose', 'dax': flow2dax('compose'), 'confidence': 0.9}]
     state.turn_count = 12
     state.conversation_id = 'convo-42'
     state.username = 'writer'
-    state.goal = 'draft the agents post'
-    state.confirmed = ['title']
-    state.rejected = ['listicle format']
-    state.workflow_step = 4
     state.set_active_entity(post='p1', sec='intro', chl='substack', ver=True)
-    state.flow_stack = [{'name': 'compose', 'status': 'Active', 'stage': 'writing',
-                         'slots': {'source': {'post': 'p1'}}}]
     return state
 
 
 
 
 class TestSessionStateFile:
-    """File-backed DialogueState (changes.md §5.2): the five-block state.json document."""
+    """File-backed DialogueState: the state.json document (session / beliefs / grounding)
+    and its save/load round trip. The flow stack lives on pex.flow_stack only — PEX attaches
+    it to tool documents at read time; it is never stored or saved on the state."""
 
     def test_round_trip_identical_dict(self, tmp_path):
         state = _session_state()
@@ -598,10 +609,10 @@ class TestSessionStateFile:
 
     def test_document_blocks_and_grounding_parts(self):
         document = _session_state().read_state()
-        assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack']
+        assert list(document) == ['session', 'beliefs', 'grounding']
         assert list(document['grounding']) == ['choices', 'notes', 'entities']
         assert document['session']['turn_count'] == 12
-        assert document['user_beliefs']['intent'] == 'Draft'
+        assert document['beliefs']['intent'] == 'Draft'
 
     def test_load_rehydrates_fields(self, tmp_path):
         state_file = tmp_path / 'state.json'
@@ -609,122 +620,9 @@ class TestSessionStateFile:
         reloaded = DialogueState.load(state_file)
         assert reloaded.conversation_id == 'convo-42'
         assert reloaded.username == 'writer'
-        assert reloaded.workflow_step == 4
+        assert reloaded.turn_count == 12
+        assert reloaded.flow_name() == 'compose'
         assert reloaded.get_active_entity()['ver'] is True
-        assert reloaded.flow_stack[0]['name'] == 'compose'
-
-    # test_old_per_turn_form_unchanged removed — DialogueState() now only takes config, and
-    # from_dict still calls the retired kwargs constructor (dead code; noted as a backend bug).
-
-
-
-
-def _ops_state() -> DialogueState:
-    state = DialogueState({})
-    state.pred_intent = 'Draft'
-    state.turn_count = 1
-    state.conversation_id = 'convo-ops'
-    return state
-
-
-
-
-class TestWriteStateOps:
-    """write_state is the only writer of state.json; stack ops mutate the FlowStack passed in as
-    `stack` and refresh the saved copy."""
-
-    def test_read_state_returns_document(self):
-        document = _ops_state().read_state()
-        assert list(document) == ['session', 'user_beliefs', 'grounding', 'flow_stack']
-
-    def test_update_op_mutates_and_saves(self, tmp_path):
-        state = _ops_state()
-        path = tmp_path / 'state.json'
-        document = state.write_state(path, 'update', goal='ship the agents post',
-                                     workflow_step=3, grounding={'post': 'p1', 'ver': True})
-        assert document['user_beliefs']['goal'] == 'ship the agents post'
-        reloaded = DialogueState.load(path)
-        assert reloaded.workflow_step == 3
-        assert reloaded.grounding == {'choices': [], 'notes': [], 'entities': [
-            {'post': 'p1', 'sec': '', 'snip': '', 'chl': '', 'ver': True},
-        ]}
-
-    def test_unknown_op_and_unknown_fields_raise(self, tmp_path):
-        state = _ops_state()
-        path = tmp_path / 'state.json'
-        with pytest.raises(ValueError, match='Unknown write_state op'):
-            state.write_state(path, 'merge')
-        with pytest.raises(KeyError):
-            state.write_state(path, 'update', vibe='good')
-        with pytest.raises(KeyError):
-            state.write_state(path, 'update', grounding={'version': 2})
-        assert not path.exists()  # rejected ops never reach save()
-
-    def test_op_sequence_keeps_saved_copy_current(self, tmp_path):
-        """The stackon/fill/fallback/complete/pop sequence run through write_state keeps the
-        saved copy and the file in step with the one flow stack."""
-        path = tmp_path / 'state.json'
-        state = _ops_state()
-        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
-
-        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
-        state.write_state(path, 'update_flow', stack=stack, slots={'source': [{'post': 'p1'}]},
-                          stage='discovery')
-        state.write_state(path, 'stackon', stack=stack, flow_name='brainstorm')
-        state.write_state(path, 'fallback', stack=stack, flow_name='refine')
-        state.write_state(path, 'update', grounding={'post': 'p1'})
-        state.write_state(path, 'update_flow', stack=stack, status='Completed')
-        state.write_state(path, 'pop', stack=stack)
-
-        assert state.flow_stack == stack.to_list()
-        assert DialogueState.load(path).flow_stack == state.flow_stack
-
-    def test_grounding_validation_raises_on_ungrounded_completion(self, tmp_path):
-        path = tmp_path / 'state.json'
-        state = _ops_state()
-        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
-        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
-        with pytest.raises(ValueError, match='grounding.post is empty'):
-            state.write_state(path, 'update_flow', stack=stack, status='Completed')
-        assert state.flow_stack[0]['status'] == 'Pending'  # rejected write left no trace
-        assert DialogueState.load(path).flow_stack[0]['status'] == 'Pending'
-
-    def test_grounding_validation_passes_once_post_is_set(self, tmp_path):
-        path = tmp_path / 'state.json'
-        state = _ops_state()
-        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
-        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
-        state.write_state(path, 'update', grounding={'post': 'p1'})
-        state.write_state(path, 'update_flow', stack=stack, status='Completed')
-        assert state.flow_stack[0]['status'] == 'Completed'
-
-    def test_update_flow_normalizes_llm_shaped_slot_values(self, tmp_path):
-        """Orchestrator-authored slot values: bare strings for checklist items and source
-        entities, and a bare item in place of a list, all coerce instead of crashing."""
-        path = tmp_path / 'state.json'
-        state = _ops_state()
-        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
-        state.write_state(path, 'stackon', stack=stack, flow_name='outline')
-        state.write_state(path, 'update_flow', stack=stack,
-                          slots={'sections': ['Motivation', 'Process'], 'source': 'p1',
-                                 'topic': 'agents'})
-        slots = state.flow_stack[0]['slots']
-        assert [step['name'] for step in slots['sections']] == ['Motivation', 'Process']
-        assert slots['source'][0]['post'] == 'p1'
-        assert slots['topic'] == 'agents'
-
-    def test_grounding_validation_skips_topic_grounded_flows(self, tmp_path):
-        """Converse flows and exact-grounded flows (create's title) complete without a post,
-        mirroring the old PEX post-hook's slot-type filter."""
-        path = tmp_path / 'state.json'
-        state = _ops_state()
-        stack = FlowStack({'session': {'max_flow_depth': 16}}, flow_classes=flow_classes)
-        state.write_state(path, 'stackon', stack=stack, flow_name='chat')
-        state.write_state(path, 'update_flow', stack=stack, status='Completed')
-        state.write_state(path, 'pop', stack=stack)
-        state.write_state(path, 'stackon', stack=stack, flow_name='find')
-        state.write_state(path, 'update_flow', stack=stack, status='Completed')
-        assert state.flow_stack[0]['status'] == 'Completed'
 
 
 # ==============================================================================
@@ -738,7 +636,7 @@ import json
 import re
 
 from backend.components.flow_stack.slots import ExactSlot
-from backend.modules.nlu import _intent_schema, _flow_detection_schema, _fill_slots_schema
+from backend.components.dialogue_state import _flow_detection_schema, _fill_slots_schema
 from backend.prompts.nlu import PROMPTS as _SLOT_FILL_PROMPTS
 
 _BANNED_NUMBER_KEYS = ('minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum')
@@ -779,9 +677,9 @@ _SCHEMA_REPRESENTATIVES = ['outline', 'audit', 'release', 'compare', 'schedule']
 
 
 def test_belief_schemas_valid():
-    """The three NLU belief schemas obey the offline Anthropic structured-output rules. Rules are
-    flow-set-agnostic, so all-flows detect + a representative slot-family spread covers every branch."""
-    assert _lint_schema(_intent_schema()) == []
+    """The NLU belief schemas obey the offline Anthropic structured-output rules (intent runs
+    on TypeSafe now — no schema to lint). Rules are flow-set-agnostic, so all-flows detect + a
+    representative slot-family spread covers every branch."""
     assert _lint_schema(_flow_detection_schema(list(flow_classes))) == []
     for name in _SCHEMA_REPRESENTATIVES:
         assert _lint_schema(_fill_slots_schema(flow_classes[name]())) == [], name
