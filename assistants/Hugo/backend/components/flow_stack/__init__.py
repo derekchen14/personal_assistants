@@ -15,4 +15,6 @@ flow_classes: dict[str, type] = {
     'release': ReleaseFlow, 'schedule': ScheduleFlow, 'cite': CiteFlow,
     # Converse
     'chat': ChatFlow,
+    # Plan — flow_classes only; `plan` has no FLOW_ONTOLOGY entry (round 3.5)
+    'plan': PlanFlow,
 }

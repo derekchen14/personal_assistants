@@ -79,7 +79,7 @@ def _single_flow(turn:dict):
 
 def _top_pred_flow(agent):
     pred = agent.world.state.pred_flows
-    return pred[0]['flow_name'] if pred else None
+    return pred[0]['name'] if pred else None
 
 
 def _score_convo(case:dict, domain_tools:set, judge:bool=False, trace_path:Path|None=None) -> dict:
@@ -133,7 +133,7 @@ def _score_convo(case:dict, domain_tools:set, judge:bool=False, trace_path:Path|
         expected_flow = _single_flow(turn)                # 4: belief detected the right flow
         if expected_flow is not None:
             pred = agent.world.state.pred_flows
-            state.append(1.0 if pred and pred[0]['flow_name'] == expected_flow else 0.0)
+            state.append(1.0 if pred and pred[0]['name'] == expected_flow else 0.0)
         if turn['ambiguity'] is not None:                 # 6: declare when present
             ambiguity.append(1.0 if ambiguity_level else 0.0)
         if len(turn['labels']['stack']) > 1:              # 7: plan turn completes

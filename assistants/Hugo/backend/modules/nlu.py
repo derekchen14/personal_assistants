@@ -3,7 +3,6 @@ import logging
 log = logging.getLogger(__name__)
 
 
-from backend.components.flow_stack import flow_classes
 from backend.components.ambiguity_handler import AmbiguityHandler
 from backend.components.dialogue_state import DialogueState, _flow_detection_schema
 
@@ -70,25 +69,47 @@ class NaturalLanguageUnderstanding:
                 detection = state.detect_flows(self.engineer, context, user_text,  # narrowing
                                                detection_snippet(state.pred_intent))
 
-        flow_name = detection['flow_name']
         predicted = detection.get('pred_flows', [])
-        if flow_name not in flow_classes:
-            prev = ''
-            state = self._write_non_policy_belief(flow_name, detection['confidence'], predicted)
-        else:
+        if not detection['flows']:   # every voter abstained (round 3.5) — stack nothing, ask
+            state.pred_flow = ''
+            state.pred_flows = []
+            state.confidence = detection['confidence']
+            self.ambiguity_handler.recognize('general', metadata={'missing': 'intent'},
+                observation="I'm not sure what you'd like to do yet — could you clarify the task?")
+            self.review_scratchpad()
+            return self.validate(state, 'think')
+
+        steps = detection['flows']
+        if state.pred_intent == 'Plan' and len(steps) > 1:
+            # The Plan Flow oversees, it does not do the work: the marker stacks first
+            # (Pending, at the bottom) with the steps' checklist filled directly — no LLM
+            # slot fill — then the steps in reverse execution order, first step Active.
+            state.has_plan = True
+            marker = self.world.flows.stackon('plan', transfer=False, active=False)
+            for step in steps:
+                marker.slots['steps'].add_one(step)
+            for step in reversed(steps):                    # last step first → first on top
+                self.world.flows.stackon(step, transfer=False, active=False)
             top = self.world.flows.get_flow()
-            # An in-flight top counts whether Active or Pending — a plan step stacked with
-            # active=False waits as Pending and is still the flow PEX runs next.
-            in_flight = bool(top) and top.status in ('Active', 'Pending')
-            prev = top.name() if in_flight else ''
-            if not (in_flight and top.name() == flow_name):
-                top = self.world.flows.stackon(flow_name,
-                                               transfer=not self.ambiguity_handler.is_present)
-            state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
-            state = self._write_belief(flow_name, detection['confidence'], predicted, top)
-            if self.ambiguity_handler.needs_clarification(state.confidence):
-                self.ambiguity_handler.recognize('general', metadata={'top_detection': flow_name},
-                    observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"')
+            top.status = 'Active'                           # the first step runs; the rest wait
+            state = self._write_belief(steps[0], detection['confidence'], predicted, top)
+            self.review_scratchpad()
+            return self.validate(state, 'plan')
+
+        flow_name = steps[0]
+        top = self.world.flows.get_flow()
+        # An in-flight top counts whether Active or Pending — a plan step stacked with
+        # active=False waits as Pending and is still the flow PEX runs next.
+        in_flight = bool(top) and top.status in ('Active', 'Pending')
+        prev = top.name() if in_flight else ''
+        if not (in_flight and top.name() == flow_name):
+            top = self.world.flows.stackon(flow_name,
+                                           transfer=not self.ambiguity_handler.is_present)
+        state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
+        state = self._write_belief(flow_name, detection['confidence'], predicted, top)
+        if self.ambiguity_handler.needs_clarification(state.confidence):
+            self.ambiguity_handler.recognize('general', metadata={'top_detection': flow_name},
+                observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"')
         self.review_scratchpad()      # NLU's turn point — reviews last turn's appends too
         return self.validate(state, 'think', prev)
 
@@ -127,55 +148,40 @@ class NaturalLanguageUnderstanding:
         lines = [f'- {name}: {FLOW_ONTOLOGY[name]["description"]}' for name in candidates]
         prompt = _build_contemplate_prompt_text(user_text, failed or 'unknown',
             self.ambiguity_handler.observation, '\n'.join(lines), context.compile_history())
-        detection = {'flow_name': 'chat', 'confidence': 0.5}
+        detection = {'flows': ['chat'], 'confidence': 0.5}
         try:
             parsed = self.engineer(prompt, 'contemplate', max_tokens=512,
                                    schema=_flow_detection_schema(candidates))
-            if parsed['flow_name'] in FLOW_ONTOLOGY:
+            if parsed['flows'] and parsed['flows'][0] in FLOW_ONTOLOGY:
                 # Single re-route call, no ensemble to agree — score it as a majority vote (0.7).
-                detection = {'flow_name': parsed['flow_name'], 'confidence': 0.7}
+                detection = {'flows': [parsed['flows'][0]], 'confidence': 0.7}
         except Exception as ecp:
             log.warning('contemplate routing failed: %s', ecp)
             self._raise_if_debug(ecp)
 
-        flow_name = detection['flow_name']
+        flow_name = detection['flows'][0]
         top = self.world.flows.stackon(flow_name, transfer=not self.ambiguity_handler.is_present)
         state = self._write_belief(flow_name, detection['confidence'],
             [{'name': flow_name, 'dax': flow2dax(flow_name),
               'confidence': detection['confidence']}], top)
         return self.validate(state, 'think', failed or '')
 
-    def _write_non_policy_belief(self, flow_name:str, confidence:float, pred_flows:list):
-        state = self._write_belief(flow_name, confidence, pred_flows, flow=None)
-        if flow_name == 'plan':
-            # Multi-step mode: PEX's hook-1 read consumes the stacked plan off the flow stack.
-            # The step decomposition (S7's find → outline → schedule) is round 3.5's
-            # decompose_plan — until that lands, think stacks no steps here and the plan entry
-            # records the empty decomposition.
-            state.has_plan = True
-        if flow_name == 'clarify':
-            self.ambiguity_handler.recognize(
-                'general',
-                metadata={'missing': 'intent', 'top_detection': flow_name},
-                observation="I'm not sure what you'd like to do yet — could you clarify the task?",
-            )
-        return state
-
     def validate(self, state, op:str='think', prev:str=''):
         """Ends the thinking: ontology fallback + intent correction, rules-based slot repair,
         then the turn's scratchpad entry — every turn writes exactly one (aligned /
-        announcement / click / plan). `prev` is the flow PEX was running at think's stackon
+        announcement / click / plan / abstention). `prev` is the flow PEX was running at think's stackon
         decision point — it labels the entry aligned vs announcement and fills `prev_flow`.
         The announcement carries `is_newborn: true` as the consumed marker (the scratchpad's
         read() flips it) plus NLU's rationale."""
-        cat = FLOW_ONTOLOGY.get(state.flow_name(string=True))
-        if not cat:
-            state.pred_intent = 'Converse'
-            state.pred_flow = flow2dax('chat')
-            state.pred_flows = [{'name': 'chat', 'dax': flow2dax('chat'), 'confidence': 0.3}]
-            state.confidence = 0.3
-        elif state.pred_intent != cat['intent']:
-            state.pred_intent = cat['intent']
+        if state.pred_flows:   # a deliberate abstention (empty detection) stays empty
+            cat = FLOW_ONTOLOGY.get(state.flow_name(string=True))
+            if not cat:
+                state.pred_intent = 'Converse'
+                state.pred_flow = flow2dax('chat')
+                state.pred_flows = [{'name': 'chat', 'dax': flow2dax('chat'), 'confidence': 0.3}]
+                state.confidence = 0.3
+            elif state.pred_intent != cat['intent']:
+                state.pred_intent = cat['intent']
 
         flow = self.world.flows.find_by_name(state.flow_name(string=True))
         if flow and op == 'think':   # the rule pass polices the LLM fill only — click payloads
@@ -183,15 +189,22 @@ class NaturalLanguageUnderstanding:
 
         detected = state.flow_name(string=True)
         entry = {'version': 1, 'turn_number': self.world.context.turn_id, 'used_count': 0}
+        if op != 'react' and state.pred_flows:
+            # The candidate flows and their tallies ride the entry — PEX's back-up channel to
+            # stack a dropped flow later (support at or below 0.5 marks a dropped flow).
+            entry['tally'] = {flow['name']: flow['confidence'] for flow in state.pred_flows}
         if op == 'react':
             entry.update(gold_dax=state.pred_flow,
                          summary=f'click resolved {detected} from its dax')
-        elif state.has_plan:    # plan: summary only — hook 1 reads the stacked plan itself
-            steps = [step.name() for step in self.world.flows._stack]
-            entry['summary'] = 'plan: stacked ' + (' → '.join(steps) if steps else 'no steps yet')
+        elif op == 'plan':      # keyed on the stacking pass itself, so a mid-plan divergent
+            marker = self.world.flows.find_by_name('plan')      # detection still announces
+            steps = [step['name'] for step in marker.slots['steps'].steps]
+            entry['summary'] = 'plan: stacked ' + ' → '.join(steps)
+        elif not detected:      # abstention — every voter returned an empty list
+            entry['summary'] = 'no confident detection; nothing stacked'
         elif detected == prev:
             entry['summary'] = f'aligned on {detected}'
-        elif flow is None:      # non-policy detection (clarify) — nothing stacked to announce
+        elif flow is None:      # ontology fallback fired — nothing stacked to announce
             entry['summary'] = f'detected {detected}; nothing stacked'
         else:
             summary = (f'added {detected} to the stack before completing {prev}' if prev

@@ -330,7 +330,10 @@ class PolicyExecutor:
         nudged = False
         errors = 0
         last_call = None
-        for round_idx in range(self.max_rounds):
+        round_idx = 0
+        finished = 0
+        while round_idx < self.max_rounds:
+            round_idx += 1
             response = self.engineer._call_claude(system_prompt, context.messages,
                                                   model_id, tools=tools, max_tokens=4096)
             self._track_usage(response)
@@ -374,11 +377,14 @@ class PolicyExecutor:
                               '_message': f'{type(ecp).__name__}: {ecp}'}
                     last_call = None
                 errors = errors + 1 if not result['_success'] else 0
-                log.info('  orch round=%d tool=%s ok=%s', round_idx + 1, tool_use.name,
+                log.info('  orch round=%d tool=%s ok=%s', round_idx, tool_use.name,
                          result['_success'])
                 results.append({'type': 'tool_result', 'tool_use_id': tool_use.id,
                                 'content': json.dumps(result, default=str)})
             context.append_message({'role': 'user', 'content': results})
+            if len(self.completed_this_turn) > finished:  # a completed flow resets the round
+                finished = len(self.completed_this_turn)  # budget — every plan step starts fresh
+                round_idx = 0
             if errors >= self.max_corrective:
                 break  # the model keeps failing tool calls — stop burning rounds
         return self._final_emit(system_prompt, model_id)
@@ -621,6 +627,12 @@ class PolicyExecutor:
         result = None
         top = self.flow_stack.get_flow()
         while top and top.status in ('Pending', 'Active'):
+            if top.name() == 'plan':   # a surfaced Plan Flow never runs (TODO: the review pass)
+                top.status = 'Completed'
+                self.flow_stack.pop()
+                state.has_plan = False
+                top = self.flow_stack.get_flow()
+                continue
             result = self.activate_flow({'flow_name': top.name()})
             if not self.world.nlu_done.wait(timeout=30):        # hook 3: the post-tool read
                 raise TimeoutError('NLU still thinking after 30s at hook point 3')
@@ -704,8 +716,16 @@ class PolicyExecutor:
             entry = {**entry, 'origin': flow.name()}
         popped = self.flow_stack.pop()  # Completed and Invalid leave together, in code
         top = self.flow_stack.get_flow()
-        if state.has_plan and top is None:
-            state.has_plan = False  # the plan's stacked steps have all left the stack (T16)
+        if top and top.name() == 'plan':
+            # The Plan Flow oversees, it does not do the work: the pop that surfaces it
+            # removes it. TODO(review pass, future round): run its policy here instead —
+            # review the steps' work via the session scratchpad first.
+            top.status = 'Completed'
+            popped += self.flow_stack.pop()
+            top = self.flow_stack.get_flow()
+        if state.has_plan and not self.flow_stack.find_by_name('plan'):
+            state.has_plan = False  # the marker anchors the flag — it left the stack
+                                    # (removed at surfacing, or Invalid: the abandon move)
         if top and top.status != 'Active':  # hook 6 shape check: never a dormant top (Derek)
             return {'_success': False, '_error': 'invalid_stack', '_message':
                     f'{top.name()!r} surfaced with status {top.status!r} after the pop — set '

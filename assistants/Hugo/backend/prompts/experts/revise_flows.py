@@ -14,7 +14,7 @@ User: "revise the whole post — it needs work"
 ## Output
 
 ```json
-{"reasoning": "Major revision needed.", "flow_name": "rework"}
+{"reasoning": "Major revision needed.", "flows": ["rework"]}
 ```
 </positive_example>
 
@@ -25,7 +25,7 @@ User: "edit the second paragraph — tighten the phrasing"
 ## Output
 
 ```json
-{"reasoning": "Sentence-level edit within one paragraph.", "flow_name": "write"}
+{"reasoning": "Sentence-level edit within one paragraph.", "flows": ["write"]}
 ```
 </positive_example>
 
@@ -36,7 +36,7 @@ User: "make the tone more professional"
 ## Output
 
 ```json
-{"reasoning": "Voice and tone shift across the post.", "flow_name": "audit"}
+{"reasoning": "Voice and tone shift across the post.", "flows": ["audit"]}
 ```
 </positive_example>
 
@@ -47,7 +47,7 @@ User: "fill in the placeholder in the intro with a couple of options"
 ## Output
 
 ```json
-{"reasoning": "Generate alternatives for a placeholder gap.", "flow_name": "propose"}
+{"reasoning": "Generate alternatives for a placeholder gap.", "flows": ["propose"]}
 ```
 </positive_example>
 
@@ -58,7 +58,7 @@ User: "The middle three sections keep restating the same idea. Reorganize them s
 ## Output
 
 ```json
-{"reasoning": "Restructuring the argument across several sections is post-level rework, not a single-section edit.", "flow_name": "rework"}
+{"reasoning": "Restructuring the argument across several sections is post-level rework, not a single-section edit.", "flows": ["rework"]}
 ```
 </edge_case>
 
@@ -69,7 +69,7 @@ User: "The opening of the pricing section reads flat. Rework just those couple o
 ## Output
 
 ```json
-{"reasoning": "Despite the word rework, the scope is a few sentences inside one section, so this is a sentence-level edit.", "flow_name": "write"}
+{"reasoning": "Despite the word rework, the scope is a few sentences inside one section, so this is a sentence-level edit.", "flows": ["write"]}
 ```
 </edge_case>'''
 

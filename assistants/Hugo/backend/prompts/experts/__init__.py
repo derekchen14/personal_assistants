@@ -16,11 +16,11 @@ from __future__ import annotations
 
 from backend.prompts.experts import (
     research_flows, draft_flows, revise_flows, publish_flows,
-    converse_flows,
+    converse_flows, plan_flows, clarify_flows,
 )
 
 _MODULES = (research_flows, draft_flows, revise_flows, publish_flows,
-            converse_flows)
+            converse_flows, plan_flows, clarify_flows)
 
 PROMPTS: dict[str, dict[str, str]] = {}
 for _mod in _MODULES:
@@ -37,7 +37,7 @@ User: "find my posts about onboarding"
 ## Output
 
 ```json
-{"reasoning": "Locating existing posts.", "flow_name": "find"}
+{"reasoning": "Locating existing posts.", "flows": ["find"]}
 ```
 </positive_example>
 
@@ -48,7 +48,7 @@ User: "outline a post about remote work"
 ## Output
 
 ```json
-{"reasoning": "Generating an outline.", "flow_name": "outline"}
+{"reasoning": "Generating an outline.", "flows": ["outline"]}
 ```
 </positive_example>
 
@@ -59,7 +59,7 @@ User: "restructure the draft, the sections are out of order"
 ## Output
 
 ```json
-{"reasoning": "Reworking the draft structure.", "flow_name": "rework"}
+{"reasoning": "Reworking the draft structure.", "flows": ["rework"]}
 ```
 </positive_example>
 
@@ -70,7 +70,7 @@ User: "publish it to the blog"
 ## Output
 
 ```json
-{"reasoning": "Releasing the post.", "flow_name": "release"}
+{"reasoning": "Releasing the post.", "flows": ["release"]}
 ```
 </positive_example>
 
@@ -81,14 +81,15 @@ User: "hi there"
 ## Output
 
 ```json
-{"reasoning": "Simple greeting.", "flow_name": "chat"}
+{"reasoning": "Simple greeting.", "flows": ["chat"]}
 ```
 </positive_example>'''
 
 GENERIC_FLOW_PROMPT = {
-    'instructions': ('Choose the single flow that best matches what the user wants across ALL '
-                     'intents. The candidate list spans every flow; the detected flow fixes the '
-                     'intent, so do not pre-commit to one intent family.'),
+    'instructions': ('Choose the flow that best matches what the user wants across ALL intents — '
+                     'usually one, more only for a genuinely multi-part request. The candidate '
+                     'list spans every flow; the detected flow fixes the intent, so do not '
+                     'pre-commit to one intent family.'),
     'rules': '',                       # build_flow_prompt falls back to PRECEDENCE_NOTE
     'examples': GENERIC_FLOW_EXAMPLES,
 }

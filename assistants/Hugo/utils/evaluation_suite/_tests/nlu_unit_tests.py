@@ -92,21 +92,21 @@ class TestEnsembleVoting:
 
     def test_two_agree_one_dissents(self, nlu):
         votes = [
-            {'flow_name': 'chat', '_model': 'claude', '_tier': 'med'},
-            {'flow_name': 'brainstorm', '_model': 'gemini', '_tier': 'med'},
-            {'flow_name': 'brainstorm', '_model': 'gpt', '_tier': 'med'},
+            {'flows': ['chat'], '_model': 'claude', '_tier': 'med'},
+            {'flows': ['brainstorm'], '_model': 'gemini', '_tier': 'med'},
+            {'flows': ['brainstorm'], '_model': 'gpt', '_tier': 'med'},
         ]
         result = nlu.dialogue_state._tally_votes(votes)
-        assert result['flow_name'] == 'brainstorm'
+        assert result['flows'] == ['brainstorm']    # chat at 1/3 drops from the survivors
         assert result['confidence'] == pytest.approx(0.7)    # majority, not unanimous
 
     def test_graceful_two_voter_degradation(self, nlu):
         votes = [
-            {'flow_name': 'chat', '_model': 'claude', '_tier': 'med'},
-            {'flow_name': 'chat', '_model': 'gemini', '_tier': 'med'},
+            {'flows': ['chat'], '_model': 'claude', '_tier': 'med'},
+            {'flows': ['chat'], '_model': 'gemini', '_tier': 'med'},
         ]
         result = nlu.dialogue_state._tally_votes(votes)
-        assert result['flow_name'] == 'chat'
+        assert result['flows'] == ['chat']
         assert result['confidence'] == pytest.approx(0.9)    # all remaining voters agree
 
     # -- _detect_flow (mocked LLM) -----------------------------------------
@@ -115,13 +115,13 @@ class TestEnsembleVoting:
         def mock_call(prompt, task='skill', family='', tier='med', max_tokens=1024, schema=None):
             if family == 'claude':
                 raise RuntimeError('voter down')
-            return {'flow_name': 'chat'}
+            return {'flows': ['chat']}
 
         nlu.engineer = MagicMock(side_effect=mock_call)
         nlu.dialogue_state.pred_intent = 'Converse'
         result = nlu.dialogue_state.detect_flows(nlu.engineer, nlu.world.context, 'hello')
 
-        assert result['flow_name'] == 'chat'
+        assert result['flows'] == ['chat']
         assert result['confidence'] == pytest.approx(0.9)
 
     def test_all_voters_fail(self, nlu):
@@ -132,7 +132,7 @@ class TestEnsembleVoting:
         nlu.dialogue_state.pred_intent = 'Converse'
         result = nlu.dialogue_state.detect_flows(nlu.engineer, nlu.world.context, 'hello')
 
-        assert result['flow_name'] == 'chat'
+        assert result['flows'] == ['chat']
         assert result['confidence'] == 0.3
 
     def test_split_escalates_to_high_voters(self, nlu):
@@ -142,21 +142,23 @@ class TestEnsembleVoting:
                  ('gemini', 'high'): 'brainstorm', ('claude', 'high'): 'brainstorm'}
 
         def mock_call(prompt, task='skill', family='', tier='med', max_tokens=1024, schema=None):
-            return {'flow_name': flows[(family, tier)]}
+            return {'flows': [flows[(family, tier)]]}
 
         nlu.engineer = MagicMock(side_effect=mock_call)
         nlu.dialogue_state.pred_intent = 'Draft'
         result = nlu.dialogue_state.detect_flows(nlu.engineer, nlu.world.context, 'give me ideas')
 
-        assert result['flow_name'] == 'brainstorm'
+        assert result['flows'][0] == 'brainstorm'
         # 3 of 5 across 2 intents (Converse/Draft) = 0.7, +0.1 for the high pair agreeing.
         assert result['confidence'] == pytest.approx(0.8)
 
 
 def _detection(pairs, confidence):
-    """Build a detection dict from (flow_name, weight) pairs at a given top-1 confidence."""
+    """Build a detection dict from (flow_name, weight) pairs at a given top-1 confidence.
+    `flows` carries the single survivor — multi-survivor plan detections build their dict
+    by hand."""
     pred_flows = [{'name': name, 'dax': flow2dax(name), 'confidence': w} for name, w in pairs]
-    return {'flow_name': pairs[0][0], 'confidence': confidence, 'pred_flows': pred_flows}
+    return {'flows': [pairs[0][0]], 'confidence': confidence, 'pred_flows': pred_flows}
 
 
 def _stub_think_internals(nlu, detection):
@@ -226,11 +228,14 @@ class TestThinkDispatch:
         assert {'outline', 'compose', 'refine', 'brainstorm'} <= names
         assert 'release' not in names
 
-    def test_clarify_detection_declares_ambiguity_without_policy_flow(self, nlu):
-        _stub_think_internals(nlu, {'return_value': _detection([('clarify', 0.9)], 0.9)})
+    def test_abstention_declares_ambiguity_without_stacking(self, nlu):
+        """Every voter abstained (the Clarify path) — think stacks nothing, the belief stays
+        empty, and the general ambiguity raises the clarification downstream."""
+        abstain = {'flows': [], 'confidence': 0.0, 'pred_flows': []}
+        _stub_think_internals(nlu, {'return_value': abstain})
         state = nlu.think('that thing')
-        assert state.pred_flows[0]['name'] == 'clarify'
-        assert nlu.world.flows.get_flow() is None  # non-policy detection stacks nothing
+        assert state.pred_flows == []              # a deliberate abstention stays empty
+        assert nlu.world.flows.get_flow() is None  # nothing stacked
         assert nlu.ambiguity_handler.is_present is True
         assert nlu.ambiguity_handler.get_level() == 'general'
 

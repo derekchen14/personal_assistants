@@ -26,7 +26,8 @@ XML + Markdown shell used by slot-filling (`backend/prompts/for_nlu.py`):
 
 Flow detection's output shape is enforced by a provider-side JSON schema
 (`_flow_detection_schema` in `backend/components/dialogue_state.py`):
-  - flow: {"reasoning": str, "flow_name": one-of-candidates}"""
+  - flow: {"reasoning": str, "flows": [one-of-candidates, ...]} — usually one entry; a Plan
+    turn lists its steps in execution order; an empty list is an abstention"""
 
 from backend.prompts.experts import get_prompt
 from schemas.ontology import FLOW_ONTOLOGY
@@ -54,9 +55,12 @@ BACKGROUND_STATIC = (
     'commit to another intent, instead of guessing.\n\n'
     'Routing to the wrong intent or flow causes the agent to act on the wrong data or ask the wrong '
     'clarifying question. Reason first: name the key signals that separate the top candidates, then '
-    'commit. Output is a single JSON object whose shape is enforced by a provider-side schema. The '
-    '`reasoning` field comes first so subsequent fields are conditioned on it — keep it under 100 '
-    'tokens. Do not paraphrase flow descriptions or enumerate every candidate.'
+    'commit. Output is a single JSON object whose shape is enforced by a provider-side schema; the '
+    '`flows` field is a list. Most utterances map to ONE flow — output multiple only when the '
+    'message contains genuinely distinct operations (a revision AND a cross-post, say) or when two '
+    'readings are both plausible and you want to cover both. Output an empty list when no flow '
+    'fits at all. The `reasoning` field comes first so subsequent fields are conditioned on it — '
+    'keep it under 100 tokens. Do not paraphrase flow descriptions or enumerate every candidate.'
 )
 
 PRECEDENCE_NOTE = (
@@ -165,12 +169,13 @@ def detection_snippet(intent:str, hint:str='') -> str:
     intent = intent or hint    # an intent-shaped hint (the tie-break re-detect) keys the block
     if intent == 'Plan':
         return ('<working_intent>\nThe working intent is Plan: the request spans multiple '
-                'steps. Detect the flow the FIRST concrete step would run — the plan is '
-                'decomposed elsewhere; your job is only the entry flow.\n</working_intent>')
+                'steps. Output EVERY step as its own flow, in execution order — the ordered '
+                'list IS the plan; there is no separate decomposition.\n</working_intent>')
     if intent == 'Clarify':
         return ('<working_intent>\nThe working intent is Clarify: the request is '
-                'underspecified. Detect the closest flow anyway — low agreement is expected '
-                'and raises a clarification downstream.\n</working_intent>')
+                'underspecified. Commit to a flow only at extreme confidence; otherwise '
+                'output an empty list so the assistant asks a clarifying question.'
+                '\n</working_intent>')
     if intent:
         return (f'<working_intent>\nThe working intent is {intent} — prefer its flows, and '
                 f'leave it only on a clear signal.\n</working_intent>')

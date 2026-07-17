@@ -26,9 +26,13 @@ def _flow_detection_schema(candidate_flow_names:list[str]) -> dict:
                 'type': 'string',
                 'description': 'Terse rationale (<100 tokens) naming the key signals that separate the top candidates.',
             },
-            'flow_name': {'type': 'string', 'enum': list(candidate_flow_names)}
+            # Usually one entry; a Plan turn lists its steps in execution order; an empty
+            # list is an abstention (non-emptiness is enforced in code, not the schema —
+            # the abstention IS a valid output).
+            'flows': {'type': 'array',
+                      'items': {'type': 'string', 'enum': list(candidate_flow_names)}}
         },
-        'required': ['reasoning', 'flow_name'],
+        'required': ['reasoning', 'flows'],
         'additionalProperties': False,
     }
 
@@ -256,12 +260,12 @@ class DialogueState:
             # poll only the two families PEX is NOT running on. The tally runs over three votes
             # exactly as on any other turn.
             pex_family = self._orchestrator_family()
-            votes.append({'flow_name': hint, '_model': pex_family, '_tier': 'med'})
+            votes.append({'flows': [hint], '_model': pex_family, '_tier': 'med'})
             med_families = tuple(fam for fam in med_families if fam != pex_family)
         votes += self._collect_votes(engineer, med_families, 'med', prompt, schema)
         if not votes:
             return {
-                'flow_name': 'chat', 'confidence': 0.3,
+                'flows': ['chat'], 'confidence': 0.3,
                 'pred_flows': [{'name': 'chat', 'dax': flow2dax('chat'), 'confidence': 0.3}],
             }
         detection = self._tally_votes(votes)
@@ -331,8 +335,11 @@ class DialogueState:
         for name, cat in FLOW_ONTOLOGY.items():
             if cat['intent'] == hint:
                 edges.update(cat.get('edge_flows', []))
-        return [name for name, cat in FLOW_ONTOLOGY.items()
-                if cat['intent'] == hint or name in edges]
+        names = [name for name, cat in FLOW_ONTOLOGY.items()
+                 if cat['intent'] == hint or name in edges]
+        # Narrowing that produces zero candidates falls back to the full list — Plan and
+        # Clarify own no flows, so detection under those intents runs over everything.
+        return names or list(FLOW_ONTOLOGY)
 
     def _orchestrator_family(self) -> str:
         """The model family PEX runs on — its voters are the OTHER two families. Prefix match,
@@ -367,25 +374,45 @@ class DialogueState:
             futures = [pool.submit(_call_voter, family) for family in families]
             for future in as_completed(futures):
                 result = future.result()
-                if result and result.get('flow_name') in FLOW_ONTOLOGY:
+                if result and isinstance(result.get('flows'), list):
+                    # An empty list is a deliberate abstention — a vote for nothing that still
+                    # counts in the majority denominators (round 3.5).
+                    result['flows'] = [flow for flow in result['flows'] if flow in FLOW_ONTOLOGY]
                     votes.append(result)
         return votes
 
     def _tally_votes(self, votes:list[dict]) -> dict:
-        counts: dict[str, int] = {}
+        """Per-flow majority tally over list votes (round 3.5 defaults, revisit later):
+        every flow any voter names goes through the tally; majority support survives.
+        The Claude voter's proposed order is canonical; survivors it never named follow in
+        support order, dropped flows rank after. All-abstain (every voter returned an empty
+        list) is the no-detection signal — think stacks nothing and the zero confidence
+        raises a clarification."""
+        unique: list[str] = []
         for vote in votes:
-            counts[vote['flow_name']] = counts.get(vote['flow_name'], 0) + 1
-
-        best_flow = max(counts, key=counts.get)
-        ranked = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-        pred_flows = [{'name': name, 'dax': flow2dax(name), 'confidence': count / len(votes)}
-                      for name, count in ranked]
+            for flow in vote['flows']:
+                if flow not in unique:
+                    unique.append(flow)
+        if not unique:
+            return {'flows': [], 'confidence': 0.0, 'pred_flows': []}
+        support = {flow: sum(1 for vote in votes if flow in vote['flows']) for flow in unique}
+        survivors = [flow for flow in unique if support[flow] * 2 > len(votes)]
+        if not survivors:   # no majority anywhere — keep the single best-supported flow
+            survivors = [max(unique, key=support.get)]
+        claude = next((vote['flows'] for vote in votes if vote['_model'] == 'claude'), [])
+        ordered = [flow for flow in claude if flow in survivors]
+        ordered += sorted((flow for flow in survivors if flow not in ordered),
+                          key=lambda flow: -support[flow])
+        dropped = sorted((flow for flow in unique if flow not in survivors),
+                         key=lambda flow: -support[flow])
+        pred_flows = [{'name': name, 'dax': flow2dax(name),
+                       'confidence': support[name] / len(votes)} for name in ordered + dropped]
         # One majority voter's reasoning rides along as the winning flow's rationale.
         rationale = next((vote['reasoning'] for vote in votes
-                          if vote['flow_name'] == best_flow and vote.get('reasoning')), '')
+                          if ordered[0] in vote['flows'] and vote.get('reasoning')), '')
         if rationale:
             pred_flows[0]['rationale'] = rationale
-        return {'flow_name': best_flow, 'confidence': self._score_votes(votes, best_flow),
+        return {'flows': ordered, 'confidence': self._score_votes(votes, ordered[0]),
                 'pred_flows': pred_flows}
 
     def _score_votes(self, votes:list[dict], best_flow:str) -> float:
@@ -393,9 +420,13 @@ class DialogueState:
         their own confidence). Round 1 (the 3 medium voters): all agree 0.9, majority 0.7, full
         split 0.5/0.3 by whether the split stays within one intent. Round 2 (5 votes): the
         (agreement, intent-spread) ladder, +0.1 when the two high voters agree with each other.
-        4-of-5 can't happen — round 2 only fires after the mediums all split."""
-        agree = sum(1 for vote in votes if vote['flow_name'] == best_flow)
-        intents = len({FLOW_ONTOLOGY[vote['flow_name']]['intent'] for vote in votes})
+        With list votes agreement CAN reach 4-5 of 5 (a flow rides several voters' lists after
+        the mediums split on their primaries) — the ladder saturates at its (3, ·) row.
+        Membership counts a vote naming best_flow anywhere in its list; the intent spread reads
+        each voter's primary (first) flow, skipping abstentions."""
+        agree = sum(1 for vote in votes if best_flow in vote['flows'])
+        intents = len({FLOW_ONTOLOGY[vote['flows'][0]]['intent'] for vote in votes
+                       if vote['flows']})
 
         if len(votes) <= 3:   # round 1: only the medium voters have voted
             if agree == len(votes):
@@ -405,8 +436,8 @@ class DialogueState:
         ladder = {(3, 1): 0.8, (3, 2): 0.7, (3, 3): 0.5,
                   (2, 1): 0.6, (2, 2): 0.4, (2, 3): 0.3,
                   (1, 1): 0.2, (1, 2): 0.2, (1, 3): 0.1}
-        confidence = ladder[(agree, min(intents, 3))]
-        high = [vote['flow_name'] for vote in votes if vote['_tier'] == 'high']
+        confidence = ladder[(min(agree, 3), min(intents, 3))]
+        high = [vote['flows'][0] for vote in votes if vote['_tier'] == 'high' and vote['flows']]
         if len(high) == 2 and high[0] == high[1]:
             confidence += 0.1
         return confidence

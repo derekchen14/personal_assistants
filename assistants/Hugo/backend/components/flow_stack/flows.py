@@ -382,3 +382,32 @@ class ChatFlow(ConverseParentFlow):
   def fill_slot_values(self, values):
     for item in values.get('topic', []):
       self.slots['topic'].add_one(item)
+
+# ── Plan (flow_classes only — no FLOW_ONTOLOGY entry, so never a detection candidate) ───────
+
+class PlanFlow(BaseFlow):
+  """The Plan Flow oversees, it does not do the work (round 3.5). think stacks it Pending at
+  the bottom with the detected steps above it; it anchors has_plan and its `steps` checklist
+  keeps a readable record of the plan shape even after steps complete and pop. think fills the
+  checklist directly at stacking — no LLM slot fill.
+  TODO(review pass, future round): when this flow surfaces as Active, its policy reviews what
+  the overseen steps did (reading the session scratchpad) and makes final adjustments. Until
+  that policy exists, the pop that surfaces it removes it instead of running it."""
+  def __init__(self):
+    super().__init__()
+    self.parent_type = 'Plan'
+    self.flow_type = 'plan'
+    self.dax = '{29D}'
+    self.entity_slot = 'steps'
+    self.goal = 'oversee a multi-step plan: hold the ordered steps and review their work at the end'
+    self.slots = {
+      'steps': ChecklistSlot(),
+    }
+    self.tools = []
+
+  def fill_slot_values(self, values):
+    for item in values.get('steps', []):
+      if isinstance(item, dict):
+        self.slots['steps'].add_one(**item)
+      else:
+        self.slots['steps'].add_one(item)

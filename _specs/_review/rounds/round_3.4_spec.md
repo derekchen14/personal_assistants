@@ -132,7 +132,9 @@ Assistant · run NLU ─ start NLU's thinking ─▶
    PEX 6   respond: generate the reply from popped flows
      │
 Assistant · wrap-up ─ send the reply · save the agent turn (MEM) ─▶ add_turn(agent utterance)
-  Pending flows remain → back to PEX 2; otherwise MEM recap():
+  (step chaining stays inside PEX's single pass — a completed
+  flow resets the round budget, so each plan step starts fresh;
+  no take_turn loop, ruled round 3.5) then MEM recap():
                                                                   module  start(): add the system
                                                                           turn · reset is_newborn
                                                                   MEM 7   _compaction + _promote
@@ -159,7 +161,7 @@ Assistant · wrap-up ─ send the reply · save the agent turn (MEM) ─▶ add_
 | PEX 5 | manage_flows() | the same agent as PEX 2 decides same-intent conflicts only — given the flow_stack, the status of the Active flow, and NLU's scratchpad messages: run the new flow, or pop() it and stay; update, stackon, anything it needs. Different-intent re-routes never reach it, since code already handled them. It decides at the hook that surfaced the conflict — 3, or 5 when no tool ran — and never at hook point 6. On most turns there is no conflict and PEX 5 is skipped. |
 | PEX module | `verify()` | hook point 6, the verification hook: wrap up the policy by running any verification checks; code pops Completed and Invalid flows deterministically — no agent call |
 | PEX 6 | `respond` | feed popped flows to the agent to generate agent response |
-| Assistant | `take_turn` (assistant.py:84-86) | send agent response + artifact blocks to frontend, save the agent utterance as a turn within MEM, if flow_stack still has pending flows go back to PEX 2 to loop, otherwise hand control to MEM by running recap() |
+| Assistant | `take_turn` (assistant.py:84-86) | send agent response + artifact blocks to frontend, save the agent utterance as a turn within MEM, then hand control to MEM by running recap(). Step chaining never re-enters here: it stays inside PEX's single pass, whose round budget resets whenever a flow completes (round 3.5), so each plan step starts with a fresh budget |
 | MEM module | `start()` | add the system turn into Context Coordinator (completed flows · the active flow · the grounded post), reset is_newborn on every remaining flow, clears consumed grounding choices, bumps the turn count |
 | MEM 7 | `_compaction` + `_promote` (mem.py:80) | when prompt-token usage crosses the threshold, summarize the message middle; decide if any content from Scratchpad is promoted as a record into User Preferences or as a document into Business Knowledge |
 | MEM module | `finish()` | save a snapshot into state.json, check turn-end shape, compaction trigger read |
@@ -1164,14 +1166,15 @@ def _understand_user(self, params:dict) -> dict:
 ```
 
 ```python
-# assistant.py take_turn, after pex.execute returns — the same spot that loops back to PEX 2.
+# assistant.py take_turn, after pex.execute returns — the contemplate re-entry (the ONE
+# take_turn re-entry; plan-step chaining stays inside pex.execute's single pass, round 3.5).
 # turn_start is context.turn_id captured before pex.execute (same >= rule as _read_nlu_entry:
 # tool-log turns advance turn_id mid-loop, so equality would never match).
 requests = self.world.scratchpad.read(origin='orchestrator', keys=['request'])
 if any(entry['request'] == 'contemplate' for entry in requests
        if entry['turn_number'] >= turn_start):
     self.nlu.contemplate()                # re-detect over the failed flow; stack the re-route
-    ...                                   # re-enter pex.execute — the back-to-PEX-2 loop
+    ...                                   # re-enter pex.execute for the re-routed flow
 ```
 
 ### 3.4.8 — Prompts and cite

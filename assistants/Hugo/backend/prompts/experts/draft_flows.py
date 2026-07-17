@@ -18,7 +18,7 @@ User: "brainstorm ideas for a tech blog"
 ## Output
 
 ```json
-{"reasoning": "Brainstorming topic ideas.", "flow_name": "brainstorm"}
+{"reasoning": "Brainstorming topic ideas.", "flows": ["brainstorm"]}
 ```
 </positive_example>
 
@@ -29,7 +29,7 @@ User: "create an outline for a post about remote work"
 ## Output
 
 ```json
-{"reasoning": "Generating an outline.", "flow_name": "outline"}
+{"reasoning": "Generating an outline.", "flows": ["outline"]}
 ```
 </positive_example>
 
@@ -40,7 +40,7 @@ User: "turn this outline into a full draft"
 ## Output
 
 ```json
-{"reasoning": "Composing prose from the outline.", "flow_name": "compose"}
+{"reasoning": "Composing prose from the outline.", "flows": ["compose"]}
 ```
 </positive_example>
 
@@ -51,7 +51,7 @@ User: "reorder the sections and tweak the headings"
 ## Output
 
 ```json
-{"reasoning": "Refining the outline structure.", "flow_name": "refine"}
+{"reasoning": "Refining the outline structure.", "flows": ["refine"]}
 ```
 </positive_example>
 
@@ -62,7 +62,7 @@ User: "This section is already written out in full paragraphs. Just smooth the t
 ## Output
 
 ```json
-{"reasoning": "Editing existing prose at the sentence level is write, the Revise edge flow, not compose which turns an outline into prose.", "flow_name": "write"}
+{"reasoning": "Editing existing prose at the sentence level is write, the Revise edge flow, not compose which turns an outline into prose.", "flows": ["write"]}
 ```
 </edge_case>
 
@@ -73,7 +73,7 @@ User: "the last two sections are still bullet points, turn them into real paragr
 ## Output
 
 ```json
-{"reasoning": "Composing prose from outlined sections, multi-section rather than a single-section edit.", "flow_name": "compose"}
+{"reasoning": "Composing prose from outlined sections, multi-section rather than a single-section edit.", "flows": ["compose"]}
 ```
 </edge_case>'''
 

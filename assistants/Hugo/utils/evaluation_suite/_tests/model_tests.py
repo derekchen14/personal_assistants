@@ -55,7 +55,7 @@ def _single_flow(turn:dict):
 
 @lru_cache(maxsize=1)
 def _flow_menu() -> tuple:
-    """The static flow-detection grounding shared by every provider, so the comparison is fair: the 18
+    """The static flow-detection grounding shared by every provider, so the comparison is fair: the 16
     candidate names, the full rendered ontology (each flow's dax + description + slots — the definitions
     the LLM reads), and the authored exemplars aggregated across intents (the production flow-detection
     examples, not the scored corpus — no leakage). Built once per run."""
@@ -63,7 +63,7 @@ def _flow_menu() -> tuple:
     from backend.components.flow_stack import flow_classes
     from backend.prompts.for_experts import render_flow_ontology
     from backend.prompts.experts import PROMPTS
-    names = list(FLOW_ONTOLOGY)                                    # all 18 candidates
+    names = list(FLOW_ONTOLOGY)                                    # the 16 runtime candidates
     ontology = render_flow_ontology(names, FLOW_ONTOLOGY, flow_classes)
     examples = '\n\n'.join(fields['examples'].strip() for fields in PROMPTS.values()
                            if fields.get('examples'))
@@ -71,11 +71,12 @@ def _flow_menu() -> tuple:
 
 
 def _predict_flow(agent, user_text:str, provider:str|None=None) -> tuple[str, float]:
-    """Single-hop flow detection — no intent classification. The model picks one flow from the full
-    18-flow menu (the 16 policy flows + the two non-policy flows, plan {29D} and clarify {09F}), given
-    the conversation so far. Returns `(flow_name, confidence)`. Both providers get the SAME grounding
-    (full ontology + exemplars, `_flow_menu`): TypeSafe as one Choice returning calibrated confidence,
-    the LLM via NLU's shared prompt shell + detection schema (a self-reported confidence)."""
+    """Single-hop flow detection — no intent classification. The runtime ontology holds exactly 16
+    flows (round 3.5); plan {29D} and clarify {09F} survive as label-only vocabulary in the corpus,
+    so each provider maps its native output onto them: TypeSafe keeps the two as explicit Choice
+    options, the LLM's list output reads multi-flow as `plan` and an empty list (abstention) as
+    `clarify`. Returns `(flow_name, confidence)`. Both providers get the SAME grounding (full
+    ontology + exemplars, `_flow_menu`)."""
     convo_history = agent.world.context.compile_history()         # default look_back=5
     active_post = agent.nlu._active_post_dict()
     names, ontology, examples = _flow_menu()
@@ -87,9 +88,10 @@ def _predict_flow(agent, user_text:str, provider:str|None=None) -> tuple[str, fl
     role = ('You are the flow-detection component of a blog-writing assistant (named Hugo). Choose the '
             'single flow that best captures what the user wants on their latest turn.')
     task = (f'{BACKGROUND_STATIC}\n\n## Instructions\n\n'
-            'Pick exactly one flow from ## Candidate Flows. Choose `plan` when the user lays out a '
-            'multi-step request spanning several flows, and `clarify` when the turn is too ambiguous to '
-            f'commit to any flow.\n\n## Rules\n\n{PRECEDENCE_NOTE}')
+            'Pick the flow from ## Candidate Flows that fits the latest turn — usually one. When the '
+            'user lays out a multi-step request, output every step as its own flow in execution '
+            'order; when the turn is too ambiguous to commit to any flow, output an empty list.'
+            f'\n\n## Rules\n\n{PRECEDENCE_NOTE}')
     current = _render_current_scenario(user_text, convo_history, active_post)
     prompt = '\n\n'.join([f'<role>{role}</role>', f'<task>\n{task}\n</task>',
                           f'<flow_ontology>\n{ontology}\n</flow_ontology>',
@@ -102,7 +104,9 @@ def _predict_flow(agent, user_text:str, provider:str|None=None) -> tuple[str, fl
                                           'enum': ['0.1', '0.3', '0.5', '0.7', '0.9']}
     schema['required'] = schema['required'] + ['confidence']
     parsed = agent.engineer(prompt, 'detect_flow', schema=schema)
-    return parsed['flow_name'], float(parsed['confidence'])
+    flows = parsed['flows']
+    label = 'clarify' if not flows else ('plan' if len(flows) > 1 else flows[0])
+    return label, float(parsed['confidence'])
 
 
 def score_nlu(labels:int=0, seed=None, provider:str|None=None) -> tuple:
