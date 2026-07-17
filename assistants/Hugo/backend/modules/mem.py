@@ -9,9 +9,12 @@ log = logging.getLogger(__name__)
 
 class MemoryExtensionModule:
     """MEM, the Head — code-only module over the three memory tiers (no agent, no tool-calling).
-    Constructs and owns its components; the World holds the shared references. Exposes one read
-    skill per tier (`recap` / `recall` / `retrieve`); tier-specific operations are reached through
-    the sub-component, e.g. `world.prefs.store_preference` or `world.knowledge.search_documents`.
+    Constructs and owns its components; the World holds the shared references. Main methods are
+    `recap` / `recall` / `retrieve` (L1/L2/L3 — the module surface table): `recap` is the turn
+    wrap, start → compaction/promote → finish; `remember(op=x)` is reserved as MEM's tool-call
+    name. Tier-specific operations are reached through the sub-component, e.g.
+    `world.context.compile_history`, `world.prefs.store_preference`, or
+    `world.knowledge.search_documents`.
 
     The continuous background MEM loop (auto-promotion, proactive push) is designed-not-built."""
 
@@ -23,16 +26,36 @@ class MemoryExtensionModule:
         self.business_knowledge = BusinessKnowledge(engineer)    # L3 — business knowledge / FAQs
         self.world = None  # attached by the Assistant after World construction
 
-    def store_turn(self, utterance:str, prompt_tokens:int=0, completed:tuple=()):
-        """The end-of-turn store (take_turn step 5): record the agent turn, bump the turn count,
-        snapshot the stack onto the state and save state.json — the record of what actually
-        happened this turn, MEM's per the time rule — then run the compaction check.
+    def recap(self, utterance:str, prompt_tokens:int=0, completed:tuple=()):
+        """The turn wrap (T20: `store_turn` renamed to match the module surface table —
+        `recap`: start → compaction/promote → finish): record the agent turn, run start() (the
+        System checkpoint turn + per-turn resets), the compaction check, then finish() (persist).
         `prompt_tokens` is PEX's real acting-loop usage and `completed` the flows that reached
         Completed this turn, both passed by the Assistant (the World holds components, not
         modules). Promotion beyond explicit saves (PEX's store_preference tool writes L2 during
         the turn) is designed-not-built."""
         self.context_coordinator.add_turn('Agent', utterance, turn_type='utterance')
+        self.start(completed)
+        # artifact long-term storage (append world.latest_artifact() to artifacts.jsonl in the
+        # session dir) # designed-not-built
+        self._compaction_check(prompt_tokens)
+        self.finish()
+
+    def start(self, completed:tuple=()):
+        """Canonical turn 'module · start()': the backward-looking System checkpoint turn —
+        which flows completed this turn, which flow is still active, the grounded post — plus
+        the per-turn resets (is_newborn, consumed choices, turn count)."""
         state = self.world.state
+        active = self.world.flows.get_flow(status='Active')
+        parts = [f"completed: {', '.join(flow.name() for flow in completed) or 'none'}",
+                 f"active: {active.name() if active else 'none'}"]
+        active_post = state.get_active_post()
+        if active_post:
+            parts.append(f"post: {active_post}")
+        self.context_coordinator.add_turn('System', f"[checkpoint] {' | '.join(parts)}",
+                                          turn_type='checkpoint')
+        for flow in self.world.flows._stack:  # the turn is over: nothing on the stack is newborn
+            flow.is_newborn = False
         # Round 3.3 (D5): a completed flow other than the choices' writer has consumed them —
         # the chosen value now lives in that flow's slots and completion entry, so the
         # candidates clear. A completed Converse flow doesn't clear them (an open question may
@@ -43,12 +66,12 @@ class MemoryExtensionModule:
                            for flow in completed):
             state.grounding['choices'] = []
         state.turn_count += 1
-        state.flow_stack = self.world.flows.to_list()  # refresh the saved copy, then save
-        self._check_turn_end_shape(state.flow_stack)
-        state.save(self.world.state_file())
-        # artifact long-term storage (append world.latest_artifact() to artifacts.jsonl in the
-        # session dir) # designed-not-built
-        self._compaction_check(prompt_tokens)
+
+    def finish(self):
+        """Canonical turn 'module · finish()': run the turn-end shape check on the one live
+        stack (pex.flow_stack, via the world), save state.json."""
+        self._check_turn_end_shape(self.world.flows.to_list())
+        self.world.state.save(self.world.state_file())
 
     @staticmethod
     def _check_turn_end_shape(stack:list):
@@ -82,10 +105,6 @@ class MemoryExtensionModule:
         The prompt lives in backend/prompts/for_compactor.py."""
         prompt = build_compaction_prompt(middle, previous_summary, budget)
         return self.engineer(prompt, task='compress', tier='low', max_tokens=int(budget * 1.3))
-
-    def recap(self, n_turns:int|None=None, filter:str|None=None) -> str:
-        """L1 — recent session events as formatted history."""
-        return self.context_coordinator.compile_history(look_back=n_turns or 10, keep_system=True)
 
     def recall(self, query:str, flow_name:str|None=None) -> dict:
         """L2 — the user preferences matching `query`. Semantic lookup is deferred (no vector

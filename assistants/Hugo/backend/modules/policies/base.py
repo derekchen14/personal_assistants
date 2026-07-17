@@ -1,28 +1,8 @@
 import re
 import difflib
-import logging
-from dataclasses import dataclass
 
 from backend.components.task_artifact import TaskArtifact
 from backend.utilities.services import ToolService
-
-log = logging.getLogger(__name__)
-
-# The six sub-agent hook points (pex.md). A policy runs a sub-agent that can take destructive
-# action, so each point is an interception hook for an NLU signal (read from belief) or a user
-# interrupt. Three already have bodies elsewhere: pre_tool ← PEX._security_check,
-# verification ← PEX._verify_artifact, tool_retry ← retry_tool. pre_llm/post_llm are wired
-# live in llm_execute; post_tool's body lives in the engineer.flow_execute loop (integration point).
-HOOK_POINTS = ('pre_llm', 'pre_tool', 'post_tool', 'tool_retry', 'post_llm', 'verification')
-
-
-@dataclass
-class HookDecision:
-    """A hook's verdict: severity of any pending signal + whether to keep going."""
-    point: str
-    severity: str = 'low'   # 'high' (user interrupt — TODO) | 'medium' (signal diverges) | 'low'
-    proceed: bool = True
-    reason: str = ''
 
 
 class BasePolicy:
@@ -38,25 +18,7 @@ class BasePolicy:
         self.ambiguity = components['ambiguity']
         self._get_tools_fn = components['get_tools']
         self.flow_stack = components['flow_stack']
-        self._state_file = components['state_file']  # callable → path of the session state.json
         self._completion = None  # entry written by complete_flow, handed off via pop_completion
-
-    # -- Sub-agent hook framework ------------------------------------------
-
-    def run_hook(self, point:str, flow, state) -> HookDecision:
-        """Evaluate one of the six hook points (HOOK_POINTS) against the live belief signal.
-
-        Signal channel = the belief itself (no side channel): NLU writes `pred_intent`, and a
-        hook compares it to the active flow's intent — they DIVERGE (medium) or ALIGN (low). A
-        user interrupt would be high, but its channel is a TODO, so high never fires in 2a.
-        Bespoke stop/go-on: high → stop (mid-task); low/medium → go on (medium also logs so a
-        diverging signal is visible for the Batch 2b reconsider rule)."""
-        severity = 'low' if state.pred_intent == flow.intent else 'medium'
-        decision = HookDecision(point=point, severity=severity, proceed=severity != 'high')
-        if severity != 'low':
-            decision.reason = f'belief intent {state.pred_intent!r} diverges from {flow.intent!r}'
-            log.info('[hook] %s severity=%s flow=%s %s', point, severity, flow.name(), decision.reason)
-        return decision
 
     def llm_execute(self, flow, state, context, tools, include_preview:bool=False,
                     extra_resolved:dict|None=None, exclude_tools:tuple=(),
@@ -71,7 +33,6 @@ class BasePolicy:
         will error on the model side if it tries anyway. Pass `tier='high'` to swap the skill
         onto a stronger tier; pass `schema=<json-schema dict>` to force a schema-constrained
         terminal emit when the tool loop would otherwise return empty text."""
-        self.run_hook('pre_llm', flow, state)  # ① intercept any pending signal before the loop
         resolved = self._build_resolved_context(flow, state, tools, include_preview=include_preview)
         if extra_resolved:
             resolved = {**(resolved or {}), **extra_resolved}
@@ -85,7 +46,6 @@ class BasePolicy:
             user_text=context.last_user_text,
             tier=tier, schema=schema,
         )
-        self.run_hook('post_llm', flow, state)  # ⑤ intercept after the sub-agent completes
         return result
 
     # -- Content readback ---------------------------------------------------
@@ -219,17 +179,15 @@ class BasePolicy:
     # -- Flow completion ------------------------------------------------------
 
     def complete_flow(self, flow, state, context, summary:str, metadata:dict|None=None) -> dict|None:
-        """The single call a policy makes at the moment its flow finishes. The status change goes
-        through write_state op='update_flow' (so the grounding validation fires and state.json is
-        rewritten) and the completion entry {summary, metadata} is appended to the session
-        scratchpad under the flow's origin; activate_flow collects it via pop_completion and
-        returns it as the tool result. Call it before stacking any follow-up flow — the completing
-        flow must be top of stack."""
+        """The single call a policy makes at the moment its flow finishes. The status flips to
+        Completed on the live flow (MEM saves state.json at turn end) and the completion entry
+        {summary, metadata} is appended to the session scratchpad under the flow's origin;
+        activate_flow collects it via pop_completion and returns it as the tool result. Call it
+        before stacking any follow-up flow — the completing flow must be top of stack."""
         if self.flow_stack.get_flow().flow_id != flow.flow_id:
             raise ValueError(f'complete_flow: {flow.name()!r} is not top of stack — finish or '
                              f'pop the flows above it first')
-        state.write_state(self._state_file(), 'update_flow', stack=self.flow_stack,
-                          status='Completed')
+        flow.status = 'Completed'
         entry = {'version': 1, 'turn_number': context.turn_id, 'used_count': 0,
                  'summary': summary, 'metadata': metadata or {}}
         self.scratchpad.append_entry(flow.name(), entry)

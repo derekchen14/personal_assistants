@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from datetime import datetime
 
 from schemas.config import load_config
@@ -38,50 +39,74 @@ class Assistant:
         self.mem.world = self.world
 
     def take_turn(self, text:str, dax:str|None=None, payload:dict|None=None) -> dict:
-        """ Process
-        0. Resolve any lingering ambguity, go straight to nlu.react() if user action was taken, then straight to step 3.
-        1. PEX takes System 1 attempt at classifying intent — the first move of its agent loop,
-           per the orchestrator prompt. Never a separate call.
-        2a. If the intent is clear (Research, Draft, Revise, Publish), PEX proceeds.
-            NLU detects the flow and derives the intent from the detected flow.
-            If the intents match, we just let PEX proceed. Otherwise, we must intervene at next hook point.
-        2b. If the intent is potentially complex (Plan, Clarify, Converse), then PEX awaits nlu.understand(op='read')
-        3. PEX agent decides the complexity of the request:
-            - basic: just call tools itself, or even skip tools and just respond
-            - intermediate: execute the policy corresponding to the detected flow
-                * continue to the next stage of an already active flow
-                * stackon a new flow, activated immediately, and start policy execution
-            - advanced: lean on the Workflow Planner to breakdown a complex task or kick-off a Pending flow
-        4. Pass the agent response back to the user
-        5. Store results into memory, MEM decides if it wants to promote any thoughts to L2 or L3
-        """
-
+        """The threaded turn (round 3.4). Two lanes: NLU's thinking (check → detect_flows →
+        fill_slots → validate) runs on a worker thread; PEX's acting loop runs on main. No
+        stack lock — whichever lane stacks first, the other converges (same-type dedupe, or
+        the hook 3/5 scratchpad read). The click path stays synchronous: `_execute_click`
+        activates the flow react stacked, so react must finish first. An NLU crash is stored
+        and re-raised at the join, landing in this method's safety net; MEM stores the turn
+        at the end."""
         try:
             self._ensure_session()
             turn_type = 'action' if dax else 'utterance'
             self.world.context.add_turn('User', text, turn_type=turn_type)
             log.info('USER (%s): %s', turn_type, text)
 
-            # 0. Round 3.3: an open ambiguity persists across turns (and task detours) until
-            # grounding completes — NLU's bind pass resolves it. Only the per-turn ask counts
-            # reset on a new user turn.
+            # Round 3.3: an open ambiguity persists across turns until NLU's check() clears it.
+            # Only the per-turn ask counts reset on a new user turn.
             self.world.ambiguity.counts = dict.fromkeys(self.world.ambiguity.counts, 0)
 
-            if dax:      # click or action+text: react fills belief from the dax/payload
-                self.nlu.understand(op='react', dax=dax, payload=payload)
-            else:        # utterance: detection writes belief before PEX's loop runs
-                # The hint is deterministic coordination code, never a tool argument: an Active
-                # flow on the stack IS the continue signal, so its name narrows detection's
-                # candidates and stands in as PEX's flow-level vote.
-                top = self.world.flows.get_flow()
-                hint = top.name() if top and top.status == 'Active' else ''
-                self.nlu.understand(op='think', user_text=text, payload=payload, hint=hint)
+            nlu_thread, nlu_error = None, []
+            if dax:      # click: react is synchronous, belief lands before PEX
+                self.nlu.react(dax, payload or {})
+                self.world.nlu_done.set()
+            else:
+                # NLU 1: the fast synchronous System-1 intent both lanes read (T16). A failed
+                # call stores '' so the Plan/Clarify gate and Continue narrowing stay quiet.
+                self.nlu.dialogue_state.classify_intent(self.engineer, self.world.context, text)
+                self.world.nlu_done.clear()
+                def run_nlu():
+                    try:
+                        self.nlu.think(text, payload or {})
+                    except Exception as ecp:  # noqa: BLE001 — stored, re-raised at the join
+                        nlu_error.append(ecp)
+                    finally:
+                        self.world.nlu_done.set()  # PEX's waits always wake, even on a crash
+                nlu_thread = threading.Thread(target=run_nlu, daemon=True)
+                nlu_thread.start()
 
-            # 1-4. PEX's agent loop: System-1 intent attempt first, then act, then reply.
+            # The utterances enter the Context Coordinator here — the Assistant is a thin
+            # wrapper handing the raw turn over; the coordinator builds the message (the
+            # [click]/[action] decoration is MEM's job, Unresolved 3). PEX appends only its
+            # working transcript (tool blocks, results, notes).
+            self.world.context.append_user_message(text, dax or '', payload)
+
+            # turn_start scopes the contemplate read below (>= — tool-log turns advance
+            # turn_id mid-loop, so equality would never match).
+            turn_start = self.world.context.turn_id
             utterance = self.pex.execute(self.system_prompt, dax=dax, payload=payload, text=text)
 
-            # 5. Store the turn into memory.
-            self.mem.store_turn(utterance, self.pex.last_prompt_tokens, self.pex.completed_this_turn)
+            if nlu_thread:
+                nlu_thread.join()          # a turn never ends with NLU mid-write
+                if nlu_error:
+                    raise nlu_error[0]
+
+            # 3.4.7: PEX queued a re-route request — the Assistant calls NLU (modules never
+            # reach each other), then re-enters PEX once. The re-detected flow is on the stack.
+            requests = self.world.scratchpad.read(origin='orchestrator', keys=['request'])
+            if any(entry['request'] == 'contemplate' and entry['turn_number'] >= turn_start
+                   for entry in requests):
+                self.nlu.contemplate(text)
+                self.world.context.append_message({'role': 'assistant', 'content': utterance})
+                self.world.context.append_message({'role': 'user', 'content': '[contemplate] '
+                    'NLU re-routed the stalled flow; act on the stack as it stands.'})
+                completed = self.pex.completed_this_turn  # prepare() resets it on re-entry
+                utterance = self.pex.execute(self.system_prompt, text='[contemplate] NLU '
+                    're-routed the stalled flow; act on the stack as it stands.')
+                self.pex.completed_this_turn = completed + self.pex.completed_this_turn
+
+            self.world.context.append_message({'role': 'assistant', 'content': utterance})
+            self.mem.recap(utterance, self.pex.last_prompt_tokens, self.pex.completed_this_turn)
             log.info('AGENT: %s', utterance[:256])
             return self._build_payload(utterance, self.world.latest_artifact())
         except Exception as ecp:  # noqa: BLE001 — top-level safety net

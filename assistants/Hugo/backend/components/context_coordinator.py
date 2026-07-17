@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 from backend.prompts.for_compactor import END_OF_SUMMARY, SUMMARY_PREFIX
+from utils.helper import dax2flow
 
 # Compactor defaults. The trigger threshold and the protected-tail size are config values read
 # by the Agent post-hook; the rest are the compaction constants.
@@ -132,7 +133,7 @@ class ContextCoordinator:
 
     def attach_messages(self, path):
         """Bind the message list to messages.jsonl in the session dir (path passed in from
-        World). An existing file rehydrates the list; a fresh session starts empty."""
+        World). An existing file rebuilds the list; a fresh session starts empty."""
         self._messages_path = Path(path)
         if self._messages_path.exists():
             lines = self._messages_path.read_text(encoding='utf-8').splitlines()
@@ -148,6 +149,20 @@ class ContextCoordinator:
             with open(self._messages_path, 'a', encoding='utf-8') as file:
                 file.write(json.dumps(message) + '\n')
         return message
+
+    def append_user_message(self, text:str, dax:str='', payload:dict|None=None) -> dict:
+        """Build and append the turn's user message. A click or action turn gets its
+        decoration here — the coordinator owns message construction; the Assistant is a thin
+        wrapper passing the raw turn over (Unresolved 3, 2026-07-17)."""
+        message = text
+        if dax and not text.strip():
+            message = (f'[click] dax={dax} flow={dax2flow(dax)} '
+                       f'payload={json.dumps(payload or {}, default=str)}')
+        elif dax:
+            message = (f'[action] This turn arrived with a resolved flow: {dax2flow(dax)!r} '
+                       f'(dax {dax}, payload {json.dumps(payload or {}, default=str)}). '
+                       f'Do not re-decide the click — build on it.\n{text}')
+        return self.append_message({'role': 'user', 'content': message})
 
     # ── Context compaction ──────
     # Strategy: prune old tool outputs (cheap, no LLM), protect the head and the
