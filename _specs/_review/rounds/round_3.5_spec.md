@@ -312,19 +312,19 @@ to build:
 Ordered by dependency — U-numbers reference the open Unresolved Issues above; nothing below a
 design task starts before its ruling.
 
-- [ ] **T1 — stop the live crash (no dependencies, most urgent).** Minimal `plan_flows.py` and
+- [x] **T1 — stop the live crash (no dependencies, most urgent).** Minimal `plan_flows.py` and
   `clarify_flows.py` in `backend/prompts/experts/`, each exporting `PROMPTS = {'Plan': ...}` /
   `{'Clarify': ...}` with placeholder-quality instructions so `get_prompt('Plan'/'Clarify')`
   stops raising KeyError and a Plan/Clarify classification stops failing the turn. Content gets
   refined by T4/T5; landing this first unblocks live runs. Changes: two new prompt files.
-- [ ] **T2 — `_candidate_names` fallback rule (no dependencies).** Narrowing that produces
+- [x] **T2 — `_candidate_names` fallback rule (no dependencies).** Narrowing that produces
   zero candidates falls back to the full 16-flow list — once plan/clarify leave the ontology
   (T4), the Plan and Clarify intents own no flows at all, and detection under those intents
   runs over everything. Changes: `dialogue_state.py`.
 - [x] **T3 — design rulings (Derek).** All settled 2026-07-17 — see Unresolved Issues: list
   detection with abstention, plan/clarify out of the ontology, the tally defaults, the round
   reset, and the Plan Flow marker.
-- [ ] **T4 — list detection.** `_flow_detection_schema`'s `flow_name` becomes the `flows` array
+- [x] **T4 — list detection.** LANDED 2026-07-17 (commit 51f4bcd). `_flow_detection_schema`'s `flow_name` becomes the `flows` array
   (through the offline linter); the base flow prompt gains exp 1's one-or-many instructions;
   every intent module's exemplars emit `"flows": [...]` (a one-regex sweep:
   `"flow_name": "x"` → `"flows": ["x"]`, 35 spots across the six experts files);
@@ -370,7 +370,7 @@ design task starts before its ruling.
   (`{'flows': [], 'confidence': 0.0, 'pred_flows': []}`); the abstain option rides the prompt
   instructions ("output an empty list when no flow fits"). Changes: `dialogue_state.py`,
   `for_experts.py`, `experts/*.py`, `nlu.py`, `schemas/ontology.py`.
-- [ ] **T5 — the plan path in think.** Multiple flows on a Plan-classified turn: stack the
+- [x] **T5 — the plan path in think.** LANDED 2026-07-17. Multiple flows on a Plan-classified turn: stack the
   Plan Flow first (Pending — the PlanFlow class in `flow_classes` only: dax {29D}, intent
   Plan, a `steps` ChecklistSlot listing the overseen flows, which think fills directly at
   stacking; the future review policy is a TODO comment), then the steps in reverse execution
@@ -406,14 +406,14 @@ design task starts before its ruling.
   ```
   A bare `plan` VOTE with no usable step list keeps `_write_non_policy_belief`'s branch: flag
   `has_plan` and let the agent build the plan. Depends: T4. Changes: `nlu.py`.
-- [ ] **T6 — Clarify runtime behavior + S8 rewrite.** `CLARIFY_PROMPT` encourages detecting
+- [x] **T6 — Clarify runtime behavior + S8 rewrite.** LANDED 2026-07-17. `CLARIFY_PROMPT` encourages detecting
   a flow only at EXTREME confidence (abstain otherwise — the empty list); think's empty-
   detection branch stacks nothing, writes the "no confident detection" entry, and the
   zero-agreement confidence trips `needs_clarification` → general ambiguity → PEX asks.
   `_write_non_policy_belief`'s clarify/plan branches retire with the ontology removal. Rewrite
   S8's premise and rows around the TypeSafe classifier and the abstention path. Depends: T4.
   Changes: `nlu.py`, `clarify_flows.py`, this spec.
-- [ ] **T7 — the round reset + has_plan lifecycle.** `_run_loop` becomes
+- [x] **T7 — the round reset + has_plan lifecycle.** LANDED 2026-07-17. `_run_loop` becomes
   `while round_idx < self.max_rounds:` and a completed flow resets `round_idx = 0` — every
   plan step starts with a fresh budget; no take_turn loop (align the Canonical Turn's
   "back to PEX 2" row in round_3.4_spec.md). `has_plan` clears when the Plan Flow marker
@@ -421,8 +421,20 @@ design task starts before its ruling.
   never runs), and that removal clears the flag — replacing the landed empty-stack clearing
   in activate_flow. Verify against a live S7 trace once T5 lands. Depends: T5. Changes:
   `pex.py`, both specs.
-- [ ] **T8 — verification.** The How-to-verify list below, a live S7 + S8 trace, the unit
-  suites, and a small eval subset that includes plan and clarify turns. Depends: all.
+- [x] **T8 — verification.** DONE 2026-07-17. All five How-to-verify checks pass; suites 230
+  green. Live S7: the detection returned the ordered steps, think stacked
+  [plan(Pending, steps checklist find → outline → compose → schedule), schedule, compose,
+  outline, find(Active)], `find` ran and completed with the round budget resetting per step
+  (`outline`'s policy stalled mid-plan — a policy-level issue, not a stacking one; the agent
+  asked the user how to proceed, which is the designed stall behavior). Live S8: the Clarify
+  classification fell back to the full 16-flow candidate list, the voters unanimously committed
+  to `brainstorm` (tally 1.0), and the flow stacked and ran. Eval subset (B01.C08, B03.C14 plan;
+  B01.C10, B03.C16 clarify): planning=1.0 on both plan cases, ambiguity=1.0 on both clarify
+  cases. Eval tooling swept for the departed labels: `model_tests`/`typesafe_helpers` now map
+  the label-only plan/clarify onto the 16-flow runtime output (multi-flow → plan, abstention →
+  clarify; TypeSafe keeps them as explicit Choice options); `run_evals`/`run_traces` read
+  `pred_flows[0]['name']`. MEM's turn-end shape check aligned to the top-down pop (buried
+  terminal flows are legal; only a non-Active top warns).
 
 ## How to verify
 

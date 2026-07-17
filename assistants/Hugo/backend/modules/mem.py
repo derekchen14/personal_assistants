@@ -75,16 +75,15 @@ class MemoryExtensionModule:
 
     @staticmethod
     def _check_turn_end_shape(stack:list):
-        """Log-only turn-end invariant check (round 2.12): a turn must end with an empty stack or
-        an Active flow on top — no Pending flow on top, no Completed/Invalid survivor. Post-hooks
-        validate, they never rewrite state; a violation here means PEX's pop discipline slipped
-        and the NEXT turn would fill the wrong flow."""
-        terminal = [entry['flow_name'] for entry in stack
-                    if entry['status'] in ('Completed', 'Invalid')]
-        pending_top = bool(stack) and stack[-1]['status'] == 'Pending'
-        if terminal or pending_top:
-            log.warning('turn-end stack shape violated: top=%s terminal_leftovers=%s',
-                        stack[-1]['status'] if stack else 'empty', terminal)
+        """Log-only turn-end invariant check (round 2.12, aligned to the round-3.4 pop): a turn
+        must end with an empty stack or an Active flow on top — no Pending or terminal top. A
+        Completed/Invalid flow BURIED under live work is legal: pop works top-down and reaches it
+        only when the flows above resolve. Post-hooks validate, they never rewrite state; a
+        violation here means PEX's pop discipline slipped and the NEXT turn would fill the wrong
+        flow."""
+        if stack and stack[-1]['status'] != 'Active':
+            log.warning('turn-end stack shape violated: top=%s (%s)',
+                        stack[-1]['flow_name'], stack[-1]['status'])
 
     def _compaction_check(self, prompt_tokens:int):
         """Compactor trigger: real prompt-token usage from PEX's last acting-loop API response
