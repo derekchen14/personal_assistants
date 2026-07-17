@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 import anthropic
+import requests
 from google import genai
 import openai
 
@@ -17,11 +18,9 @@ from backend.prompts.for_pex import build_flow_system, build_flow_messages
 log = logging.getLogger(__name__)
 
 _TASK_SUFFIXES = {
-    'classify_intent': 'You are a precise NLU classifier. Respond with only valid JSON. No markdown fences, no explanation.',
     'detect_flow': 'You are a precise flow classifier. Respond with only valid JSON. No markdown fences.',
     'fill_slots': 'You are a slot extraction engine. Respond with only valid JSON.',
     'contemplate': 'You are re-evaluating a failed flow detection. Respond with only valid JSON.',
-    'repair_slot': 'Reply with ONLY the best matching valid option, or "NONE" if no match is reasonable.',
     'skill': '',
     'quality_check': (
         'You are a quality checker. Given recent conversation history, '
@@ -46,6 +45,12 @@ FAMILY_TIERS = {
     'typesafe': ('noul', 'score', 'choice'),   # TypeSafe question types stand in for the tier ladder
 }
 _TIER_IDX = {'low': 0, 'med': 1, 'high': 2}
+
+# TypeSafe (skill doc: handling_ambiguity/typesafe/SKILL.md) — the non-LLM System-1 decision
+# model: typed questions over a document, typed answers back. classify_intent (NLU 1) runs on it.
+_TYPESAFE_ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
+_TYPESAFE_MODEL = 'speed_latest'
+
 
 class PromptEngineer:
 
@@ -119,6 +124,19 @@ class PromptEngineer:
         base = build_system(self.persona)
         suffix = _TASK_SUFFIXES.get(task, '')
         return f'{base}\n\n{suffix}'.strip() if suffix else base
+
+    def typesafe(self, document:dict, questions:dict) -> dict:
+        """One TypeSafe System-1 call — typed questions evaluated against a document, typed
+        answers back (no prompt, no JSON to coax out of prose). Returns the `answers` dict;
+        raises on a missing key or a failed request — the caller owns the fallback."""
+        key = os.getenv('TYPESAFE_API_KEY')
+        if not key:
+            raise RuntimeError('TYPESAFE_API_KEY not set. Add it to .env or environment.')
+        payload = {'document': document, 'model': _TYPESAFE_MODEL, 'questions': questions}
+        headers = {'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'}
+        resp = requests.post(_TYPESAFE_ENDPOINT, json=payload, headers=headers, timeout=30)
+        resp.raise_for_status()
+        return resp.json()['answers']
 
     def __call__(self, prompt:str, task:str='skill', tier:str='med', max_tokens:int=1024,
                  schema=None, family:str=''):

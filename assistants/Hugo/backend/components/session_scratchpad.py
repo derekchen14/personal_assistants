@@ -31,16 +31,29 @@ class SessionScratchpad:
 
     def read(self, origin:str|None=None, keys:list[str]|None=None) -> list[dict]:
         """Entries in append order (newest last), optionally filtered by `origin` and/or by `keys`
-        that must all be present on an entry."""
+        that must all be present on an entry.
+
+        Reading IS consuming (round 3.4): any returned entry carrying `is_newborn: true` is
+        flipped to False on disk, whoever the caller is — NLU, PEX, or MEM. The returned dicts
+        keep the pre-flip value so callers can still filter on it."""
         if not self._scratchpad_path.exists():
             return []
         lines = self._scratchpad_path.read_text(encoding='utf-8').splitlines()
         entries = [json.loads(line) for line in lines]
+        selected = entries
         if origin:
-            entries = [entry for entry in entries if entry['origin'] == origin]
+            selected = [entry for entry in selected if entry['origin'] == origin]
         if keys:
-            entries = [entry for entry in entries if all(name in entry for name in keys)]
-        return entries
+            selected = [entry for entry in selected if all(name in entry for name in keys)]
+        consumed = {id(entry) for entry in selected if entry.get('is_newborn')}
+        if consumed:
+            returned = [dict(entry) for entry in selected]     # pre-flip copies for the caller
+            for entry in entries:
+                if id(entry) in consumed:
+                    entry['is_newborn'] = False
+            self._rewrite(entries)
+            return returned
+        return selected
 
     def amend_entry(self, origin:str, turn_number:int, entry:dict):
         """NLU-only (the review pass): modify an EXISTING entry in place — origin + turn_number

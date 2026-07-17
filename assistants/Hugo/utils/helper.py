@@ -31,6 +31,18 @@ def dax2flow(dax: str) -> str | None:
     return _DAX_LOOKUP.get(code)
 
 
+# The intent → basic-flow mapping is definitional: flow names vary by domain, the dax codes do not.
+_BASIC_DAX = {'Converse': '{000}', 'Research': '{001}', 'Draft': '{002}',
+              'Revise': '{003}', 'Publish': '{004}'}
+
+
+def intent2flow(intent: str) -> str | None:
+    """The intent's basic flow (Converse→chat, Research→find, Draft→outline, Revise→write,
+    Publish→release in the blog domain). Plan/Clarify have no basic flow and return None."""
+    dax = _BASIC_DAX.get(intent)
+    return dax2flow(dax) if dax else None
+
+
 def flows_by_intent(intent: Intent) -> dict:
     return {
         name: cat for name, cat in FLOW_ONTOLOGY.items()

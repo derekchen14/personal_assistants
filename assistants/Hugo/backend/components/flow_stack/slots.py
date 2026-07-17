@@ -181,16 +181,13 @@ class SourceSlot(GroupSlot):
 
 
 class TargetSlot(SourceSlot):
-  """New entities being created (new post title, new section, or new snippet citation target)."""
+  """New entities being created (new post title, new section, or new snippet citation target).
+  Fill eligibility inherits SourceSlot's entity-part rule (round 3.4.8): with an entity_part
+  declared, an entity counts only when post AND that part are present, so cite's target stays
+  in the slot-fill schema until a snippet id lands."""
   def __init__(self, min_size, entity_part, priority='required'):
     super().__init__(min_size, entity_part, priority)
     self.slot_type = 'target'
-
-  def check_if_filled(self):
-    """A target is considered filled if any entity part (post/sec/snip/chl) is present."""
-    valid = [e for e in self.values if any(e[k] for k in ('post', 'sec', 'snip', 'chl'))]
-    self.filled = len(valid) >= self.size
-    return self.filled
 
 
 class RemovalSlot(SourceSlot):

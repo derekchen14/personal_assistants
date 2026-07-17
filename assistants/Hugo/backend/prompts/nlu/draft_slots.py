@@ -817,19 +817,22 @@ Active post: My RL Primer
 
 CITE_PROMPT = {
     'instructions': (
-        "The Cite Flow attaches a citation (URL) to a snippet of text within a post — a sentence, "
-        "phrase, or short quoted passage. Citations always anchor to snippets, not to whole posts or "
-        "sections.\n\n"
-        "Extract the snippet being cited (`target`) and the URL (`url`) when present. When the user "
-        "supplies only a target, the policy will web-search for a supporting source. When the user "
-        "supplies only a URL, the policy uses the active snippet from context. Both slots are elective "
-        "so at least one must be present to proceed."
+        "The Cite Flow attaches a citation (URL) to a snippet of text within a post — a sentence or "
+        "a slice of sentences. Citations always anchor to snippets, not to whole posts or sections.\n\n"
+        "Extract the snippet being cited (`target`) and the URL (`url`) when present. `snip` is a "
+        "snippet ID — a sentence index or an end-exclusive `[start, end]` slice — never the text or "
+        "a description of it. When the user points at the passage in words instead of positions, "
+        "leave `snip` empty: the policy reads the section and locates the passage itself. "
+        "When the user supplies only a target, the policy will web-search for a supporting source. "
+        "When the user supplies only a URL, the policy uses the active snippet from context. Both "
+        "slots are elective so at least one must be present to proceed."
     ),
     'rules': (
         "1. Exactly one of `target` / `url` must fill, or both:\n"
-        "  a. `target` carries the snippet text the user wants to cite. Fill the `snip` key with the "
-        "sentence or phrase being cited. Leave null when the user provides only a URL without naming "
-        "what to attach it to.\n"
+        "  a. `target` anchors the citation. Fill `sec` when the user names a section, and `snip` "
+        "ONLY when the user gives sentence positions, copying their numbers verbatim — a single "
+        "index ('sentence 3' → '3') or a slice ('sentences 2 through 5' → '[2, 5]'). A descriptive "
+        "phrase ('the claim about attention') is NOT a snippet id — leave `snip` null.\n"
         "  b. `url` captures URLs verbatim as a single string. When the user supplies multiple URLs in "
         "one utterance, concatenate with semicolons: `'https://a.com; https://b.com'`.\n"
         "  c. When only a URL is provided, leave `target` null — the policy uses the active snippet "
@@ -844,9 +847,11 @@ CITE_PROMPT = {
     ),
     'slots': (
         "### target (elective)\n\n"
-        "Type: TargetSlot. The snippet of text the citation attaches to — typically a sentence or "
-        "phrase. Fill the `snip` key with the snippet text. Leave null when the user provides only a "
-        "URL.\n\n"
+        "Type: TargetSlot. Where the citation attaches: `post` (inherits from active_post), `sec` "
+        "when named, and `snip` as a snippet ID — a sentence index ('3') or end-exclusive slice "
+        "('[2, 5]') copied from user-supplied positions. Never put the sentence's text or a "
+        "description in `snip`; leave it null and the policy locates the passage. Leave the whole "
+        "target null when the user provides only a URL.\n\n"
         "### url (elective)\n\n"
         "Type: ExactSlot. A URL supplied by the user as the citation source. Capture the full string "
         "exactly. Use semicolon-separated concatenation when multiple URLs are named in the same "
@@ -855,7 +860,7 @@ CITE_PROMPT = {
     'examples': '''<positive_example>
 ## Conversation History
 
-User: "Cite https://arxiv.org/abs/1706.03762 on the claim about self-attention in my transformer post."
+User: "Cite https://arxiv.org/abs/1706.03762 on sentence 2 of the attention section of my transformer post."
 
 ## Input
 Active post: None
@@ -864,9 +869,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Both URL and target provided in one turn. Target carries the snippet ('the claim about self-attention'); the post reference is context, not a slot value. URL captured verbatim.",
+  "reasoning": "Both URL and target provided in one turn. The user gives a sentence position, so snip copies their number verbatim; sec captures the named section. URL captured verbatim.",
   "slots": {
-    "target": {"snip": "the claim about self-attention"},
+    "target": {"sec": "attention", "snip": "2"},
     "url": "https://arxiv.org/abs/1706.03762"
   }
 }
@@ -876,7 +881,7 @@ Active post: None
 <positive_example>
 ## Conversation History
 
-User: "Add a citation to the sentence about scaling laws in my transformer deep dive."
+User: "Add a citation to sentence 4 of the scaling laws section in my transformer deep dive."
 
 ## Input
 Active post: None
@@ -885,9 +890,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "User names the snippet but no URL. Target fills with the sentence reference; url stays null so the policy can web-search for a supporting source.",
+  "reasoning": "User gives a sentence position but no URL. snip copies the index; url stays null so the policy can web-search for a supporting source.",
   "slots": {
-    "target": {"snip": "the sentence about scaling laws"},
+    "target": {"sec": "scaling laws", "snip": "4"},
     "url": null
   }
 }
@@ -908,9 +913,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Target comes from the first turn ('the claim about attention'); URL comes from the third turn. Both slots fill across turns.",
+  "reasoning": "URL comes from the third turn. The first turn points at the passage in words only — a description is not a snippet id, so snip stays empty and target stays null; the policy reads the section and locates the claim itself.",
   "slots": {
-    "target": {"snip": "the claim about attention"},
+    "target": null,
     "url": "https://arxiv.org/abs/2307.15217"
   }
 }
@@ -922,7 +927,7 @@ Active post: None
 
 User: "Can you add a citation?"
 Agent: "Where and what URL?"
-User: "On the sentence about bias in the intro of my calibration post — https://arxiv.org/abs/2305.18339"
+User: "On sentences 2 through 5 in the intro of my calibration post — https://arxiv.org/abs/2305.18339"
 
 ## Input
 Active post: None
@@ -931,9 +936,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "User gives both target and URL in the third turn. The 'in the intro of my calibration post' phrase scopes the snippet; target captures the sentence reference. URL captured verbatim.",
+  "reasoning": "User gives both target and URL in the third turn. 'Sentences 2 through 5' is a user-supplied range — snip copies the numbers as an end-exclusive slice; sec captures 'intro'. URL captured verbatim.",
   "slots": {
-    "target": {"snip": "the sentence about bias"},
+    "target": {"sec": "intro", "snip": "[2, 5]"},
     "url": "https://arxiv.org/abs/2305.18339"
   }
 }
@@ -943,7 +948,7 @@ Active post: None
 <edge_case>
 ## Conversation History
 
-User: "Cite https://old-link.com on the scaling claim in my RL post."
+User: "Cite https://old-link.com on sentence 1 of the rewards section in my RL post."
 Agent: "Done — cited it."
 User: "Wait — cite https://new-link.com instead."
 
@@ -958,9 +963,9 @@ target slot: {"post": "2c4e6a80", "sec": "", "snip": "", "chl": ""}
 
 ```json
 {
-  "reasoning": "Target.post is grounded — copy `post_id` verbatim from the target slot rather than re-deriving from the title. Snippet ('the scaling claim') carries over from the first turn. Current turn retracts the prior URL with 'instead' — use the new URL.",
+  "reasoning": "Target.post is grounded — copy `post_id` verbatim from the target slot rather than re-deriving from the title. The sentence position ('sentence 1 of the rewards section') carries over from the first turn. Current turn retracts the prior URL with 'instead' — use the new URL.",
   "slots": {
-    "target": [{"post": "2c4e6a80", "snip": "the scaling claim"}],
+    "target": [{"post": "2c4e6a80", "sec": "rewards", "snip": "1"}],
     "url": "https://new-link.com"
   }
 }
@@ -970,7 +975,7 @@ target slot: {"post": "2c4e6a80", "sec": "", "snip": "", "chl": ""}
 <edge_case>
 ## Conversation History
 
-User: "Cite these two papers on my scaling hypothesis snippet: https://a.com and https://b.com"
+User: "Cite these two papers on the first sentence of my scaling hypothesis section: https://a.com and https://b.com"
 
 ## Input
 Active post: None
@@ -979,9 +984,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Two URLs in one utterance → concatenate with semicolon per rule 2. Target carries the snippet reference.",
+  "reasoning": "Two URLs in one utterance → concatenate with semicolon per rule 2. 'The first sentence' is a position — snip is index 0; sec captures the named section.",
   "slots": {
-    "target": {"snip": "scaling hypothesis snippet"},
+    "target": {"sec": "scaling hypothesis", "snip": "0"},
     "url": "https://a.com; https://b.com"
   }
 }
@@ -1002,9 +1007,9 @@ Active post: None
 
 ```json
 {
-  "reasoning": "Target arrives in the third turn; no URL supplied. Url stays null so the policy can web-search for a supporting source.",
+  "reasoning": "The user points at the passage in words, not positions — a description is not a snippet id, so snip stays empty and target stays null; the policy reads the section and locates the claim. No URL either, so url stays null and the policy web-searches.",
   "slots": {
-    "target": {"snip": "the claim about compute scaling"},
+    "target": null,
     "url": null
   }
 }

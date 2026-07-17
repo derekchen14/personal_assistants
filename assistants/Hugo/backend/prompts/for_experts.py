@@ -1,9 +1,9 @@
 """
 Flow-detection prompt builders for Hugo NLU.
 
-Two stages — intent classification (hop 1) and flow detection (hop 2) — share
-the same hybrid XML + Markdown shell used by slot-filling
-(`backend/prompts/for_nlu.py`):
+Intent classification (hop 1) runs on TypeSafe, not an LLM — its questions and gate live as
+the audit-surface constants below (T17). Flow detection (hop 2) shares the hybrid
+XML + Markdown shell used by slot-filling (`backend/prompts/for_nlu.py`):
 
   <role>...</role>
   <task>
@@ -24,18 +24,13 @@ the same hybrid XML + Markdown shell used by slot-filling
     ## Input           — `Active post: ...` + (flow stage) `Predicted intent: ...`
   </current_scenario>
 
-Output shapes are enforced by provider-side JSON schemas in
-`backend/modules/nlu.py`:
-  - intent:  {"reasoning": str, "intent": one-of-6}
-  - flow:    {"reasoning": str, "flow_name": one-of-candidates}"""
+Flow detection's output shape is enforced by a provider-side JSON schema
+(`_flow_detection_schema` in `backend/components/dialogue_state.py`):
+  - flow: {"reasoning": str, "flow_name": one-of-candidates}"""
 
 from backend.prompts.experts import get_prompt
+from schemas.ontology import FLOW_ONTOLOGY
 
-
-ROLE_INTENT = (
-    'You are operating as the intent classifier component of a blog-writing assistant (named Hugo). '
-    'Route the current user utterance to exactly one of Hugo\'s user-facing intents.'
-)
 
 ROLE_FLOW = (
     'You are operating as the flow-detection component of a blog-writing assistant (named Hugo). '
@@ -69,236 +64,40 @@ PRECEDENCE_NOTE = (
     'framing in `## Background`, trust the flow-specific side.'
 )
 
-# ── Intent stage: module-level (no per-intent registry) ──────────────────
+# ── Intent stage: the TypeSafe questions (no LLM prompt; T17) ────────────
+# classify_intent's audit surface (SKILL.md: question text and gate values live as named
+# constants in one module). One call, three questions fanned out: a Choice over the domain
+# intents (+ Continue when a continuable flow is grounded — its rubric is built at call time
+# naming that flow) and the two nouls. A noul at or above NOUL_THRESHOLD IS the intent.
+# The document stays lean ({history, utterance}) — exp3 showed grounding context hurts here.
 
-INTENT_INSTRUCTIONS = (
-    'Classify the user utterance into exactly one intent from the six user-facing intents listed in '
-    '## Background. Think step-by-step about the user\'s goal, then commit.'
-)
+INTENT_CRITERIA = {
+    'Research': 'Find posts and notes, inspect metrics and metadata, summarize drafts, '
+                'compare posts.',
+    'Draft': 'Brainstorm ideas, generate outlines, compose prose from an outline, refine '
+             'sections.',
+    'Revise': 'Restructure and rework drafts, edit sentences and phrasing, audit voice and '
+              'consistency, propose alternatives for placeholder gaps.',
+    'Publish': 'Publish to the blog, cross-post to channels, schedule, add citations.',
+    'Converse': 'Greetings, open-ended questions about writing, general discussion, setting '
+                'a preference.',
+}
 
-INTENT_RULES = (
-    f'{PRECEDENCE_NOTE}'
-)
+INTENT_QUESTION = 'Which intent is the user requesting?'
 
-INTENT_EXAMPLES = '''<positive_example>
-## Conversation History
+NOUL_THRESHOLD = 0.8   # either noul at/above this IS the intent (the higher of the two wins)
 
-User: "I want to write about AI trends"
-## Output
+PLAN_NOUL = {'type': 'noul', 'instructions': 'Is this a multi-step plan?', 'criteria': {
+    'true': 'The user is asking for two or more distinct operations in one message — no '
+            'single action covers the whole request on its own',
+    'false': 'A single operation covers the whole request'}}
 
-```json
-{"reasoning": "User wants to create new content about a topic.", "intent": "Draft"}
-```
-</positive_example>
+CLARIFY_NOUL = {'type': 'noul',
+                'instructions': 'Is there uncertainty that we need to clarify?', 'criteria': {
+    'true': 'The request is too vague or underspecified to act on without asking the user '
+            'a question first',
+    'false': 'The request is clear enough to act on'}}
 
-<positive_example>
-## Conversation History
-
-User: "show me my drafts"
-## Output
-
-```json
-{"reasoning": "User wants to see current draft status.", "intent": "Research"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "revise the intro to be more engaging"
-## Output
-
-```json
-{"reasoning": "User wants to improve existing content.", "intent": "Revise"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "publish it to Medium"
-## Output
-
-```json
-{"reasoning": "User wants to publish content to a channel.", "intent": "Publish"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "hi there"
-## Output
-
-```json
-{"reasoning": "Simple greeting.", "intent": "Converse"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "what should I do next?"
-## Output
-
-```json
-{"reasoning": "Asking for next-step guidance.", "intent": "Converse"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "let's plan out a 5-part series on cooking"
-## Output
-
-```json
-{"reasoning": "Planning a multi-part content series.", "intent": "Plan"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "find posts about productivity"
-## Output
-
-```json
-{"reasoning": "Searching through existing content.", "intent": "Research"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "make the tone more professional"
-## Output
-
-```json
-{"reasoning": "Adjusting writing style of existing content.", "intent": "Revise"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "brainstorm some ideas for a tech blog"
-## Output
-
-```json
-{"reasoning": "Generating new content ideas.", "intent": "Draft"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "schedule the post for next Monday"
-## Output
-
-```json
-{"reasoning": "Scheduling a post for future publication.", "intent": "Publish"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "what channels do I have connected?"
-## Output
-
-```json
-{"reasoning": "Checking channel configuration.", "intent": "Research"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "I prefer shorter paragraphs"
-## Output
-
-```json
-{"reasoning": "Setting a writing preference.", "intent": "Converse"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "plan the revision for my latest post"
-## Output
-
-```json
-{"reasoning": "Planning a revision sequence.", "intent": "Plan"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "approve those changes"
-## Output
-
-```json
-{"reasoning": "Accepting a revision.", "intent": "Revise"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "compare my last two posts"
-## Output
-
-```json
-{"reasoning": "Comparing existing content.", "intent": "Research"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "sure, go ahead"
-## Output
-
-```json
-{"reasoning": "Endorsing a suggestion.", "intent": "Converse"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "create a content calendar for the next month"
-## Output
-
-```json
-{"reasoning": "Planning content schedule.", "intent": "Plan"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "how do I structure a listicle?"
-## Output
-
-```json
-{"reasoning": "Asking about a writing concept.", "intent": "Research"}
-```
-</positive_example>
-
-<positive_example>
-## Conversation History
-
-User: "start a new post about remote work tips"
-## Output
-
-```json
-{"reasoning": "Creating new content.", "intent": "Draft"}
-```
-</positive_example>'''
 
 JSON_ONLY_REMINDER = 'Reply with the JSON object only. No prose, no markdown fences around the object.'
 
@@ -354,22 +153,28 @@ def _render_current_scenario(user_text:str, convo_history:str,
 
 # ── Builders ─────────────────────────────────────────────────────────────
 
-def build_intent_prompt(user_text:str, convo_history:str,
-                         active_post:dict=None) -> str:
-    task_body = (
-        f'{BACKGROUND_STATIC}\n\n'
-        f'## Instructions\n\n{INTENT_INSTRUCTIONS}\n\n'
-        f'## Rules\n\n{INTENT_RULES}'
-    )
-    current = _render_current_scenario(user_text, convo_history, active_post)
-    parts = [
-        f'<role>{ROLE_INTENT}</role>',
-        f'<task>\n{task_body}\n</task>',
-        f'<example_scenarios>\n{INTENT_EXAMPLES}\n</example_scenarios>',
-        JSON_ONLY_REMINDER,
-        f'<current_scenario>\n{current}\n</current_scenario>',
-    ]
-    return '\n\n'.join(parts)
+def detection_snippet(intent:str, hint:str='') -> str:
+    """The extra detection-prompt block NLU's check() picks for the classified intent — the
+    working-intent guidance appended after the base flow prompt. Continue (an Active flow in
+    the hint) reads very differently from Plan or Clarify (round 3.4)."""
+    if hint in FLOW_ONTOLOGY:
+        return (f'<working_intent>\nAn Active flow `{hint}` is mid-task. The most likely '
+                f'reading of this turn is that it CONTINUES that work — prefer `{hint}` or '
+                f'one of its edge flows unless the message clearly starts different work.'
+                f'\n</working_intent>')
+    intent = intent or hint    # an intent-shaped hint (the tie-break re-detect) keys the block
+    if intent == 'Plan':
+        return ('<working_intent>\nThe working intent is Plan: the request spans multiple '
+                'steps. Detect the flow the FIRST concrete step would run — the plan is '
+                'decomposed elsewhere; your job is only the entry flow.\n</working_intent>')
+    if intent == 'Clarify':
+        return ('<working_intent>\nThe working intent is Clarify: the request is '
+                'underspecified. Detect the closest flow anyway — low agreement is expected '
+                'and raises a clarification downstream.\n</working_intent>')
+    if intent:
+        return (f'<working_intent>\nThe working intent is {intent} — prefer its flows, and '
+                f'leave it only on a clear signal.\n</working_intent>')
+    return ''
 
 
 def build_flow_prompt(user_text:str, intent:str, convo_history:str,

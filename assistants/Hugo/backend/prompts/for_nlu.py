@@ -97,7 +97,9 @@ SLOT_TYPE_GUIDES = {
     'target': (
         '#### TargetSlot\n'
         'A new entity being created. Same dict shape as SourceSlot: `{post, sec, snip, chl}`. Populate only '
-        'the keys relevant to the new entity (e.g. a new post title fills `post`; a new section fills `sec`).'
+        'the keys relevant to the new entity (e.g. a new post title fills `post`; a new section fills `sec`). '
+        'The snippet-id rule applies here too: `snip` is a sentence index or end-exclusive `[start, end]` '
+        'slice, never a description of the text.'
     ),
     'removal': (
         '#### RemovalSlot\n'

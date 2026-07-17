@@ -44,8 +44,7 @@ REWORK_PROMPT = {
         "### source (required)\n\n"
         "Type: SourceSlot. References the target of the rework. Typically pre-filled with the post; "
         "the user may add one or more section names. For swap, BOTH section names must appear as two "
-        "separate entries in `source.values`. `snip` stays null at fill time — it holds a "
-        "policy-resolved snippet id, never a description.\n\n"
+        "separate entries in `source.values`. `snip` holds a snippet id or snippet range, rather than a description.\n\n"
         "### category (elective)\n\n"
         "Type: CategorySlot. Options: swap, to_top, to_end, trim, sharpen, reframe (see rule 2a "
         "for verb mappings).\n\n"
@@ -317,9 +316,12 @@ WRITE_PROMPT = {
         "Extract the `source` — always the whole entity, with the post and the section that holds "
         "the target span (keep `post`/`sec` stable on re-fills), and any stylistic direction as "
         "`style_notes`. `snip` holds a snippet id — a sentence index or an end-exclusive "
-        "[start, end] slice — which the POLICY resolves by reading the section; leave it null "
-        "unless an id is already visible in context (e.g. numbered sentences from an earlier read). The `image` slot is relevant only when the user asks to add or edit "
-        "an image caption, or to regenerate an existing image."
+        "[start, end] slice — never a description. Fill it only when the user supplies sentence "
+        "positions ('sentences 2 through 5' → '[2, 5]', numbers copied verbatim) or an id is "
+        "already visible in context (e.g. numbered sentences from an earlier read); otherwise "
+        "leave it null and the POLICY resolves it by reading the section. The `image` slot is "
+        "relevant only when the user asks to add or edit an image caption, or to regenerate an "
+        "existing image."
     ),
     'rules': (
         "1. `source` always fills the WHOLE entity: `post`, plus `sec` when the user names or "
@@ -352,8 +354,9 @@ WRITE_PROMPT = {
         "### source (required)\n\n"
         "Type: SourceSlot. What to edit: the post plus the section that holds the target span. "
         "Include `post` only when the user disambiguates across posts; otherwise active_post "
-        "provides that context. `snip` stays null at fill time — it holds a policy-resolved "
-        "snippet id (a sentence index or [start, end] slice), never a description.\n\n"
+        "provides that context. `snip` holds a snippet id (a sentence index or [start, end] "
+        "slice), never a description — fill it only from user-supplied positions, copied "
+        "verbatim; otherwise it stays null and the policy resolves it.\n\n"
         "### style_notes (optional)\n\n"
         "Type: FreeTextSlot. The user's stylistic direction, captured verbatim. Often a phrase or "
         "short sentence. Examples: 'short sentences, no passive voice', 'warmer tone, less academic'. "
@@ -409,6 +412,33 @@ source slot: {"post": "4b5c6d7e", "sec": "", "snip": "", "chl": ""}
   "reasoning": "Section scope ('conclusion') captured. Active post is grounded — copy `post_id` verbatim from the source slot rather than re-deriving from the title. No style direction given — leave style_notes null so the agent can ask what kind of cleanup.",
   "slots": {
     "source": [{"post": "4b5c6d7e", "sec": "conclusion"}],
+    "style_notes": null,
+    "image": null,
+    "suggestions": null
+  }
+}
+```
+</positive_example>
+
+<positive_example>
+## Conversation History
+
+User: "Just fix sentences 2 through 5."
+
+## Input
+
+Active post: **Attention Basics** (id: `7d8e9f0a`)
+
+Filled slots are shown as part of the input; slots not shown are empty so far.
+source slot: {"post": "7d8e9f0a", "sec": "intro", "snip": "", "chl": ""}
+
+## Output
+
+```json
+{
+  "reasoning": "The user supplies sentence positions — the one case snip fills at NLU time: copy the numbers verbatim as the end-exclusive slice '[2, 5]'. Post and sec are grounded — return the whole entity with them preserved. No style direction → style_notes null.",
+  "slots": {
+    "source": [{"post": "7d8e9f0a", "sec": "intro", "snip": "[2, 5]"}],
     "style_notes": null,
     "image": null,
     "suggestions": null

@@ -1,4 +1,5 @@
 import shutil
+import threading
 from pathlib import Path
 
 from backend.components.task_artifact import TaskArtifact
@@ -25,6 +26,13 @@ class World:
         self.context = mem.context_coordinator
         self.prefs = mem.user_preferences
         self.knowledge = mem.business_knowledge
+
+        # The threaded-turn wait primitive: PEX's hook reads block on NLU's thinking settling.
+        # TODO(round 3.4, revisit once the loop works): Event chosen over the alternative — PEX
+        # polling the scratchpad between loop rounds — because waits wake exactly when NLU
+        # settles. Starts set (nothing in flight); take_turn clears it per text turn.
+        self.nlu_done = threading.Event()
+        self.nlu_done.set()
 
         self.conversation_id: str | None = None
         self._seed_session()
