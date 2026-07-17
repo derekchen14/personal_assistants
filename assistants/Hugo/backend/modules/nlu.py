@@ -66,8 +66,9 @@ class NaturalLanguageUnderstanding:
         detection = state.detect_flows(self.engineer, context, user_text, snippet)
         if self._intent_split(detection):                   # low-confidence AND spans >1 intent
             state.classify_intent(self.engineer, context, user_text)  # the tie-break re-classify
-            detection = state.detect_flows(self.engineer, context, user_text,
-                                           detection_snippet(state.pred_intent))
+            if intent2flow(state.pred_intent):  # domain intents only — Plan/Clarify add no
+                detection = state.detect_flows(self.engineer, context, user_text,  # narrowing
+                                               detection_snippet(state.pred_intent))
 
         flow_name = detection['flow_name']
         predicted = detection.get('pred_flows', [])
@@ -76,8 +77,11 @@ class NaturalLanguageUnderstanding:
             state = self._write_non_policy_belief(flow_name, detection['confidence'], predicted)
         else:
             top = self.world.flows.get_flow()
-            prev = top.name() if top and top.status == 'Active' else ''  # what PEX runs now
-            if not (top and top.status == 'Active' and top.name() == flow_name):
+            # A live top counts whether Active or Pending: execute's code stackon is Active from
+            # the push, and a queued plan step waiting as Pending is still what PEX runs next.
+            live = bool(top) and top.status in ('Active', 'Pending')
+            prev = top.name() if live else ''
+            if not (live and top.name() == flow_name):
                 top = self.world.flows.stackon(flow_name,
                                                transfer=not self.ambiguity_handler.is_present)
             state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
@@ -220,6 +224,7 @@ class NaturalLanguageUnderstanding:
                             pred[part] = grounded[part]      # the live target wins
                 if pred.get('snip') and not _valid_snip(pred['snip']):
                     pred['snip'] = ''                        # a description is not a snippet id
+                pred['chl'] = pred.get('chl') or grounded.get('chl', '')  # preserve the channel
                 same_entity = (pred.get('post') == grounded.get('post')
                                and pred.get('sec') == grounded.get('sec'))
                 pred['ver'] = grounded.get('ver', False) if same_entity else False

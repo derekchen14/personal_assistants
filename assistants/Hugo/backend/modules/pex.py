@@ -292,7 +292,9 @@ class PolicyExecutor:
             basic = intent2flow(state.pred_intent)
             top = self.flow_stack.get_flow()
             if basic and not (top and top.status == 'Active'):
-                self.flow_stack.stackon(basic)
+                # Active from the push (Derek, 2026-07-17): this IS the turn's flow, and a
+                # turn may end on an incomplete Active top but never a Pending one.
+                self.flow_stack.stackon(basic).status = 'Active'
             utterance = self._run_loop(system_prompt)
         return utterance
 

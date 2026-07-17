@@ -95,6 +95,87 @@ if flow_name == 'plan':
 The per-step `goal` rides the scratchpad plan entry (validate already writes the step list; extend
 the summary line, no new entry key), so PEX and later steps can read what each step is for.
 
+Two items carried in from round 3.4's T21 verification (2026-07-17) — both bite only once plans
+actually stack steps, so they land here:
+
+- **The back-to-PEX-2 loop has no take_turn counterpart.** The Canonical Turn table says "if
+  flow_stack still has pending flows go back to PEX 2 to loop"; today `take_turn` runs
+  `pex.execute` once (plus the one contemplate re-entry) and step chaining happens inside that
+  single pass — the agent activates each surfaced `next_flow` across its own rounds. Decide with
+  the decomposition work whether a take_turn re-entry loop is needed (and its guard — likely
+  `state.has_plan`, so non-plan Pending work still waits for the user) or whether the single-pass
+  agent loop covers S7's "each pass runs the next step" as is.
+- **validate's plan branch swallows mid-plan announcements.** `elif state.has_plan` fires on
+  EVERY NLU pass while a plan is live, so a divergent detection on a mid-plan turn writes a plan
+  entry (no `new_flow` key) instead of an announcement — hooks 3/5 can never surface it. The
+  branch needs a narrower condition, e.g. only on the pass where think stacked the steps.
+
+## Scenario walkthroughs (S7 and S8, moved from round 3.4)
+
+The Plan and Clarify traces, expanded over the Canonical Turn (round_3.4_spec.md) —
+the target behavior once this round lands. Their phase rows read exactly like the
+other nine scenarios; the S numbering is shared across the two files.
+
+### S7 — Plan: multiple stacked (not queued) steps
+
+"Find my three best posts, draft a new one on that theme, then schedule it." Starting on an empty stack.
+
+| phase | method | what happens |
+|---|---|---|
+| Assistant | `take_turn` | empty stack |
+| NLU 1 | `classify_intent` | intent: Plan — no real signal |
+| PEX module | `prepare` | same |
+| Assistant | run NLU | same |
+| NLU module | `check` | clears any prior ambiguity; picks the Plan detection snippet |
+| PEX module | `prepare` | **wait** — hook point 1: Plan blocks here until NLU settles |
+| PEX 2 | - | skipped, stack is empty so no model call needed to manage workflow |
+| NLU 2 | `detect_flows` | the vote converges on `plan`, ideally detects find {001}, outline {002}, and schedule {4AC} |
+| NLU module | `think` | multi-step confirmed: sets `state.has_plan = True` and stackons every step in reverse execution order — `stackon('schedule', active=false)`, `stackon('outline', active=false)`, then `stackon('find')` on top |
+| NLU 3 | fill_slots() | skipped, since state.has_plan |
+| NLU module | `validate()` | writes the plan entry as always — summary lists the stacked steps (no `new_flow` key, so hooks 3/5 never mistake it for a conflict) |
+| PEX module | `execute` | prepare's hook-1 block has ended; `understand(op='read')`'s document carries the stacked plan in `flow_stack` → PEX reviews it and runs the top step (`manage_flows` op='update', fields={'status': 'Active'} on `find`) |
+| PEX 4 | policy sub-agent | `find` looks for three posts |
+| PEX module | — | the hook-3 read finds only the plan entry (no `new_flow` key) — nothing to surface |
+| PEX 5 | manage_flows() | skipped |
+| PEX module | `verify()` | same |
+| Assistant | `take_turn` | the plan steps wait Pending → back to PEX 2 to loop; each pass runs the next step until no Pending flow remains. There's a good chance we get stuck on schedule since we haven't converted the outline to prose yet. Schedule may try to stack on 'compose', but let's assume the agent decides to ask for clarification this time. |
+| PEX 6 | `respond` | Ask a clarification question with `ambiguity.ask()` |
+| MEM module | `start()` | system turn added: completed: find, outline · active: schedule |
+| MEM 7 | `_compaction` + `_promote` | same |
+| MEM module | `finish()` | same |
+
+### S8 — Clarify: waiting on NLU results
+
+"Can you come up with a few angles for describing the bifurcation process?"
+This is a brainstorm {39D} flow, but the intent classifier can't reach it since the Draft intent really only lines up with outline {002} at the basic-flow mapping. Thus, classify_intent falls back to Clarify {09F}.
+NLU takes on the responsibility for choosing the correct flow.
+
+| phase | method | what happens |
+|---|---|---|
+| Assistant | `take_turn` | empty stack |
+| NLU 1 | `classify_intent` | intent: Clarify — no real signal |
+| PEX module | `prepare` | same |
+| Assistant | run NLU | same |
+| NLU module | `check` | clears any prior ambiguity; picks the Clarify detection snippet |
+| PEX module | `prepare` | **wait** — hook point 1: Clarify blocks here until NLU settles |
+| PEX 2 | - | skipped, because Clarify is not an actionable prediction |
+| NLU 2 | `detect_flows` | the ensemble detects `brainstorm` {39D} |
+| NLU module | `think` | since Clarify carried no flow, there is no possible conflict, so NLU directly places {39D} on the stack |
+| NLU 3 | fill_slots() | NLU predicts slots for brainstorm and runs `fill_slot_values()` |
+| NLU module | `validate()` | makes sure slot-values are valid, writes the detected flow as an entry in the scratchpad |
+| PEX module | `understand` | after prepare's hook-1 block, the document's `flow_stack` shows `brainstorm` {39D} stacked and filled |
+| PEX module | `execute` | execute the `brainstorm` policy |
+| PEX 4 | policy sub-agent | `brainstorm` comes up with some ideas |
+| PEX module | — | we've already incorporated NLU feedback at hook point 1, so no further actions at hook point 3 |
+| PEX 5 | manage_flows() | skipped |
+| PEX module | `verify()` | same |
+| Assistant | `take_turn` | same |
+| PEX 6 | `respond` | same |
+| MEM module | `start()` | system turn added: completed: brainstorm |
+| MEM 7 | `_compaction` + `_promote` | same |
+| MEM module | `finish()` | same |
+
+
 ## 3.5.2 — Clarify {09F} detection coverage
 
 ### Problem

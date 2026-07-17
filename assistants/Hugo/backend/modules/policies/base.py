@@ -182,11 +182,9 @@ class BasePolicy:
         """The single call a policy makes at the moment its flow finishes. The status flips to
         Completed on the live flow (MEM saves state.json at turn end) and the completion entry
         {summary, metadata} is appended to the session scratchpad under the flow's origin;
-        activate_flow collects it via pop_completion and returns it as the tool result. Call it
-        before stacking any follow-up flow — the completing flow must be top of stack."""
-        if self.flow_stack.get_flow().flow_id != flow.flow_id:
-            raise ValueError(f'complete_flow: {flow.name()!r} is not top of stack — finish or '
-                             f'pop the flows above it first')
+        activate_flow collects it via pop_completion and returns it as the tool result. NLU may
+        stack a divergent flow above mid-run (round 3.4) — the pop clears a Completed flow at
+        any depth, so completion never requires being top of stack."""
         flow.status = 'Completed'
         entry = {'version': 1, 'turn_number': context.turn_id, 'used_count': 0,
                  'summary': summary, 'metadata': metadata or {}}

@@ -37,7 +37,8 @@ all deterministic code (dialogue_state.md § Predicting the Belief State):
    loop matches each entry's metadata (origin, turn_number, used_count) WITHOUT calling
    `read()`, since reading is consuming; only an entry that matches a filter is read()
    (Unresolved 2, 2026-07-17). Points 1, 2, 4, and 6 currently filter for nothing specific,
-   so their loop matches nothing and ends; it stays because future rounds insert additional
+   so today only hooks 3 and 5 carry a read in code; a later round adds the matching loop at
+   1, 2, 4, and 6 when it inserts additional
    filters there. Hook point 3 (post-tool-call) or 5 (post-LLM), whichever comes first, looks
    for messages from NLU that emanated from `validate`. A different-intent top is handled
    by that code directly — the new flow runs and the agent is never notified. A same-intent
@@ -113,16 +114,18 @@ Assistant · run NLU ─ start NLU's thinking ─▶
                                      1 same flow → fill it + aligned entry
                                      2 new flow  → already stacked; slots
                                                    filled + entry announcing it
-   module  execute(): code stackon + policy start;
-   no I/O wait, so often done during NLU 2
+   module  execute(): code stackon of the basic flow —
+   no I/O wait, lands during NLU 2; the policy runs on
+   the agent's first stack action
    PEX 4   policy sub-agent (llm_execute)
            ├ hook point 2 · pre-tool — before each tool call
            │   [tool executes]
            ├ hook point 3 · post-tool — read the Scratchpad
            └ hook point 4 · tool-retry — pre-tool, retries only
    module  hook point 5 · post-LLM — the Scratchpad read when
-   the sub-agent called no tools. Either read: different
-   intent → code re-routes, agent not notified
+   the sub-agent called no tools. Hook 3: different intent
+   → code re-routes, agent not notified. Hook 5: no policy
+   is mid-run to displace — any announcement goes to the agent
    PEX 5   manage_flows(): same-intent conflicts only, at
            hook 3/5 — run the new flow or pop() it; else skipped
    module  verify() — hook point 6: checks + the code pop()
@@ -149,7 +152,7 @@ Assistant · wrap-up ─ send the reply · save the agent turn (MEM) ─▶ add_
 | NLU 2 | `detect_flows` + tally (DialogueState) | ensemble flow detection — 2-5 voters, confidence = voter agreement; candidates narrow by `pred_intent` read directly off the belief (on a Continue reading, the belief's flow + its edges, with the seeded vote); on a low-confidence cross-intent split, `classify_intent` tie-breaks by writing `pred_intent` and one narrowed re-detect runs |
 | NLU module | `think` (nlu.py:111-134) | check → detect_flows → fill_slots → validate is all inside think. With check()'s setup done and detection in, NLU does its own thinking. If the flow stack already has a flow and NLU detected the same one, then just continue with it. This is NLU's version of the Continue intent. Otherwise, create a new flow to fill and stack it on directly with `world.flows.stackon()` — any disagreement, same intent or different, is resolved on PEX's side. |
 | NLU 3 | slot-fill call in `fill_slots` (DialogueState) | fill missing slots; let the schema decide what needs filling — the entity slot is treated like any other slot |
-| NLU module | `validate()` to end the thinking (nlu.py:209) | validation includes rules-based slot repair, writing the predicted belief to the state. If NLU detected the same flow as PEX, the fill already landed on that existing flow (NLU's fill overwrites values stackon's transfer copied over — PEX never writes slots); append an aligned entry to the Session Scratchpad. If NLU detected a different flow, the flow is already on the stack from `think` with its slots filled; the scratchpad entry announces it with NLU's rationale. |
+| NLU module | `validate()` to end the thinking (nlu.py:209) | validation includes rules-based slot repair, writing the predicted belief to the state. If NLU detected the same flow as PEX, the fill already landed on that existing flow (the fill covers the OPEN slots per 3.4.2's eligibility — a filled slot is never overwritten; `_repair_slots` polices contradictions, and PEX never writes slots); append an aligned entry to the Session Scratchpad. If NLU detected a different flow, the flow is already on the stack from `think` with its slots filled; the scratchpad entry announces it with NLU's rationale. |
 | PEX module | `execute()` | on a Plan/Clarify classification, `prepare` (hook point 1) has already blocked until NLU settled, and the agent reads the stacked result. It is still too early for contemplation. PEX calls update, stackon, fallback or pop as commanded. The policy is started. `execute()` has no I/O dependency, so its code-based stackon of the mapped flow is likely already done before NLU 2's detection calls finish; any race is PEX 5's to clean up. |
 | PEX 4 | policy sub-agent — `llm_execute` (policies/base.py:61) | the sub-agent executes the flow's task with its scoped tools; This is technically the sub-agent, rather than the agent running. |
 | PEX module | — | After a policy run returns from its tool call (hook point 3) or after a no-tool LLM reply (hook point 5), whichever comes first, module code waits for NLU's response. A hook is a module-code read of the Session Scratchpad checking whether anything warrants notifying the PEX agent. A different-intent top needs no agent decision — the code re-routes and the new top runs (back to PEX 4); the agent is never notified. A same-intent conflict is the one thing surfaced to the agent. |
@@ -167,7 +170,9 @@ Assistant · wrap-up ─ send the reply · save the agent turn (MEM) ─▶ add_
 
 Eleven single-turn traces, each expanded over the Canonical Turn's phase rows — same rows, same
 order. A row reading "same" matches the standard turn exactly; the spelled-out rows are what
-make the scenario unique. S3-S9 and S11 exercise this round's contracts.
+make the scenario unique. S3-S6, S9, and S11 exercise this round's contracts; S7 (Plan) and S8
+(Clarify) live in round_3.5_spec.md with the rest of the plan/clarify work, keeping the shared
+S numbering.
 
 ### S1 — Fresh task, clean run
 
@@ -310,7 +315,7 @@ Same setup as S3; "the rambling paragraph near the end."
 | PEX module | `execute` | In this case, PEX agent decides to accept NLU's suggestion. Thus, PEX now executes the 'compose' policy by going back to PEX 4 step. Eventually, it pops both {3AD} because it is completed and {02B} because it is invalid |
 | PEX 6 | `respond` | same |
 | Assistant | `take_turn` | no Pending flows remain → hand control to MEM |
-| MEM module | `start()` | system turn added: completed: compose · invalid: refine · active: none |
+| MEM module | `start()` | system turn added: completed: compose · active: none (the checkpoint lists completed/active only — pop discards Invalid flows silently) |
 | MEM 7 | `_compaction` + `_promote` | same |
 | MEM module | `finish()` | same |
 
@@ -345,65 +350,11 @@ Same setup as S3; "the rambling paragraph near the end."
 There is no special handling for Converse. All intents are processed the same way.
 Unlike S3 and S5, since the intent is different, NLU automatically wins out and PEX runs the new flow without a decision.
 
-### S7 — Plan: multiple stacked (not queued) steps
+### S7 and S8 — Plan and Clarify (moved to round 3.5)
 
-"Find my three best posts, draft a new one on that theme, then schedule it." Starting on an empty stack.
-
-| phase | method | what happens |
-|---|---|---|
-| Assistant | `take_turn` | empty stack |
-| NLU 1 | `classify_intent` | intent: Plan — no real signal |
-| PEX module | `prepare` | same |
-| Assistant | run NLU | same |
-| NLU module | `check` | clears any prior ambiguity; picks the Plan detection snippet |
-| PEX module | `prepare` | **wait** — hook point 1: Plan blocks here until NLU settles |
-| PEX 2 | - | skipped, stack is empty so no model call needed to manage workflow |
-| NLU 2 | `detect_flows` | the vote converges on `plan`, ideally detects find {001}, outline {002}, and schedule {4AC} |
-| NLU module | `think` | multi-step confirmed: sets `state.has_plan = True` and stackons every step in reverse execution order — `stackon('schedule', active=false)`, `stackon('outline', active=false)`, then `stackon('find')` on top |
-| NLU 3 | fill_slots() | skipped, since state.has_plan |
-| NLU module | `validate()` | writes the plan entry as always — summary lists the stacked steps (no `new_flow` key, so hooks 3/5 never mistake it for a conflict) |
-| PEX module | `execute` | prepare's hook-1 block has ended; `understand(op='read')`'s document carries the stacked plan in `flow_stack` → PEX reviews it and runs the top step (`manage_flows` op='update', fields={'status': 'Active'} on `find`) |
-| PEX 4 | policy sub-agent | `find` looks for three posts |
-| PEX module | — | the hook-3 read finds only the plan entry (no `new_flow` key) — nothing to surface |
-| PEX 5 | manage_flows() | skipped |
-| PEX module | `verify()` | same |
-| Assistant | `take_turn` | the plan steps wait Pending → back to PEX 2 to loop; each pass runs the next step until no Pending flow remains. There's a good chance we get stuck on schedule since we haven't converted the outline to prose yet. Schedule may try to stack on 'compose', but let's assume the agent decides to ask for clarification this time. |
-| PEX 6 | `respond` | Ask a clarification question with `ambiguity.ask()` |
-| MEM module | `start()` | system turn added: completed: find, outline · active: schedule |
-| MEM 7 | `_compaction` + `_promote` | same |
-| MEM module | `finish()` | same |
-
-### S8 — Clarify: waiting on NLU results
-
-"Can you come up with a few angles for describing the bifurcation process?"
-This is a brainstorm {39D} flow, but the intent classifier can't reach it since the Draft intent really only lines up with outline {002} at the basic-flow mapping. Thus, classify_intent falls back to Clarify {09F}.
-NLU takes on the responsibility for choosing the correct flow.
-
-| phase | method | what happens |
-|---|---|---|
-| Assistant | `take_turn` | empty stack |
-| NLU 1 | `classify_intent` | intent: Clarify — no real signal |
-| PEX module | `prepare` | same |
-| Assistant | run NLU | same |
-| NLU module | `check` | clears any prior ambiguity; picks the Clarify detection snippet |
-| PEX module | `prepare` | **wait** — hook point 1: Clarify blocks here until NLU settles |
-| PEX 2 | - | skipped, because Clarify is not an actionable prediction |
-| NLU 2 | `detect_flows` | the ensemble detects `brainstorm` {39D} |
-| NLU module | `think` | since Clarify carried no flow, there is no possible conflict, so NLU directly places {39D} on the stack |
-| NLU 3 | fill_slots() | NLU predicts slots for brainstorm and runs `fill_slot_values()` |
-| NLU module | `validate()` | makes sure slot-values are valid, writes the detected flow as an entry in the scratchpad |
-| PEX module | `understand` | after prepare's hook-1 block, the document's `flow_stack` shows `brainstorm` {39D} stacked and filled |
-| PEX module | `execute` | execute the `brainstorm` policy |
-| PEX 4 | policy sub-agent | `brainstorm` comes up with some ideas |
-| PEX module | — | we've already incorporated NLU feedback at hook point 1, so no further actions at hook point 3 |
-| PEX 5 | manage_flows() | skipped |
-| PEX module | `verify()` | same |
-| Assistant | `take_turn` | same |
-| PEX 6 | `respond` | same |
-| MEM module | `start()` | system turn added: completed: brainstorm |
-| MEM 7 | `_compaction` + `_promote` | same |
-| MEM module | `finish()` | same |
-
+The Plan and Clarify walkthroughs live in round_3.5_spec.md with the rest of the
+plan/clarify work (the decomposition, the missing detection prompts, and the two
+items T21 carried over). The S numbering is shared across both files.
 
 ### S9 — Differing Intent: NLU dominates and re-routes
 
@@ -421,7 +372,7 @@ classify_intent predicts Revise, but NLU's detection disagrees completely.
 | PEX module | — | clear domain intent → map Revise intent to {003} |
 | PEX 2 | - | skipped, stack is empty when PEX agent tries to run |
 | NLU 2 | `detect_flows` | the ensemble detects `refine` {02B} |
-| NLU module | `think` | the stacked 'write' flow (from the classified Revise) conflicts at intent level, so it is marked Invalid, then NLU runs `stackon(refine)` to override it |
+| NLU module | `think` | NLU runs `stackon(refine)` over the stacked 'write' flow (from the classified Revise) — write reverts to Pending beneath it; after refine completes, write surfaces as `next_flow` and the agent declines it (Invalid + pop) |
 | NLU 3 | fill_slots() | NLU predicts slots for 'refine' and runs `fill_slot_values()` |
 | NLU module | `validate()` | makes sure slot-values are valid, notifies that a new flow has replaced PEX's detected flow as a scratchpad entry |
 | PEX module | `execute` | prepare (hook point 1) doesn't block on a clear Revise — PEX is unaware of the issue yet, so stackon('write') → runs the `write` policy |
@@ -436,7 +387,7 @@ classify_intent predicts Revise, but NLU's detection disagrees completely.
 | MEM module | `finish()` | same |
 
 `execute()` has no I/O dependency, so its code-based `stackon('write')` typically lands before
-NLU 2's three detection calls finish — that is how `think` finds a write flow to mark Invalid.
+NLU 2's three detection calls finish — that is how `think` finds a write flow to stack over.
 Any remaining race is PEX 5's to clean up.
 
 ### S10 — Pure click
@@ -586,9 +537,9 @@ allows it to affect the next turn, and leaves the final proposal forever when th
 NLU stops leaving unresolved proposals. No new field, no new stack operation, no turn-end
 cleanup — existing primitives only. NLU's flow detection (within `think()`) ends with exactly one of two outcomes:
 
-1. **Same flow** as the one on the stack → fill that existing flow with the newly predicted
-  slots (NLU's fill overwrites any value already on the flow when they contradict — PEX never
-  writes slots, so contradictions come only from stackon's code-side transfer) and append an
+1. **Same flow** as the one on the stack → fill that existing flow's OPEN slots (3.4.2's
+  eligibility: a filled slot leaves the fill schema and is never overwritten; `_repair_slots`
+  polices contradictions with the grounded entity, and PEX never writes slots) and append an
   aligned entry to the Session Scratchpad. No stack change.
 2. **Different flow** — same intent, different intent, or Converse, it makes no difference →
   `think` stacks the new flow directly with `world.flows.stackon()` (the flow beneath reverts
@@ -873,32 +824,44 @@ def check(self) -> str:
 `_fill_active_flow` and `_stack_detected_flow` are replaced:
 
 ```python
-def think(self, user_text, payload={}):
+def think(self, user_text:str, payload:dict={}):
     snippet = self.check()                # ambiguity cleared; snippet keyed on pred_intent
-    detection = self.dialogue_state.detect_flows(user_text, snippet)
+    state, context = self.world.state, self.world.context
+    detection = state.detect_flows(self.engineer, context, user_text, snippet)
     if self._intent_split(detection):     # low-confidence cross-intent split → re-classify once
-        self.dialogue_state.pred_intent = self._classify_intent(user_text)
-        detection = self.dialogue_state.detect_flows(user_text,
-                        detection_snippet(self.dialogue_state.pred_intent))
+        state.classify_intent(self.engineer, context, user_text)
+        if intent2flow(state.pred_intent):  # domain intents only — Plan/Clarify add no narrowing
+            detection = state.detect_flows(self.engineer, context, user_text,
+                                           detection_snippet(state.pred_intent))
     flow_name = detection['flow_name']
-    predicted_flows = detection.get('pred_flows', [])
-    if flow_name in flow_classes:
-        top = self.world.flows.get_flow()
-        prev = top.name() if top and top.status == 'Active' else ''   # what PEX is running now
-        if not (top and top.status == 'Active' and top.name() == flow_name):
-            top = self.world.flows.stackon(flow_name, transfer=not self.ambiguity_handler.is_present)
-        self.dialogue_state.fill_slots(top, payload)  # fills the LIVE flow — no transient, no copy
-        state = self._write_belief(flow_name, detection['confidence'], predicted_flows, top)
-    else:
+    predicted = detection.get('pred_flows', [])
+    if flow_name not in flow_classes:
         prev = ''
-        state = self._write_non_policy_belief(flow_name, detection['confidence'], predicted_flows)
-
-    if self.ambiguity_handler.needs_clarification(state.confidence):
-        self.ambiguity_handler.recognize('general', ...)          # unchanged
+        state = self._write_non_policy_belief(flow_name, detection['confidence'], predicted)
+    else:
+        top = self.world.flows.get_flow()
+        # A live top counts whether Active or Pending: execute's code stackon is Active from
+        # the push, and a queued plan step waiting as Pending is still what PEX runs next
+        # (T21 fix: an Active-only check wrote a false announcement on every fresh turn).
+        live = bool(top) and top.status in ('Active', 'Pending')
+        prev = top.name() if live else ''
+        if not (live and top.name() == flow_name):
+            top = self.world.flows.stackon(flow_name,
+                                           transfer=not self.ambiguity_handler.is_present)
+        state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
+        state = self._write_belief(flow_name, detection['confidence'], predicted, top)
+        if self.ambiguity_handler.needs_clarification(state.confidence):
+            self.ambiguity_handler.recognize('general', ...)      # unchanged
     self.review_scratchpad()
-    state = self.validate(state, 'think', prev)
-    return state
+    return self.validate(state, 'think', prev)
 ```
+
+Collaborators are passed per call — `detect_flows(engineer, context, user_text, snippet)`,
+`classify_intent(engineer, context, user_text)`, `fill_slots(engineer, context, flow,
+payload, ambiguity)` — never stored on the DialogueState. The tie-break guard keeps the
+narrowed re-detect to domain intents: a mid-turn Plan/Clarify from the nouls stores the
+intent but skips the re-detect (Plan/Clarify add no candidate narrowing, and their detection
+prompts are round 3.5's).
 
 `prev` is not the retired hint: it is a fact think reads off the live stack at its own stackon
 decision point — the flow PEX is running at that instant — kept only so validate can label the
@@ -1514,11 +1477,35 @@ later).
   (start → compaction/promote → finish, unchanged inside; `remember(op=x)` reserved as MEM's
   tool-call name, with recall/recap/retrieve as the L1/L2/L3 methods); the Assistant wrap-up
   calls `recap()`. Changes: `mem.py`, `assistant.py`.
-- [ ] **T21 — verification pass (runs last).** The checks in Other ·
-  Verification below. Offline half done 2026-07-17: imports clean; suites 232 green; no
+- [x] **T21 — verification pass (runs last).** The checks in Other ·
+  Verification below. Offline half done 2026-07-17: imports clean; suites green; no
   `inject_belief_state`/`_injected`/`_apply_belief_slots`/`_record_checkpoint` references and
-  no `pred_slots` belief field left in backend; banned-word sweep clean. The flow-handoff and
-  replay checks wait only on an eval run now (T17-T20 landed 2026-07-17).
+  no `pred_slots` belief field left in backend; banned-word sweep clean.
+  Expanded scope run 2026-07-17 with two sub-agents (Derek): one verified every checkable
+  claim in the Major Themes + Canonical Turn against code; one statically traced S1-S11
+  through the turn path. Verdict: 3.4.3/3.4.5/3.4.7/3.4.8 clean; S2/S4/S6/S10/S11 hold;
+  S7/S8 hold modulo the accepted round 3.5 gaps. **Fixes landed (suites 230 green after):**
+  (1) think's same-flow check accepts a live Active-or-Pending top — the Active-only check
+  wrote a false announcement on every fresh turn, since execute's code stackon left the
+  basic flow Pending (execute now marks it Active from the push — Derek, 2026-07-17 — and
+  the Pending acceptance still covers queued plan steps) (nlu.py); (2) `complete_flow` no longer
+  requires being top of stack — NLU stacking mid-run made every such completion crash into a
+  corrective server_error (policies/base.py); (3) the missing `chl` preservation rule landed
+  in `_repair_slots` (the one 3.4.2 contract line with no code counterpart); (4) the
+  tie-break re-classify only re-detects on a domain intent — a mid-think noul writing
+  Plan/Clarify no longer widens the accepted detection crash to low-confidence split turns.
+  Spec prose reconciled to the rulings in seven places (diagram, touch point 2, 3.4.1's
+  overwrite clause, S5/S9 rows, the 3.4.5 sketches). **Deferred to future rounds:** the
+  back-to-PEX-2 loop and validate's mid-plan announcement swallowing (recorded in round
+  3.5's spec — they bite only once plans stack steps); a staleness rule for an announcement
+  that reaches hook 5 after its flow already ran (S8 — one extra agent round with a stale
+  note today); the non-consuming scratchpad scan from Unresolved 2 (`_read_nlu_entry` and
+  `review_scratchpad` still consume entries their filters reject — needs the entry-level
+  read surface); and S9's leftover basic flow after a different-intent re-route — the
+  code-stacked flow surfaces as `next_flow` for the agent to decline, and telling it apart
+  from real prior work (S6's refine) needs a rule, `is_newborn` being the plausible key.
+  The live replay/eval checks (B02.C15, the round-3.3 traces) remain available as a
+  follow-up run.
 
 
 ---
