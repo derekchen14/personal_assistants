@@ -637,6 +637,13 @@ class PolicyExecutor:
             if not self.world.nlu_done.wait(timeout=30):        # hook 3: the post-tool read
                 raise TimeoutError('NLU still thinking after 30s at hook point 3')
             if top.status == 'Completed':
+                # The S3/S5 window: NLU stacked a flow while this one was mid-run and it
+                # completed in the same pass. The announcement still surfaces at hook 3 —
+                # the completion result carries it, so the agent decides WITH NLU's
+                # rationale instead of seeing only next_flow.
+                note = self._read_nlu_entry()
+                if note:
+                    result['nlu_update'] = note
                 break   # popped in code; the agent judges what runs next
             new_top = self.flow_stack.get_flow()
             if not new_top or new_top.flow_id == top.flow_id:
