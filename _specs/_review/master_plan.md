@@ -122,9 +122,17 @@ embedded decision (below). Sub-round file names in `rounds/` carry the owning ro
 - **Demo unlocked:** an ambiguous request gets a targeted clarifying question; next turn detection routes the
   answer back to the incomplete Active flow and NLU fills it in place; intent routing is right under the
   PEX-hint model.
-- **Shipped:** **3.5** propose slot-fill prompt (was fix_2) · **3.6** fill_slots retry guardrail (was fix_3a)
-  · **3.7** slot-fill repair (was fix_3b) — done 2026-07-08: `_parse_json` fallback is outermost-greedy
-  (never a nested fragment) and the retry loop catches the parse-failure ValueError.
+- **Shipped:** **3.1** intent model rework · **3.2** scratchpad contract + synchronous review ·
+  **3.3** bind-before-detect + grounding continuity · **3.4** NLU↔PEX flow handoff ·
+  **3.5** propose slot-fill prompt (was fix_2), later EXPANDED to list detection — see the ledger ·
+  **3.6** fill_slots retry guardrail (was fix_3a) · **3.7** slot-fill repair (was fix_3b) — done
+  2026-07-08: `_parse_json` fallback is outermost-greedy (never a nested fragment) and the retry
+  loop catches the parse-failure ValueError. NOTE a numbering collision: the ledger's 3.6 row is
+  the old fix_3a ticket, while `rounds/round_3.6_spec.md` on disk is the UNSHIPPED TypeSafe
+  flow-detection proposal — two different pieces of work sharing the 3.6 id.
+- **Remaining:** the TypeSafe flow-detection proposal (`rounds/round_3.6_spec.md`, gated on its
+  3.6.1 measurement — needs reconciling with 3.5's list detection first); the deferrals parked by
+  3.4's T21 verification and 3.5.
 - **Goal:** bring NLU belief + ambiguity behavior to spec and execute the intent-model change (PEX System-1
   hint) — sub-steps §3.1–§3.4.
 - **Deliverable:** PEX-hint intent model — `_classify_intent` stays as a tie-break callable only
@@ -187,8 +195,12 @@ embedded decision (below). Sub-round file names in `rounds/` carry the owning ro
 | 2.9 | round 5.3 | flow prompts to `pex/flows/`; starters render parameters only; `flow_reply`/`flow_execute` |
 | 2.10 | fix_1 | orchestrator activation; finale superseded by `understand(op='contemplate')` (169419e) |
 | 2.12 | — | detection-first NLU + Continue intent + the `manage_flows` run contract (`stackon` runs by default, `status='Active'` re-runs, entity-aware dedupe, deep `update_flow`) |
-| 3.5 | fix_2 | `propose` NLU slot-fill prompt |
-| 3.6 | fix_3a | fill_slots one-retry guardrail |
+| 3.1 | — | intent model rework (the keystone): detection-first with classify_intent as the tie-break; the candidate-narrowing hint read off the flow PEX committed (shipped 942bb79, 2026-07-08) |
+| 3.2 | — | Session Scratchpad entry contract (`version`/`turn_number`/`used_count`) + synchronous NLU review at turn points (2026-07-08) |
+| 3.3 | — | bind-before-detect: NLU fills the stalled Active top before detection; ambiguity persists across detours; `find` writes candidate choices; MEM clears consumed choices (b24c374) |
+| 3.4 | — | NLU↔PEX flow handoff: threaded turn, stackon-Active default + top-down pop, TypeSafe `classify_intent` (T16/T17), orchestrator prompt rewrite, `_top_policy` + hook 3/5 reads, MEM `recap` (2026-07-17) |
+| 3.5 | fix_2 | `propose` NLU slot-fill prompt (2026-07-03); EXPANDED + done 2026-07-17: list detection (`flows` array, majority tally, Claude-canonical order, abstention), plan/clarify out of the 16-flow ontology, PlanFlow marker with `steps` checklist, round-budget reset (51f4bcd) |
+| 3.6 | fix_3a | fill_slots one-retry guardrail (collides with the unshipped `round_3.6_spec.md` TypeSafe proposal — see Round 3) |
 | 3.7 | fix_3b | fill_slots retry (Decision B) + outermost-greedy `_parse_json` fallback (Decision A) |
 | 4.1 | — | MEM module at `modules/mem.py` + durable L2 preferences + grounding entities redesign |
 | 5.1 | round 5.1 | Workflow Planner skill + belief injection + stack-at-once plans + dead Plan-state removal |
@@ -200,14 +212,17 @@ embedded decision (below). Sub-round file names in `rounds/` carry the owning ro
 ```
   1. evals  ───►  2. PEX  ───►  3. NLU  ───►  4. MEM  ───►  5. Plan  ───►  6. infra
  (measurable)   (replies)    (clarifies)   (remembers)     (plans)        (ships)
-   ~done          2.13 ◄       ◄ NEXT      (4.1 shipped)   (5.1 shipped)
+   ~done         2.13 ◄NEXT   (3.1-3.5     (4.1 shipped)   (5.1 shipped)
+                               shipped)
 ```
 
 Build in round order. **Evals first** — every later round is judged with the gate, which keeps running
-alongside. **PEX second** — nothing is showable without a turn. Rounds 1 and 2 are largely shipped (see the
-ledger), so **the current front is Round 2.13 (grounding + stack-transition correctness) and Round 3
-(NLU)** — the old MEM dependency is satisfied because `SessionScratchpad` already lives on the World. **Plan** needs working flows and reads better with clarify in
-place (5.1 already shipped the Workflow Planner). **Infra** hardens what the earlier demos rely on.
+alongside. **PEX second** — nothing is showable without a turn. Rounds 1-3 are largely shipped (see the
+ledger; 3.1-3.5 landed 2026-07-08 through 2026-07-17), so **the current front is Round 2.13 (grounding +
+stack-transition correctness)**, with the TypeSafe flow-detection proposal (`round_3.6_spec.md`) behind it —
+the old MEM dependency is satisfied because `SessionScratchpad` already lives on the World. **Plan** needs
+working flows and reads better with clarify in place (5.1 already shipped the Workflow Planner; 3.5 landed
+plan decomposition via list detection). **Infra** hardens what the earlier demos rely on.
 
 ---
 
