@@ -51,7 +51,10 @@ class PostService(ToolService):
                     entry.get('category', '') or '',
                     ' '.join(entry.get('tags', [])),
                 ]).lower()
-                if query not in searchable:
+                # Metadata matches per token (2.15.1) — "grid batteries" finds a title carrying
+                # both words anywhere; the content search below stays whole-phrase.
+                tokens = query.replace('-', ' ').split()
+                if not all(tok in searchable for tok in tokens):
                     content = self._read_content(entry.get('filename', ''))
                     pos = content.lower().find(query)
                     if pos == -1:

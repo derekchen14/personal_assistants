@@ -79,12 +79,13 @@ class BasePolicy:
             if result['_success']:
                 return identifier
 
-        # Try with and without status suffixes
+        # Try with and without status suffixes; a hyphenated form also tries its spaced form
         candidates = [identifier]
         lower = identifier.lower()
         for suffix in self._STATUS_SUFFIXES:
             if lower.endswith(suffix):
                 candidates.append(identifier[:len(identifier) - len(suffix)])
+        candidates += [cand.replace('-', ' ') for cand in list(candidates) if '-' in cand]
 
         for query in candidates:
             result = tools('find_posts', {'query': query})
@@ -96,6 +97,14 @@ class BasePolicy:
                     return item['post_id']
             if items:
                 return items[0]['post_id']
+
+        # Fuzzy title pass (2.15.2) — mirror _resolve_sec_id's difflib matching over the library
+        listing = tools('find_posts', {'limit': 50})
+        titles = [item['title'].lower() for item in listing['items']] if listing['_success'] else []
+        for query in candidates:
+            matches = difflib.get_close_matches(query.lower(), titles, n=1, cutoff=0.6)
+            if matches:
+                return listing['items'][titles.index(matches[0])]['post_id']
         return None
 
     def _resolve_sec_id(self, identifier, tools, post_id):
@@ -117,9 +126,10 @@ class BasePolicy:
         """Extract (post_id, sec_id, error) from the state file's grounding block — the single source
         of truth for the active entity. A user-typed reference in the entity slot (this turn's
         utterance) still resolves through the fuzzy _resolve_post_id; resolved ids are written back to
-        the grounding block. The third return is a missing-reference
-        error artifact when the slot was filled with a title/id that doesn't resolve to a real post;
-        callers early-return via `post_id, _, error = self.resolve_source_ids(...); if error: return error`."""
+        the grounding block. When the reference doesn't resolve to a real post, the third return is
+        an empty artifact with a `partial` ambiguity open and near-miss titles written as grounding
+        choices (2.15.3); callers early-return via
+        `post_id, _, error = self.resolve_source_ids(...); if error: return error`."""
         slot = flow.slots[flow.entity_slot]
         part = slot.entity_part
         vals = None
@@ -132,9 +142,30 @@ class BasePolicy:
             return None, None, None
         post_id = self._resolve_post_id(reference, tools)
         if not post_id:
-            error = self.error_artifact(flow, 'missing_reference',
-                thoughts='Could not find the specified post.', missing_entity='post')
-            return None, None, error
+            if slot.priority != 'required':
+                # An elective entity slot means the flow proceeds without it (cite's url-only
+                # path) — keep the plain error the caller may ignore, no ambiguity side effect.
+                error = self.error_artifact(flow, 'missing_reference',
+                    thoughts='Could not find the specified post.', missing_entity='post')
+                return None, None, error
+            # Near-miss choices instead of a dead end (2.15.3): one best-token query (else the
+            # latest posts) becomes grounding choices, so the next turn's fill resolves a pick
+            # through the standing shown-candidates path.
+            token = max(reference.replace('-', ' ').split(), key=len)
+            result = tools('find_posts', {'query': token})
+            items = result['items'] if result['_success'] else []
+            if not items:
+                items = tools('find_posts', {})['items']
+            state.grounding['choices'] = [
+                {'kind': 'post', 'label': item['title'], 'status': item['status'],
+                 'entity': {'post': item['post_id'], 'sec': '', 'snip': '', 'chl': '', 'ver': True},
+                 'source': flow.name(), 'turn_number': state.turn_count}
+                for item in items]
+            titles = ', '.join(f"'{item['title']}'" for item in items)
+            self.ambiguity.recognize('partial',
+                metadata={'missing': flow.entity_slot, 'entity': 'post'},
+                observation=f"I couldn't find '{reference}'. Did you mean one of these: {titles}?")
+            return None, None, TaskArtifact(flow.name())
         sec_ref = vals['sec'] if vals else active_entity.get('sec', '')
         sec_id = self._resolve_sec_id(sec_ref, tools, post_id)
         state.set_active_entity(post=post_id, sec=sec_id or '')
