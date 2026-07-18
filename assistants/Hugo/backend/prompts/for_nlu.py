@@ -249,28 +249,40 @@ def _render_filled_slots(flow) -> list[str]:
     return lines
 
 
-def build_pending_question(question:str, choices:list) -> str:
-    """Appended to the slot-filling prompt when detection landed on a flow that is waiting on an
-    open question. Conservative-fill contract — an empty fill is always better than a fabricated
-    value; the incomplete flow simply keeps asking."""
+def build_shown_candidates(choices:list, question:str='', pending:bool=False) -> str:
+    """The shown-candidates block (round 2.13.1): appended to the slot-filling prompt whenever
+    candidate records exist — one rendering of the list, with the pending-question framing added
+    on top only when an ambiguity is open (`pending`). Selection resolves against these records
+    ONLY (never invent an id); a plural or filtered reference fills one entity per pick. The
+    pending case keeps the conservative-fill contract — an empty fill is always better than a
+    fabricated value; the incomplete flow simply keeps asking."""
     import json
-    lines = ['<pending_question>']
-    if question:
-        lines.append(f'The assistant is waiting on an answer to: "{question}"')
-    else:
-        lines.append('The assistant is waiting on an answer to its last question (see the history).')
+    lines = ['<shown_candidates>']
+    if pending:
+        if question:
+            lines.append(f'The assistant is waiting on an answer to: "{question}"')
+        else:
+            lines.append('The assistant is waiting on an answer to its last question '
+                         '(see the history).')
     records = [choice for choice in choices if isinstance(choice, dict)]
     if records:
         lines.append('Candidates already shown to the user:')
         for choice in records:
             entity = {key: val for key, val in choice['entity'].items() if val and key != 'ver'}
-            lines.append(f'- {choice["label"]} — {json.dumps(entity)}')
-    lines.append(
-        'Fill slots ONLY if the latest user message actually answers this question. Picking a '
-        "candidate (by name, position, or paraphrase) fills the slot with that candidate's entity "
-        'values. If the message changes tasks, asks for another search, or does not address the '
-        'question, return null for EVERY slot — a wrong fill is worse than a null.')
-    lines.append('</pending_question>')
+            status = f" ({choice['status']})" if choice.get('status') else ''
+            lines.append(f'- {choice["label"]}{status} — {json.dumps(entity)}')
+        lines.append(
+            'A reference that picks candidates fills the slot with those candidates\' entity '
+            'values — by name, position, or paraphrase. A plural or filtered reference ("both", '
+            '"all of them", "the two published ones", "the first and third") fills ONE entity '
+            'per pick, resolved against this list only. Never invent an id and never pull a '
+            'record that is not shown here.')
+    if pending:
+        lines.append(
+            'Fill slots ONLY if the latest user message actually answers the pending question. '
+            'If the message changes tasks, asks for another search, or does not address the '
+            'question, return null for EVERY slot — a wrong fill is worse than a null.')
+    lines.append('</shown_candidates>')
     return '\n'.join(lines)
 
 

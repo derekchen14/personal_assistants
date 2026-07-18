@@ -104,17 +104,21 @@ class FlowStack:
         """A while loop from the top of the stack: remove Completed and Invalid flows until
         the code reaches a Pending or Active flow, or an empty stack (Derek, 2026-07-17) — a
         terminal flow buried under live work is out of reach until the flows above it resolve.
-        Returns only the Completed ones (Invalid are silently discarded). Activates the next
-        Pending flow if one is now on top."""
+        Returns `(completed, promoted)`: the Completed ones (Invalid are silently discarded)
+        and the Pending flow this pop promoted to Active, or None (round 2.13.2 — the
+        promotion fact is derived HERE, so callers run a policy only on a real lifecycle
+        transition, never because the op was named pop)."""
         completed = []
         terminal = (FlowLifecycle.COMPLETED.value, FlowLifecycle.INVALID.value)
         while self._stack and self._stack[-1].status in terminal:
             entry = self._stack.pop()
             if entry.status == FlowLifecycle.COMPLETED.value:
                 completed.append(entry)
+        promoted = None
         if self._stack and self._stack[-1].status == FlowLifecycle.PENDING.value:
             self._stack[-1].status = FlowLifecycle.ACTIVE.value
-        return completed
+            promoted = self._stack[-1]
+        return completed, promoted
 
     def to_list(self) -> list[dict]:
         return [e.to_dict() for e in self._stack]

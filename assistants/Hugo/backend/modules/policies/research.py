@@ -91,7 +91,7 @@ class ResearchPolicy(BasePolicy):
             # Round 3.3: a pick-one-sized list also writes candidate records for NLU's bind
             # pass — replaced, not appended, so choices always mirror the latest shown list.
             state.grounding['choices'] = [
-                {'kind': 'post', 'label': it['title'],
+                {'kind': 'post', 'label': it['title'], 'status': it['status'],
                  'entity': {'post': it['post_id'], 'sec': '', 'snip': '', 'chl': '', 'ver': True},
                  'source': flow.name(), 'turn_number': context.turn_id}
                 for it in items]

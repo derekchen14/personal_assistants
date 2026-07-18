@@ -1844,8 +1844,15 @@ class TestPlanLifecycle:
         assert ('compose', 'Active') in entries     # the plan survived the completion
         assert ('release', 'Pending') in entries
         result = pex._tool('manage_flows', {'op': 'pop'})
-        # The agent's pop re-enters the loop, which runs the Active compose; its completion pops
-        # it in code and promotes release — where the loop stops again. The plan tail survives.
+        # 2.13.2: a pop against an already-Active top removes nothing and promotes nothing —
+        # no policy runs, the result is state-only, and the stack is unchanged.
+        assert result['_success'] is True and 'status' not in result
+        entries = [(entry['flow_name'], entry['status']) for entry in pex.flow_stack.to_list()]
+        assert ('compose', 'Active') in entries and ('release', 'Pending') in entries
+        # Running the Active compose is the manual run button: op='update', status='Active'.
+        # Its completion pops it in code and promotes release — where the loop stops again.
+        result = pex._tool('manage_flows',
+                           {'op': 'update', 'fields': {'status': 'Active'}})
         assert result['_success'] is True and result['status'] == 'Completed'
         entries = [(entry['flow_name'], entry['status']) for entry in pex.flow_stack.to_list()]
         assert entries == [('release', 'Active')]

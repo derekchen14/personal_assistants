@@ -6,7 +6,7 @@ from pathlib import Path
 from backend.prompts.for_experts import (build_flow_prompt, render_flow_ontology,
                                          INTENT_CRITERIA, INTENT_QUESTION, NOUL_THRESHOLD,
                                          PLAN_NOUL, CLARIFY_NOUL)
-from backend.prompts.for_nlu import build_slot_filling_prompt, build_pending_question
+from backend.prompts.for_nlu import build_slot_filling_prompt, build_shown_candidates
 from backend.utilities.services import PostService
 from schemas.ontology import FLOW_ONTOLOGY
 from utils.helper import flow2dax, intent2flow
@@ -275,30 +275,40 @@ class DialogueState:
             detection = self._tally_votes(votes)
         return detection
 
-    def fill_slots(self, engineer, context, flow, payload:dict, ambiguity):
-        """Fill the LIVE flow's open slots — payload extraction, grounding transfer, then the
-        LLM fill. The entity slot is treated like any other slot; repair is validate's job."""
-        if payload:
-            entity_dict, filtered = _split_payload(payload)
-            extracted = _extract_entities(flow, entity_dict)
-            if not extracted and context.last_user_turn.turn_type == 'action' and filtered:
-                _unpack_user_actions(flow, filtered)
-
-        # Transfer entity grounding from the session to the flow. Gate on `slot.values` (not
-        # `slot.filled`) so a slot already partially populated isn't double-grounded.
+    def ground_flow(self, flow):
+        """The grounding backstop, split out of fill_slots (round 2.13.3): transfer the
+        session's active post into the flow's empty entity slots. Callers run it BEFORE
+        fill_slots on the ordinary paths; think's same-type reconciliation skips it so a
+        user-named NEW entity stays in the fill schema instead of being masked by the
+        pre-fill. Gate on `slot.values` (not `slot.filled`) so a slot already partially
+        populated isn't double-grounded."""
         active_post = self.get_active_post()
         if active_post:
             for slot in flow.slots.values():
                 if slot.slot_type in ('source', 'target') and not slot.values:
                     slot.add_one(post=active_post)
 
+    def fill_slots(self, engineer, context, flow, payload:dict, ambiguity):
+        """Fill the LIVE flow's open slots — payload extraction, then the LLM fill (the
+        grounding backstop is the caller's step, `ground_flow`). The entity slot is treated
+        like any other slot; repair is validate's job."""
+        if payload:
+            entity_dict, filtered = _split_payload(payload)
+            extracted = _extract_entities(flow, entity_dict)
+            if not extracted and context.last_user_turn.turn_type == 'action' and filtered:
+                _unpack_user_actions(flow, filtered)
+
         if flow.is_filled():
             return
         convo_history = context.compile_history()
         prompt = build_slot_filling_prompt(flow, convo_history, self.active_post_dict())
-        if ambiguity.is_present:  # the open question + shown candidates, conservative-fill guidance
-            prompt += '\n\n' + build_pending_question(ambiguity.observation,
-                                                      self.grounding['choices'])
+        # The shown-candidates block rides the prompt whenever choices exist (2.13.1) — a fresh
+        # flow resolves "those two published posts" from the list the user just saw; the
+        # pending-question framing wraps the same block only when an ambiguity is open.
+        if self.grounding['choices'] or ambiguity.is_present:
+            prompt += '\n\n' + build_shown_candidates(self.grounding['choices'],
+                                                      ambiguity.observation,
+                                                      pending=ambiguity.is_present)
         for attempt in (1, 2):
             try:
                 parsed = engineer(prompt, 'fill_slots', max_tokens=2048,

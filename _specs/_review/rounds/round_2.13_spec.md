@@ -412,26 +412,35 @@ rebuilt much of the code it targets. Per-section status:
   entity pre-extraction before stackon on same-type collisions only. Each has costs: (a) can
   compare stale grounding, (b) re-opens the stack after the announcement entry was written,
   (c) adds a model call to a hot path.
-  **RESOLUTION (pending Derek).**
+  **RESOLUTION (Derek, 2026-07-17): (b) post-fill reconciliation.** stackon stays dumb and
+  always pushes on a same-type collision; after `fill_slots` lands the real entity, think
+  compares the filled flow against the same-type flow beneath — same normalized entity (the
+  domain parts, ignoring `ver`) → pop the new entry and merge its non-conflicting slots back
+  into the existing flow; different → keep both. Identity is always the REAL filled value.
 - **U2 — 2.13.5 boundary enforcement: still needed, and if so, invalidate or auto-run?** The
   Pending-tower mechanism is gone with stackon-Active; a Pending top can still form only through
   the agent's own `active=false` stackon it never runs. Options: measure first and drop the task
   if the warning stays quiet across a fresh 8-sample run (recommended); or land the spec's
   invalidate-and-pop enforcement anyway as a cheap invariant.
-  **RESOLUTION (pending Derek).**
+  **RESOLUTION (Derek, 2026-07-17): measure first.** Run a fresh 8-sample eval (seed 212) and
+  count non-Active-top warnings: zero → record the measurement and drop 2.13.5; still firing →
+  build the invalidate-and-pop enforcement.
 - **U3 — 2.13.1 prompt shape: one candidates block or two?** The spec adds a `<shown_candidates>`
   block alongside the existing `<pending_question>` (which already renders the same records when
   an ambiguity is open). Two blocks can render the same list twice with different guidance.
   Recommendation: one rendering — always append the candidates block when `grounding['choices']`
   is non-empty, with the pending-question framing added on top only when an ambiguity is open.
-  **RESOLUTION (pending Derek).**
+  **RESOLUTION (Derek, 2026-07-17): one block, framing on top.** A single candidates rendering
+  whenever choices exist (with the plural-selection rule); the pending-question framing wraps the
+  same block only when an ambiguity is open — no duplicate list, one selection rule.
 
 ## Todo List
 
 Ordered by dependency; U-numbers reference the Unresolved Issues above.
 
-- [ ] **T1 — design rulings (Derek).** U1 (the 2.13.3 identity source — blocks T4), U2 (whether
-  2.13.5 still gets built), U3 (the 2.13.1 block shape — cheap to settle, affects T2).
+- [x] **T1 — design rulings (Derek).** All settled 2026-07-17 — see Unresolved Issues: U1 =
+  post-fill reconciliation, U2 = measure first, U3 = one candidates block with the
+  pending-question framing on top.
 - [ ] **T2 — 2.13.1 plural grounding.** Add `status` to the choice record at the write site
   (`research.py:93`); render the candidates into the fill prompt whenever `grounding['choices']`
   is non-empty (per the U3 ruling); plural-selection guidance (one entity per pick; status/ordinal

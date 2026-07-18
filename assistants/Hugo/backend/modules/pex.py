@@ -587,6 +587,7 @@ class PolicyExecutor:
                                 'slots; update takes status/stage only'}
         if 'status' in kwargs:
             kwargs['status'] = kwargs['status'].capitalize()
+        promoted = None
         match params['op']:
             case 'stackon':
                 # No slot hand-over while an ambiguity is open — the incomplete flow's values
@@ -599,22 +600,27 @@ class PolicyExecutor:
             case 'update_flow':
                 self.flow_stack.update_flow(**kwargs)
             case 'pop':
-                self.flow_stack.pop()
+                _, promoted = self.flow_stack.pop()
             case _:
                 raise ValueError(f'Unknown manage_flows op: {params["op"]!r}')
         document = state.read_state()
         document['flow_stack'] = self.flow_stack.to_list()
-        # Exactly three stack events run the top policy: stackon (active defaults true —
-        # active=false stacks a plan step as Pending), fallback, and pop. A status write of 'Active' through
-        # update is the manual run button (planner spec scenario 20); slot-only updates never run.
-        run = (params['op'] in ('fallback', 'pop')
+        # Stack events that run the top policy: stackon (active defaults true — active=false
+        # stacks a plan step as Pending), fallback, a status write of 'Active' through update
+        # (the manual run button, planner spec scenario 20), and a pop that PROMOTED a Pending
+        # flow (2.13.2 — the op name is not a run signal: a pop that removed nothing, emptied
+        # the stack, or left an already-Active flow on top has no newly runnable work).
+        run = (params['op'] == 'fallback'
+               or (params['op'] == 'pop' and promoted is not None)
                or (params['op'] == 'stackon' and params.get('active', True))
                or (params['op'] == 'update_flow' and kwargs.get('status') == 'Active'))
         if run:
-            return self._top_policy(state, document)
+            # A pop-run names the promoted flow so a different Active entry can never be
+            # selected accidentally (2.13.2) — NLU may stack over it in the same window.
+            return self._top_policy(state, document, start=promoted)
         return {'_success': True, 'state': document}
 
-    def _top_policy(self, state, document:dict|None=None) -> dict:
+    def _top_policy(self, state, document:dict|None=None, start=None) -> dict:
         """Run the top runnable flow after a stack change, then the hook-3 read — NLU may
         have re-stacked mid-run. A completion ends the pass: activate_flow's pop has cleared
         the Completed/Invalid flows, and its result carries `popped` plus the surfaced
@@ -623,9 +629,10 @@ class PolicyExecutor:
         agent (PEX 5 decides); a different-intent top re-runs in code (the re-route; the
         agent is never notified). Re-running a flow within a turn is legal — the loop stops
         when the top stops changing, not on a ledger of what ran. Runtime-owned; never
-        exposed as a planner tool."""
+        exposed as a planner tool. `start` pins the first flow to run (a pop's promoted flow);
+        later iterations re-derive the top as always."""
         result = None
-        top = self.flow_stack.get_flow()
+        top = start or self.flow_stack.get_flow()
         while top and top.status in ('Pending', 'Active'):
             if top.name() == 'plan':   # a surfaced Plan Flow never runs (TODO: the review pass)
                 top.status = 'Completed'
@@ -721,14 +728,15 @@ class PolicyExecutor:
                      'summary': summary, 'metadata': artifact.data or {}}
             self.session_scratchpad.append_entry(flow.name(), entry)
             entry = {**entry, 'origin': flow.name()}
-        popped = self.flow_stack.pop()  # Completed and Invalid leave together, in code
+        popped, _ = self.flow_stack.pop()  # Completed and Invalid leave together, in code
         top = self.flow_stack.get_flow()
         if top and top.name() == 'plan':
             # The Plan Flow oversees, it does not do the work: the pop that surfaces it
             # removes it. TODO(review pass, future round): run its policy here instead —
             # review the steps' work via the session scratchpad first.
             top.status = 'Completed'
-            popped += self.flow_stack.pop()
+            more, _ = self.flow_stack.pop()
+            popped += more
             top = self.flow_stack.get_flow()
         if state.has_plan and not self.flow_stack.find_by_name('plan'):
             state.has_plan = False  # the marker anchors the flag — it left the stack
@@ -1032,10 +1040,11 @@ class PolicyExecutor:
                     "- `fallback` — replace the top flow with `flow_name`, transferring matching "
                     "slot values; the replacement policy runs immediately.\n"
                     "- `pop`      — clear Completed and Invalid flows from the top of the stack down "
-                    "to the first live flow. A surfaced Pending flow is promoted to Active and its "
-                    "policy runs.\n"
-                    "There is no `activate` op — stackon/fallback/pop run the top policy "
-                    "themselves; inspect the returned policy result."
+                    "to the first Pending or Active flow. A surfaced Pending flow is promoted to "
+                    "Active and its policy runs; a pop that removes nothing or leaves an "
+                    "already-Active flow on top runs nothing and returns the state.\n"
+                    "There is no `activate` op — stackon/fallback and a promoting pop run the top "
+                    "policy themselves; inspect the returned policy result."
                 ),
                 'input_schema': {
                     'type': 'object',

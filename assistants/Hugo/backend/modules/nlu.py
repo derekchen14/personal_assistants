@@ -11,6 +11,27 @@ from backend.prompts.for_contemplate import build_contemplate_prompt as _build_c
 from schemas.ontology import FLOW_ONTOLOGY, Intent
 from utils.helper import edge_flows_for, dax2flow, flow2dax, intent2flow
 
+def _repeat_count(flows, name:str) -> int:
+    """How many live (Active/Pending) instances of `name` sit on the stack — more than one
+    means reconciliation kept a second same-type task (round 2.13.3)."""
+    return sum(1 for entry in flows._stack
+               if entry.flow_type == name and entry.status in ('Active', 'Pending'))
+
+
+def _entity_ids(flow) -> set:
+    """The flow's task identity (round 2.13.3): its entity slot's values reduced to the domain
+    parts (post/sec/snip/chl — `ver` is bookkeeping, ignored), so equivalent serialized shapes
+    compare equal. String-valued entity slots (find.query, chat.topic) compare as strings."""
+    slot = flow.slots.get(flow.entity_slot)
+    ids = set()
+    for val in (getattr(slot, 'values', None) or []):
+        if isinstance(val, dict):
+            ids.add(tuple(val.get(part, '') for part in ('post', 'sec', 'snip', 'chl')))
+        else:
+            ids.add(str(val))
+    return ids
+
+
 def _valid_snip(snip) -> bool:
     """Shape check only: an int index, or a two-item non-negative ascending slice, parsed from
     the string the schema emits. Range-vs-sentence-count stays execution-time."""
@@ -102,10 +123,34 @@ class NaturalLanguageUnderstanding:
         # active=False waits as Pending and is still the flow PEX runs next.
         in_flight = bool(top) and top.status in ('Active', 'Pending')
         prev = top.name() if in_flight else ''
-        if not (in_flight and top.name() == flow_name):
-            top = self.world.flows.stackon(flow_name,
-                                           transfer=not self.ambiguity_handler.is_present)
-        state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
+        repeat = in_flight and top.name() == flow_name
+        # The reconciliation gate matches stackon's dedupe condition exactly (entity slot
+        # FILLED), so the stackon below always pushes a real second instance.
+        entity = top.slots.get(top.entity_slot) if repeat else None
+        if repeat and entity and entity.check_if_filled():
+            # Same-type detection over a GROUNDED flow (round 2.13.3, post-fill
+            # reconciliation): push a second instance without the grounding backstop, so the
+            # fill schema keeps the entity slot open and a user-named new target can land.
+            # Same identity after the fill (or none named) → fold the fill back into the
+            # original and drop the extra entry; a different identity is a new task and both
+            # instances stay (validate announces the second one).
+            old = top
+            top = self.world.flows.stackon(flow_name, transfer=False)
+            state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
+            fresh = _entity_ids(top)
+            if not fresh or fresh == _entity_ids(old):
+                values = {name: slot.to_dict() for name, slot in top.slots.items()
+                          if slot.filled and not old.slots[name].filled}
+                old.fill_slot_values(values)
+                top.status = 'Invalid'
+                self.world.flows.pop()   # removes the extra entry, promotes the original back
+                top = old
+        else:
+            if not repeat:
+                top = self.world.flows.stackon(flow_name,
+                                               transfer=not self.ambiguity_handler.is_present)
+            state.ground_flow(top)
+            state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
         state = self._write_belief(flow_name, detection['confidence'], predicted, top)
         if self.ambiguity_handler.needs_clarification(state.confidence):
             self.ambiguity_handler.recognize('general', metadata={'top_detection': flow_name},
@@ -123,6 +168,7 @@ class NaturalLanguageUnderstanding:
         if not (top and top.status == 'Active' and top.name() == flow_name):
             top = self.world.flows.stackon(flow_name,
                                            transfer=not self.ambiguity_handler.is_present)
+        state.ground_flow(top)
         state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
         state = self._write_belief(flow_name, 0.99,
                                    [{'name': flow_name, 'dax': gold_dax, 'confidence': 0.99}], top)
@@ -202,7 +248,9 @@ class NaturalLanguageUnderstanding:
             entry['summary'] = 'plan: stacked ' + ' → '.join(steps)
         elif not detected:      # abstention — every voter returned an empty list
             entry['summary'] = 'no confident detection; nothing stacked'
-        elif detected == prev:
+        elif detected == prev and _repeat_count(self.world.flows, detected) <= 1:
+            # Two live same-name instances mean reconciliation kept a second task on a new
+            # entity (2.13.3) — that falls through to the announcement below, same-name or not.
             entry['summary'] = f'aligned on {detected}'
         elif flow is None:      # ontology fallback fired — nothing stacked to announce
             entry['summary'] = f'detected {detected}; nothing stacked'
@@ -221,6 +269,10 @@ class NaturalLanguageUnderstanding:
         the post/sec preserve rule (a new post title legitimately differs from the grounded
         post)."""
         grounded = self.world.state.get_active_entity()
+        # An entity picked from the CURRENTLY shown choices is a deliberate selection (2.13.1)
+        # — the preserve rule polices hallucinated switches, not on-screen picks.
+        shown = {choice['entity']['post'] for choice in self.world.state.grounding['choices']
+                 if isinstance(choice, dict)}
         for name, slot in flow.slots.items():
             if slot.slot_type not in ('source', 'target', 'removal') or not slot.values:
                 continue
@@ -228,6 +280,8 @@ class NaturalLanguageUnderstanding:
                 if slot.slot_type in ('source', 'removal'):
                     for part in ('post', 'sec'):
                         if grounded.get(part) and pred.get(part) and pred[part] != grounded[part]:
+                            if part == 'post' and pred['post'] in shown:
+                                continue
                             question = f'switch {name} from {grounded[part]} to {pred[part]}?'
                             self.ambiguity_handler.recognize('confirmation',
                                 metadata={'missing': name, 'question': question})
