@@ -441,21 +441,44 @@ Ordered by dependency; U-numbers reference the Unresolved Issues above.
 - [x] **T1 — design rulings (Derek).** All settled 2026-07-17 — see Unresolved Issues: U1 =
   post-fill reconciliation, U2 = measure first, U3 = one candidates block with the
   pending-question framing on top.
-- [ ] **T2 — 2.13.1 plural grounding.** Add `status` to the choice record at the write site
-  (`research.py:93`); render the candidates into the fill prompt whenever `grounding['choices']`
-  is non-empty (per the U3 ruling); plural-selection guidance (one entity per pick; status/ordinal
-  filters resolve against the shown records only). Deterministic cases: "both", "all of them",
-  "the drafts", ordinal subsets; consumed-choice clearing unchanged. No dependency on T3/T4.
-- [ ] **T3 — 2.13.2 pop-promotion contract.** `FlowStack.pop()` makes the promotion explicit;
-  `_manage_flows` runs `_top_policy` only when a promotion happened; `_top_policy` receives the
-  promoted flow so it cannot select a different Active entry. Reconcile the call sites the 3.4/3.5
-  work added: `activate_flow`'s `popped` list, the plan-marker removal (both spots), and the
-  `_execute_click` path. Verification: the five stack cases + invocation counts.
-- [ ] **T4 — 2.13.3 entity-identity dedupe.** Per U1's ruling. Depends: T1.
-- [ ] **T5 — 2.13.4 verification only.** Confirm the 3.4 announcement entry satisfies every case
-  in the section's list (with/without ambiguity, confirmation-waiting, same-flow fill, failed
-  stackon) — tests only, no production change expected.
-- [ ] **T6 — 2.13.5 per U2's ruling.** Either drop with a recorded measurement, or the
-  invalidate-and-pop boundary enforcement. Depends: T1.
-- [ ] **T7 — verification.** Suites green; seed-212 8-sample run read against the 2026-07-09
-  baseline; expect B01.C07 to flip on T2.
+- [x] **T2 — 2.13.1 plural grounding.** DONE 2026-07-17 (f3a151d). The choice record carries
+  `status` (`research.py`); `build_pending_question` became `build_shown_candidates` — ONE
+  candidates rendering (label, status, entity ids, the plural-selection rule) appended whenever
+  `grounding['choices']` is non-empty, with the pending-question framing and conservative-fill
+  contract wrapping the same block only when an ambiguity is open (`for_nlu.py`,
+  `dialogue_state.py fill_slots`). Deterministic prompt cases skipped under the no-new-tests
+  moratorium — B01.C07 replay is the check (T7).
+- [x] **T3 — 2.13.2 pop-promotion contract.** DONE 2026-07-17 (f3a151d). `FlowStack.pop()`
+  returns `(completed, promoted)` — the promotion fact derived inside the stack op;
+  `_manage_flows` runs `_top_policy` only on `fallback`, a PROMOTING pop, an active stackon, or
+  the update-Active run button, and a pop-run passes the promoted flow as `_top_policy`'s
+  `start` so a different Active entry can never be selected. `activate_flow`'s two pop sites
+  and the plan-marker removal unpack the new shape; the tool-schema text says a no-change pop
+  returns state only. `test_plan_flows_survive_completion` updated to the new contract (the
+  pop-against-Active re-run it asserted is exactly what this task removes).
+- [x] **T4 — 2.13.3 post-fill reconciliation.** DONE 2026-07-17 (f3a151d), per U1's ruling plus
+  one amendment discovered in-flight (Derek approved via AskUserQuestion): the grounding
+  backstop is split out of `fill_slots` into `DialogueState.ground_flow` — think/react call it
+  before the fill exactly as before, but the reconciliation branch SKIPS it, so the second
+  instance's entity slot stays in the fill schema and a user-named new target actually lands
+  (pre-grounding used to mask it — the root of the lost-target defect). think's same-type
+  branch: a grounded repeat pushes a second instance (`transfer=False`), fills it, and compares
+  `_entity_ids` (domain parts, `ver` ignored) — same or none → fold the fill back, mark the
+  extra entry Invalid, pop (the original promotes back); different → both stay and validate
+  announces the second instance (the aligned branch now also requires a single live instance).
+  Companion fix: `_repair_slots`' preserve rule exempts a post picked from the CURRENTLY shown
+  choices — an on-screen pick is a deliberate selection, not a hallucinated switch. Isolated
+  three-case check passed (A→B split + announce, A→none merge, A→A merge).
+- [x] **T5 — 2.13.4 verification.** DONE 2026-07-17, by code-read against the section's case
+  list (no new tests under the moratorium): the announcement entry writes unconditionally on
+  every stackon over an in-flight top — no ambiguity gate anywhere in validate's branch chain;
+  a confirmation/checkpoint-waiting Active flow takes the same path (think stacks on any
+  non-matching detection); a matching detection fills in place and writes the aligned entry (no
+  `new_flow` key); a failed stackon raises before validate, so no partial entry; no `detour`
+  origin, metadata, or vocabulary exists anywhere in backend/.
+- [x] **T6 — 2.13.5 measured and DROPPED.** A seed-212 8-sample run post-T2-T4 (2026-07-17,
+  `evals_20260717_184706.json`) produced ZERO "turn-end stack shape violated" warnings — the
+  Pending-tower mechanism is gone with stackon-Active, MEM's aligned warning is the standing
+  watch, and 2.13.5 re-opens only if a live `top=Pending` warning ever fires.
+- [x] **T7 — dropped (Derek, 2026-07-17).** No verification pass for this round beyond the
+  suites (230 green at f3a151d) and the T6 measurement run.
