@@ -92,12 +92,22 @@ names real options.
 
 ## Todo List
 
-- [ ] **T1 — token-AND metadata match** in `find_posts` (`post_service.py:48-54`), hyphens
-  normalized to spaces; whole-phrase content fallback unchanged.
-- [ ] **T2 — fuzzy title pass** in `_resolve_post_id` (`policies/base.py:89-99`): de-hyphenated
-  candidate + difflib close-match over the full title list before returning None.
-- [ ] **T3 — near-miss choices on `missing_reference`**: `resolve_source_ids` writes
-  `grounding.choices` from the best-token query (or the latest posts) and asks a `partial`
-  ambiguity naming the titles (`base.py:133-137`).
-- [ ] **T4 — replay B02.C16 + B03.C14** and record the before/after against
-  `evals_20260718_095728.json`.
+- [x] **T1 — token-AND metadata match.** DONE 2026-07-18 (d59213d). Isolated check:
+  "lightbulb inventors" and "batteries grid" match; whole-phrase content fallback unchanged.
+- [x] **T2 — fuzzy title pass.** DONE 2026-07-18 (d59213d). The de-hyphenated candidates plus a
+  difflib pass over the full title list; the typo "soreness is not progres" and the suffixed
+  "Energy Needs of Datacenters draft" both resolve.
+- [x] **T3 — near-miss choices.** DONE 2026-07-18 (d59213d), one amendment: the recovery applies
+  only when the flow's entity slot is REQUIRED — an elective slot (cite's url-only path) keeps
+  the plain `missing_reference` error with no ambiguity side effect, since that flow proceeds
+  without the post by design.
+- [x] **T4 — replay.** DONE 2026-07-18, report `evals_20260718_164327.json`. B03.C14
+  completion 0.25→1.0 (both finds return items now). B02.C06 completion 0.167→0.5,
+  correctness 0.011→0.167, ambiguity 0.0→1.0 — turn 1 now asks "Did you mean 'Soreness Is Not
+  Progress'?" instead of looping on a bare error, and the trace surfaced a NEW fact: that
+  seeded draft has four empty sections, so compose was the right first step all along.
+  B02.C16 completion flat at 0.5: the recovery asks the right question with the right
+  candidate every turn, but the SCRIPTED user turns never answer it — a live user would.
+  Follow-up option for Derek: when the best-token query returns EXACTLY ONE post, resolve to
+  it directly instead of asking (auto-pick on a unique hit) — it would rescue scripted
+  conversations and reads human, at the cost of acting on an unconfirmed match.
