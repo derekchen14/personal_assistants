@@ -1,13 +1,10 @@
-from __future__ import annotations
-
-import json
 import logging
 import threading
 from datetime import datetime
 
 from schemas.config import load_config
 from backend.modules.nlu import NaturalLanguageUnderstanding
-from backend.modules.pex import PolicyExecutor, _FALLBACK_MESSAGE, _NUDGE_MESSAGE, _WRAP_UP_MESSAGE
+from backend.modules.pex import PolicyExecutor
 from backend.modules.mem import MemoryExtensionModule
 from backend.components.task_artifact import TaskArtifact
 from backend.components.prompt_engineer import PromptEngineer
@@ -15,10 +12,6 @@ from backend.components.world import World
 from backend.prompts.for_orchestrator import build_orchestrator_prompt
 
 log = logging.getLogger(__name__)
-
-# _FALLBACK_MESSAGE / _NUDGE_MESSAGE / _WRAP_UP_MESSAGE are re-exported from PEX (the acting loop
-# moved there) so callers importing them from backend.assistant keep working.
-
 
 class Assistant:
 
@@ -99,10 +92,10 @@ class Assistant:
                 self.nlu.contemplate(text)
                 self.world.context.append_message({'role': 'assistant', 'content': utterance})
                 self.world.context.append_message({'role': 'user', 'content': '[contemplate] '
-                    'NLU re-routed the stalled flow; act on the stack as it stands.'})
+                    'NLU re-routed the flow; act on the stack as it stands.'})
                 completed = self.pex.completed_this_turn  # prepare() resets it on re-entry
                 utterance = self.pex.execute(self.system_prompt, text='[contemplate] NLU '
-                    're-routed the stalled flow; act on the stack as it stands.')
+                    're-routed the flow; act on the stack as it stands.')
                 self.pex.completed_this_turn = completed + self.pex.completed_this_turn
 
             self.world.context.append_message({'role': 'assistant', 'content': utterance})

@@ -252,10 +252,11 @@ def _render_filled_slots(flow) -> list[str]:
 def build_shown_candidates(choices:list, question:str='', pending:bool=False) -> str:
     """The shown-candidates block (round 2.13.1): appended to the slot-filling prompt whenever
     candidate records exist — one rendering of the list, with the pending-question framing added
-    on top only when an ambiguity is open (`pending`). Selection resolves against these records
-    ONLY (never invent an id); a plural or filtered reference fills one entity per pick. The
-    pending case keeps the conservative-fill contract — an empty fill is always better than a
-    fabricated value; the incomplete flow simply keeps asking."""
+    on top only when an ambiguity is open (`pending`). A reference TO the list resolves against
+    these records (never invent an id); a plural or filtered reference fills one entity per pick.
+    The candidates ground the fill without limiting it — a user naming an off-list entity fills
+    normally. The pending case keeps the conservative-fill contract — an empty fill is always
+    better than a fabricated value; the incomplete flow simply keeps asking."""
     import json
     lines = ['<shown_candidates>']
     if pending:
@@ -275,8 +276,9 @@ def build_shown_candidates(choices:list, question:str='', pending:bool=False) ->
             'A reference that picks candidates fills the slot with those candidates\' entity '
             'values — by name, position, or paraphrase. A plural or filtered reference ("both", '
             '"all of them", "the two published ones", "the first and third") fills ONE entity '
-            'per pick, resolved against this list only. Never invent an id and never pull a '
-            'record that is not shown here.')
+            'per pick, resolved against this list only — never invent an id for a list '
+            'reference. These candidates are grounding, not a limit: when the user names an '
+            'entity that is not on this list, fill it normally.')
     if pending:
         lines.append(
             'Fill slots ONLY if the latest user message actually answers the pending question. '

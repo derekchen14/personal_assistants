@@ -111,22 +111,22 @@ class NaturalLanguageUnderstanding:
                 marker.slots['steps'].add_one(step)
             for step in reversed(steps):                    # last step first → first on top
                 self.world.flows.stackon(step, transfer=False, active=False)
-            top = self.world.flows.get_flow()
-            top.status = 'Active'                           # the first step runs; the rest wait
-            state = self._write_belief(steps[0], detection['confidence'], predicted, top)
+            curr_flow = self.world.flows.get_flow()
+            curr_flow.status = 'Active'                     # the first step runs; the rest wait
+            state = self._write_belief(steps[0], detection['confidence'], predicted, curr_flow)
             self.review_scratchpad()
             return self.validate(state, 'plan')
 
         flow_name = steps[0]
-        top = self.world.flows.get_flow()
-        # An in-flight top counts whether Active or Pending — a plan step stacked with
+        prev_flow = self.world.flows.get_flow()
+        # An in-flight flow counts whether Active or Pending — a plan step stacked with
         # active=False waits as Pending and is still the flow PEX runs next.
-        in_flight = bool(top) and top.status in ('Active', 'Pending')
-        prev = top.name() if in_flight else ''
-        repeat = in_flight and top.name() == flow_name
+        in_flight = bool(prev_flow) and prev_flow.status in ('Active', 'Pending')
+        prev = prev_flow.name() if in_flight else ''
+        repeat = in_flight and prev_flow.name() == flow_name
         # The reconciliation gate matches stackon's dedupe condition exactly (entity slot
         # FILLED), so the stackon below always pushes a real second instance.
-        entity = top.slots.get(top.entity_slot) if repeat else None
+        entity = prev_flow.slots.get(prev_flow.entity_slot) if repeat else None
         if repeat and entity and entity.check_if_filled():
             # Same-type detection over a GROUNDED flow (round 2.13.3, post-fill
             # reconciliation): push a second instance without the grounding backstop, so the
@@ -134,24 +134,22 @@ class NaturalLanguageUnderstanding:
             # Same identity after the fill (or none named) → fold the fill back into the
             # original and drop the extra entry; a different identity is a new task and both
             # instances stay (validate announces the second one).
-            old = top
-            top = self.world.flows.stackon(flow_name, transfer=False)
-            state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
-            fresh = _entity_ids(top)
-            if not fresh or fresh == _entity_ids(old):
-                values = {name: slot.to_dict() for name, slot in top.slots.items()
-                          if slot.filled and not old.slots[name].filled}
-                old.fill_slot_values(values)
-                top.status = 'Invalid'
+            curr_flow = self.world.flows.stackon(flow_name, transfer=False)
+            state.fill_slots(self.engineer, context, curr_flow, payload, self.ambiguity_handler)
+            fresh = _entity_ids(curr_flow)
+            if not fresh or fresh == _entity_ids(prev_flow):
+                values = {name: slot.to_dict() for name, slot in curr_flow.slots.items()
+                          if slot.filled and not prev_flow.slots[name].filled}
+                prev_flow.fill_slot_values(values)
+                curr_flow.status = 'Invalid'
                 self.world.flows.pop()   # removes the extra entry, promotes the original back
-                top = old
+                curr_flow = prev_flow
         else:
-            if not repeat:
-                top = self.world.flows.stackon(flow_name,
-                                               transfer=not self.ambiguity_handler.is_present)
-            state.ground_flow(top)
-            state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
-        state = self._write_belief(flow_name, detection['confidence'], predicted, top)
+            curr_flow = prev_flow if repeat else self.world.flows.stackon(
+                flow_name, transfer=not self.ambiguity_handler.is_present)
+            state.ground_flow(curr_flow)
+            state.fill_slots(self.engineer, context, curr_flow, payload, self.ambiguity_handler)
+        state = self._write_belief(flow_name, detection['confidence'], predicted, curr_flow)
         if self.ambiguity_handler.needs_clarification(state.confidence):
             self.ambiguity_handler.recognize('general', metadata={'top_detection': flow_name},
                 observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"')
@@ -164,29 +162,29 @@ class NaturalLanguageUnderstanding:
         flow_name = dax2flow(gold_dax)
         state, context = self.world.state, self.world.context
         _, payload = self._fill_slices(state, payload)
-        top = self.world.flows.get_flow()
-        if not (top and top.status == 'Active' and top.name() == flow_name):
-            top = self.world.flows.stackon(flow_name,
-                                           transfer=not self.ambiguity_handler.is_present)
-        state.ground_flow(top)
-        state.fill_slots(self.engineer, context, top, payload, self.ambiguity_handler)
+        curr_flow = self.world.flows.get_flow()
+        if not (curr_flow and curr_flow.status == 'Active' and curr_flow.name() == flow_name):
+            curr_flow = self.world.flows.stackon(flow_name,
+                                                 transfer=not self.ambiguity_handler.is_present)
+        state.ground_flow(curr_flow)
+        state.fill_slots(self.engineer, context, curr_flow, payload, self.ambiguity_handler)
         state = self._write_belief(flow_name, 0.99,
-                                   [{'name': flow_name, 'dax': gold_dax, 'confidence': 0.99}], top)
+                                   [{'name': flow_name, 'dax': gold_dax, 'confidence': 0.99}], curr_flow)
         self.review_scratchpad()
         return self.validate(state, 'react')
 
     def contemplate(self, user_text:str=''):
         """The failed-flow re-route — the Assistant calls this after PEX queues the request
-        (3.4.7). One re-route call over the failed flow's edges + the live top + chat, then
+        (3.4.7). One re-route call over the failed flow's edges + the current flow + chat, then
         the replacement is stacked directly. No LLM slot fill: stackon's transfer carries the
         failed flow's slots and the policy's fill_slots_by_label covers gaps. Ends in
         validate like think/react — the announcement is the re-route's record."""
         state, context = self.world.state, self.world.context
         failed = state.flow_name(string=True)
         candidates = set(edge_flows_for(failed)) if failed else set()
-        top = self.world.flows.get_flow()
-        if top and top.name() != failed:
-            candidates.add(top.name())
+        prev_flow = self.world.flows.get_flow()
+        if prev_flow and prev_flow.name() != failed:
+            candidates.add(prev_flow.name())
         candidates.add('chat')
         candidates.discard(failed)
         candidates = sorted(candidates)
@@ -206,10 +204,10 @@ class NaturalLanguageUnderstanding:
             self._raise_if_debug(ecp)
 
         flow_name = detection['flows'][0]
-        top = self.world.flows.stackon(flow_name, transfer=not self.ambiguity_handler.is_present)
+        curr_flow = self.world.flows.stackon(flow_name, transfer=not self.ambiguity_handler.is_present)
         state = self._write_belief(flow_name, detection['confidence'],
             [{'name': flow_name, 'dax': flow2dax(flow_name),
-              'confidence': detection['confidence']}], top)
+              'confidence': detection['confidence']}], curr_flow)
         return self.validate(state, 'think', failed or '')
 
     def validate(self, state, op:str='think', prev:str=''):

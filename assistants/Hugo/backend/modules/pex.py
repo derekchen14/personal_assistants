@@ -762,7 +762,7 @@ class PolicyExecutor:
         if params['op'] == 'contemplate':
             self.session_scratchpad.append_entry('orchestrator', {'version': 1,
                 'turn_number': self.world.context.turn_id, 'used_count': 0,
-                'request': 'contemplate', 'summary': 'policy stalled — asking NLU to re-route'})
+                'request': 'contemplate', 'summary': 'policy could not proceed — asking NLU to re-route'})
             return {'_success': True, '_message': 'Re-route queued. End your reply this round; '
                                                  'the re-detected flow runs on the next pass.'}
         return self.read_state(params)

@@ -13,7 +13,8 @@ from types import SimpleNamespace, MappingProxyType
 
 import pytest
 
-from backend.assistant import Assistant, _FALLBACK_MESSAGE, _NUDGE_MESSAGE, _WRAP_UP_MESSAGE
+from backend.assistant import Assistant
+from backend.modules.pex import _FALLBACK_MESSAGE, _NUDGE_MESSAGE, _WRAP_UP_MESSAGE
 from backend.modules.pex import READ_ONLY_DOMAIN_TOOLS
 from backend.components.task_artifact import TaskArtifact
 from backend.components.flow_stack import flow_classes

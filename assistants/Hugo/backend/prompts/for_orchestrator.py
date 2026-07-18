@@ -98,7 +98,7 @@ TOOL_POLICY = (
     'until a flow has run via `manage_flows`, or a flow you ran returned a clarification you '
     'relayed to the user. A plain-text reply with no flow run and no relayed clarification is a '
     'failed turn. Reading metadata is not doing the task — running the flow is.\n'
-    '**A stalled flow returns a `question` — relay it.** Present it in your own voice as your '
+    '**A flow that cannot proceed returns a `question` — relay it.** Present it in your own voice as your '
     'response. An explicit imperative ("Publish the post", "Delete that section") IS the '
     'authorization — run it; never ask for re-confirmation, and never block a new command on '
     'unrelated pending flows or earlier suggestions the user left unanswered.\n'

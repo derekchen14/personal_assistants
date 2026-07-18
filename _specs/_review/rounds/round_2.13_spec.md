@@ -34,10 +34,13 @@ summarize, multi-target revise, and any later flow that consumes a prior selecti
 
 ### Root cause
 
-`grounding.choices` (the candidate records `find` writes) is only offered to
-slot-filling on a STALLED flow — `build_pending_question` rides the fill prompt via the
-`stalled=True` flag in `_fill_slots` (`nlu.py`). A freshly detected flow never sees the candidates,
-so "those two", "the published ones", "all four" cannot resolve.
+Detection was not the problem — `compare` was correctly stacked. The defect is in slot-filling:
+the fill prompt did not include `grounding.choices` (the candidate records `find` writes), so a
+reference like "those two", "the published ones", or "all four" had nothing to resolve against.
+The old code rendered the choices only while an open clarification was being answered; an
+ordinary fill never saw them. The rule is simpler: whenever choices exist, they go into the
+slot-filling prompt as grounding — a suggestion, not a restriction, since the user may also name
+an entity that is not on the list. No special flag is involved.
 
 The data model is otherwise sufficient: choices already carry stable labels and entity ids, and
 `SourceSlot` already accepts multiple entities. The missing link is prompt availability. Status is
@@ -49,7 +52,7 @@ user saw; the shown candidate record should remain the reference frame.
 
 Changes:
 
-1. **Slot-filling prompt always includes Choices if they exist**, not just stalled ones. In Phase 3:
+1. **Slot-filling prompt always includes Choices if they exist**, on every fill. In Phase 3:
    `NLU._fill_slots`, if `state.grounding['choices']` is non-empty, append a `<shown_candidates>` block 
    to the fill_slots prompt so that the model is aware of the choices shown to the user.
 2. **Plural selection guidance** in that same block: a reference that picks SEVERAL candidates fills
@@ -234,8 +237,8 @@ the new flow, and the resumed old flow can see why the stack changed.
 The current code records this transition only when an ambiguity is present:
 
 ```python
-if stalled and self.ambiguity_handler.is_present:
-    self._note_detour(stalled, flow_name)
+if prev_flow and self.ambiguity_handler.is_present:
+    self._note_detour(prev_flow, flow_name)
 ```
 
 An Active flow can be incomplete without currently being represented by the Ambiguity Handler:
@@ -267,8 +270,8 @@ Remove the ambiguity guard. Whenever NLU has an incomplete Active top and detect
 stacks a different flow, record the transition unconditionally:
 
 ```python
-if stalled:
-    self._record_stack_transition(stalled, stacked)
+if prev_flow:
+    self._record_stack_transition(prev_flow, stacked)
 ```
 
 Rename `_note_detour` to `_record_stack_transition` and remove all `detour` vocabulary. Do not:
@@ -373,7 +376,7 @@ rebuilt much of the code it targets. Per-section status:
 
 - **2.13.1 — VALID, still the biggest win.** The mechanism moved but the gap is identical:
   slot-fill is now `DialogueState.fill_slots` (not `NLU._fill_slots`), and the gate is
-  `ambiguity.is_present` (not a `stalled=True` flag) — candidates still ride the fill prompt only
+  `ambiguity.is_present` (the old fill flag is gone) — candidates still ride the fill prompt only
   through `build_pending_question` when an ambiguity is open (`dialogue_state.py:295-297`). A
   fresh flow still never sees the shown list. One addition the spec predicted: the choice record
   (`research.py:93-97`) carries `{kind, label, entity, source, turn_number}` but NO `status` —
@@ -447,7 +450,10 @@ Ordered by dependency; U-numbers reference the Unresolved Issues above.
   `grounding['choices']` is non-empty, with the pending-question framing and conservative-fill
   contract wrapping the same block only when an ambiguity is open (`for_nlu.py`,
   `dialogue_state.py fill_slots`). Deterministic prompt cases skipped under the no-new-tests
-  moratorium — B01.C07 replay is the check (T7).
+  moratorium — B01.C07 replay is the check (T7). Review amendment (Derek, 2026-07-18): the
+  root-cause section rewritten — the defect was slot-filling, not detection; the candidates
+  block wording softened to grounding-not-a-limit (an off-list entity fills normally); all
+  "stalled" vocabulary scrubbed from the spec, prompts, and module prose.
 - [x] **T3 — 2.13.2 pop-promotion contract.** DONE 2026-07-17 (f3a151d). `FlowStack.pop()`
   returns `(completed, promoted)` — the promotion fact derived inside the stack op;
   `_manage_flows` runs `_top_policy` only on `fallback`, a PROMOTING pop, an active stackon, or
