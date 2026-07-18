@@ -64,7 +64,9 @@ class RevisePolicy(BasePolicy):
             for step_name in parsed['done']:
                 flow.slots['suggestions'].mark_as_complete(step_name)
 
-            self.complete_flow(flow, state, context, text[:200], metadata={'post_id': post_id})
+            # The skill's own summary line, never the raw JSON blob (2.14.4)
+            summary = parsed.get('summary') or text[:200]
+            self.complete_flow(flow, state, context, summary, metadata={'post_id': post_id})
             artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         else:
             artifact.set_artifact(new_data={'violation': 'failed_to_save'})
@@ -214,7 +216,10 @@ class RevisePolicy(BasePolicy):
             error_msg = 'Write flow did not persist any content; revise_content was not called or returned as failed.'
             return self.error_artifact(flow, 'failed_to_save', thoughts=error_msg, code=text)
 
-        self.complete_flow(flow, state, context, text[:200], metadata={'post_id': post_id})
+        # Write's skill reply may be JSON ({used: [...]}) — store a sentence, not the blob (2.14.4)
+        parsed = self.engineer.parse(text)
+        summary = (parsed.get('summary') if parsed else text[:200]) or 'Saved the edit.'
+        self.complete_flow(flow, state, context, summary, metadata={'post_id': post_id})
         artifact = TaskArtifact(flow.name(), thoughts=text)
         artifact.add_block({'type': 'card', 'data': self._read_post_content(post_id, tools)})
         return artifact
@@ -235,7 +240,9 @@ class RevisePolicy(BasePolicy):
             return TaskArtifact(flow.name())
 
         saved, _ = self.engineer.tool_succeeded(tool_log, 'revise_content')
-        summary = text[:200] if text else (
+        # Audit's contract is a plain line, but the model sometimes wraps JSON — parse it out (2.14.4)
+        parsed = self.engineer.parse(text)
+        summary = (parsed.get('summary') if parsed else text[:200]) or (
             'Revised the post to match your voice.' if saved else 'Audited the post — no changes needed.')
         self.complete_flow(flow, state, context, summary, metadata={'post_id': post_id})
         artifact = TaskArtifact('audit', thoughts=text)

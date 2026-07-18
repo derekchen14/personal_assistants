@@ -113,6 +113,11 @@ class NaturalLanguageUnderstanding:
                 self.world.flows.stackon(step, transfer=False, active=False)
             curr_flow = self.world.flows.get_flow()
             curr_flow.status = 'Active'                     # the first step runs; the rest wait
+            # The first step grounds and fills like the single-flow path (2.14.3) — its
+            # originating utterance is live, so the LLM fill is worth one call. Later steps
+            # ground at activate_flow when promoted.
+            state.ground_flow(curr_flow)
+            state.fill_slots(self.engineer, context, curr_flow, payload, self.ambiguity_handler)
             state = self._write_belief(steps[0], detection['confidence'], predicted, curr_flow)
             self.review_scratchpad()
             return self.validate(state, 'plan')

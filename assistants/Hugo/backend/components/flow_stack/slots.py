@@ -114,7 +114,8 @@ class SourceSlot(GroupSlot):
     self._keys = []
     self.active_post = ''
     if entity_part:
-      self.purpose = f"at least {min_size} {entity_part}" if min_size == 1 else f"at least {min_size} {entity_part}s"
+      base = f"at least {min_size} post" if min_size == 1 else f"at least {min_size} posts"
+      self.purpose = f"{base}, with the {entity_part} when one is named"
     else:
       self.purpose = f"at least {min_size} grounding reference" if min_size == 1 else f"at least {min_size} grounding references"
 
@@ -139,10 +140,9 @@ class SourceSlot(GroupSlot):
     self.check_if_filled()
 
   def check_if_filled(self):
-    if self.entity_part:
-      valid = [e for e in self.values if e['post'] and e[self.entity_part]]
-    else:
-      valid = [e for e in self.values if e['post']]
+    # The post is the requirement; entity_part is a refinement (round 2.14.1) — it steers
+    # resolve_source_ids and the fill schema but never gates the flow.
+    valid = [e for e in self.values if e['post']]
     self.filled = len(valid) >= self.size
     return self.filled
 

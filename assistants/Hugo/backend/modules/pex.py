@@ -410,9 +410,14 @@ class PolicyExecutor:
 
         `last_call` is (name+args key, succeeded). Dedupe only fires when the previous identical
         call SUCCEEDED — retrying the same call after a transient tool error (server_error from
-        an overloaded LLM, a flaky channel API) is legitimate recovery, not a loop."""
+        an overloaded LLM, a flaky channel API) is legitimate recovery, not a loop. A
+        manage_flows key also carries the live stack (2.14.2): NLU fills slots and stacks flows
+        mid-loop, so an identical retry after the stack changed is a new call — e.g. pressing
+        the run button again once the fill landed."""
         # hook: pre-tool
         call = (tool_use.name, json.dumps(dict(tool_use.input or {}), sort_keys=True, default=str))
+        if tool_use.name == 'manage_flows':
+            call += (json.dumps(self.flow_stack.to_list(), sort_keys=True, default=str),)
         if tool_use.name not in valid:
             result = {'_success': False, '_error': 'invalid_input',
                       '_message': f'Unknown tool: {tool_use.name!r}. Use a tool from your tool list.'}
@@ -673,15 +678,22 @@ class PolicyExecutor:
         scratchpad's read() flips `is_newborn` on what it returns — reading IS consuming — and
         the returned dicts keep the pre-flip value, so the filter below still works. Entries
         are scoped by turn_number >= the turn's opening turn_id (tool-log turns advance the
-        counter mid-loop, so equality would miss the announcement)."""
+        counter mid-loop, so equality would miss the announcement). The note renders from the
+        LIVE stack at read time (2.14.2) so it never names a dead flow, and carries NLU's
+        rationale instead of a decline recipe — the decision is the agent's."""
         entries = self.session_scratchpad.read(origin='nlu', keys=['new_flow'])
         entry = next((entry for entry in reversed(entries) if entry.get('is_newborn')
                       and entry['turn_number'] >= self._turn_start), None)
         if entry is None:
             return None
-        return (f"[nlu] {entry['summary']} — decide with manage_flows: run {entry['new_flow']}, "
-                f"or decline it (op='update' with status='Invalid', then op='pop') to stay on "
-                f"{entry['prev_flow']}.")
+        stack = ' | '.join(f"{item['flow_name']}·{item['status']}"
+                           for item in reversed(self.flow_stack.to_list()))
+        note = f"[nlu] {entry['summary']}."
+        if entry.get('rationale'):
+            note += f" Rationale: {entry['rationale']}."
+        return (f"{note} Live stack (top first): {stack}. Decide with manage_flows against "
+                f"this stack — the flow NLU stacked carries the user's newest message, so it "
+                f"usually wins.")
 
     def activate_flow(self, params:dict) -> dict:
         """Run the named flow's policy inline — the delegate_task analogue. Grounding comes
@@ -693,6 +705,10 @@ class PolicyExecutor:
         name = params['flow_name']
         flow = self.flow_stack.find_by_name(name) or self.flow_stack.stackon(name)
         flow.status = 'Active'  # pushes wait as Pending; running the policy promotes
+        # Every run passes through here — promoted plan steps, agent stackons, the run button —
+        # so ground once at the choke point (2.14.3). ground_flow only fills EMPTY entity
+        # slots, so a flow NLU already filled is untouched and repeat calls are harmless.
+        state.ground_flow(flow)
 
         # hook: pre-flow
         approval = self._security_check(flow)
