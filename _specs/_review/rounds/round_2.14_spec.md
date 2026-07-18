@@ -246,24 +246,35 @@ text for `done`, so the rework site reuses that `parsed` instead of parsing twic
 
 ## Todo List
 
-- [ ] **T1 — 2.14.1 entity part as refinement.** `check_if_filled` requires the post only
-  (`slots.py:141-147`); purpose strings reworded (`slots.py:116-119`). Isolated check: rework
-  post-only fills, write without snip runs, `resolve_source_ids` still prefers the part-bearing
-  entity.
-- [ ] **T2 — 2.14.2 announcement + run mechanics.** `_read_nlu_entry` renders NLU's summary +
-  rationale + the live stack at read time (`pex.py:671-684`); the orchestrator prompt's
-  announcement paragraph flips the default to the user's newest message
-  (`for_orchestrator.py:87-91`); `manage_flows` dedupe key includes the serialized live stack
-  (`pex.py:415`).
-- [ ] **T3 — 2.14.3 grounding at the run choke point.** think's plan branch grounds and fills the
-  first step (`nlu.py:114-116`); `activate_flow` calls `state.ground_flow(flow)` before every
-  policy run (`pex.py:695`).
-- [ ] **T4 — 2.14.4 parsed completion summaries.** `revise.py:67,217,238` store the skill's
-  `summary` field, raw-text fallback for non-JSON replies; the rework site reuses the existing
-  `parsed`.
-- [ ] **T5 — align audit eval references.** Update the scenario reference answers that treat
-  audit as report-only to the report-and-fix ruling (agent turns are the scorer's ground truth,
-  so they must reflect the ruled behavior).
-- [ ] **T6 — measurement rerun + U1 decision.** Rerun the 8 ids, compare against
-  `evals_20260718_095728.json`, and decide U1 from the fresh traces (build the wait/hold gate
-  only if the racing clarification still appears).
+- [x] **T1 — 2.14.1 entity part as refinement.** DONE 2026-07-18 (3eade4f). `check_if_filled`
+  requires the post only; purpose strings reworded. Isolated check passed (post-only fills all
+  three part-flows; `resolve_source_ids` still prefers the part-bearing entity). Rerun evidence:
+  the "Which post should I rework?" loop is gone from every trace — B01.C13 completion 0.25→0.75.
+- [x] **T2 — 2.14.2 announcement + run mechanics.** DONE 2026-07-18 (3eade4f). Rerun evidence:
+  the note never named a dead flow; declines in B01.C13 t2 / B03.C14 t5 / B02.C06 t11 were all
+  true duplicates (the same flow already Active on the same request); B09.C02 t2's repeated
+  update-Active went through after the stack changed.
+- [x] **T3 — 2.14.3 grounding at the run choke point.** DONE 2026-07-18 (3eade4f). Rerun
+  evidence: B09.C02's plan-first outline carried its source. Residual gap recorded: a promoted
+  step still asks when NO active post exists yet — B03.C14's `find` completed with ONE result
+  but choices never become the active entity, so the promoted summarize had nothing to inherit.
+  Candidate fix for a later round: a completing `find` with exactly one item sets the active
+  entity (or the promoted step's policy reads `grounding.choices` when its slot is empty).
+- [x] **T4 — 2.14.4 parsed completion summaries.** DONE 2026-07-18 (3eade4f). Rerun evidence:
+  B11.C08 t1/t6 and B01.C13 t4 completions are sentences, not JSON blobs.
+- [x] **T5 — verified, NO reference changes.** The report-only-looking audit references are
+  coherent with the ruling: they are either explicit "flag it" requests, or question arcs whose
+  NEXT user turn requests the fix (B01.C06 t7, B01.C13 t7 — rewriting the audit reply would
+  orphan those turns). The corpus already shows audit fixing when asked to fix (B01.C08,
+  B01.C12, B02.C06, B02.C15). Residual risk to watch: live audit fixing on a question turn
+  scores against a report-style reference.
+- [x] **T6 — measurement rerun + U1 DROPPED.** Rerun 2026-07-18, report
+  `evals_20260718_153555.json`: completion=0.44, correctness=0.074 vs 0.496/0.052 — the
+  aggregate is flat because two conversations (B02.C06, B02.C16) died end-to-end on the round
+  2.15 reference-resolution defect ("soreness adaptation signal" never matches the standing
+  draft `soreness-is-not-progress.md`), which now dominates the failures. U1: no pre-belief
+  clarification appeared anywhere in the rerun — dropped; re-open only if a trace shows one.
+  New top asks after this round: the write skill fails `failed_to_save` when it cannot locate
+  the named section ("the heat-stress paragraph", "the closing" — B01.C13 t3/t5), and policy
+  option-asks (rework's category/suggestions, compare's dimension) where the reference answers
+  directly.
