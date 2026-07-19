@@ -286,8 +286,13 @@ no longer needs pair-alignment helpers because pairing is structural.
 - [x] **T11 — verification pass.** DONE 2026-07-19. Projection equivalence: five recorded
   sessions (B03.C14, B01.C13, B06.C04, B02.C06, B11.C08) converted to turns and re-projected —
   IDENTICAL to their saved `messages.jsonl` byte-for-byte (pruning disabled for the diff, as
-  it is a deliberate change). Compaction + revision isolation checks passed. Gate-id replay
-  recorded below.
+  it is a deliberate change). Compaction + revision isolation checks passed. Live probe turn
+  ran find → grounded reply end-to-end on the merged store. Gate-id replay
+  `evals_20260719_145910.json`: B03.C14 completion 0.5 (= its clean-run baseline), B01.C13
+  completion 1.0 (baseline 0.75) — no regression from the merge. The first replay attempt
+  scored 0.0/0.0 and exposed a pre-existing crash, fixed as f8cd919: take_turn called
+  `classify_intent()` with no arguments, so every live text turn fell into the fallback
+  before PEX ran; the turn-level safety net logs nothing, which is why it was silent.
 - [x] **T12 — delete `rewrite_history` and `Turn.action_target`.** DONE 2026-07-19 (Derek's
   ruling). Both had no callers. `rewrite_history` was the only writer of `revision` events, so
   the render support (`_revision_map` + the substitution in both compile views) went with it —
