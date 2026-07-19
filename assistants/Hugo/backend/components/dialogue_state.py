@@ -200,7 +200,7 @@ class DialogueState:
             return None
         return {'id': post_id, 'title': title}
 
-    def classify_intent(self, engineer, context, user_text:str) -> str:
+    def classify_intent(self, engineer, context) -> str:
         """The turn's first model call (NLU 1) — one TypeSafe request (`engineer.typesafe`,
         the non-LLM System-1 model) with three questions fanned out: a Choice over the domain
         intents (+ Continue when a continuable flow is grounded) and the two nouls. Either
@@ -215,7 +215,8 @@ class DialogueState:
             criteria['Continue'] = (f'The turn advances `{working}`, the task already in '
                                     f'progress — an answer, a detail, an approval, or '
                                     f'"keep going".')
-        document = {'history': context.compile_history(), 'utterance': user_text}
+            
+        document = {'history': context.compile_history(), 'utterance': context.last_user_utt}
         questions = {'intent': {'type': 'choice', 'instructions': INTENT_QUESTION,
                                 'criteria': criteria},
                      'has_plan': PLAN_NOUL, 'needs_clarify': CLARIFY_NOUL}

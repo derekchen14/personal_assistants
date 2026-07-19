@@ -51,13 +51,11 @@ class Assistant:
                 self.nlu.react(dax, payload)
                 self.world.nlu_done.set()
             else:
-                self.nlu.dialogue_state.classify_intent(self.engineer, self.world.context, text)
+                self.nlu.dialogue_state.classify_intent(self.engineer, self.world.context)
                 self.world.nlu_done.clear()
                 nlu_thread = threading.Thread(target=understand_user, daemon=True)
                 nlu_thread.start()
 
-            # turn_start scopes the contemplate read below (>= — tool-log turns advance
-            # turn_id mid-loop, so equality would never match).
             turn_start = self.world.context.num_utterances
             utterance = self.pex.execute(self.system_prompt, dax=dax, payload=payload, text=text)
 

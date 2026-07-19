@@ -67,32 +67,34 @@ Attributes: `pred_intent`, `pred_flow` (dax), `confidence`, `pred_flows`, `turn_
 
 Serialization (non-core): `to_list() -> list[dict]`  (:76).
 
-## 4. ContextCoordinator — turns + checkpoints
+## 4. ContextCoordinator — the single history store (round 6.1)
 
-`backend/components/context_coordinator.py` contains 7 core methods.
+`backend/components/context_coordinator.py` — the append-only event stream; the API message list
+is a projection, never stored.
 
-1. `add_turn(speaker, text, turn_type) -> Turn`  →  `turn_type` ∈ `utterance` / `action` / `system` / `clarification` / `agent_response`  (:55)
-2. `compile_history(look_back=5, keep_system=True) -> str`  →  canonical name for the string history consumed by prompts  (:66)
-3. `full_conversation(keep_system=True, as_turns=False) -> list`  (:75)
-4. `recent[-1] -> get the last turn`
-5. `get_turn(turn_id) -> Turn | None`  (:85)
-6. `save_checkpoint(label, data=None)`  (:91)
-7. `get_checkpoint(label) -> dict | None`  (:99)
+Writes:
+1. `add_turn(role, content, turn_type='utterance') -> Turn`  →  `role` ∈ `user`/`agent`/`system`,
+   `turn_type` ∈ `utterance`/`action`; `content` is the kind-shaped dict, always carrying `text`  (:66)
+2. `save_checkpoint(label, data=None, text='')`  →  kind-6 marker `{label, turn_id, data}`  (:75)
+3. `reset()`  →  session lifecycle; clear all turns  (:90)
 
-Properties: `turn_count` (:119), `last_user_text` (:123), `last_user_turn` (:130).
+The three read surfaces (one per consumer):
+4. `full_conversation(as_turns=False) -> list`  →  every turn, all six kinds — the raw view  (:99)
+5. `compile_history(look_back=5, keep_system=False) -> str`  →  utterances rendered `Role: text`
+   for prompts; output variable is `convo_history`  (:105)
+6. `compile_messages() -> list[dict]`  →  the on-demand API projection for PEX's model calls
+   (compaction splice + pruning applied at render time)  (:113)
 
-Extended (turn rewriting + search + lifecycle):
-- `reset()`  →  session lifecycle; clear all turns and checkpoints  (:109)
-- `rewrite_history(revised)`  →  revise the most recent user utterance in place  (:138)
-- `setbookmark(speaker='')`  (:145)
-- `find_turn_by_id(turn_id, clearbookmark=False)`  (:152)
-- `contains_keyword(keyword, look_back=3) -> bool`  →  splits on space/hyphen/underscore  (:160)
-- `find_action_by_name(action_name) -> Turn | None`  (:175)
-- `actions_include(target_actions, speaker='Agent') -> bool`  (:182)
-- `add_actions(actions, actor)`  (:186)
-- `revise_user_utterance(turns_back)`  →  truncate history to nth-back user turn  (:192)
+Lookups: `get_turn(turn_id) -> Turn | None` (:248), `get_checkpoint(label) -> dict | None` (:82),
+`contains_keyword(keyword, look_back=3) -> bool` (:254).
+Properties: `turn_count` (:269), `last_user_utt` (:273), `num_utterances` (the utterance counter —
+there is no coordinator-level `turn_id`; that name belongs to Turn).
+Storage: `load_history(path)` binds + reloads `history.jsonl` (:170); `save_turn_to_disk` is the
+append-only write (:193); `compact_messages(summarize, protect_tail)` appends a kind-5 summary +
+kind-6 event (:215).
 
-`Turn`: `speaker`, `text`, `turn_type`, `turn_id`, `timestamp`, `is_revised`, `original`; methods `action_target()`, `add_revision(new_text)`, `utt(as_dict=False)`.
+`Turn`: `role`, `turn_type`, `content`, `turn_id`, `timestamp`; property `text`
+(= `content['text']`); methods `utt(as_dict=False)`, `to_dict()`.
 
 ## 5. TaskArtifact — turn output container
 

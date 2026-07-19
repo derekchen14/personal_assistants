@@ -270,7 +270,7 @@ class ContextCoordinator:
         return len(self._history)
 
     @property
-    def last_user_text(self) -> str | None:
+    def last_user_utt(self) -> str | None:
         for turn in reversed(self._history):
             if turn.role == 'user':
                 return turn.text

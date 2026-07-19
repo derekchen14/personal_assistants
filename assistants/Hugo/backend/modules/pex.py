@@ -236,9 +236,9 @@ class PolicyExecutor:
         has_data = ('default' in block_types or block_data or artifact.thoughts or artifact.data)
         if not has_data:
             return ArtifactCheck(passed=False, reason='Frame has no data')
-        last_user = self.world.context.last_user_text
+        user_utterance = self.world.context.last_user_utt
         thoughts = artifact.thoughts
-        if last_user and thoughts.strip() == last_user.strip():
+        if user_utterance and thoughts.strip() == user_utterance.strip():
             return ArtifactCheck(passed=False, reason='Response echoes user input verbatim')
         if flow.name() in self.config['content_validation']:
             card_content = block_data.get('content', '')
@@ -257,11 +257,10 @@ class PolicyExecutor:
         return merged, block_types
 
     def _llm_quality_check(self, content:str):
-        last_user = self.world.context.last_user_text
-        convo = self.world.context.compile_history(look_back=4)
+        context = self.world.context
         prompt = (
-            f'Recent conversation:\n{convo}\n\n'
-            f'User request: {last_user}\n\nAgent output:\n{content}'
+            f'Recent conversation:\n{context.compile_history()}\n\n'
+            f'User request: {context.last_user_utt}\n\nAgent output:\n{content}'
         )
         try:
             raw_output = self.engineer(prompt, 'quality_check', tier='low', max_tokens=128)

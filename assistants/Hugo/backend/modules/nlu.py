@@ -48,7 +48,7 @@ class NaturalLanguageUnderstanding:
         state, context = self.world.state, self.world.context
         detection = state.detect_flows(self.engineer, context, user_text, snippet)
         if self._intent_split(detection):                   # low-confidence AND spans >1 intent
-            state.classify_intent(self.engineer, context, user_text)  # the tie-break re-classify
+            state.classify_intent(self.engineer, context)  # the tie-break re-classify
             if intent2flow(state.pred_intent):  # domain intents only — Plan/Clarify add no
                 detection = state.detect_flows(self.engineer, context, user_text,  # narrowing
                                                detection_snippet(state.pred_intent))

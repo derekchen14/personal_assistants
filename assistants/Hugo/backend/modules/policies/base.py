@@ -43,7 +43,7 @@ class BasePolicy:
         result = self.engineer.flow_execute(
             flow, convo_history, self.scratchpad.read(),
             tool_defs, tools, resolved=resolved,
-            user_text=context.last_user_text,
+            user_text=context.last_user_utt,
             tier=tier, schema=schema,
         )
         return result

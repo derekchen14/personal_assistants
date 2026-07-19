@@ -217,7 +217,7 @@ class TestThinkDispatch:
             'intent': {'choice': 'Revise', 'confidence': 0.91},
             'has_plan': {'noul': 0.1}, 'needs_clarify': {'noul': 0.2}}
         state = nlu.dialogue_state
-        assert state.classify_intent(engineer, nlu.world.context, 'polish the intro') == 'Revise'
+        assert state.classify_intent(engineer, nlu.world.context) == 'Revise'
         assert state.pred_intent == 'Revise'
 
     def test_candidate_names_empty_hint_is_full_ontology(self, nlu):
