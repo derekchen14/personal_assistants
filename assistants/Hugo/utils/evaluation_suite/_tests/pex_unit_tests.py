@@ -155,7 +155,7 @@ class TestOrchestratorDispatch:
         assert appended == {'_success': True, 'size': 1}
         result = pex._tool('read_scratchpad', {'origin': 'audit'})
         assert result['entries'] == [{'origin': 'audit', 'finding': 'intro is weak', 'version': 1,
-                                      'turn_number': mock_agent.world.context.turn_id,
+                                      'turn_number': mock_agent.world.context.num_utterances,
                                       'used_count': 0}]
 
 
@@ -259,7 +259,7 @@ class TestDispatchFlow:
         assert result['_success'] is True
         assert result['status'] == 'Completed'
         assert result['completion'] == {'origin': 'outline', 'version': 1,
-                                        'turn_number': wired.world.context.turn_id, 'used_count': 0,
+                                        'turn_number': wired.world.context.num_utterances, 'used_count': 0,
                                         'summary': 'Drafted the intro.', 'metadata': {}}
         assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == [result['completion']]
         # T12: the completed flow left the stack in code — the pop is PEX's, never the agent's.
@@ -330,7 +330,7 @@ class TestPolicyCompletion:
         result = pex.activate_flow({'flow_name': 'outline'})
         assert result['_success'] is True
         assert result['completion'] == {'origin': 'outline', 'version': 1,
-                                        'turn_number': wired.world.context.turn_id, 'used_count': 0,
+                                        'turn_number': wired.world.context.num_utterances, 'used_count': 0,
                                         'summary': 'Wrote the intro.', 'metadata': {'sec': 'intro'}}
         # The policy's record IS the tool result — no fallback duplicate from activate_flow.
         assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == [result['completion']]
@@ -1420,7 +1420,7 @@ class TestSnapshotInfra:
         class FakeFlow:
             def name(self): return 'simplify'
         class FakeContext:
-            turn_id = 1
+            num_utterances = 1
 
         policy = BasePolicy.__new__(BasePolicy)  # bypass __init__
         snap_id = policy.record_snapshot(content, FakeFlow(), FakeContext(),

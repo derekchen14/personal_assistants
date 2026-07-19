@@ -93,13 +93,13 @@ class ResearchPolicy(BasePolicy):
             state.grounding['choices'] = [
                 {'kind': 'post', 'label': it['title'], 'status': it['status'],
                  'entity': {'post': it['post_id'], 'sec': '', 'snip': '', 'chl': '', 'ver': True},
-                 'source': flow.name(), 'turn_number': context.turn_id}
+                 'source': flow.name(), 'turn_number': context.num_utterances}
                 for it in items]
 
         # Scratchpad write — downstream audit can reference matches.
         self.scratchpad.append_entry(flow.name(), {
             'version': 1,
-            'turn_number': context.turn_id,
+            'turn_number': context.num_utterances,
             'used_count': 0,
             'query': query,
             'items': [

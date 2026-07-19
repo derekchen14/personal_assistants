@@ -76,7 +76,7 @@ class ContextCoordinator:
         """A checkpoint is a named marker at a position in the stream — never a copy of it:
         history as of the checkpoint is the slice of turns up to its turn_id."""
         content = {'text': text or f'checkpoint: {label}', 'activity': 'checkpoint',
-                   'result': {'label': label, 'turn_id': self.turn_id, 'data': data or {}}}
+                   'result': {'label': label, 'turn_id': self.num_utterances, 'data': data or {}}}
         return self.add_turn('system', content, turn_type='action')
 
     def get_checkpoint(self, label:str) -> dict | None:
@@ -268,12 +268,6 @@ class ContextCoordinator:
     @property
     def turn_count(self) -> int:
         return len(self._history)
-
-    @property
-    def turn_id(self) -> int:
-        """Official turn counter across the conversation — the next utterance's
-        turn_id. Used by scratchpad writes so findings can be dated precisely."""
-        return self.num_utterances
 
     @property
     def last_user_text(self) -> str | None:

@@ -221,7 +221,7 @@ class BasePolicy:
         top of stack — a Completed flow buried under live work waits there, and pop's top-down
         loop clears it once the flows above it resolve."""
         flow.status = 'Completed'
-        entry = {'version': 1, 'turn_number': context.turn_id, 'used_count': 0,
+        entry = {'version': 1, 'turn_number': context.num_utterances, 'used_count': 0,
                  'summary': summary, 'metadata': metadata or {}}
         self.scratchpad.append_entry(flow.name(), entry)
         self._completion = {**entry, 'origin': flow.name()}
@@ -272,7 +272,7 @@ class BasePolicy:
             scope = ', '.join(sec_ids) if sec_ids else 'whole post'
             summary = f'{flow.name()} on {scope}'
 
-        return content.take_snapshot(post_id=post_id, turn_id=context.turn_id,
+        return content.take_snapshot(post_id=post_id, turn_id=context.num_utterances,
             flow_name=flow.name(), summary=summary, sections=sections)
 
     def retry_tool(self, tools, tool_name:str, params:dict, max_attempts:int=2) -> dict:

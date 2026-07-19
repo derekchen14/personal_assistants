@@ -112,7 +112,7 @@ async def update_post(body:dict, agent, queue:asyncio.Queue):
                     post_service._read_content(ent['filename']))
                 if current_sections:
                     post_service.take_snapshot(
-                        post_id=post_id, turn_id=agent.world.context.turn_id,
+                        post_id=post_id, turn_id=agent.world.context.num_utterances,
                         flow_name='manual', summary='manual edit',
                         sections=[{'sec_id': sec['sec_id'], 'lines': sec['lines']}
                                   for sec in current_sections])

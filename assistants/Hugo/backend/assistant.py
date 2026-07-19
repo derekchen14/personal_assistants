@@ -58,7 +58,7 @@ class Assistant:
 
             # turn_start scopes the contemplate read below (>= — tool-log turns advance
             # turn_id mid-loop, so equality would never match).
-            turn_start = self.world.context.turn_id
+            turn_start = self.world.context.num_utterances
             utterance = self.pex.execute(self.system_prompt, dax=dax, payload=payload, text=text)
 
             if nlu_thread:

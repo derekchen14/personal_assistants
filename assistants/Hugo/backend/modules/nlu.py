@@ -200,7 +200,7 @@ class NaturalLanguageUnderstanding:
             self._repair_slots(flow) # are the frontend's internal contract, trusted as-is
 
         detected = state.flow_name(string=True)
-        entry = {'version': 1, 'turn_number': self.world.context.turn_id, 'used_count': 0}
+        entry = {'version': 1, 'turn_number': self.world.context.num_utterances, 'used_count': 0}
         if op != 'react' and state.pred_flows:
             # The candidate flows and their tallies ride the entry — PEX's back-up channel to
             # stack a dropped flow later (support at or below 0.5 marks a dropped flow).
@@ -252,7 +252,7 @@ class NaturalLanguageUnderstanding:
                             self.ambiguity_handler.recognize('confirmation',
                                 metadata={'missing': name, 'question': question})
                             self.world.scratchpad.append_entry('nlu', {'version': 1,
-                                'turn_number': self.world.context.turn_id, 'used_count': 0,
+                                'turn_number': self.world.context.num_utterances, 'used_count': 0,
                                 'summary': f'{name} conflict on {part}: kept {grounded[part]}'})
                             pred[part] = grounded[part]      # the live target wins
                 if pred.get('snip') and not _valid_snip(pred['snip']):
@@ -266,7 +266,7 @@ class NaturalLanguageUnderstanding:
 
     def recover(self):
         result, success = self.ambiguity_handler.recover(self.world.prefs, self.world.scratchpad)
-        entry = {'version': 1, 'turn_number': self.world.context.turn_id,
+        entry = {'version': 1, 'turn_number': self.world.context.num_utterances,
                  'used_count': 0, 'found' if success else 'missing': result}
         self.world.scratchpad.append_entry('recovery', entry)
         return {'recovery': result}
@@ -281,7 +281,7 @@ class NaturalLanguageUnderstanding:
             if all(field in entry for field in ('version', 'turn_number', 'used_count')):
                 continue
             amended = {'version': 1, 'used_count': 0,
-                       'turn_number': self.world.context.turn_id, **entry}
+                       'turn_number': self.world.context.num_utterances, **entry}
             self.world.scratchpad.amend_entry(entry['origin'], entry.get('turn_number'), amended)
             repaired += 1
         return {'reviewed': True, 'size': self.world.scratchpad.size, 'repaired': repaired}

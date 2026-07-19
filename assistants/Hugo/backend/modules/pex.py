@@ -146,7 +146,7 @@ class PolicyExecutor:
         # end-of-turn checkpoint and passed to MEM.recap (round 3.3 choices lifecycle).
         self.completed_this_turn = []
         self._reads = 0  # per-turn count of successful read-only domain-tool calls; reset in prepare()
-        self._turn_start = 0  # context.turn_id at prepare() — scopes the hook reads to this turn
+        self._turn_start = 0  # context.num_utterances at prepare() — scopes hook reads to this turn
         # Orchestrator hot-path tools — wiring only; the implementations live in
         # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
         self._orchestrator_toolset = {
@@ -304,7 +304,7 @@ class PolicyExecutor:
         loudly — the raise lands in take_turn's safety net."""
         self.completed_this_turn = []
         self._reads = 0
-        self._turn_start = self.world.context.turn_id
+        self._turn_start = self.world.context.num_utterances
         if self.world.state.pred_intent in ('Plan', 'Clarify'):
             if not self.world.nlu_done.wait(timeout=30):
                 raise TimeoutError('NLU still thinking after 30s at hook point 1')
@@ -544,7 +544,7 @@ class PolicyExecutor:
         origin = flow.name() if flow else 'findings'
         self.session_scratchpad.append_entry(origin, {
             'version': 1,
-            'turn_number': self.world.context.turn_id,
+            'turn_number': self.world.context.num_utterances,
             'used_count': 0,
             'summary': summary,
             'findings': findings,
@@ -736,7 +736,7 @@ class PolicyExecutor:
         self.completed_this_turn.append(flow)  # for the end-of-turn checkpoint + MEM's store
         if entry is None:  # policy completed without calling complete_flow — synthesize an entry
             summary = artifact.thoughts or f'{flow.name()} completed'
-            entry = {'version': 1, 'turn_number': self.world.context.turn_id, 'used_count': 0,
+            entry = {'version': 1, 'turn_number': self.world.context.num_utterances, 'used_count': 0,
                      'summary': summary, 'metadata': artifact.data or {}}
             self.session_scratchpad.append_entry(flow.name(), entry)
             entry = {**entry, 'origin': flow.name()}
@@ -773,7 +773,7 @@ class PolicyExecutor:
             raise TimeoutError('NLU still thinking after 30s at understand')
         if params['op'] == 'contemplate':
             self.session_scratchpad.append_entry('orchestrator', {'version': 1,
-                'turn_number': self.world.context.turn_id, 'used_count': 0,
+                'turn_number': self.world.context.num_utterances, 'used_count': 0,
                 'request': 'contemplate', 'summary': 'policy could not proceed — asking NLU to re-route'})
             return {'_success': True, '_message': 'Re-route queued. End your reply this round; '
                                                  'the re-detected flow runs on the next pass.'}
@@ -789,7 +789,7 @@ class PolicyExecutor:
                     '_message': "entry needs a stable 'origin' to file it under."}
         # LLM-authored entry — code stamps the contract fields it can't be trusted with.
         entry = {'version': 1, **params['entry'],
-                 'turn_number': self.world.context.turn_id, 'used_count': 0}
+                 'turn_number': self.world.context.num_utterances, 'used_count': 0}
         self.session_scratchpad.append_entry(entry.pop('origin'), entry)
         return {'_success': True, 'size': self.session_scratchpad.size}
 
