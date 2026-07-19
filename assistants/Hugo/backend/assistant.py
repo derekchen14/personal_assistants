@@ -51,7 +51,7 @@ class Assistant:
                 self.nlu.react(dax, payload)
                 self.world.nlu_done.set()
             else:
-                self.nlu.dialogue_state.classify_intent()
+                self.nlu.dialogue_state.classify_intent(self.engineer, self.world.context, text)
                 self.world.nlu_done.clear()
                 nlu_thread = threading.Thread(target=understand_user, daemon=True)
                 nlu_thread.start()
