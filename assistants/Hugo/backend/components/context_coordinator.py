@@ -35,12 +35,6 @@ class Turn:
     def text(self) -> str:
         return self.content['text']
 
-    def action_target(self) -> tuple[str, str]:
-        if '|' in self.text:
-            parts = self.text.split('|', 1)
-            return parts[0].strip(), parts[1].strip()
-        return self.text, ''
-
     def utt(self, as_dict:bool=False):
         if as_dict:
             return self.to_dict()
@@ -93,19 +87,6 @@ class ContextCoordinator:
                 return turn.content['result']
         return None
 
-    def rewrite_history(self, revised:str):
-        """Revise the most recent user utterance — append-only, like compaction: a kind-5 turn
-        holds the revised text, a kind-6 revision event points views at it, and the original
-        turn is unchanged."""
-        for idx in range(len(self._history) - 1, -1, -1):
-            turn = self._history[idx]
-            if turn.role == 'user' and turn.turn_type == 'utterance':
-                self.add_turn('system', {'text': revised})
-                self.add_turn('system', {'text': f'Revised turn {idx}.', 'activity': 'revision',
-                    'result': {'target': idx, 'revised_index': len(self._history) - 1}},
-                    turn_type='action')
-                return
-
     def reset(self):
         self._history.clear()
         self.num_utterances = 0
@@ -123,48 +104,27 @@ class ContextCoordinator:
 
     def compile_history(self, look_back:int=5, keep_system:bool=False) -> str:
         """The human-readable prompt window: user and agent utterances (plus system
-        utterances when keep_system), rendered 'Role: text' with revisions applied."""
-        revised, hidden = self._revision_map()
+        utterances when keep_system), rendered 'Role: text'."""
         allowed = {'user', 'agent'} | ({'system'} if keep_system else set())
-        lines = []
-        for idx, turn in enumerate(self._history):
-            if idx in hidden or turn.turn_type != 'utterance' or turn.role not in allowed:
-                continue
-            text = self._history[revised[idx]].text if idx in revised else turn.text
-            lines.append(f'{turn.role.capitalize()}: {text}')
-        return '\n'.join(lines[-look_back:])
+        turns = [turn for turn in self._history
+                 if turn.turn_type == 'utterance' and turn.role in allowed]
+        return '\n'.join(turn.utt() for turn in turns[-look_back:])
 
     def compile_messages(self) -> list[dict]:
         """The API projection for the PEX agent, computed on demand: per-kind rendering, the
-        latest compaction's summary spliced over its skip range, revisions applied, old tool
-        results rendered as the pruning placeholder."""
+        latest compaction's summary spliced over its skip range, old tool results rendered as
+        the pruning placeholder."""
         skip, splice_start, summary_index = self._compaction_plan()
-        revised, hidden = self._revision_map()
         messages = []
         for idx in range(len(self._history)):
             if idx == splice_start:
                 messages.append({'role': 'user', 'content': self._history[summary_index].text})
-            if idx in skip or idx in hidden:
-                continue
-            if idx in revised:  # revision targets are always user utterances
-                messages.append({'role': 'user', 'content': self._history[revised[idx]].text})
+            if idx in skip:
                 continue
             messages.extend(self._render_turn(idx))
         return messages
 
     # ── Projection internals ─────
-
-    def _revision_map(self) -> tuple[dict, set]:
-        """Revision events, append-only like compaction: target index → revised-text index,
-        plus the revised-text turns to hide at their own position."""
-        revised, hidden = {}, set()
-        for turn in self._history:
-            if turn.turn_type == 'action' and turn.role == 'system' \
-                    and turn.content.get('activity') == 'revision':
-                result = turn.content['result']
-                revised[result['target']] = result['revised_index']
-                hidden.add(result['revised_index'])
-        return revised, hidden
 
     def _compaction_plan(self) -> tuple[set, int|None, int|None]:
         """Skip set and splice point from the kind-6 compaction events. Summaries chain

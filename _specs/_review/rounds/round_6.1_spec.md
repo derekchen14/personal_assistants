@@ -158,9 +158,10 @@ One file per session, one turn per line, append-only. `attach_messages` becomes 
 because a checkpoint is a named marker in the stream and this loads the whole stream. An existing
 file rebuilds the turn list and `num_utterances`; a fresh path stays lazy and the first write
 flushes the in-memory seed turn, so disk matches memory from then on. The file is **strictly
-append-only**: a user-utterance revision follows the compaction pattern (ruled 2026-07-19) — a
+append-only**. A user-utterance revision follows the compaction pattern (ruled 2026-07-19) — a
 kind-5 turn holds the revised text, a kind-6 `revision` event `{target, revised_index}` points
-the views at it, and the original turn is unchanged. `state.json` and `scratchpad.jsonl` are
+the views at it, and the original turn is unchanged; with `rewrite_history` deleted (T12) the
+pattern is designed-not-built until a writer needs it. `state.json` and `scratchpad.jsonl` are
 untouched; architecture.md's Disk Storage section updates its third file from `messages.jsonl`
 to `history.jsonl`.
 
@@ -216,8 +217,9 @@ The round deletes more than it adds; this list is checked at close:
 list, the `recent` rolling list, the pex.py:450 `[tool:]` turn write, `add_actions` +
 `last_actions`, `_prune_tool_results`, `_align_forward`, `_align_backward`, the `SUMMARY_PREFIX`
 scan in `_middle_window`, `_rewrite_messages_file` (compaction appends, revisions append),
-`Turn.is_revised`/`original`/`add_revision`, `_checkpoints` + the `history_snapshot` copies, the
-`messages.jsonl` mirror, and every double-entry write in `take_turn`.
+`Turn.is_revised`/`original`/`add_revision`, `rewrite_history` + `Turn.action_target` (T12),
+`_checkpoints` + the `history_snapshot` copies, the `messages.jsonl` mirror, and every
+double-entry write in `take_turn`.
 
 **Added** — the per-kind content schemas on `Turn`, `compile_messages()` (one function plus a
 small per-kind mapping), and the kind-6 skip range it reads.
@@ -229,8 +231,8 @@ no longer needs pair-alignment helpers because pairing is structural.
 
 - The `[click]`/`[action]` decoration wording itself — moves verbatim; MEM taking ownership of it
   stays Unresolved 3.
-- Deleting `rewrite_history` / `contains_keyword` / `action_target` — no callers today, but they
-  are surfaces Derek may want; his call, listed above.
+- Deleting `contains_keyword` — no callers today; the last flagged dead surface
+  (`rewrite_history` and `action_target` were deleted under T12).
 - Any frontend or webserver change — no router reads either store today.
 - Thinking blocks in kind 4 — PEX runs without thinking; if that changes, blocks ride in
   `tool_uses` unchanged since the projection replays content verbatim.
@@ -286,3 +288,7 @@ no longer needs pair-alignment helpers because pairing is structural.
   IDENTICAL to their saved `messages.jsonl` byte-for-byte (pruning disabled for the diff, as
   it is a deliberate change). Compaction + revision isolation checks passed. Gate-id replay
   recorded below.
+- [x] **T12 — delete `rewrite_history` and `Turn.action_target`.** DONE 2026-07-19 (Derek's
+  ruling). Both had no callers. `rewrite_history` was the only writer of `revision` events, so
+  the render support (`_revision_map` + the substitution in both compile views) went with it —
+  the revision pattern stays fully spec'd in 6.1.3 as designed-not-built. 229 tests green.

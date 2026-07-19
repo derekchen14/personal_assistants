@@ -53,8 +53,9 @@ One per consumer; nothing else walks the store directly:
 `history.jsonl` in the session dir — one turn per line, **strictly append-only**, bound and loaded
 by `load_history(path)` on session open (an existing file rebuilds the turn list and seeds
 `previous_summary`). Disk always matches memory once the first write lands. A user-utterance
-revision follows the compaction pattern: a kind-5 turn holds the revised text, a kind-6 `revision`
-event `{target, revised_index}` points the views at it, and the original turn is unchanged.
+revision follows the compaction pattern (designed-not-built): a kind-5 turn holds the revised
+text, a kind-6 `revision` event `{target, revised_index}` points the views at it, and the
+original turn is unchanged.
 
 ## Compaction
 
