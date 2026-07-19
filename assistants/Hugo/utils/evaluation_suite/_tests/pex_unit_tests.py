@@ -473,7 +473,7 @@ class TestOrchestratorLoop:
         result = orch_agent.take_turn('what posts do I have?')
         assert result['message'] == 'You have three posts in progress.'
         assert sorted(result) == ['actions', 'artifact', 'message']
-        messages = orch_agent.world.context.messages
+        messages = orch_agent.world.context.compile_messages()
         assert messages[0] == {'role': 'user', 'content': 'what posts do I have?'}
         assert messages[1] == {'role': 'assistant',
                                'content': 'You have three posts in progress.'}
@@ -483,7 +483,7 @@ class TestOrchestratorLoop:
                              _response(_text_block('All caught up.'))])
         result = orch_agent.take_turn('where were we?')
         assert result['message'] == 'All caught up.'
-        messages = orch_agent.world.context.messages
+        messages = orch_agent.world.context.compile_messages()
         assert [msg['role'] for msg in messages] == ['user', 'assistant', 'user', 'assistant']
         tool_use = messages[1]['content'][0]
         assert tool_use['type'] == 'tool_use' and tool_use['name'] == 'understand'
@@ -496,7 +496,7 @@ class TestOrchestratorLoop:
                              _response(_text_block('Sorry, no coffee.'))])
         result = orch_agent.take_turn('brew something')
         assert result['message'] == 'Sorry, no coffee.'
-        tool_result = json.loads(orch_agent.world.context.messages[2]['content'][0]['content'])
+        tool_result = json.loads(orch_agent.world.context.compile_messages()[2]['content'][0]['content'])
         assert tool_result['_success'] is False
         assert 'Unknown tool' in tool_result['_message']
 
@@ -505,7 +505,7 @@ class TestOrchestratorLoop:
                              _response(_tool_block('understand', {'op': 'read'}, block_id='t2')),
                              _response(_text_block('done'))])
         orch_agent.take_turn('check state twice')
-        second = json.loads(orch_agent.world.context.messages[4]['content'][0]['content'])
+        second = json.loads(orch_agent.world.context.compile_messages()[4]['content'][0]['content'])
         assert second['_error'] == 'duplicate_call'
 
     def test_identical_retry_after_error_still_runs(self, orch_agent):
@@ -516,7 +516,7 @@ class TestOrchestratorLoop:
                              _response(_tool_block('manage_flows', {'op': 'bogus'}, block_id='t2')),
                              _response(_text_block('gave up'))])
         orch_agent.take_turn('do the thing')
-        second = json.loads(orch_agent.world.context.messages[4]['content'][0]['content'])
+        second = json.loads(orch_agent.world.context.compile_messages()[4]['content'][0]['content'])
         assert second['_error'] != 'duplicate_call'  # re-called, not skipped
 
     def test_read_only_calls_capped_per_turn(self, orch_agent):
@@ -528,7 +528,7 @@ class TestOrchestratorLoop:
                  for idx, query in enumerate(queries, start=1)]
         _script(orch_agent, calls + [_response(_text_block('capped'))])
         orch_agent.take_turn('survey everything')
-        results = [json.loads(orch_agent.world.context.messages[idx]['content'][0]['content'])
+        results = [json.loads(orch_agent.world.context.compile_messages()[idx]['content'][0]['content'])
                    for idx in range(2, 2 * (cap + 1) + 1, 2)]
         assert [result['_success'] for result in results[:cap]] == [True] * cap
         assert results[cap]['_error'] == 'read_cap'
@@ -537,14 +537,14 @@ class TestOrchestratorLoop:
         _script(orch_agent, [_response(), _response(_text_block('after the nudge'))])
         result = orch_agent.take_turn('hello?')
         assert result['message'] == 'after the nudge'
-        assert orch_agent.world.context.messages[1] == {'role': 'user',
+        assert orch_agent.world.context.compile_messages()[1] == {'role': 'user',
                                                         'content': _NUDGE_MESSAGE}
 
     def test_thinking_only_twice_falls_back(self, orch_agent):
         _script(orch_agent, [_response(), _response()])
         result = orch_agent.take_turn('hello?')
         assert result['message'] == _FALLBACK_MESSAGE
-        assert orch_agent.world.context.messages[-1]['content'] == _FALLBACK_MESSAGE
+        assert orch_agent.world.context.compile_messages()[-1]['content'] == _FALLBACK_MESSAGE
 
     def test_consecutive_failures_cap_breaks_to_wrap_up(self, orch_agent):
         queue = _script(orch_agent, [_response(_tool_block('bogus_one', {})),
@@ -554,7 +554,7 @@ class TestOrchestratorLoop:
         result = orch_agent.take_turn('try something weird')
         assert result['message'] == 'I could not find that tool.'
         assert queue == []  # three rounds + the forced no-tools wrap-up, nothing more
-        assert orch_agent.world.context.messages[-2] == {'role': 'user',
+        assert orch_agent.world.context.compile_messages()[-2] == {'role': 'user',
                                                          'content': _WRAP_UP_MESSAGE}
 
     def test_wrap_up_with_no_text_falls_back(self, orch_agent):
@@ -566,16 +566,15 @@ class TestOrchestratorLoop:
     def test_agent_turn_recorded_in_context(self, orch_agent):
         _script(orch_agent, [_response(_text_block('Recorded.'))])
         orch_agent.take_turn('say something')
-        turns = orch_agent.world.context.full_conversation(keep_system=False)
-        assert turns[-1] == 'Agent: Recorded.'
+        assert orch_agent.world.context.compile_history().endswith('Agent: Recorded.')
 
     def test_epilogue_persists_session_files(self, orch_agent, sessions_dir):
         _script(orch_agent, [_response(_text_block('Saved.'))])
         orch_agent.take_turn('persist please')
         session = sessions_dir / orch_agent.world.conversation_id
         assert json.loads((session / 'state.json').read_text())['session']['turn_count'] == 1
-        lines = (session / 'messages.jsonl').read_text().splitlines()
-        assert len(lines) == 2  # user message + assistant text, mirrored to disk
+        lines = (session / 'history.jsonl').read_text().splitlines()
+        assert len(lines) == 4  # session start, user turn, the reply, the turn_wrap checkpoint
 
     def test_max_rounds_read_from_config(self, sessions_dir, monkeypatch):
         """The round budget flows from config: max_rounds=1 stops the loop after one round and
@@ -595,7 +594,7 @@ class TestOrchestratorLoop:
         agent.close()
         assert result['message'] == 'Wrapped up after one round.'
         assert queue == []  # one tool round + the forced no-tools wrap-up, nothing more
-        assert agent.world.context.messages[-2] == {'role': 'user',
+        assert agent.world.context.compile_messages()[-2] == {'role': 'user',
                                                     'content': _WRAP_UP_MESSAGE}
 
     def test_call_cap_read_from_config(self, engineer, monkeypatch):
@@ -646,7 +645,7 @@ class TestOrchestratorClickBypass:
                                                            thoughts='Hi! What shall we write?')
         result = orch_agent.take_turn('', dax='{000}', payload={})
         assert result['message'] == 'Hi! What shall we write?'
-        messages = orch_agent.world.context.messages
+        messages = orch_agent.world.context.compile_messages()
         assert messages[0]['content'].startswith('[click] dax={000} flow=chat')
         assert messages[1] == {'role': 'assistant', 'content': 'Hi! What shall we write?'}
 
@@ -654,7 +653,7 @@ class TestOrchestratorClickBypass:
         _script(orch_agent, [_response(_text_block('Building on your pick.'))])
         result = orch_agent.take_turn('make it punchier', dax='{000}', payload={})
         assert result['message'] == 'Building on your pick.'
-        injected = orch_agent.world.context.messages[0]['content']
+        injected = orch_agent.world.context.compile_messages()[0]['content']
         assert injected.startswith("[action] This turn arrived with a resolved flow: 'chat'")
         assert injected.endswith('make it punchier')
 
@@ -665,13 +664,14 @@ class TestOrchestratorClickBypass:
 
 
 class TestTurnCheckpoint:
-    """PEX records a backward-looking 'System' checkpoint turn at the end of every turn:
-    which flows completed, which flow is still active, and the grounded entity."""
+    """MEM records a backward-looking turn_wrap checkpoint (a kind-6 system activity) at the
+    end of every turn: which flows completed, which flow is still active, the grounded entity."""
 
     @staticmethod
     def _checkpoints(agent):
-        return [turn for turn in agent.world.context.full_conversation(keep_system=True)
-                if turn.startswith('System:') and '[checkpoint]' in turn]
+        return [turn.text for turn in agent.world.context.full_conversation(as_turns=True)
+                if turn.turn_type == 'action' and turn.role == 'system'
+                and turn.content.get('activity') == 'checkpoint']
 
     def test_plain_turn_records_checkpoint(self, orch_agent):
         _script(orch_agent, [_response(_text_block('All set.'))])

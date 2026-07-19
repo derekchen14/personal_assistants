@@ -29,12 +29,12 @@ class MemoryExtensionModule:
     def recap(self, utterance:str, prompt_tokens:int=0, completed:tuple=()):
         """The turn wrap (T20: `store_turn` renamed to match the module surface table —
         `recap`: start → compaction/promote → finish): record the agent turn, run start() (the
-        System checkpoint turn + per-turn resets), the compaction check, then finish() (persist).
+        turn_wrap checkpoint + per-turn resets), the compaction check, then finish() (persist).
         `prompt_tokens` is PEX's real acting-loop usage and `completed` the flows that reached
         Completed this turn, both passed by the Assistant (the World holds components, not
         modules). Promotion beyond explicit saves (PEX's store_preference tool writes L2 during
         the turn) is designed-not-built."""
-        self.context_coordinator.add_turn('Agent', utterance, turn_type='utterance')
+        self.context_coordinator.add_turn('agent', {'text': utterance})
         self.start(completed)
         # artifact long-term storage (append world.latest_artifact() to artifacts.jsonl in the
         # session dir) # designed-not-built
@@ -42,18 +42,20 @@ class MemoryExtensionModule:
         self.finish()
 
     def start(self, completed:tuple=()):
-        """Canonical turn 'module · start()': the backward-looking System checkpoint turn —
-        which flows completed this turn, which flow is still active, the grounded post — plus
-        the per-turn resets (is_newborn, consumed choices, turn count)."""
+        """Canonical turn 'module · start()': the backward-looking turn_wrap checkpoint (a
+        kind-6 system activity) — which flows completed this turn, which flow is still active,
+        the grounded post — plus the per-turn resets (is_newborn, consumed choices, turn count)."""
         state = self.world.state
         active = self.world.flows.get_flow(status='Active')
         parts = [f"completed: {', '.join(flow.name() for flow in completed) or 'none'}",
                  f"active: {active.name() if active else 'none'}"]
+        data = {'completed': [flow.name() for flow in completed],
+                'active': active.name() if active else None}
         active_post = state.get_active_post()
         if active_post:
             parts.append(f"post: {active_post}")
-        self.context_coordinator.add_turn('System', f"[checkpoint] {' | '.join(parts)}",
-                                          turn_type='checkpoint')
+            data['post'] = active_post
+        self.context_coordinator.save_checkpoint('turn_wrap', data, text=' | '.join(parts))
         for flow in self.world.flows._stack:  # the turn is over: nothing on the stack is newborn
             flow.is_newborn = False
         # Round 3.3 (D5): a completed flow other than the choices' writer has consumed them —

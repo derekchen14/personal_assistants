@@ -80,7 +80,7 @@ def _clean_leftovers(post_id:str, title:str):
 def _build_agent(session_id:str|None=None):
     """Orchestrator-path Agent with debug=True. Pass a `session_id` (the convo_id) to name the
     session dir after the scenario, so its transcript persists at a findable
-    database/sessions/<session_id>/messages.jsonl instead of an anonymous timestamp — that file is
+    database/sessions/<session_id>/history.jsonl instead of an anonymous timestamp — that file is
     the per-turn observability trace (NLU belief, tool calls, flow runs) read back for diagnosis."""
     from schemas.config import load_config
     import backend.assistant as agent_mod

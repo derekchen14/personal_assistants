@@ -29,7 +29,7 @@ Assistant - module (code), agent [run] (LLM)
       Skills
   Memory Extension Module (MEM) - three levels
     Context Coordinator (L1)
-      Turn [add] - utterance, action, checkpoint [save]
+      Turn [add] - utterance, action
     User Preferences (L2)
       Record [store] - endorsed, predicted
     Business Knowledge (L3)
@@ -48,7 +48,7 @@ Infrastructure
     Disk Storage
       state.json [save]
       scratchpad.jsonl
-      messages.jsonl
+      history.jsonl
     Ontology
       Dact / Dax / Flow
       Edge Flows
@@ -211,9 +211,12 @@ memory Levels only; Evaluation Suite tiers use names, not these codes.
 ### Context Coordinator (L1)
 
 The [Context Coordinator](./components/context_coordinator.md) is the append-only event stream for
-the session. A **Turn** [add] is one event — `utterance`, `action` (a trusted UI interaction
-carrying a dax and payload), or `checkpoint` [save] (a named saved context state) — with a
-`turn_id`, speaker (User, Agent, System), and text. Flows hold `turn_ids` pointing at their turns.
+the session and the single source of truth for the conversation. A **Turn** [add] is one event —
+`utterance` or `action` — with a `role` (user, agent, system; a **speaker** on an utterance, an
+**actor** on an action), a `turn_id`, and a `content` dict that always carries `text`. A
+**checkpoint** [save] is a system action (a named marker at a position in the stream), never a
+turn type; a *snapshot* is a passive copy of state (`state.json`), and the two never mix. Flows
+hold `turn_ids` pointing at their turns.
 
 ### User Preferences (L2)
 
@@ -253,8 +256,9 @@ modules. Callers name a **Family** (Claude, Gemini, GPT, Together) and an abstra
 structured-output parsing, and token-usage logging.
 
 **Disk Storage** — the per-session files: `state.json` (Dialogue State plus the serialized
-FlowStack copy), `scratchpad.jsonl` (Session Scratchpad entries), and `messages.jsonl` (persistent
-model-shaped conversation messages). The owning component determines who may write each file.
+FlowStack copy), `scratchpad.jsonl` (Session Scratchpad entries), and `history.jsonl` (the
+Context Coordinator's turn stream; the model-shaped message list is a projection computed from
+it, never stored). The owning component determines who may write each file.
 
 **Ontology** — the structural vocabulary in `ontology.py`: intents, flows, ambiguity levels,
 lifecycle values, and the dialogue-act system. A **Dact** is one atom of that system (a verb, noun,

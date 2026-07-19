@@ -123,9 +123,9 @@ def score_nlu(labels:int=0, seed=None, provider:str|None=None) -> tuple:
         for turn in case['turns']:
             if turn.get('role') != 'user':
                 if turn.get('utterance'):                  # some agent turns are action-only, no text
-                    agent.world.context.add_turn('Agent', turn['utterance'], turn_type='utterance')
+                    agent.world.context.add_turn('agent', {'text': turn['utterance']})
                 continue
-            agent.world.context.add_turn('User', turn['utterance'], turn_type='utterance')
+            agent.world.context.add_turn('user', {'text': turn['utterance']})
             expected = _single_flow(turn)
             if expected is None:
                 continue                                  # plan / general-ambiguity turn — not scored here

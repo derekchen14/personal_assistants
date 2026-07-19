@@ -107,7 +107,7 @@ def trace_record(case:dict, turn_index:int, user_turn_number:int, turn:dict, res
                  latency_seconds:float, belief_before:dict, belief_after:dict,
                  flow_stack_after:list[dict], grounding_after:dict,
                  ambiguity_after:dict, diagnosis:str) -> dict:
-    transcript = Path('database') / 'sessions' / case['convo_id'] / 'messages.jsonl'
+    transcript = Path('database') / 'sessions' / case['convo_id'] / 'history.jsonl'
     return {
         'convo_id': case['convo_id'],
         'turn_index': turn_index,

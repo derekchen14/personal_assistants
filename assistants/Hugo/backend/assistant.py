@@ -1,4 +1,3 @@
-import logging
 import threading
 from datetime import datetime
 
@@ -10,8 +9,6 @@ from backend.components.task_artifact import TaskArtifact
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.world import World
 from backend.prompts.for_orchestrator import build_orchestrator_prompt
-
-log = logging.getLogger(__name__)
 
 class Assistant:
 
@@ -31,48 +28,33 @@ class Assistant:
         self.pex.world = self.world
         self.mem.world = self.world
 
-    def take_turn(self, text:str, dax:str|None=None, payload:dict|None=None) -> dict:
-        """The threaded turn (round 3.4). Two lanes: NLU's thinking (check → detect_flows →
-        fill_slots → validate) runs on a worker thread; PEX's acting loop runs on main. No
-        stack lock — whichever lane stacks first, the other converges (same-type dedupe, or
-        the hook 3/5 scratchpad read). The click path stays synchronous: `_execute_click`
-        activates the flow react stacked, so react must finish first. An NLU crash is stored
-        and re-raised at the join, landing in this method's safety net; MEM stores the turn
-        at the end."""
+    def take_turn(self, text:str, dax:str|None=None, payload:dict={}) -> dict:
+        """ Three modules run asynchronously
+        1. NLU's think: (check → detect_flows → fill_slots → validate) runs on a worker thread
+        2. PEX's acting loop runs on main. Convergence is forced by hook point 3 or 5 based on PEX reading the scratchpad
+        3. MEM stores the turn at the end."""
+        def understand_user():
+            try:
+                self.nlu.think(text, payload)
+            except Exception as ecp:  # noqa: BLE001 — stored, re-raised at the join
+                nlu_error.append(ecp)
+            finally:
+                self.world.nlu_done.set()  # PEX's waits always wake, even on a crash
         try:
-            self._ensure_session()
+            self._init_session()
             turn_type = 'action' if dax else 'utterance'
-            self.world.context.add_turn('User', text, turn_type=turn_type)
-            log.info('USER (%s): %s', turn_type, text)
-
-            # Round 3.3: an open ambiguity persists across turns until NLU's check() clears it.
-            # Only the per-turn ask counts reset on a new user turn.
-            self.world.ambiguity.counts = dict.fromkeys(self.world.ambiguity.counts, 0)
+            content = {'text': text, 'dax': dax, 'payload': payload} if dax else {'text': text}
+            self.world.context.add_turn('user', content, turn_type=turn_type)
 
             nlu_thread, nlu_error = None, []
-            if dax:      # click: react is synchronous, belief lands before PEX
-                self.nlu.react(dax, payload or {})
+            if turn_type == 'action':
+                self.nlu.react(dax, payload)
                 self.world.nlu_done.set()
             else:
-                # NLU 1: the fast synchronous System-1 intent both lanes read (T16). A failed
-                # call stores '' so the Plan/Clarify gate and Continue narrowing stay quiet.
-                self.nlu.dialogue_state.classify_intent(self.engineer, self.world.context, text)
+                self.nlu.dialogue_state.classify_intent()
                 self.world.nlu_done.clear()
-                def run_nlu():
-                    try:
-                        self.nlu.think(text, payload or {})
-                    except Exception as ecp:  # noqa: BLE001 — stored, re-raised at the join
-                        nlu_error.append(ecp)
-                    finally:
-                        self.world.nlu_done.set()  # PEX's waits always wake, even on a crash
-                nlu_thread = threading.Thread(target=run_nlu, daemon=True)
+                nlu_thread = threading.Thread(target=understand_user, daemon=True)
                 nlu_thread.start()
-
-            # The utterances enter the Context Coordinator here — the Assistant is a thin
-            # wrapper handing the raw turn over; the coordinator builds the message (the
-            # [click]/[action] decoration is MEM's job, Unresolved 3). PEX appends only its
-            # working transcript (tool blocks, results, notes).
-            self.world.context.append_user_message(text, dax or '', payload)
 
             # turn_start scopes the contemplate read below (>= — tool-log turns advance
             # turn_id mid-loop, so equality would never match).
@@ -90,33 +72,30 @@ class Assistant:
             if any(entry['request'] == 'contemplate' and entry['turn_number'] >= turn_start
                    for entry in requests):
                 self.nlu.contemplate(text)
-                self.world.context.append_message({'role': 'assistant', 'content': utterance})
-                self.world.context.append_message({'role': 'user', 'content': '[contemplate] '
+                # The superseded reply is loop output, not the final reply — a text-only kind 4.
+                self.world.context.add_turn('agent', {'text': utterance, 'tool_uses': [],
+                    'tool_results': []}, turn_type='action')
+                self.world.context.add_turn('system', {'text': '[contemplate] '
                     'NLU re-routed the flow; act on the stack as it stands.'})
                 completed = self.pex.completed_this_turn  # prepare() resets it on re-entry
                 utterance = self.pex.execute(self.system_prompt, text='[contemplate] NLU '
                     're-routed the flow; act on the stack as it stands.')
                 self.pex.completed_this_turn = completed + self.pex.completed_this_turn
 
-            self.world.context.append_message({'role': 'assistant', 'content': utterance})
+            # MEM's recap writes the final reply as the single agent-utterance turn.
             self.mem.recap(utterance, self.pex.last_prompt_tokens, self.pex.completed_this_turn)
-            log.info('AGENT: %s', utterance[:256])
             return self._build_payload(utterance, self.world.latest_artifact())
         except Exception as ecp:  # noqa: BLE001 — top-level safety net
-            log.exception('take_turn crashed: %s', ecp)
             return self._fallback_response("Something went wrong on my end. Please try again.")
 
-    def _ensure_session(self):
-        """Orchestrator session start. Runs once per session: bind a session dir when
-        none is open (the dir IS the persistence format), bind the shared scratchpad to the
-        session's scratchpad.jsonl so completion entries land on disk, then build
-        and FREEZE the three-tier system prompt."""
+    def _init_session(self):
+        """Orchestrator session start. Runs once per session: bind a session dir when none is open,
+        bind the shared session scratchpad so entries land on disk, then build and FREEZE the system prompt."""
         if self.system_prompt is not None:
             return
         if self.world.conversation_id is None:
             self.world.open_session(datetime.now().strftime(f'{self.username}_%Y%m%d_%H%M%S'))
-        # The shared scratchpad (owned by the World; seen by NLU/PEX/policies) is bound to the
-        # session's file so completion entries land on disk.
+
         self.world.scratchpad._scratchpad_path = self.world.session_dir() / 'scratchpad.jsonl'
         state = self.world.state
         state.conversation_id = self.world.conversation_id
@@ -126,7 +105,7 @@ class Assistant:
             datetime.now().strftime('%Y-%m-%d'))
 
     def _fallback_response(self, message: str) -> dict:
-        self.world.context.add_turn('Agent', message, turn_type='agent_response')
+        self.world.context.add_turn('agent', {'text': message})
         payload = {'message': message, 'actions': [], 'artifact': None, 'block': 'default'}
         return payload
 

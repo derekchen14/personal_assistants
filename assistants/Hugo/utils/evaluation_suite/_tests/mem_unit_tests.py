@@ -90,7 +90,7 @@ class TestMEMFacade:
     def test_recent_history_reads_through_the_component(self, minimal_config):
         """T20: the L1 read is the Context Coordinator's — `recap` is the turn wrap now."""
         memory = MEM(minimal_config, None, 'test_user')
-        memory.context_coordinator.add_turn('User', 'draft a post about otters', 'utterance')
+        memory.context_coordinator.add_turn('user', {'text': 'draft a post about otters'})
         assert 'otters' in memory.context_coordinator.compile_history(keep_system=True)
 
 
@@ -100,21 +100,18 @@ class TestMEMFacade:
 
 
 
-def _transcript(turns:int) -> list[dict]:
-    """`turns` orchestrator rounds, 4 messages each: user utterance, assistant tool_use,
-    paired tool results, assistant wrap-up text."""
-    messages = []
+def _seed_transcript(coordinator, turns:int):
+    """`turns` orchestrator rounds, 3 turns each (4 projected messages): user utterance, one
+    kind-4 loop round (tool_use + paired result), agent wrap-up utterance."""
     for idx in range(turns):
-        messages.append({'role': 'user', 'content': f'user turn {idx}: ' + 'x' * 80})
-        messages.append({'role': 'assistant', 'content': [
-            {'type': 'text', 'text': f'working on {idx}'},
-            {'type': 'tool_use', 'id': f'toolu_{idx}', 'name': 'read_state',
-             'input': {'turn': idx}}]})
-        messages.append({'role': 'user', 'content': [
-            {'type': 'tool_result', 'tool_use_id': f'toolu_{idx}',
-             'content': json.dumps({'_success': True, 'filler': 'y' * 300})}]})
-        messages.append({'role': 'assistant', 'content': f'done with turn {idx}'})
-    return messages
+        coordinator.add_turn('user', {'text': f'user turn {idx}: ' + 'x' * 80})
+        coordinator.add_turn('agent', {'text': f'working on {idx}',
+            'tool_uses': [{'type': 'tool_use', 'id': f'toolu_{idx}', 'name': 'read_state',
+                           'input': {'turn': idx}}],
+            'tool_results': [{'type': 'tool_result', 'tool_use_id': f'toolu_{idx}',
+                              'content': json.dumps({'_success': True, 'filler': 'y' * 300})}]},
+            turn_type='action')
+        coordinator.add_turn('agent', {'text': f'done with turn {idx}'})
 
 
 
@@ -130,103 +127,102 @@ def _stub_summarizer(record:list):
 
 
 class TestCompression:
-    """Head/tail protection, tool-pair integrity, handoff shape, pruning placeholder, and
-    messages.jsonl consistency — all with a mocked summarizer (no LLM)."""
+    """Head/tail protection, structural tool-pair integrity, handoff shape, the pruning
+    rendering rule, and history.jsonl consistency — all with a mocked summarizer (no LLM).
+    Sizes count TURNS (round 6.1): the fixture holds 30 turns projecting to 40 messages."""
 
     @pytest.fixture
     def loaded(self, minimal_config, tmp_path):
         coordinator = ContextCoordinator(minimal_config)
-        coordinator.attach_messages(tmp_path / 'messages.jsonl')
-        for message in _transcript(10):  # 40 messages
-            coordinator.append_message(message)
+        coordinator.load_history(tmp_path / 'history.jsonl')
+        _seed_transcript(coordinator, 10)  # 30 turns → 40 projected messages
         return coordinator
 
     def test_too_short_list_is_not_compacted(self, minimal_config):
         coordinator = ContextCoordinator(minimal_config)
-        for message in _transcript(2):  # 8 messages <= head(3) + tail(20) + 1
-            coordinator.append_message(message)
+        _seed_transcript(coordinator, 2)  # 6 turns <= head(3) + tail(20) + 1
         assert coordinator.compact_messages(_stub_summarizer([]), protect_tail=20) is False
         assert coordinator.previous_summary is None
 
     def test_head_and_tail_are_protected(self, loaded):
-        before = [json.dumps(message, default=str) for message in loaded.messages]
+        before = loaded.compile_messages()
         assert loaded.compact_messages(_stub_summarizer([]), protect_tail=20) is True
-        after = loaded.messages
-        assert len(after) == 3 + 1 + 20  # head + one handoff + tail
-        assert [json.dumps(msg, default=str) for msg in after[:2]] == before[:2]
-        assert [json.dumps(msg, default=str) for msg in after[-20:]] == before[20:]
+        after = loaded.compile_messages()
+        # head turns 0-2 (4 messages) + the handoff + the visible tail (turns 10..29)
+        assert after[:4] == before[:4]
+        assert after[4]['content'].startswith(SUMMARY_PREFIX)
+        assert after[-24:] == before[-24:]  # rounds 4-9 render identically on both sides
 
     def test_handoff_message_shape(self, loaded):
         loaded.compact_messages(_stub_summarizer([]), protect_tail=20)
-        handoff = loaded.messages[3]
+        handoff = loaded.compile_messages()[4]
         assert handoff['role'] == 'user'
         assert handoff['content'].startswith(SUMMARY_PREFIX)
         assert 'summary #1' in handoff['content']
         assert handoff['content'].rstrip().endswith(
             'respond to the message below, not the summary above ---')
 
-    def test_tail_cut_never_splits_a_tool_pair(self, loaded):
-        # protect_tail=18 puts the raw cut on turn 5's tool results; alignment pulls the cut
-        # back so the parent assistant tool_use travels into the tail with its results.
-        assert loaded.compact_messages(_stub_summarizer([]), protect_tail=18) is True
-        handoff_idx = next(idx for idx, msg in enumerate(loaded.messages)
-                           if isinstance(msg['content'], str)
-                           and msg['content'].startswith(SUMMARY_PREFIX))
-        first_tail = loaded.messages[handoff_idx + 1]
-        assert first_tail['role'] == 'assistant'
-        assert first_tail['content'][1]['type'] == 'tool_use'
-        result_block = loaded.messages[handoff_idx + 2]['content'][0]
-        assert result_block['tool_use_id'] == first_tail['content'][1]['id']
+    def test_tool_pairs_stay_intact_across_the_cut(self, loaded):
+        # Pairing is structural now — a kind-4 turn holds its calls and results together, so
+        # every projected tool_use is immediately followed by its results whatever the cut.
+        assert loaded.compact_messages(_stub_summarizer([]), protect_tail=19) is True
+        messages = loaded.compile_messages()
+        for idx, message in enumerate(messages):
+            content = message['content']
+            if isinstance(content, list) and content and content[-1]['type'] == 'tool_use':
+                results = messages[idx + 1]['content']
+                assert results[0]['tool_use_id'] == content[-1]['id']
 
     def test_summarizer_sees_only_the_middle(self, loaded):
         record = []
         loaded.compact_messages(_stub_summarizer(record), protect_tail=20)
         middle = record[0]['middle']
-        assert len(middle) == 17  # messages 3..19 — nothing from the head or tail
-        assert middle[0]['content'] == 'done with turn 0'
-        assert middle[-1]['content'] == 'done with turn 4'
+        assert len(middle) == 9  # turns 3..9 rendered — nothing from the head or tail
+        assert middle[0]['content'].startswith('user turn 1')
+        assert middle[-1]['content'].startswith('user turn 3')
         assert record[0]['budget'] == 2000  # small middle clamps to the Hermes floor
 
-    def test_old_tool_results_pruned_tail_results_kept(self, loaded):
-        loaded.compact_messages(_stub_summarizer([]), protect_tail=20)
-        head_result = loaded.messages[2]['content'][0]['content']
-        assert head_result == '[Old tool output cleared to save context space]'
-        tail_result = loaded.messages[-2]['content'][0]['content']
-        assert 'filler' in tail_result  # inside the protected tail — untouched
+    def test_old_tool_results_render_pruned_store_keeps_them(self, loaded):
+        # Pruning is a rendering rule: turns older than protect_tail render the placeholder,
+        # while the stored turn (and history.jsonl) keeps the full result.
+        messages = loaded.compile_messages()
+        assert messages[2]['content'][0]['content'] == \
+            '[Old tool output cleared to save context space]'
+        assert 'filler' in messages[-2]['content'][0]['content']  # recent — untouched
+        assert 'filler' in loaded._history[1].content['tool_results'][0]['content']
 
-    def test_messages_jsonl_matches_memory_after_compaction(self, loaded, minimal_config,
-                                                             tmp_path):
+    def test_history_jsonl_round_trips_after_compaction(self, loaded, minimal_config,
+                                                        tmp_path):
         loaded.compact_messages(_stub_summarizer([]), protect_tail=20)
         reopened = ContextCoordinator(minimal_config)
-        reopened.attach_messages(tmp_path / 'messages.jsonl')
-        assert reopened.messages == loaded.messages
+        reopened.load_history(tmp_path / 'history.jsonl')
+        assert reopened.compile_messages() == loaded.compile_messages()
 
-    def test_checkpoint_records_the_compaction_event(self, loaded):
+    def test_event_turn_records_the_compaction(self, loaded):
         loaded.compact_messages(_stub_summarizer([]), protect_tail=20, prompt_tokens=70000)
-        checkpoint = loaded.get_checkpoint('compaction')
-        assert checkpoint['data'] == {'messages_before': 40, 'messages_after': 24,
-                                      'pruned_tool_results': 5, 'prompt_tokens': 70000}
+        event = loaded.full_conversation(as_turns=True)[-1]
+        assert event.content['activity'] == 'compaction'
+        assert event.content['result'] == {'start': 3, 'cut': 10, 'summary_index': 30,
+                                           'prompt_tokens': 70000}
 
     def test_second_compaction_updates_the_previous_summary(self, loaded):
         record = []
         loaded.compact_messages(_stub_summarizer(record), protect_tail=20)
-        for message in _transcript(5):  # the conversation keeps going
-            loaded.append_message(message)
+        _seed_transcript(loaded, 5)  # the conversation keeps going
         assert loaded.compact_messages(_stub_summarizer(record), protect_tail=20) is True
         assert record[0]['previous'] is None
         assert record[1]['previous'] == 'summary #1'
-        # the old handoff sits in the window and is never re-summarized as a turn
+        # the old summary turn is skipped and is never re-summarized as content
         assert all(not (isinstance(msg['content'], str)
                         and msg['content'].startswith(SUMMARY_PREFIX))
                    for msg in record[1]['middle'])
 
-    def test_rehydrated_session_seeds_previous_summary_from_handoff(self, loaded,
-                                                                    minimal_config, tmp_path):
+    def test_reloaded_session_seeds_previous_summary_from_history(self, loaded,
+                                                                  minimal_config, tmp_path):
         loaded.compact_messages(_stub_summarizer([]), protect_tail=20)
         reopened = ContextCoordinator(minimal_config)  # fresh process — no in-memory summary
-        reopened.attach_messages(tmp_path / 'messages.jsonl')
-        for message in _transcript(5):
-            reopened.append_message(message)
+        reopened.load_history(tmp_path / 'history.jsonl')
+        _seed_transcript(reopened, 5)
         record = []
         assert reopened.compact_messages(_stub_summarizer(record), protect_tail=20) is True
         assert record[0]['previous'] == 'summary #1'
@@ -404,94 +400,86 @@ class TestWorldSessions:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# ContextCoordinator — persistent message list (changes.md §5.5)
+# ContextCoordinator — the history store and its projection (round 6.1)
 # ═══════════════════════════════════════════════════════════════════
 
 
 
-def _tool_call_messages() -> list[dict]:
-    """A user turn, an assistant tool call, and its paired tool result (API-shaped)."""
-    return [
-        {'role': 'user', 'content': 'Draft a post about cheetahs'},
-        {'role': 'assistant', 'content': [{'type': 'tool_use', 'id': 'toolu_01',
-                                           'name': 'read_state', 'input': {}}]},
-        {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'toolu_01',
-                                      'content': '{"flow_name": "compose"}'}]},
-        {'role': 'assistant', 'content': 'Started a draft about cheetahs.'},
-    ]
+def _seed_tool_round(coordinator):
+    """A user utterance, one kind-4 loop round (call + paired result), the agent reply."""
+    coordinator.add_turn('user', {'text': 'Draft a post about cheetahs'})
+    coordinator.add_turn('agent', {'text': '',
+        'tool_uses': [{'type': 'tool_use', 'id': 'toolu_01', 'name': 'read_state',
+                       'input': {}}],
+        'tool_results': [{'type': 'tool_result', 'tool_use_id': 'toolu_01',
+                          'content': '{"flow_name": "compose"}'}]}, turn_type='action')
+    coordinator.add_turn('agent', {'text': 'Started a draft about cheetahs.'})
 
 
 
 
-class TestMessageList:
-    """The API-shaped orchestrator transcript (decisions 6, 12): appended as the loop runs,
-    mirrored to messages.jsonl, reloaded on session rehydrate. Turn records and
-    compile_history remain the human-readable view and are untouched by this list."""
+class TestHistoryStore:
+    """The single store (round 6.1): turns appended as the loop runs, mirrored to
+    history.jsonl, reloaded on session resume; compile_messages() is the derived API view."""
 
     @pytest.fixture
     def coordinator(self, minimal_config, tmp_path):
         coordinator = ContextCoordinator(minimal_config)
-        coordinator.attach_messages(tmp_path / 'messages.jsonl')
+        coordinator.load_history(tmp_path / 'history.jsonl')
         return coordinator
 
     def test_append_reload_round_trip(self, coordinator, minimal_config, tmp_path):
-        for message in _tool_call_messages():
-            coordinator.append_message(message)
+        _seed_tool_round(coordinator)
         reopened = ContextCoordinator(minimal_config)
-        reopened.attach_messages(tmp_path / 'messages.jsonl')
-        assert reopened.messages == _tool_call_messages()
+        reopened.load_history(tmp_path / 'history.jsonl')
+        assert reopened.compile_messages() == coordinator.compile_messages()
 
-    def test_ordering_survives_reload(self, coordinator, minimal_config, tmp_path):
-        for message in _tool_call_messages():
-            coordinator.append_message(message)
-        reopened = ContextCoordinator(minimal_config)
-        reopened.attach_messages(tmp_path / 'messages.jsonl')
-        assert [message['role'] for message in reopened.messages] == \
+    def test_projection_shape_and_ordering(self, coordinator):
+        _seed_tool_round(coordinator)
+        messages = coordinator.compile_messages()
+        assert [message['role'] for message in messages] == \
             ['user', 'assistant', 'user', 'assistant']
+        assert messages[0]['content'] == 'Draft a post about cheetahs'
+        assert messages[-1]['content'] == 'Started a draft about cheetahs.'
 
     def test_tool_result_pairing_preserved(self, coordinator, minimal_config, tmp_path):
-        for message in _tool_call_messages():
-            coordinator.append_message(message)
+        _seed_tool_round(coordinator)
         reopened = ContextCoordinator(minimal_config)
-        reopened.attach_messages(tmp_path / 'messages.jsonl')
-        call, result = reopened.messages[1], reopened.messages[2]
+        reopened.load_history(tmp_path / 'history.jsonl')
+        messages = reopened.compile_messages()
+        call, result = messages[1], messages[2]
         assert call['content'][0]['type'] == 'tool_use'
         assert result['content'][0]['tool_use_id'] == call['content'][0]['id']
 
-    def test_attach_fresh_path_starts_empty(self, coordinator, tmp_path):
-        assert coordinator.messages == []
-        assert not (tmp_path / 'messages.jsonl').exists()  # reads never create the file
+    def test_load_fresh_path_starts_empty(self, coordinator, tmp_path):
+        assert coordinator.compile_messages() == []
+        assert not (tmp_path / 'history.jsonl').exists()  # reads never create the file
 
-    def test_append_without_path_is_memory_only(self, minimal_config):
+    def test_add_turn_without_path_is_memory_only(self, minimal_config):
         coordinator = ContextCoordinator(minimal_config)
-        coordinator.append_message({'role': 'user', 'content': 'hello'})
-        assert coordinator.messages == [{'role': 'user', 'content': 'hello'}]
+        coordinator.add_turn('user', {'text': 'hello'})
+        assert coordinator.compile_messages() == [{'role': 'user', 'content': 'hello'}]
 
-    def test_append_creates_session_dir_lazily(self, minimal_config, tmp_path):
+    def test_add_turn_creates_session_dir_lazily(self, minimal_config, tmp_path):
         coordinator = ContextCoordinator(minimal_config)
-        coordinator.attach_messages(tmp_path / 'convo-9' / 'messages.jsonl')
-        coordinator.append_message({'role': 'user', 'content': 'hello'})
-        assert (tmp_path / 'convo-9' / 'messages.jsonl').exists()
+        coordinator.load_history(tmp_path / 'convo-9' / 'history.jsonl')
+        coordinator.add_turn('user', {'text': 'hello'})
+        assert (tmp_path / 'convo-9' / 'history.jsonl').exists()
 
-    def test_reset_clears_list_and_file(self, coordinator, tmp_path):
-        coordinator.append_message({'role': 'user', 'content': 'gone soon'})
+    def test_reset_clears_store_and_file(self, coordinator, tmp_path):
+        coordinator.add_turn('user', {'text': 'gone soon'})
         coordinator.reset()
-        assert coordinator.messages == []
-        assert (tmp_path / 'messages.jsonl').read_text() == ''
+        assert coordinator.compile_messages() == []
+        assert (tmp_path / 'history.jsonl').read_text() == ''
 
-    def test_turn_records_stay_independent(self, coordinator):
-        coordinator.add_turn('User', 'Draft a post about cheetahs', 'utterance')
-        coordinator.append_message({'role': 'user', 'content': 'Draft a post about cheetahs'})
-        assert coordinator.turn_count == 1  # append_message never touches Turn records
-        assert 'cheetahs' in coordinator.compile_history()
-
-    def test_open_session_rehydrates_messages(self, sessions_dir, minimal_config):
-        (sessions_dir / 'convo-42').mkdir(parents=True)
-        lines = [json.dumps(message) for message in _tool_call_messages()]
-        (sessions_dir / 'convo-42' / 'messages.jsonl').write_text('\n'.join(lines) + '\n')
+    def test_open_session_reloads_history(self, sessions_dir, minimal_config):
+        seeded = ContextCoordinator(minimal_config)
+        seeded.load_history(sessions_dir / 'convo-42' / 'history.jsonl')
+        _seed_tool_round(seeded)
         world, memory = _make_world(minimal_config)
         world.open_session('convo-42')
-        assert world.context.messages == _tool_call_messages()
+        assert world.context.compile_messages() == seeded.compile_messages()
+        assert world.context.turn_count == 3  # the recorded session replaces the seed turn
 
 
 # ==============================================================================

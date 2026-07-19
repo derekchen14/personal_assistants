@@ -40,7 +40,7 @@ def nlu(minimal_config, tmp_path):
     nlu.world = world
     pex.world = world
     mem.world = world
-    world.context.add_turn('User', '', 'action')
+    world.context.add_turn('user', {'text': '', 'dax': '', 'payload': {}}, 'action')
     world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
     return nlu
 

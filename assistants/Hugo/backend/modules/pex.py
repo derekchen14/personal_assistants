@@ -311,17 +311,17 @@ class PolicyExecutor:
 
     def _execute_click(self, dax:str) -> str:
         """Pure click: the dax names the flow and NLU.react already stacked it with the filled
-        slots. Activate it — the artifact thoughts ARE the reply (no LLM loop). The Assistant
-        owns the utterance appends to the Context Coordinator (Unresolved 3)."""
+        slots. Activate it — the artifact thoughts ARE the reply (no LLM loop). MEM's recap
+        records the reply turn."""
         result = self.activate_flow({'flow_name': dax2flow(dax)})
         artifact = self.world.latest_artifact()
         return result.get('question') or artifact.thoughts or _FALLBACK_MESSAGE
 
     def _run_loop(self, system_prompt:str) -> str:
-        """The bounded acting loop: call the LLM with the frozen system prompt + persistent
-        message list + orchestrator tool catalog; call tools through `_tool`;
-        append results. A plain-text response with no tool calls ends the turn and IS the
-        utterance, verbatim."""
+        """The bounded acting loop: call the LLM with the frozen system prompt + the projected
+        history (compile_messages) + orchestrator tool catalog; call tools through `_tool`;
+        record each round as one kind-4 turn. A plain-text response with no tool calls ends the
+        turn and IS the utterance, verbatim."""
         context = self.world.context
         tools = self.get_tools_for_orchestrator()
         valid = {tool['name'] for tool in tools}
@@ -334,7 +334,7 @@ class PolicyExecutor:
         finished = 0
         while round_idx < self.max_rounds:
             round_idx += 1
-            response = self.engineer._call_claude(system_prompt, context.messages,
+            response = self.engineer._call_claude(system_prompt, context.compile_messages(),
                                                   model_id, tools=tools, max_tokens=4096)
             self._track_usage(response)
             text_parts = [block.text for block in response.content if block.type == 'text']
@@ -347,26 +347,25 @@ class PolicyExecutor:
                         raise TimeoutError('NLU still thinking after 30s at hook point 5')
                     note = self._read_nlu_entry()
                     if note:
-                        context.append_message({'role': 'assistant', 'content': text})
-                        context.append_message({'role': 'user', 'content': note})
+                        context.add_turn('agent', {'text': text, 'tool_uses': [],
+                                                   'tool_results': []}, turn_type='action')
+                        context.add_turn('system', {'text': note})
                         continue                                  # PEX 5: one more round to decide
-                    return text  # terminal — the Assistant appends the reply (Unresolved 3)
-                if nudged:  # thinking-only twice → canned fallback; the Assistant appends it
+                    return text  # terminal — MEM's recap records the reply
+                if nudged:  # thinking-only twice → canned fallback; MEM's recap records it
                     return _FALLBACK_MESSAGE
                 nudged = True
-                context.append_message({'role': 'user', 'content': _NUDGE_MESSAGE})
+                context.add_turn('system', {'text': _NUDGE_MESSAGE})
                 continue
 
-            blocks = [{'type': 'text', 'text': part} for part in text_parts if part]
-            blocks += [{'type': 'tool_use', 'id': tu.id, 'name': tu.name,
-                        'input': dict(tu.input or {})} for tu in tool_uses]
-            context.append_message({'role': 'assistant', 'content': blocks})
+            blocks = [{'type': 'tool_use', 'id': tu.id, 'name': tu.name,
+                       'input': dict(tu.input or {})} for tu in tool_uses]
 
             results = []
             for tool_use in tool_uses:
-                # Pairing invariant: every appended tool_use MUST get a tool_result in the next
-                # message, even if the tool call itself crashes — a dangling tool_use poisons
-                # messages.jsonl for every later turn of the session.
+                # The round lands as ONE kind-4 turn below, calls and results together — a
+                # crash inside a tool call converts to a corrective error, so the pairing can
+                # never dangle.
                 try:
                     result, last_call = self._guarded_call(tool_use, valid, last_call)
                 except TimeoutError:      # a hook-wait expiry fails the turn loudly (round 3.4)
@@ -381,7 +380,8 @@ class PolicyExecutor:
                          result['_success'])
                 results.append({'type': 'tool_result', 'tool_use_id': tool_use.id,
                                 'content': json.dumps(result, default=str)})
-            context.append_message({'role': 'user', 'content': results})
+            context.add_turn('agent', {'text': text, 'tool_uses': blocks,
+                                       'tool_results': results}, turn_type='action')
             if len(self.completed_this_turn) > finished:  # a completed flow resets the round
                 finished = len(self.completed_this_turn)  # budget — every plan step starts fresh
                 round_idx = 0
@@ -394,8 +394,8 @@ class PolicyExecutor:
         wrap-up (the terminal emit), so completed work still gets a real reply instead of the
         canned fallback. Falls back only if even that produces nothing."""
         context = self.world.context
-        context.append_message({'role': 'user', 'content': _WRAP_UP_MESSAGE})
-        response = self.engineer._call_claude(system_prompt, context.messages,
+        context.add_turn('system', {'text': _WRAP_UP_MESSAGE})
+        response = self.engineer._call_claude(system_prompt, context.compile_messages(),
                                               model_id, max_tokens=1024)
         self._track_usage(response)
         text_parts = [block.text for block in response.content if block.type == 'text']
@@ -447,10 +447,6 @@ class PolicyExecutor:
     # -- Tool calls -------------------------------------------------------
 
     def _tool(self, tool_name:str, tool_input:dict) -> dict:
-        self.world.context.add_turn(
-            'Agent', f'[tool:{tool_name}] {json.dumps(tool_input)[:200]}',
-            turn_type='action',
-        )
         try:
             if tool_name in self.tools:
                 service, method_name = self.tools[tool_name]

@@ -42,7 +42,8 @@ class World:
         user turn has turn_count = 1 and every downstream component can assume world.state and
         latest_artifact() are usable."""
         self.artifacts.append(TaskArtifact())
-        self.context.add_turn('System', 'Session started.', 'system')
+        self.context.add_turn('system', {'text': 'Session started.', 'activity': 'session_start',
+                                         'result': {}}, turn_type='action')
 
     def latest_artifact(self):
         return self.artifacts[-1]
@@ -58,7 +59,7 @@ class World:
         a PREVIOUS session's contents is MEM's job (read from disk), never a rebind here."""
         self.conversation_id = conversation_id
         session_path = _SESSIONS_DIR / conversation_id
-        self.context.attach_messages(session_path / 'messages.jsonl')
+        self.context.load_history(session_path / 'history.jsonl')
         self.scratchpad.attach(session_path / 'scratchpad.jsonl')
 
     def session_dir(self) -> Path:

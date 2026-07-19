@@ -185,7 +185,7 @@ def _score_corpus(ids:list|None=None, report_path:Path|None=None) -> dict:
     turn_secs = [sec for r in results for sec in r[3]]
     records = [record for r in results for record in r[4]]
     for case, result in zip(cases, results):
-        transcript = f"database/sessions/{case['convo_id']}/messages.jsonl"
+        transcript = f"database/sessions/{case['convo_id']}/history.jsonl"
         print(f"{case['convo_id']}: {result[0]}/{result[1]} completed in "
               f"{sum(result[3]):.0f}s | transcript {transcript}")
     sweep_secs = time.time() - sweep_start

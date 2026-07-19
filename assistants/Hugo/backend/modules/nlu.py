@@ -11,43 +11,6 @@ from backend.prompts.for_contemplate import build_contemplate_prompt as _build_c
 from schemas.ontology import FLOW_ONTOLOGY, Intent
 from utils.helper import edge_flows_for, dax2flow, flow2dax, intent2flow
 
-def _repeat_count(flows, name:str) -> int:
-    """How many live (Active/Pending) instances of `name` sit on the stack — more than one
-    means reconciliation kept a second same-type task (round 2.13.3)."""
-    return sum(1 for entry in flows._stack
-               if entry.flow_type == name and entry.status in ('Active', 'Pending'))
-
-
-def _entity_ids(flow) -> set:
-    """The flow's task identity (round 2.13.3): its entity slot's values reduced to the domain
-    parts (post/sec/snip/chl — `ver` is bookkeeping, ignored), so equivalent serialized shapes
-    compare equal. String-valued entity slots (find.query, chat.topic) compare as strings."""
-    slot = flow.slots.get(flow.entity_slot)
-    ids = set()
-    for val in (getattr(slot, 'values', None) or []):
-        if isinstance(val, dict):
-            ids.add(tuple(val.get(part, '') for part in ('post', 'sec', 'snip', 'chl')))
-        else:
-            ids.add(str(val))
-    return ids
-
-
-def _valid_snip(snip) -> bool:
-    """Shape check only: an int index, or a two-item non-negative ascending slice, parsed from
-    the string the schema emits. Range-vs-sentence-count stays execution-time."""
-    if snip in ('', None):
-        return False
-    if isinstance(snip, int):
-        return snip >= 0
-    parts = snip if isinstance(snip, list) else str(snip).strip().strip('[]').split(',')
-    try:
-        nums = [int(str(part).strip()) for part in parts]
-    except ValueError:
-        return False
-    if len(nums) == 1:
-        return nums[0] >= 0
-    return len(nums) == 2 and 0 <= nums[0] < nums[1]
-
 class NaturalLanguageUnderstanding:
 
     def __init__(self, config, prompt_engineer):
@@ -371,6 +334,45 @@ class NaturalLanguageUnderstanding:
         state.confidence = confidence
         state.pred_flows = pred_flows
         return state
+
+
+def _repeat_count(flows, name:str) -> int:
+    """How many live (Active/Pending) instances of `name` sit on the stack — more than one
+    means reconciliation kept a second same-type task (round 2.13.3)."""
+    return sum(1 for entry in flows._stack
+               if entry.flow_type == name and entry.status in ('Active', 'Pending'))
+
+
+def _entity_ids(flow) -> set:
+    """The flow's task identity (round 2.13.3): its entity slot's values reduced to the domain
+    parts (post/sec/snip/chl — `ver` is bookkeeping, ignored), so equivalent serialized shapes
+    compare equal. String-valued entity slots (find.query, chat.topic) compare as strings."""
+    slot = flow.slots.get(flow.entity_slot)
+    ids = set()
+    for val in (getattr(slot, 'values', None) or []):
+        if isinstance(val, dict):
+            ids.add(tuple(val.get(part, '') for part in ('post', 'sec', 'snip', 'chl')))
+        else:
+            ids.add(str(val))
+    return ids
+
+
+def _valid_snip(snip) -> bool:
+    """Shape check only: an int index, or a two-item non-negative ascending slice, parsed from
+    the string the schema emits. Range-vs-sentence-count stays execution-time."""
+    if snip in ('', None):
+        return False
+    if isinstance(snip, int):
+        return snip >= 0
+    parts = snip if isinstance(snip, list) else str(snip).strip().strip('[]').split(',')
+    try:
+        nums = [int(str(part).strip()) for part in parts]
+    except ValueError:
+        return False
+    if len(nums) == 1:
+        return nums[0] >= 0
+    return len(nums) == 2 and 0 <= nums[0] < nums[1]
+
 
 # Module alias — the module is NLU; the class name spells it out.
 NLU = NaturalLanguageUnderstanding

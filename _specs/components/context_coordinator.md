@@ -1,36 +1,31 @@
 # Context Coordinator
 
 [MEM](../modules/mem.md)'s **L1** memory — the append-only **event stream** that records the session exactly
-as it happened: user utterances and actions, agent utterances and actions (PEX actions tagged), and system
-events (NLU decisions, networking issues, code errors, anything harness-related). Self-check / verify failures
-land here too, logged as `system` actions — this is the channel that notifies MEM of a violation (the parallel
-limbs being a `TaskArtifact` carrying the violation and a Session-Scratchpad `violation` entry that notifies
-NLU). It also holds the rolling summaries MEM computes; CC does not summarize itself — it is the durable
-storage layer for both raw events and MEM-produced summaries.
+as it happened, and the **single source of truth** for the conversation: the model-shaped message
+list is a projection computed from it, never stored. Self-check / verify failures land here too, logged as
+`system` actions — this is the channel that notifies MEM of a violation (the parallel limbs being a
+`TaskArtifact` carrying the violation and a Session-Scratchpad `violation` entry that notifies NLU). It also
+holds the summaries MEM computes; CC does not summarize itself — it is the durable storage layer for both raw
+events and MEM-produced summaries.
 
 ## Turn Structure
 
-Each turn has four attributes:
+Every turn is `{role, turn_type, content, turn_id, timestamp}`. The six kinds are the 2×3 grid of
+`turn_type` (utterance, action) × `role` (user, agent, system); the role is a **speaker** on an
+utterance and an **actor** on an action. `content` is a kind-shaped dict that **always carries
+`text`**, so views render `content['text']` with no per-kind branching.
 
-| Attribute | Values |
-|---|---|
-| `turn_id` | Unique identifier for cross-referencing with dialogue state snapshots |
-| Role | `agent`, `user`, `system` |
-| Form | `text`, `speech`, `image`, `action` |
-| Content | The payload |
-
-- `text` — standard text utterance (most common)
-- `speech` — voice input (transcribed)
-- `image` — image input (e.g., screenshot, photo)
-- `action` — UI interaction (button click, selection, drag)
-
-### Role-Form Matrix
-
-| Role | Text | Speech | Image | Action |
+| # | role | turn_type | content | holds |
 |---|---|---|---|---|
-| Agent | Yes | — | — | — |
-| User | Yes | Yes | Yes | Yes |
-| System | Yes | — | — | Yes |
+| 1 | user | utterance | `{text}` | the message the user typed |
+| 2 | user | action | `{dax, payload, text}` | a click; `text` filled when typed alongside |
+| 3 | agent | utterance | `{text}` | the final reply PEX produced this turn |
+| 4 | agent | action | `{tool_uses, tool_results, text}` | one PEX loop round, calls and results together |
+| 5 | system | utterance | `{text}` | compaction summaries, nudges, wrap-ups, [nlu]/[contemplate] notes |
+| 6 | system | action | `{activity, result, text}` | compaction events, checkpoints, revisions, session start |
+
+Speech and image inputs are designed-not-built; they would arrive as content fields on kinds 1/2,
+never as new kinds.
 
 ### Turn–Flow Mapping
 
@@ -40,65 +35,56 @@ A single turn may involve multiple flows (e.g., when PEX chains flows within one
 - **Dialogue State** stores flows with `flow_id` — each flow holds pointers to the `turn_id`s in which it was active.
 - The mapping is one-directional: **flows → turns**. To find which turns belong to a flow, look up the flow in a dialogue state snapshot and read its `turn_id` pointers.
 
-## Fast-Access Window
+## The three read surfaces
 
-CC maintains a `recent` list — the last 7 utterance-type turns, pre-filtered for fast access. This avoids scanning the full history for the most common retrieval pattern (recent conversation context for prompts).
+One per consumer; nothing else walks the store directly:
 
-CC also tracks `completed_flows` — a list of flows that finished during the current session. This is a convenience index; the canonical flow lifecycle data lives in Dialogue State.
+- **`full_conversation()`** — every turn, all six kinds, in order. For traces, debugging, and
+  checkpoint slicing.
+- **`compile_history(look_back, keep_system)`** — user and agent utterances rendered `Role: text`
+  (system utterances included when `keep_system`). For NLU and expert prompts; the output variable
+  is `convo_history`.
+- **`compile_messages()`** — the API projection for the PEX agent's model calls, computed on
+  demand: per-kind rendering, the latest compaction's summary spliced over its skip range, and old
+  tool results rendered as the pruning placeholder. Kind 6 is invisible to the model.
 
-## Core Capabilities
+## Storage
 
-- **History access**: Retrieve prior turns for prompting and debugging
-- **Query and filter**: Retrieve turns by role, form, `turn_id`, or content pattern
-- **`compile_history(turns, keep_system)`**: Primary retrieval method. Returns the last N turns of conversation history. When `turns` is small (≤ 7), reads from the fast-access `recent` window. For larger lookbacks, falls back to scanning the full history. `keep_system` controls whether system turns are included (default: false for prompts, true for debugging).
-- **Checkpoints**: Save full session state for debugging, replay, and long-term resumption (see below)
+`history.jsonl` in the session dir — one turn per line, **strictly append-only**, bound and loaded
+by `load_history(path)` on session open (an existing file rebuilds the turn list and seeds
+`previous_summary`). Disk always matches memory once the first write lands. A user-utterance
+revision follows the compaction pattern: a kind-5 turn holds the revised text, a kind-6 `revision`
+event `{target, revised_index}` points the views at it, and the original turn is unchanged.
 
 ## Compaction
 
-When the message stream grows past the configured threshold, CC compacts the middle: prune old tool outputs,
-protect the head and the recent tail, and summarize the middle on a cheap auxiliary model. The outcome is
-recorded **two ways, treated differently**:
+When PEX's real prompt-token usage passes the configured threshold, MEM triggers compaction: protect the
+head and the recent tail (counted in turns), summarize the middle on a cheap auxiliary model, and **append**
+two turns — nothing is destroyed or rewritten:
 
-- **Summary handoff — a `user` message.** The summary enters the running stream as a `user` message
-  (`SUMMARY_PREFIX … END_OF_SUMMARY`) that replaces the summarized middle. This is the **vehicle**: it feeds
-  the next prompt, and a later compaction folds it into the next summary (`previous_summary`).
-- **Diagnostic event — a `system` turn.** The compaction event (tokens compressed, tool results pruned) is a
-  **system turn** — a diagnostic, excluded from user-facing history (`compile_history` `keep_system=false`).
-  It is not the summary vehicle. (Hugo logs this via `save_checkpoint('compression')` today; align it to a
-  system turn.)
+- **Summary — a kind-5 turn.** The summary text (`SUMMARY_PREFIX … END_OF_SUMMARY`). Summaries chain
+  iteratively (`previous_summary`), so only the latest one is ever projected.
+- **Compaction event — a kind-6 turn.** `{activity: 'compaction', result: {start, cut, summary_index,
+  prompt_tokens}}`. `compile_messages()` reads the events, skips the compacted range, and splices the
+  latest summary at its start.
 
-The end-of-session **checkpoints** below are a separate, full-session developer snapshot — unrelated to
-per-compaction summary placement.
+Tool-result pruning is a **rendering rule**, not stored state: kind-4 turns older than the protected tail
+render results over the size threshold as a placeholder, while the store (and `history.jsonl`) keeps the
+full results for traces. Pair integrity is structural — a kind-4 turn holds its calls and results
+together, so no boundary can split them.
 
 ## Checkpoints
 
-A checkpoint is a developer-facing snapshot of a full conversation session. It bundles:
-
-- The complete turn history from the Context Coordinator
-- A collection of dialogue state snapshots (see `dialogue_state.md` State History)
-
-Checkpoints are created automatically at the end of a conversation session. They enable:
-
-- **Debugging**: Inspect the exact state at any point in a past session
-- **State replay**: Reconstruct and step through a session turn by turn
-- **Long-term session resumption**: A user can return to a saved session days later
-
-Checkpoints are not user-visible — they are a developer/system tool for diagnostics and recovery.
+A **checkpoint** is a named marker at a position in the stream — a kind-6 system action
+`{activity: 'checkpoint', result: {label, turn_id, data}}` — never a copy of the stream: history as of a
+checkpoint is the slice of turns up to its `turn_id`. A **snapshot** is the other thing — a passive copy
+of state at a moment (`state.json`); the two never mix. `save_checkpoint(label, data, text)` writes the
+marker (MEM's per-turn `turn_wrap` is the standing example); `get_checkpoint(label)` returns the newest
+match, exposed to the PEX agent through `coordinate_context`.
 
 ## Boundary with the higher MEM Levels
 
 Within [MEM](../modules/mem.md), L1 (this event stream) is the per-session record; the higher tiers persist
 beyond the session — [User Preferences](./user_preferences.md) (L2, per-account) and
 [Business Knowledge](./business_context.md) (L3, per-client). CC is the storage layer: it stores the raw event
-log and holds rolling conversation summaries as special turn entries, but it does not compute them.
-
-## Conversation Summarization
-
-A rolling summary of older events keeps the context window bounded.
-
-- **Trigger**: when turn count or token budget grows too large (specific threshold TBD).
-- **Ownership**: MEM computes the summary; CC stores the result as a special turn entry in its log.
-- **Effect**: replaces older turns in the context window, freeing space while preserving key information.
-
-This complements [compaction](../modules/mem.md#1--context-coordinator-l1): compaction protects the message
-window mid-run, while the rolling summary condenses the broader narrative across turns.
+log and holds MEM-produced summaries as kind-5 turns, but it does not compute them.
