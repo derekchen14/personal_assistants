@@ -73,11 +73,11 @@ class BasePolicy:
         """Resolve a title or post_id string to an actual post_id."""
         if not identifier:
             return None
-        # If it looks like a UUID, use it directly
-        if len(identifier) == 8 or '-' in identifier:
-            result = tools('read_metadata', {'post_id': identifier})
-            if result['_success']:
-                return identifier
+        # A raw post id resolves directly, whatever its shape (eval-seeded ids like
+        # 'SeedBulb04' are valid too); a title/nickname errors clean and falls through
+        result = tools('read_metadata', {'post_id': identifier})
+        if result['_success']:
+            return identifier
 
         # Try with and without status suffixes; a hyphenated form also tries its spaced form
         candidates = [identifier]
@@ -99,8 +99,10 @@ class BasePolicy:
                 return items[0]['post_id']
 
         # Fuzzy title pass (2.15.2) — mirror _resolve_sec_id's difflib matching over the library
-        listing = tools('find_posts', {'limit': 50})
-        titles = [item['title'].lower() for item in listing['items']] if listing['_success'] else []
+        result = tools('find_posts', {'limit': 50})
+        listing = {'items': [item for item in result['items'] if item['title']]} \
+            if result['_success'] else {'items': []}
+        titles = [item['title'].lower() for item in listing['items']]
         for query in candidates:
             matches = difflib.get_close_matches(query.lower(), titles, n=1, cutoff=0.6)
             if matches:
@@ -153,9 +155,10 @@ class BasePolicy:
             # through the standing shown-candidates path.
             token = max(reference.replace('-', ' ').split(), key=len)
             result = tools('find_posts', {'query': token})
-            items = result['items'] if result['_success'] else []
+            hits = result['items'] if result['_success'] else []
+            items = [item for item in hits if item['title']]  # untitled entries aren't options
             if not items:
-                items = tools('find_posts', {})['items']
+                items = [item for item in tools('find_posts', {})['items'] if item['title']]
             state.grounding['choices'] = [
                 {'kind': 'post', 'label': item['title'], 'status': item['status'],
                  'entity': {'post': item['post_id'], 'sec': '', 'snip': '', 'chl': '', 'ver': True},
