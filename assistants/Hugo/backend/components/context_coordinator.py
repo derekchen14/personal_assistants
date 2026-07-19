@@ -69,7 +69,7 @@ class ContextCoordinator:
         self._history.append(turn)
         if turn_type == 'utterance' and role in ('user', 'agent'):
             self.num_utterances += 1
-        self._write_line(turn)
+        self.save_turn_to_disk(turn)
         return turn
 
     def save_checkpoint(self, label:str, data:dict|None=None, text:str=''):
@@ -94,7 +94,7 @@ class ContextCoordinator:
         if self._history_path is not None and self._history_path.exists():
             self._history_path.write_text('', encoding='utf-8')
 
-    # ── The three read surfaces ─────
+    # ── Reads ─────
 
     def full_conversation(self, as_turns:bool=False) -> list:
         """Every turn, all six kinds, in order — the raw view."""
@@ -150,7 +150,7 @@ class ContextCoordinator:
                 return [{'role': 'assistant', 'content': content['text']}]
             return [{'role': 'user', 'content': content['text']}]
         if turn.role == 'user':
-            return [{'role': 'user', 'content': _decorate_click(content)}]
+            return [{'role': 'user', 'content': self._decorate_click(content)}]
         if turn.role == 'agent':
             if not content['tool_uses']:
                 return [{'role': 'assistant', 'content': content['text']}]
@@ -190,7 +190,7 @@ class ContextCoordinator:
                 self.previous_summary = body.strip()
                 break
 
-    def _write_line(self, turn:Turn):
+    def save_turn_to_disk(self, turn:Turn):
         """Strictly append-only — the first write flushes any pre-attach turns (the seed), and
         nothing ever rewrites the file (revisions and compactions append)."""
         if self._history_path is None:
@@ -232,7 +232,8 @@ class ContextCoordinator:
             return False
         rendered = [message for idx in middle for message in self._render_turn(idx)]
         budget = max(_MIN_SUMMARY_TOKENS,
-                     min(int(_estimate_tokens(rendered) * _SUMMARY_RATIO), _MAX_SUMMARY_TOKENS))
+                     min(int(self._estimate_tokens(rendered) * _SUMMARY_RATIO),
+                         _MAX_SUMMARY_TOKENS))
         summary = summarize(rendered, self.previous_summary, budget)
         self.previous_summary = summary
         self.add_turn('system', {'text': f'{SUMMARY_PREFIX}\n{summary}{END_OF_SUMMARY}'})
@@ -281,27 +282,20 @@ class ContextCoordinator:
                 return turn.text
         return None
 
-    @property
-    def last_user_turn(self):
-        for turn in reversed(self._history):
-            if turn.role == 'user':
-                return turn
-        return None
+    @staticmethod
+    def _decorate_click(content:dict) -> str:
+        """Render a kind-2 click turn as the model-facing user message."""
+        dax, payload, text = content['dax'], content['payload'], content['text']
+        if not text.strip():
+            return f'[click] dax={dax} flow={dax2flow(dax)} payload={json.dumps(payload, default=str)}'
+        return (f'[action] This turn arrived with a resolved flow: {dax2flow(dax)!r} '
+                f'(dax {dax}, payload {payload}). Do not re-decide the click — build on it.\n{text}')
 
-
-def _decorate_click(content:dict) -> str:
-    """Render a kind-2 click turn as the model-facing user message."""
-    dax, payload, text = content['dax'], content['payload'], content['text']
-    if not text.strip():
-        return f'[click] dax={dax} flow={dax2flow(dax)} payload={json.dumps(payload, default=str)}'
-    return (f'[action] This turn arrived with a resolved flow: {dax2flow(dax)!r} '
-            f'(dax {dax}, payload {payload}). Do not re-decide the click — build on it.\n{text}')
-
-
-def _estimate_tokens(messages:list[dict]) -> int:
-    """Rough chars-per-token estimate over message contents."""
-    chars = 0
-    for message in messages:
-        content = message['content']
-        chars += len(content) if isinstance(content, str) else len(json.dumps(content, default=str))
-    return chars // _CHARS_PER_TOKEN
+    @staticmethod
+    def _estimate_tokens(messages:list[dict]) -> int:
+        """Rough chars-per-token estimate over message contents."""
+        chars = 0
+        for message in messages:
+            content = message['content']
+            chars += len(content) if isinstance(content, str) else len(json.dumps(content, default=str))
+        return chars // _CHARS_PER_TOKEN

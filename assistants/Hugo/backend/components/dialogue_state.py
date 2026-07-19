@@ -295,7 +295,9 @@ class DialogueState:
         if payload:
             entity_dict, filtered = _split_payload(payload)
             extracted = _extract_entities(flow, entity_dict)
-            if not extracted and context.last_user_turn.turn_type == 'action' and filtered:
+            # A payload only ever arrives on an action turn (internal FE contract) — no
+            # turn_type re-check.
+            if not extracted and filtered:
                 _unpack_user_actions(flow, filtered)
 
         if flow.is_filled():

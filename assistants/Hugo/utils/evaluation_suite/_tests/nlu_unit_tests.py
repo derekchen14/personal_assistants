@@ -30,8 +30,8 @@ def nlu(minimal_config, tmp_path):
     """Real module wiring (mirrors Assistant.__init__): NLU/PEX/MEM each build their own
     components, the World holds the shared references. Only the LLM call sites on nlu.engineer
     get mocked per-test, so every conditional branch in NLU stays reachable. The fixture seeds
-    a User action turn so Phase 1c (last_user_turn.turn_type == 'action') is exercisable by
-    default, and attaches a tmp scratchpad since validate writes an entry every turn."""
+    a User action turn for a realistic context, and attaches a tmp scratchpad since validate
+    writes an entry every turn."""
     engineer = PromptEngineer(minimal_config)
     nlu = NLU(minimal_config, engineer)
     pex = PEX(minimal_config, engineer)
