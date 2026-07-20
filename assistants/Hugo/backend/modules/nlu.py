@@ -179,8 +179,10 @@ class NaturalLanguageUnderstanding:
         state = self._write_belief(flow_name, detection['confidence'],
             [{'name': flow_name, 'dax': flow2dax(flow_name),
               'confidence': detection['confidence']}], curr_flow)
-    
-        turn_content = {'text': parsed, 'tool_uses': [], 'tool_results': []}
+
+        # The turn's text must be a string — compile_messages renders it as an API text block.
+        text = f"re-detected '{flow_name}' (confidence {detection['confidence']})"
+        turn_content = {'text': text, 'tool_uses': [], 'tool_results': []}
         self.world.context.add_turn('agent', turn_content, turn_type='action')
         self.world.context.add_turn('system', {'text': '[contemplate] NLU re-routed the flow based on contemplation.'})
         return self.validate(state, 'think', failed or '')
