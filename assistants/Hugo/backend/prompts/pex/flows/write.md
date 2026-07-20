@@ -50,9 +50,9 @@ Trim/shorten-only and image replace/remove requests are handled here directly â€
 
 - `execution_error(violation, message)` for hard failures after retries.
 - `declare_ambiguity(level, metadata)` for unclear or vague user intent.
-- `read_scratchpad(action, key, value)` to read the scratchpad for prior findings
-- `coordinate_context(lookback)` to look at conversation history going back to the beginning
-- `read_flow_stack(details='flows')` to see what other flows are on the stack
+- `scratchpad(op='read', origin, keys)` to read the scratchpad for prior findings
+- `coordinate_context(op='get_history', turns=6)` to look at conversation history going back to the beginning
+- `view_policies()` to see what other flows are on the stack
 
 ## Few-shot examples
 
@@ -113,4 +113,4 @@ Resolved Details:
 
 Trajectory: no tool calls
 
-Final reply: fallback_flow(flow='rework')
+Final reply: manage_flows(op='fallback', flow_name='rework')

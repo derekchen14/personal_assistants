@@ -30,8 +30,8 @@ If `datetime.start` is in the past, call `declare_ambiguity(level='specific', me
 
 - `execution_error(violation, message)`
 - `declare_ambiguity(**params)`
-- `read_scratchpad(**params)`
-- `read_flow_stack(details)`
+- `scratchpad(op='read', origin, keys)`
+- `view_policies()`
 
 ## Few-shot examples
 

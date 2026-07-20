@@ -25,8 +25,8 @@ from schemas.config import load_config
 from schemas.ontology import FLOW_ONTOLOGY
 from utils.helper import flow2dax
 
-_HOT_PATH_TOOLS = ('manage_flows', 'understand', 'append_to_scratchpad', 'store_preference',
-                   'ask_clarification_question')
+_ORCH_TOOLS = ('manage_flows', 'understand', 'scratchpad', 'coordinate_context',
+               'store_preference')
 
 
 # ==============================================================================
@@ -74,21 +74,24 @@ class TestOrchestratorToolDefs:
     """Hot-path tool definitions and the orchestrator's tool list (decision 16 allowlist)."""
 
     def test_defs_cover_tool_registry_exactly(self, mock_agent):
+        """One registry, one naming rule (5.2.6): method = '_' + tool name."""
         pex = mock_agent.pex
-        names = [tool['name'] for tool in pex._orchestrator_tool_definitions()]
-        assert names == list(_HOT_PATH_TOOLS)
-        assert set(pex._orchestrator_toolset) == set(names)
+        assert set(pex.toolset) == {'manage_flows', 'understand', 'view_policies', 'scratchpad',
+                                    'declare_ambiguity', 'execution_error', 'coordinate_context',
+                                    'store_preference'}
+        for name, method in pex.toolset.items():
+            assert method.__name__ == f'_{name}'
 
     def test_orchestrator_tool_list_composition(self, mock_agent):
         names = [tool['name'] for tool in mock_agent.pex.get_tools_for_orchestrator()]
-        for name in _HOT_PATH_TOOLS:
-            assert name in names
-        for name in ('coordinate_context', 'read_scratchpad'):  # borrowed from the component menu
+        for name in _ORCH_TOOLS:
             assert name in names
         for name in READ_ONLY_DOMAIN_TOOLS:
             assert name in names, f'allowlisted read-only tool {name} missing'
-        for name in ('handle_ambiguity', 'manage_memory', 'call_flow_stack'):
-            assert name not in names  # retired on the orchestrator path
+        # sub-agent-only tools and retired names are absent from the PEX Agent menu
+        for name in ('view_policies', 'declare_ambiguity', 'execution_error', 'read_scratchpad',
+                     'read_flow_stack', 'stackon_flow', 'ask_clarification_question'):
+            assert name not in names
         writes = {'create_post', 'update_post', 'delete_post', 'revise_content', 'release_post'}
         assert not writes & set(names)  # domain writes only via execute()
 
@@ -108,24 +111,22 @@ class TestOrchestratorDispatch:
         assert list(result['state']) == ['session', 'beliefs', 'grounding', 'flow_stack']
 
     def test_manage_flows_stacks_and_updates_the_document(self, sessions_dir, mock_agent):
-        """state.json persistence moved to MEM's turn-end finish(); the tool result carries
-        the refreshed document."""
+        """A non-running op returns a bare ack (5.2.5); the stack change is visible in the
+        live FlowStack, surfaced to the agent by the next round's [state] refresh."""
         mock_agent.world.open_session('wire-test')
         result = mock_agent.pex.call_tool('manage_flows',
                                                {'op': 'stackon', 'flow_name': 'outline',
                                                 'active': False})
-        assert result['_success'] is True
-        assert result['state']['flow_stack'][0]['flow_name'] == 'outline'
+        assert result == {'_success': True, '_error': ''}
         assert mock_agent.pex.flow_stack.get_flow().flow_type == 'outline'
 
     def test_manage_flows_pop_clears_the_stack(self, sessions_dir, mock_agent):
-        """`pop` removes Completed and Invalid flows all at once; the saved document shows it."""
+        """`pop` removes Completed and Invalid flows all at once; the live stack shows it."""
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         pex.flow_stack.stackon('chat').status = 'Completed'
         result = pex.call_tool('manage_flows', {'op': 'pop'})
-        assert result['_success'] is True
-        assert result['state']['flow_stack'] == []
+        assert result == {'_success': True, '_error': ''}
         assert pex.flow_stack.to_list() == []
 
     def test_manage_flows_bad_op_returns_corrective_error(self, sessions_dir, mock_agent):
@@ -145,17 +146,18 @@ class TestOrchestratorDispatch:
         assert result['_error'] == 'invalid_input'
         assert 'NLU fills slots' in result['_message']
 
-    def test_read_and_append_scratchpad_tools(self, mock_agent, tmp_path):
-        """The split scratchpad tools: append_to_scratchpad rejects an originless entry and stamps
-        the contract fields on the LLM-authored one; read_scratchpad filters by origin."""
+    def test_scratchpad_read_and_append(self, mock_agent, tmp_path):
+        """The one scratchpad tool (5.2.2): op='append' files an entry (origin defaults to the
+        active flow / orchestrator when none given), op='read' filters by origin; append_entry
+        stamps the contract fields."""
         pex = mock_agent.pex
         pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
-        originless = pex.call_tool('append_to_scratchpad', {'entry': {'finding': 'intro is weak'}})
-        assert originless['_success'] is False and originless['_error'] == 'invalid_input'
-        appended = pex.call_tool('append_to_scratchpad',
-                                      {'entry': {'origin': 'audit', 'finding': 'intro is weak'}})
-        assert appended == {'_success': True, 'size': 1}
-        result = pex.call_tool('read_scratchpad', {'origin': 'audit'})
+        originless = pex.call_tool('scratchpad', {'op': 'append', 'entry': {'finding': 'weak'}})
+        assert originless['_success'] is True   # files under orchestrator, no rejection
+        appended = pex.call_tool('scratchpad',
+            {'op': 'append', 'entry': {'origin': 'audit', 'finding': 'intro is weak'}})
+        assert appended == {'_success': True, 'size': 2}
+        result = pex.call_tool('scratchpad', {'op': 'read', 'origin': 'audit'})
         assert result['entries'] == [{'origin': 'audit', 'finding': 'intro is weak', 'version': 1,
                                       'turn_number': mock_agent.world.context.num_utterances,
                                       'used_count': 0}]
@@ -178,33 +180,33 @@ class TestScopedToolSurface:
                                  {'level': 'general', 'metadata': {'missing': 'nope'}})
         assert bad['_success'] is False and bad['_error'] == 'invalid_input'
 
-    def test_ask_clarification_question_tool(self, mock_agent):
-        pex = mock_agent.pex
-        none = pex.call_tool('ask_clarification_question', {})
-        assert none['_success'] is False and none['_error'] == 'invalid_input'
-        mock_agent.world.ambiguity.recognize('partial', {'missing': 'source', 'entity': 'post'})
-        result = pex.call_tool('ask_clarification_question', {})
-        assert result['_success'] is True and result['question']
-
+    # test_ask_clarification_question_tool removed — 5.2.3 deleted the ask path; the question
+    # reaches the PEX Agent in-band via the round refresh, no fetch tool.
     # test_recover_from_ambiguity_tool removed — T19 deleted the tool (recovery is NLU's or
     # the sub-agents' call, never the orchestrator's).
 
-    def test_flow_stack_tools_replace_call_flow_stack(self, mock_agent):
+    def test_sub_agent_flow_tools(self, mock_agent):
+        """The sub-agent surface (5.2.1/5.2.4): view_policies reads the live stack + active
+        slots; manage_flows defers (stackon/fallback only — update/pop belong to the PEX layer)."""
         pex = mock_agent.pex
         pex.flow_stack.stackon('outline')
-        flows = pex.call_tool('read_flow_stack', {'details': 'flows'})
-        assert flows['_success'] is True and flows['flows'][0]['flow_name'] == 'outline'
-        assert pex.call_tool('stackon_flow', {'flow': 'compose'}) == \
-            {'_success': True, 'stacked': 'compose'}
-        assert pex.call_tool('fallback_flow', {'flow': 'write'}) == \
-            {'_success': True, 'fell_back_to': 'write'}
+        view = pex.call_tool('view_policies', {})
+        assert view['_success'] is True and view['flows'][0]['flow_name'] == 'outline'
+        assert pex.call_tool('manage_flows',
+            {'op': 'stackon', 'flow_name': 'compose', 'defer': True}) == \
+            {'_success': True, '_error': ''}
+        assert pex.flow_stack.get_flow().flow_type == 'compose'
+        bad = pex.call_tool('manage_flows', {'op': 'pop', 'defer': True})
+        assert bad['_success'] is False and bad['_error'] == 'invalid_input'
 
-    def test_manage_memory_tool_is_gone(self, mock_agent):
+    def test_retired_tools_are_gone(self, mock_agent):
         pex = mock_agent.pex
-        orch_names = {tool['name'] for tool in pex.get_tools_for_orchestrator()}
-        comp_names = {tool['name'] for tool in pex._component_tool_definitions()}
-        assert 'manage_memory' not in orch_names and 'manage_memory' not in comp_names
-        result = pex.call_tool('manage_memory', {'action': 'read_scratchpad'})
+        orch = {tool['name'] for tool in pex.get_tools_for_orchestrator()}
+        flow = {tool['name'] for tool in pex.get_tools_for_flow(pex.flow_stack.stackon('outline'))}
+        for gone in ('manage_memory', 'read_scratchpad', 'append_to_scratchpad', 'read_flow_stack',
+                     'stackon_flow', 'fallback_flow', 'ask_clarification_question', 'save_findings'):
+            assert gone not in orch and gone not in flow
+        result = pex.call_tool('manage_memory', {'action': 'read'})
         assert result['_success'] is False and 'Unknown tool' in result['_message']
 
     def test_read_scratch_value_reads_flat_entry(self, mock_agent, tmp_path):
@@ -259,12 +261,13 @@ class TestDispatchFlow:
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack)
         pex.flow_stack.stackon('outline')
         result = pex.execute()   # internal runtime plumbing, not a tool
-        assert result['_success'] is True
-        assert result['status'] == 'Completed'
-        assert result['completion'] == {'origin': 'outline', 'version': 1,
-                                        'turn_number': wired.world.context.num_utterances, 'used_count': 0,
-                                        'summary': 'Drafted the intro.', 'metadata': {}}
-        assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == [result['completion']]
+        # One shape (5.2.5): {_success, _error, artifact} — the artifact carries the flow's work.
+        assert result['_success'] is True and result['_error'] == ''
+        assert result['artifact']['origin'] == 'outline'
+        assert result['artifact']['thoughts'] == 'Drafted the intro.'
+        # The completion entry lives on the scratchpad — surfaced by the refresh, not the result.
+        entry = pex.session_scratchpad.read(keys=['summary', 'metadata'])[0]
+        assert entry['origin'] == 'outline' and entry['summary'] == 'Drafted the intro.'
         # T12: the completed flow left the stack in code — the pop is PEX's, never the agent's.
         assert pex.flow_stack.to_list() == []
         assert state.get_active_post() == 'cafe01'
@@ -272,7 +275,7 @@ class TestDispatchFlow:
     # test_manage_flows_slots_reach_the_policy_run removed — T18 deleted the slot-write path
     # through manage_flows (NLU fills the flow it stacks; policies fill the rest).
 
-    def test_non_completed_returns_status_and_question(self, wired):
+    def test_non_completed_returns_the_artifact(self, wired):
         pex = wired.pex
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack, status='Active',
                                              thoughts='Need a post first.')
@@ -280,10 +283,10 @@ class TestDispatchFlow:
                                         observation='Which post should I work on?')
         pex.flow_stack.stackon('outline')
         result = pex.execute()
-        assert result['_success'] is True
-        assert result['status'] == 'Active'
-        assert result['question'] == 'Which post should I work on?'
-        assert 'completion' not in result
+        assert result['_success'] is True and result['_error'] == ''
+        assert result['artifact']['thoughts'] == 'Need a post first.'
+        # The pending question is not in the result — the round refresh carries it (5.2.3).
+        assert 'Which post should I work on?' in pex.refresh()
 
     def test_empty_artifact_fails_validation(self, wired):
         pex = wired.pex
@@ -335,11 +338,12 @@ class TestPolicyCompletion:
         pex.flow_stack.stackon('outline')
         result = pex.execute()
         assert result['_success'] is True
-        assert result['completion'] == {'origin': 'outline', 'version': 1,
-                                        'turn_number': wired.world.context.num_utterances, 'used_count': 0,
-                                        'summary': 'Wrote the intro.', 'metadata': {'sec': 'intro'}}
-        # The policy's record IS the tool result — no fallback duplicate from execute().
-        assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == [result['completion']]
+        assert result['artifact']['origin'] == 'outline'
+        # complete_flow wrote exactly one entry — no fallback duplicate from execute().
+        assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == [
+            {'origin': 'outline', 'version': 1,
+             'turn_number': wired.world.context.num_utterances, 'used_count': 0,
+             'summary': 'Wrote the intro.', 'metadata': {'sec': 'intro'}}]
         assert pex.flow_stack.to_list() == []   # T12: the completed flow left the stack in code
 
     # test_complete_flow_blocks_ungrounded_completion removed with write_state — the grounding
@@ -1736,9 +1740,8 @@ from backend.prompts.for_pex import build_flow_system
 
 _FLOW_DIR = _Path(__file__).resolve().parents[3] / 'backend' / 'prompts' / 'pex' / 'flows'
 _TOOLS_YAML = _Path(__file__).resolve().parents[3] / 'schemas' / 'tools.yaml'
-_COMPONENT_TOOLS = {'declare_ambiguity', 'coordinate_context', 'read_scratchpad',
-                    'read_flow_stack', 'stackon_flow', 'fallback_flow',
-                    'execution_error', 'save_findings'}
+_COMPONENT_TOOLS = {'declare_ambiguity', 'coordinate_context', 'scratchpad',
+                    'view_policies', 'manage_flows', 'execution_error'}
 
 
 def _flow_files():
@@ -1864,7 +1867,7 @@ class TestPlanLifecycle:
 
         result = pex.call_tool('manage_flows',
                                     {'op': 'stackon', 'flow_name': 'outline'})
-        assert result['_success'] is True and result['status'] == 'Completed'
+        assert result['_success'] is True and result['artifact']['origin'] == 'outline'
         # T12: outline left the stack via execute()'s pop, which promoted compose to Active;
         # the run-the-top loop always stops at a completion — the agent judges what runs next.
         entries = [(entry['flow_name'], entry['status']) for entry in pex.flow_stack.to_list()]
@@ -1872,14 +1875,14 @@ class TestPlanLifecycle:
         assert ('release', 'Pending') in entries
         result = pex.call_tool('manage_flows', {'op': 'pop'})
         # 2.13.2: a pop against an already-Active top removes nothing and promotes nothing —
-        # no policy runs, the result is state-only, and the stack is unchanged.
-        assert result['_success'] is True and 'status' not in result
+        # no policy runs, the result is a bare ack (5.2.5), and the stack is unchanged.
+        assert result == {'_success': True, '_error': ''}
         entries = [(entry['flow_name'], entry['status']) for entry in pex.flow_stack.to_list()]
         assert ('compose', 'Active') in entries and ('release', 'Pending') in entries
         # Running the Active compose is the manual run button: op='update', status='Active'.
         # Its completion pops it in code and promotes release — where the loop stops again.
         result = pex.call_tool('manage_flows',
                            {'op': 'update', 'fields': {'status': 'Active'}})
-        assert result['_success'] is True and result['status'] == 'Completed'
+        assert result['_success'] is True and result['artifact']['origin'] == 'outline'
         entries = [(entry['flow_name'], entry['status']) for entry in pex.flow_stack.to_list()]
         assert entries == [('release', 'Active')]

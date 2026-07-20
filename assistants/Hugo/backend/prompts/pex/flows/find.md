@@ -27,8 +27,8 @@ If the policy's `find_posts` failed (indicated by a missing or malformed `Items`
 
 - `execution_error(violation, message)`
 - `declare_ambiguity(**params)`
-- `read_scratchpad(**params)`
-- `read_flow_stack(details)`
+- `scratchpad(op='read', origin, keys)`
+- `view_policies()`
 
 ## Few-shot examples
 

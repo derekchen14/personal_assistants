@@ -33,8 +33,8 @@ An empty channel list is never ambiguous — it defaults to `['mt1t']`, the prim
 
 - `execution_error(violation, message)` when a tool fails in a way that should surface as a policy-layer error artifact rather than a per-channel failure row.
 - `declare_ambiguity(level, metadata)` when the user named a channel that does not match any known one. Never for an empty channel list — that defaults to `mt1t`.
-- `read_scratchpad(action, key, value)` to read a per-channel token when the user has stored authentication preferences there.
-- `read_flow_stack(details='flows')` to check whether another Publish flow (`schedule`, `cite`) is already queued behind this release, so the output notes what runs next.
+- `scratchpad(op='read', origin, keys)` to read a per-channel token when the user has stored authentication preferences there.
+- `view_policies()` to check whether another Publish flow (`schedule`, `cite`) is already queued behind this release, so the output notes what runs next.
 
 ## Output Shape
 
@@ -142,7 +142,7 @@ Resolved Details:
 - channel: ['Substack']
 
 Trajectory:
-1. `read_flow_stack(details='flows')` → a `schedule` flow is queued behind this release for the LinkedIn cross-post, so release only the named channel now.
+1. `view_policies()` → a `schedule` flow is queued behind this release for the LinkedIn cross-post, so release only the named channel now.
 2. `channel_status(post_id='4b90c1a2', platform='substack')` → ok.
 3. `release_post(post_id='4b90c1a2', platform='substack')` → `{_success: True, url: 'https://substack.com/p/migrating-a-monolith-to-services'}`.
 

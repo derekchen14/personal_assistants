@@ -30,8 +30,8 @@ If a read tool fails outright, call `execution_error(violation='tool_error', mes
 
 - `execution_error(violation, message)`
 - `declare_ambiguity(**params)`
-- `read_scratchpad(**params)`
-- `read_flow_stack(details)`
+- `scratchpad(op='read', origin, keys)`
+- `view_policies()`
 
 ## Few-shot examples
 

@@ -37,8 +37,8 @@ If the section the user named doesn't exist on either post, call `declare_ambigu
 
 - `execution_error(violation, message)`
 - `declare_ambiguity(**params)`
-- `read_scratchpad(**params)`
-- `read_flow_stack(details)`
+- `scratchpad(op='read', origin, keys)`
+- `view_policies()`
 
 ## Few-shot examples
 

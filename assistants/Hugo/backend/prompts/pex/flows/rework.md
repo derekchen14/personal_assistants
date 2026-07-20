@@ -17,7 +17,7 @@ This skill describes how to rework a blog post given user-supplied items: a list
 ## Handling Ambiguity and Errors
 
 - Vague guidance (no concrete spans, no numbered list): emit JSON with empty `changes` and `done`; describe the confusion in `summary`. Do not save anything.
-- Wrong flow: if the request reads as a Write edit — sentence cleanup inside one paragraph, or trimming a few words/sentences — call `fallback_flow(flow='write')`. The policy re-routes through the flow stack — you still emit the JSON with empty arrays and a `summary` line naming the right flow.
+- Wrong flow: if the request reads as a Write edit — sentence cleanup inside one paragraph, or trimming a few words/sentences — call `manage_flows(op='fallback', flow_name='write')`. The policy re-routes through the flow stack — you still emit the JSON with empty arrays and a `summary` line naming the right flow.
 - If `revise_content` fails twice, the policy emits a `failed_to_save` error artifact. Do not attempt a third call from the skill.
 
 ## Tools
@@ -31,8 +31,8 @@ This skill describes how to rework a blog post given user-supplied items: a list
 ### General tools
 
 - `execution_error(violation, message)` for hard failures after retries.
-- `read_scratchpad(action, key, value)` to read the audit scratchpad when prior findings exist for this section.
-- `read_flow_stack(details='flows')` to see what flow follows rework, which sometimes informs whether to leave breadcrumbs for a subsequent write.
+- `scratchpad(op='read', origin, keys)` to read the audit scratchpad when prior findings exist for this section.
+- `view_policies()` to see what flow follows rework, which sometimes informs whether to leave breadcrumbs for a subsequent write.
 
 ## Output
 

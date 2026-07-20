@@ -210,7 +210,7 @@ class NaturalLanguageUnderstanding:
             self._repair_slots(flow) # are the frontend's internal contract, trusted as-is
 
         detected = state.flow_name(string=True)
-        entry = {'version': 1, 'turn_number': self.world.context.num_utterances, 'used_count': 0}
+        entry = {'turn_number': self.world.context.num_utterances}  # append_entry stamps the rest
         if op != 'react' and state.pred_flows:
             # The candidate flows and their tallies ride the entry — PEX's back-up channel to
             # stack a dropped flow later (support at or below 0.5 marks a dropped flow).
@@ -261,8 +261,8 @@ class NaturalLanguageUnderstanding:
                             question = f'switch {name} from {grounded[part]} to {pred[part]}?'
                             self.ambiguity_handler.recognize('confirmation',
                                 metadata={'missing': name, 'question': question})
-                            self.world.scratchpad.append_entry('nlu', {'version': 1,
-                                'turn_number': self.world.context.num_utterances, 'used_count': 0,
+                            self.world.scratchpad.append_entry('nlu', {
+                                'turn_number': self.world.context.num_utterances,
                                 'summary': f'{name} conflict on {part}: kept {grounded[part]}'})
                             pred[part] = grounded[part]      # the live target wins
                 if pred.get('snip') and not _valid_snip(pred['snip']):
@@ -276,22 +276,23 @@ class NaturalLanguageUnderstanding:
 
     def recover(self):
         result, success = self.ambiguity_handler.recover(self.world.prefs, self.world.scratchpad)
-        entry = {'version': 1, 'turn_number': self.world.context.num_utterances,
-                 'used_count': 0, 'found' if success else 'missing': result}
+        entry = {'turn_number': self.world.context.num_utterances,
+                 'found' if success else 'missing': result}
         self.world.scratchpad.append_entry('recovery', entry)
         return {'recovery': result}
 
     def review_scratchpad(self) -> dict:
         """Synchronous review pass at NLU's turn point. Conservative for now: repair entries
-        missing the contract fields (version / turn_number / used_count) losslessly via the
-        NLU-only `amend_entry`; semantic review — merging contradictions, pruning stale notes
-        via `prune_entry`, maintaining used_count — is designed-not-built."""
+        missing a `turn_number` losslessly via the NLU-only `amend_entry` (version / used_count
+        are stamped by append_entry now). The scan reads non-consuming so it never advances the
+        seen-cursor PEX's round refresh relies on; the repair keeps `used_count` untouched
+        (reset defaults False). Semantic review — merging contradictions, pruning stale notes
+        via `prune_entry` — is designed-not-built."""
         repaired = 0
-        for entry in self.world.scratchpad.read():
-            if all(field in entry for field in ('version', 'turn_number', 'used_count')):
+        for entry in self.world.scratchpad.read(consume=False):
+            if 'turn_number' in entry:
                 continue
-            amended = {'version': 1, 'used_count': 0,
-                       'turn_number': self.world.context.num_utterances, **entry}
+            amended = {'turn_number': self.world.context.num_utterances, **entry}
             self.world.scratchpad.amend_entry(entry['origin'], entry.get('turn_number'), amended)
             repaired += 1
         return {'reviewed': True, 'size': self.world.scratchpad.size, 'repaired': repaired}

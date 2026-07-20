@@ -222,9 +222,9 @@ class BasePolicy:
         top of stack — a Completed flow buried under live work waits there, and pop's top-down
         loop clears it once the flows above it resolve."""
         flow.status = 'Completed'
-        entry = {'version': 1, 'turn_number': context.num_utterances, 'used_count': 0,
+        entry = {'turn_number': context.num_utterances,
                  'summary': summary, 'metadata': metadata or {}}
-        self.scratchpad.append_entry(flow.name(), entry)
+        self.scratchpad.append_entry(flow.name(), entry)   # stamps version / used_count
         self._completion = {**entry, 'origin': flow.name()}
         return self._completion
 

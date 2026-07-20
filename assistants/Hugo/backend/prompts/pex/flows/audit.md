@@ -36,8 +36,8 @@ If the post already matches the user's voice and needs no edits, make no `revise
 
 - `execution_error(violation, message)` for hard failures (total loss of metrics).
 - `declare_ambiguity(level, metadata)` rare in audit — the entity is the post, guaranteed by the policy guard.
-- `read_scratchpad(action, key, value)` to read prior `find` / `inspect` findings for this post.
-- `read_flow_stack(details='flows')` to see what follows audit.
+- `scratchpad(op='read', origin, keys)` to read prior `find` / `inspect` findings for this post.
+- `view_policies()` to see what follows audit.
 
 ## Few-shot examples
 

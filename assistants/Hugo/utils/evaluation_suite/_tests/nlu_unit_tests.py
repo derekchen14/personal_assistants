@@ -496,9 +496,11 @@ class TestSessionScratchpad:
         assert file_memory.size == 2
 
     def test_entry_dict_is_stamped_and_appended(self, file_memory):
+        # append_entry owns the contract stamps now (round 5.2): version + used_count land here.
         file_memory.append_entry('repair', {'note': 'bad outline'})
         entries = file_memory.read()
-        assert entries == [{'note': 'bad outline', 'origin': 'repair'}]
+        assert entries == [{'note': 'bad outline', 'origin': 'repair',
+                            'version': 1, 'used_count': 0}]
 
     def test_clear_truncates_file(self, file_memory):
         file_memory.append_entry('orchestrator', {'finding': 'gone soon'})
@@ -510,7 +512,8 @@ class TestSessionScratchpad:
         path = tmp_path / 'scratchpad.jsonl'
         SessionScratchpad(scratchpad_path=str(path)).append_entry('orchestrator', {'note': 'kept'})
         reopened = SessionScratchpad(scratchpad_path=str(path))
-        assert reopened.read() == [{'note': 'kept', 'origin': 'orchestrator'}]
+        assert reopened.read() == [{'note': 'kept', 'origin': 'orchestrator',
+                                    'version': 1, 'used_count': 0}]
 
     # ── origin stamping (decision 17) ────────────────────────────────
 
@@ -539,19 +542,20 @@ class TestSessionScratchpad:
         file_memory.append_entry('audit', {'summary': 's'})
         file_memory.append_entry('compose', {'finding': 'x'})
         entries = file_memory.read(origin='compose', keys=['summary'])
-        assert entries == [{'summary': 's', 'origin': 'compose'}]
+        assert entries == [{'summary': 's', 'origin': 'compose', 'version': 1, 'used_count': 0}]
 
     # ── NLU-only mutation: origin + turn_number is the unique ID ─────
 
     def test_amend_entry_modifies_in_place(self, file_memory):
-        file_memory.append_entry('audit', {'version': 1, 'turn_number': 3, 'used_count': 0,
-                                           'note': 'v1'})
-        file_memory.append_entry('find', {'version': 1, 'turn_number': 5, 'used_count': 0})
-        entry = file_memory.read(origin='audit')[-1]
+        # consume=False so the maintenance reads never advance used_count; amend defaults
+        # reset=False, so the amended entry keeps its stored used_count (round 5.2).
+        file_memory.append_entry('audit', {'turn_number': 3, 'note': 'v1'})
+        file_memory.append_entry('find', {'turn_number': 5})
+        entry = file_memory.read(origin='audit', consume=False)[-1]
         file_memory.amend_entry('audit', 3, {**entry, 'note': 'v2'})
         assert file_memory.size == 2  # modified in place — no extra line
-        assert file_memory.read(origin='audit') == [{'origin': 'audit', 'version': 1,
-                                                     'turn_number': 3, 'used_count': 0, 'note': 'v2'}]
+        assert file_memory.read(origin='audit', consume=False) == [{'origin': 'audit',
+            'version': 1, 'turn_number': 3, 'used_count': 0, 'note': 'v2'}]
 
     def test_prune_entry_removes_by_id(self, file_memory):
         file_memory.append_entry('audit', {'version': 1, 'turn_number': 3, 'used_count': 0})

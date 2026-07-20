@@ -58,8 +58,8 @@ If the topic cannot be extracted from the conversation and no sections were supp
 
 - `execution_error(violation, message)` for hard failures.
 - `declare_ambiguity(level, metadata)` for cases where the user's request is genuinely unclear.
-- `read_scratchpad(action, key, value)` to read or write session scratchpad and user preferences.
-- `read_flow_stack()` to check whether a compose or refine is queued behind this outline so the generated bullets match what the next flow will consume.
+- `scratchpad(op='read', origin, keys)` to read or write session scratchpad and user preferences.
+- `view_policies()` to check whether a compose or refine is queued behind this outline so the generated bullets match what the next flow will consume.
 
 ## Output
 

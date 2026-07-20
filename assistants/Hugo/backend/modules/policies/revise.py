@@ -286,7 +286,7 @@ class RevisePolicy(BasePolicy):
                 thoughts='Propose produced no candidate alternatives.', code=text)
 
         self.scratchpad.append_entry('propose',
-            {'version': 1, 'turn_number': context.num_utterances, 'used_count': 0,
+            {'turn_number': context.num_utterances,   # append_entry stamps version / used_count
              'candidates': candidates, 'post_id': post_id, 'sec_id': sec_id})
         flow.stage = 'discovery'
         block_options = [{'label': opt[:80], 'payload': idx, 'body': opt}

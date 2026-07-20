@@ -98,9 +98,7 @@ class ResearchPolicy(BasePolicy):
 
         # Scratchpad write — downstream audit can reference matches.
         self.scratchpad.append_entry(flow.name(), {
-            'version': 1,
-            'turn_number': context.num_utterances,
-            'used_count': 0,
+            'turn_number': context.num_utterances,   # append_entry stamps version / used_count
             'query': query,
             'items': [
                 {'post_id': it['post_id'], 'title': it['title'], 'status': it['status'],

@@ -87,8 +87,8 @@ If the user's request doesn't make sense given the outline, call `declare_ambigu
 
 - `execution_error(violation, message)`
 - `declare_ambiguity(**params)`
-- `read_scratchpad(**params)`
-- `read_flow_stack(details)`
+- `scratchpad(op='read', origin, keys)`
+- `view_policies()`
 
 ## Few-shot examples
 
@@ -135,7 +135,7 @@ Resolved Details:
 
 Trajectory: no tool calls. The request is a single-sentence rewrite inside prose that already exists, which is write's scope, not an outline-to-prose conversion.
 
-Final reply: fallback_flow(flow='write')
+Final reply: manage_flows(op='fallback', flow_name='write')
 
 ### Example 5 — ambiguous scope on an already-prose section
 

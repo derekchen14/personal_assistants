@@ -26,7 +26,7 @@ This skill fills a placeholder gap — a `<fill in here>` marker, a `[TODO]`, or
 ### General tools
 
 - `declare_ambiguity(level, metadata)` when the gap or section is unclear.
-- `coordinate_context(lookback)` to pull earlier conversation if the gap references it.
+- `coordinate_context(op='get_history', turns=6)` to pull earlier conversation if the gap references it.
 
 ## Few-shot examples
 
@@ -88,7 +88,7 @@ Resolved Details:
 - User asked: "Use the angle we landed on earlier to fill the empty bullet in the intro."
 
 Trajectory:
-1. `coordinate_context(lookback)` → the earlier angle was framing rate limits as a fairness problem, not a capacity one.
+1. `coordinate_context(op='get_history', turns=6)` → the earlier angle was framing rate limits as a fairness problem, not a capacity one.
 2. `read_section(post_id=5a6f2e31, sec_id=introduction, include_sentence_ids=True)` → the empty bullet sits under the opening hook.
 3. Generate three fill options that carry the fairness framing forward.
 
