@@ -8,14 +8,12 @@ _SESSIONS_DIR = Path(__file__).resolve().parents[2] / 'database' / 'sessions'
 
 
 class World:
-    """The shared component registry. Each module constructs and owns its components; the World
-    holds one reference to each under its canonical name, so every module reaches foreign
-    components the same way (world.state, world.flows, ...) rather than making copies. """
+    """Hold one canonical reference to each module-owned component for shared access through the World."""
     def __init__(self, config, nlu, pex, mem):
         self.config = config
         self.artifacts: list[TaskArtifact] = []
 
-        # Shared Components
+        # Shared components
         self.state = nlu.dialogue_state
         self.ambiguity = nlu.ambiguity_handler
         self.flows = pex.flow_stack
@@ -24,9 +22,7 @@ class World:
         self.prefs = mem.user_preferences
         self.knowledge = mem.business_knowledge
 
-        # The threaded-turn wait primitive: PEX's hook reads block on NLU's thinking settling.
-        # TODO(round 3.4, revisit once the loop works): Event chosen over the alternative — PEX
-        # polling the scratchpad between loop rounds — because waits wake exactly when NLU settles
+        # Let PEX wait for NLU to finish without polling the scratchpad.
         self.nlu_done = threading.Event()
         self.nlu_done.set()
 
@@ -34,9 +30,7 @@ class World:
         self._seed_session()
 
     def _seed_session(self):
-        """Every session starts with a default artifact and a system kickoff turn (an action turn,
-        so it doesn't advance num_utterances) — every downstream component can assume world.state
-        and world.artifacts[-1] are usable."""
+        """Seed a default artifact and system action so downstream components have usable initial values."""
         self.artifacts.append(TaskArtifact())
         initial_content = {'text': 'Session started.', 'activity': 'session_start', 'result': {}}
         self.context.add_turn('system', initial_content, turn_type='action')
@@ -44,8 +38,7 @@ class World:
     # ── Session-dir lifecycle ─────
 
     def open_session(self, conversation_id:str):
-        """Bind this World to a session dir. The components keep their live objects — looking at
-        a PREVIOUS session's contents is MEM's job (read from disk), never a rebind here."""
+        """Bind the World to a session directory while preserving each component's live object."""
         self.conversation_id = conversation_id
         session_path = _SESSIONS_DIR / conversation_id
         self.context.load_history(session_path / 'history.jsonl')
@@ -58,8 +51,7 @@ class World:
         return path
 
     def reset(self):
-        """New session: every component resets IN PLACE (the no-rebind rule) and the session dir
-        starts over."""
+        """Reset every component in place and recreate the current session directory."""
         self.state.reset()
         self.flows.reset()
         self.context.reset()

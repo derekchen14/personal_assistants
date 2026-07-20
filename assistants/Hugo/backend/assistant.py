@@ -32,12 +32,11 @@ class Assistant:
         self.mem.world = self.world
 
     def take_turn(self, text:str, dax:str|None=None, payload:dict={}) -> dict:
-        """The L1 loop (round 2.16). Three modules run asynchronously:
-        1. NLU's think: (check → detect_flows → fill_slots → validate) runs on a worker thread
-        2. The PEX Agent runs on main — prepare() (hook point 1), then one round per
-           orchestrate() call while state.keep_going; convergence is forced by the hook 3/5
-           reads. The terminal round's return value IS the reply.
-        3. MEM stores the turn at the end (Completed flows only)."""
+        """Run one turn with three async modules:
+        * NLU's think (check → detect_flows → fill_slots → validate) runs on a worker thread.
+        * The PEX Agent runs on main: prepare(), then one orchestrate() call while state.keep_going.
+          Hook 3/5 reads force convergence, and the terminal round's return value is the reply.
+        * MEM stores the turn at the end, including Completed flows only."""
         def understand_user():
             try:
                 self.nlu.think(text, payload)
@@ -65,8 +64,8 @@ class Assistant:
             self.pex.prepare()
             reply = ''
             while self.world.state.keep_going:
-                if self.contemplation_requested():  # 3.4.7 — a policy stalled, asked to re-route
-                    self.nlu.contemplate(text)      # the agent runs the re-stacked flow next round
+                if self.contemplation_requested():  # A policy requested re-routing.
+                    self.nlu.contemplate(text)      # The agent runs the replacement next round.
                 reply = self.pex.orchestrate(self.system_prompt)
             if nlu_thread:
                 nlu_thread.join()          # a turn never ends with NLU mid-write
@@ -91,8 +90,7 @@ class Assistant:
         return triggered
 
     def _init_session(self):
-        """Orchestrator session start. Runs once per session: bind a session dir when none is open,
-        bind the shared session scratchpad so entries land on disk, then build and FREEZE the system prompt."""
+        """Initialize once per session: open its directory, bind the scratchpad, and freeze the system prompt."""
         if self.system_prompt is not None:
             return
         if self.world.conversation_id is None:
@@ -120,7 +118,7 @@ class Assistant:
         self.world.reset()
         self.world.ambiguity.resolve()
         self.conversation_id = None
-        self.system_prompt = None  # next session rebuilds + refreezes
+        self.system_prompt = None  # Rebuild and refreeze for the next session.
 
     def close(self):
         pass

@@ -20,19 +20,13 @@ class NaturalLanguageUnderstanding:
         self.engineer = prompt_engineer
         self.world = None
 
-    # ── Main methods: react / think / contemplate (round 3.4) ─────────
-    # The Assistant calls these directly — `understand` survives only as the name of PEX's
-    # tool. Each ends in validate(), which writes the turn's scratchpad entry.
+    # Main methods: react, think, and contemplate
+    # The Assistant calls react, think, and contemplate directly; each ends by validating the turn.
 
     def check(self) -> tuple:
-        """Opens `think` with the preliminary work (round 3.4): prior ambiguity is ALWAYS
-        cleared here — the dynamic, situation-dependent resolve comes in a later round — and
-        the extra detection-prompt snippet is picked for the classified intent (Continue reads
-        very differently from Plan or Clarify). Returns (snippet, working). The working flow
-        is the LIVE stack's in-flight flow, kept only when this turn's classified intent
-        matches it — the Continue reading. It reads the stack, not the belief, because
-        classify_intent writes the belief flow at prediction time (round 2.16), so pred_flows
-        no longer preserves last turn's detection."""
+        """Clear prior ambiguity and return the intent-specific detection snippet with the working flow.
+        The working flow is the live Active or Pending top when its intent matches the current classification;
+        read it from the stack because intent classification has already replaced the belief prediction."""
         if self.ambiguity_handler.is_present:
             self.ambiguity_handler.resolve(explanation='superseded by the new turn')
         state = self.dialogue_state
@@ -44,22 +38,21 @@ class NaturalLanguageUnderstanding:
         return detection_snippet(state.pred_intent, working), working
 
     def think(self, user_text:str, payload:dict={}):
-        """One path: check → detect_flows → fill_slots → validate. Stacks and fills the LIVE
-        flow — no transient, no copy step. Any disagreement with what PEX is running is
-        resolved on PEX's side (the hook 3/5 read of validate's entry)."""
+        """Run check → detect_flows → fill_slots → validate against the live flow on the stack.
+        PEX resolves disagreement with its current flow through the scratchpad entry written by validate()."""
         snippet, working = self.check()
         state, context = self.world.state, self.world.context
         detection = state.detect_flows(self.engineer, context, user_text, snippet, working)
         intents = {FLOW_ONTOLOGY[flow['name']]['intent'] for flow in detection['pred_flows']}
         if len(intents) > 1 and detection['confidence'] < self.ambiguity_handler.confidence_min:
-            # low-confidence AND spans >1 intent — the one case a coarse-intent tie-break is worth a call
+            # Use coarse intent classification only to break a low-confidence, cross-intent detection.
             state.classify_intent(self.engineer, context, self.world.flows.get_flow())
             if intent2flow(state.pred_intent):  # domain intents only — Plan/Clarify add no
                 detection = state.detect_flows(self.engineer, context, user_text,  # narrowing
                                                detection_snippet(state.pred_intent))
 
         predicted = detection.get('pred_flows', [])
-        if not detection['flows']:   # every voter abstained (round 3.5) — stack nothing, ask
+        if not detection['flows']:   # Every voter abstained, so ask without stacking a flow.
             state.pred_flow = ''
             state.pred_flows = []
             state.confidence = detection['confidence']
@@ -70,9 +63,7 @@ class NaturalLanguageUnderstanding:
 
         steps = detection['flows']
         if state.pred_intent == 'Plan' and len(steps) > 1:
-            # The Plan Flow oversees, it does not do the work: the marker stacks first
-            # (Pending, at the bottom) with the steps' checklist filled directly — no LLM
-            # slot fill — then the steps in reverse execution order, first step Active.
+            # Stack the Pending Plan marker first, then its steps in reverse order with the first step Active.
             state.has_plan = True
             marker = self.world.flows.stackon('plan', transfer=False, active=False)
             for step in steps:
@@ -81,9 +72,7 @@ class NaturalLanguageUnderstanding:
                 self.world.flows.stackon(step, transfer=False, active=False)
             curr_flow = self.world.flows.get_flow()
             curr_flow.status = 'Active'                     # the first step runs; the rest wait
-            # The first step grounds and fills like the single-flow path (2.14.3) — its
-            # originating utterance is live, so the LLM fill is worth one call. Later steps
-            # ground inside pex.execute() when promoted.
+            # Ground and fill the first step from the live utterance; later steps ground when promoted.
             state.ground_flow(curr_flow)
             state.fill_slots(self.engineer, context, curr_flow, payload, self.ambiguity_handler)
             state = self._write_belief(steps[0], detection['confidence'], predicted, curr_flow)
@@ -92,21 +81,15 @@ class NaturalLanguageUnderstanding:
 
         flow_name = steps[0]
         prev_flow = self.world.flows.get_flow()
-        # An in-flight flow counts whether Active or Pending — a plan step stacked with
-        # active=False waits as Pending and is still the flow PEX runs next.
+        # Both Active and Pending flows are in flight because a Pending plan step is still next to run.
         in_flight = bool(prev_flow) and prev_flow.status in ('Active', 'Pending')
         prev = prev_flow.name() if in_flight else ''
         repeat = in_flight and prev_flow.name() == flow_name
-        # The reconciliation gate matches stackon's dedupe condition exactly (entity slot
-        # FILLED), so the stackon below always pushes a real second instance.
+        # Matching stackon's filled-entity condition ensures the next stackon creates a second instance.
         entity = prev_flow.slots.get(prev_flow.entity_slot) if repeat else None
         if repeat and entity and entity.check_if_filled():
-            # Same-type detection over a GROUNDED flow (round 2.13.3, post-fill
-            # reconciliation): push a second instance without the grounding backstop, so the
-            # fill schema keeps the entity slot open and a user-named new target can land.
-            # Same identity after the fill (or none named) → fold the fill back into the
-            # original and drop the extra entry; a different identity is a new task and both
-            # instances stay (validate announces the second one).
+            # Keep the new entity slot open. Merge the flows if filling finds the same entity; otherwise,
+            # retain both as separate tasks and let validate announce the second one.
             curr_flow = self.world.flows.stackon(flow_name, transfer=False)
             state.fill_slots(self.engineer, context, curr_flow, payload, self.ambiguity_handler)
             fresh = _entity_ids(curr_flow)
@@ -126,12 +109,11 @@ class NaturalLanguageUnderstanding:
         if state.confidence < self.ambiguity_handler.confidence_min:
             self.ambiguity_handler.recognize('general', metadata={'top_detection': flow_name},
                 observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"')
-        self.review_scratchpad()      # NLU's turn point — reviews last turn's appends too
+        self.review_scratchpad()      # Review entries appended since NLU's previous turn point.
         return self.validate(state, 'think', prev)
 
     def react(self, gold_dax:str, payload:dict={}):
-        """A click resolved the flow via its dax — stack the LIVE flow and fill it directly
-        (no check: the react path needs no detection setup)."""
+        """Resolve a clicked dax, stack its live flow when needed, and fill it directly from the payload."""
         flow_name = dax2flow(gold_dax)
         state, context = self.world.state, self.world.context
         _, payload = self._fill_slices(state, payload)
@@ -147,11 +129,8 @@ class NaturalLanguageUnderstanding:
         return self.validate(state, 'react')
 
     def contemplate(self, user_text:str=''):
-        """The failed-flow re-route — the Assistant calls this after PEX queues the request
-        (3.4.7). One re-route call over the failed flow's edges + the current flow + chat, then
-        the replacement is stacked directly. No LLM slot fill: stackon's transfer carries the
-        failed flow's slots and the policy's fill_slots_by_label covers gaps. Ends in
-        validate like think/react — the announcement is the re-route's record."""
+        """Re-detect among the failed flow's edges, the current flow, and chat, then stack the replacement.
+        Stack transfer carries existing slots, the policy fills gaps, and validate records the announcement."""
         state, context = self.world.state, self.world.context
         failed = state.flow_name(string=True)
         candidates = set(edge_flows_for(failed)) if failed else set()
@@ -170,7 +149,7 @@ class NaturalLanguageUnderstanding:
             parsed = self.engineer(prompt, task='contemplate', max_tokens=512,
                                    schema=_flow_detection_schema(candidates))
             if parsed['flows'] and parsed['flows'][0] in FLOW_ONTOLOGY:
-                # Single re-route call, no ensemble to agree — score it as a majority vote (0.7).
+                # Treat a successful single re-route call as a majority-confidence detection.
                 detection = {'flows': [parsed['flows'][0]], 'confidence': 0.7}
         except Exception as ecp:
             log.warning('contemplate routing failed: %s', ecp)
@@ -183,7 +162,7 @@ class NaturalLanguageUnderstanding:
             [{'name': flow_name, 'dax': flow2dax(flow_name),
               'confidence': detection['confidence']}], curr_flow)
 
-        # The turn's text must be a string — compile_messages renders it as an API text block.
+        # Context compilation requires string text for the API content block.
         text = f"re-detected '{flow_name}' (confidence {detection['confidence']})"
         turn_content = {'text': text, 'tool_uses': [], 'tool_results': []}
         self.world.context.add_turn('agent', turn_content, turn_type='action')
@@ -192,12 +171,8 @@ class NaturalLanguageUnderstanding:
 
 
     def validate(self, state, op:str='think', prev:str=''):
-        """Ends the thinking: ontology fallback + intent correction, rules-based slot repair,
-        then the turn's scratchpad entry — every turn writes exactly one (aligned /
-        announcement / click / plan / abstention). `prev` is the flow PEX was running at think's stackon
-        decision point — it labels the entry aligned vs announcement and fills `prev_flow`.
-        The announcement's consumed marker is `used_count == 0` (the scratchpad's read()
-        bumps it) plus NLU's rationale."""
+        """Apply ontology fallback, intent correction, and slot repair, then write exactly one scratchpad entry.
+        `prev` distinguishes alignment with PEX's prior flow from a new-flow announcement."""
         if state.pred_flows:   # a deliberate abstention (empty detection) stays empty
             cat = FLOW_ONTOLOGY.get(state.flow_name(string=True))
             if not cat:
@@ -215,8 +190,7 @@ class NaturalLanguageUnderstanding:
         detected = state.flow_name(string=True)
         entry = {'turn_number': self.world.context.num_utterances}  # append_entry stamps the rest
         if op != 'react' and state.pred_flows:
-            # The candidate flows and their tallies ride the entry — PEX's back-up channel to
-            # stack a dropped flow later (support at or below 0.5 marks a dropped flow).
+            # Preserve candidate tallies so PEX can recover a flow whose support was at or below 0.5.
             entry['tally'] = {flow['name']: flow['confidence'] for flow in state.pred_flows}
         if op == 'react':
             entry.update(gold_dax=state.pred_flow,
@@ -229,8 +203,7 @@ class NaturalLanguageUnderstanding:
             entry['summary'] = 'no confident detection; nothing stacked'
         elif detected == prev and sum(1 for item in self.world.flows._stack
                 if item.flow_type == detected and item.status in ('Active', 'Pending')) <= 1:
-            # More than one live (Active/Pending) same-name instance means reconciliation kept a
-            # second task on a new entity (2.13.3) — that falls through to the announcement below.
+            # Multiple live instances of the same flow indicate a second entity task that needs announcement.
             entry['summary'] = f'aligned on {detected}'
         elif flow is None:      # ontology fallback fired — nothing stacked to announce
             entry['summary'] = f'detected {detected}; nothing stacked'
@@ -244,13 +217,10 @@ class NaturalLanguageUnderstanding:
         return state
 
     def _repair_slots(self, flow):
-        """validate's rule pass (3.4.2): preserve the established entity identity, shape-check
-        snip, and never trust a predicted ver. Rules only — no LLM. Targets are exempt from
-        the post/sec preserve rule (a new post title legitimately differs from the grounded
-        post)."""
+        """Preserve established source identities, validate snippet shapes, and derive verification from grounding.
+        Target slots may name a new post or section, so they are exempt from source-identity preservation."""
         grounded = self.world.state.get_active_entity()
-        # An entity picked from the CURRENTLY shown choices is a deliberate selection (2.13.1)
-        # — the preserve rule polices hallucinated switches, not on-screen picks.
+        # A currently displayed choice is a deliberate entity switch rather than a prediction conflict.
         shown = {choice['entity']['post'] for choice in self.world.state.grounding['choices']
                  if isinstance(choice, dict)}
         for name, slot in flow.slots.items():
@@ -279,16 +249,11 @@ class NaturalLanguageUnderstanding:
             slot.check_if_filled()
 
     def recover(self):
-        """Designed-not-built recovery pass — kept OFF the live loop until the recovery UX is
-        settled (no production caller). Before PEX escalates a pending ambiguity to a user
-        question, try to fill the missing slot from memory. `ambiguity_handler.recover` does the
-        L2 lookup (user preferences) plus the scratchpad and resolves the ambiguity when a value
-        turns up; NLU records the attempt either way. The fuller sketch below reaches the rest of
-        the MEM trifecta (L3 retrieve) and fills the recovered value into the active flow, so a
-        recoverable turn proceeds without asking the user."""
+        """Try to resolve a pending ambiguity from L2 preferences and the scratchpad before PEX asks the user.
+        Record every attempt; the inactive sketch extends recovery through L3 and fills the Active flow."""
         missing = self.world.ambiguity.metadata.get('missing', '')
         result, success = self.ambiguity_handler.recover(self.world.prefs, self.world.scratchpad)
-        # Sketch (designed-not-built) — the L3 tier and the slot fill, once recovery is wired in:
+        # Future L3 recovery and slot filling:
         #   if not success:                                       # L2 miss → try L3 knowledge
         #       hit = self.world.knowledge.search_documents(missing, top_k=1)
         #       result, success = (hit['result'][0], True) if hit['result'] else (result, False)
@@ -300,12 +265,8 @@ class NaturalLanguageUnderstanding:
         return {'recovery': result}
 
     def review_scratchpad(self) -> dict:
-        """Synchronous review pass at NLU's turn point. Conservative for now: repair entries
-        missing a `turn_number` losslessly via the NLU-only `amend_entry` (version / used_count
-        are stamped by append_entry now). The scan reads non-consuming so it never advances the
-        seen-cursor PEX's round refresh relies on; the repair keeps `used_count` untouched
-        (reset defaults False). Semantic review — merging contradictions, pruning stale notes
-        via `prune_entry` — is designed-not-built."""
+        """Repair scratchpad entries missing `turn_number` without consuming them or changing `used_count`.
+        Non-consuming reads preserve PEX's cursor; `amend_entry` retains the entry's stamped contract fields."""
         repaired = 0
         for entry in self.world.scratchpad.read(consume=False):
             if 'turn_number' in entry:
@@ -322,7 +283,7 @@ class NaturalLanguageUnderstanding:
         for key, val in payload.items():
             if key in ['choices', 'channels', 'campaigns']:
                 for slice_value in val:
-                    # if value > 0: // can add guardrails in this line if desired
+                    # Add payload guardrails here if slices require validation.
                     state.grounding.setdefault(key, []).append(slice_value)
             else:
                 filtered[key] = val
@@ -331,10 +292,8 @@ class NaturalLanguageUnderstanding:
     # ── Support (private) ─────────────────────────────────────────────
 
     def _write_belief(self, flow_name:str, confidence:float, pred_flows:list, flow=None):
-        """Write the detection onto the session state's belief IN PLACE — the single source of
-        truth for predictions. Each pred_flows entry is {name, dax, confidence, rationale?}.
-        Slot predictions live on the flow itself (the stacked flow carries them), never on the
-        state. Never inserts a new per-turn state; PEX stages and activates."""
+        """Write detection fields into the session belief; predictions contain name, dax, confidence, and rationale.
+        Slot predictions remain on the live flow while the Dialogue State stores the flow-level prediction."""
         state = self.world.state
         cat = FLOW_ONTOLOGY.get(flow_name, {})
         state.pred_intent = cat.get('intent', 'Converse')
@@ -345,9 +304,8 @@ class NaturalLanguageUnderstanding:
 
 
 def _entity_ids(flow) -> set:
-    """The flow's task identity (round 2.13.3): its entity slot's values reduced to the domain
-    parts (post/sec/snip/chl — `ver` is bookkeeping, ignored), so equivalent serialized shapes
-    compare equal. String-valued entity slots (find.query, chat.topic) compare as strings."""
+    """Reduce the entity slot to comparable post, section, snippet, and channel identities, ignoring `ver`.
+    Compare string-valued entity slots such as find queries and chat topics directly as strings."""
     slot = flow.slots.get(flow.entity_slot)
     ids = set()
     for val in (getattr(slot, 'values', None) or []):
@@ -359,8 +317,7 @@ def _entity_ids(flow) -> set:
 
 
 def _valid_snip(snip) -> bool:
-    """Shape check only: an int index, or a two-item non-negative ascending slice, parsed from
-    the string the schema emits. Range-vs-sentence-count stays execution-time."""
+    """Accept a non-negative integer index or a two-item ascending slice parsed from the schema string."""
     if snip in ('', None):
         return False
     if isinstance(snip, int):

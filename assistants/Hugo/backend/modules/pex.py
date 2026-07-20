@@ -35,17 +35,13 @@ _PARTIAL_MISSING = {'source', 'target', 'title', 'query'}
 _PARTIAL_ENTITY = {'post', 'section', 'snippet', 'channel'}
 _SPECIFIC_REASON = {'invalid_value', 'unclear_value', 'wrong_slot'}
 
-# Read-only domain tools the orchestrator may call directly for trivial lookups. Every write
-# still goes through a flow via manage_flows, preserving policy invariants, grounding
-# discipline, and completion entries.
+# The orchestrator may call these read-only domain tools directly; every write still runs through a flow.
 READ_ONLY_DOMAIN_TOOLS = ('find_posts', 'read_metadata', 'read_section', 'search_notes',
                           'list_channels', 'channel_status')
 
 def _block_summaries(artifact) -> list:
-    """Compact view of the artifact blocks for execute()'s policy result, so the
-    orchestrator knows what the frontend will render (it must reference blocks, never
-    restate them). Same card-shaped summary the e2e harness and agent logging use;
-    selection blocks additionally carry their option labels."""
+    """Project artifact blocks for the orchestrator, evaluation harness, and logs without restating content.
+    Each summary carries its type and data keys; selections and checklists also include option labels."""
     summaries = []
     for block in artifact.blocks:
         data = block.data or {}
@@ -142,25 +138,19 @@ class PolicyExecutor:
             'channel_status':    (self._platform_service, 'channel_status'),
         }
 
-        # Real prompt-token usage off the last agent-loop API response — MEM's compaction
-        # check reads it in the turn wrap (MEM.recap).
+        # MEM reads the latest agent-loop prompt-token usage when checking compaction.
         self.last_prompt_tokens = 0
-        # Every flow popped during the current turn — Completed or Invalid (round 2.16). Reset
-        # per prepare(), passed to MEM.recap (which stores only the Completed members) and read
-        # by orchestrate()'s round-budget reset.
+        # Track every flow popped this turn; MEM stores Completed members and orchestrate resets their budgets.
         self.recently_finished = []
-        self._reads = 0  # per-turn count of successful read-only domain-tool calls; reset in prepare()
-        self._turn_start = 0  # context.num_utterances at prepare() — scopes hook reads to this turn
-        # PEX-Agent round state (round 2.16): one round per orchestrate() call, so the old loop
-        # locals live here; prepare() resets them per turn.
+        self._reads = 0  # Successful read-only domain tool calls this turn; reset by prepare().
+        self._turn_start = 0  # Context position captured by prepare() to scope reads to this turn.
+        # PEX Agent state persists across orchestrate() calls and resets in prepare().
         self.rounds = 0        # rounds since the last completion — a completion resets the budget
         self.finished = 0      # Completed members of recently_finished already counted
         self.errors = 0        # consecutive corrective tool failures
         self.nudged = False    # a thinking-only miss already nudged this turn
         self.last_call = None  # (name+args key, succeeded) — _guarded_call's dedupe memory
-        # Component tool inventory (round 5.2) — one dict, one naming rule: method = '_' +
-        # exposed tool name. Which CALLERS see which tools (and which ops) lives in the
-        # definitions, never here.
+        # Map exposed component tool names to underscored methods; tool definitions control caller access.
         self.component_tools = {
             'manage_flows':         self._manage_flows,
             'understand':           self._understand,
@@ -181,9 +171,7 @@ class PolicyExecutor:
 
     @world.setter
     def world(self, world):
-        """Assigning the world finishes the wiring: the one domain tool that reads a MEM
-        component, and the policies (their scoped components dict carries world-bound references —
-        sub-agents never see the whole world)."""
+        """Finish wiring the MEM-backed domain tool and policies with their scoped World components."""
         self._world = world
         self.domain_tools['search_documents'] = (world.knowledge, 'search_documents')
         components = {'engineer': self.engineer, 'config': self.config, 'ambiguity': world.ambiguity,
@@ -234,9 +222,7 @@ class PolicyExecutor:
     # -- Validation -------------------------------------------------------
 
     def verify(self, artifact, flow):
-        """Check whether a artifact is good enough to show to the user. A artifact with a 'violation'
-        set is already recognized as an error artifact, so it does NOT need Tier-1 retry. Return
-        passed=False + is_error_frame=True so the outer caller routes it directly to the error path."""
+        """Validate an artifact for display and route a declared violation directly to the error path."""
         if self.world.ambiguity.is_present:
             return ArtifactCheck(passed=True)
         if 'violation' in artifact.data:
@@ -265,12 +251,8 @@ class PolicyExecutor:
     # -- The PEX Agent: prepare() + one round per orchestrate() call ------
 
     def prepare(self):
-        """Hook point 1 — PEX's first step, called by take_turn before the round loop. Per-turn
-        resets, the Plan/Clarify gate (the only intents that wait on NLU's settled thinking),
-        then the prediction note: one system utterance handing round 1 the belief every
-        predictor already wrote (`state.pred_flows`, mapped at prediction time — no lookup, no
-        stackon; the agent stacks through manage_flows). An expired wait fails the turn loudly —
-        the raise lands in take_turn's safety net."""
+        """Reset per-turn state, wait for NLU on Plan or Clarify, and append the initial prediction note.
+        The note exposes `state.pred_flows`; the PEX Agent decides whether to stack a flow through manage_flows."""
         self.recently_finished = []
         self._reads = 0
         self._turn_start = self.world.context.num_utterances
@@ -290,25 +272,23 @@ class PolicyExecutor:
             note = (f"[typesafe] intent={state.pred_intent} — the predicted flow is "
                     f"'{state.pred_flows[0]['name']}'. Stack and run it with manage_flows "
                     f"(op='stackon'), pick a different flow, or reply directly.")
-        else:  # NLU abstained after the wait — embed the pending question directly (5.2.3)
+        else:  # NLU abstained after the wait, so include any pending question directly.
             question = (self.world.ambiguity.ask('') if self.world.ambiguity.is_present else '')
             asked = (f'A clarification is pending — relay it in your own voice: "{question}" '
                      if question else '')
             note = (f"[typesafe] intent={state.pred_intent} — no flow was detected. {asked}"
                     f"Pick a flow yourself if the request is actually clear.")
-        context.add_turn('system', {'text': note})   # system utterance — round 1 sees it
+        context.add_turn('system', {'text': note})   # The first PEX Agent round sees this system utterance.
 
     def orchestrate(self, system_prompt) -> str:
-        """One PEX-Agent round — the while-loop lives in take_turn (`state.keep_going`).
-        Returns '' on mid-turn rounds and the reply text on the terminal round; the reply is
-        PEX's return value, nothing else carries it. Tool calls route through _guarded_call →
-        call_tool; NLU's mid-turn stack changes surface at the hook 3/5 reads. Two exits end
-        the turn: the terminal no-tool text, or _final_emit() (nudged twice / caps)."""
+        """Run one PEX Agent round, returning an empty string mid-turn or reply text on the terminal round.
+        Tool calls pass through `_guarded_call` and `call_tool`; NLU changes surface through hook 3/5 reads.
+        Terminal plain text or `_final_emit()` after repeated misses or limits ends the turn."""
         context, state = self.world.context, self.world.state
         self.rounds += 1
         catalog = self.get_tools_for_orchestrator()
         messages = context.compile_messages()
-        messages.append({'role': 'user', 'content': self.refresh()})   # 5.2.5, ephemeral
+        messages.append({'role': 'user', 'content': self.refresh()})   # Ephemeral round refresh.
         response = self.engineer(system_prompt, messages, family='claude',
                                  tier='high', tools=catalog, max_tokens=4096)
         self._track_usage(response)
@@ -319,8 +299,7 @@ class PolicyExecutor:
         if not tool_uses:
             if text:
                 self.wait_for_nlu('hook point 5')   # post-LLM, no tools ran
-                # PEX 5: an unseen 'new_flow' NLU stacked THIS turn earns one more round to decide
-                # (ending on a fresh Pending top would strand it); the next refresh renders it.
+                # Give an unseen `new_flow` one more round so the next refresh can surface it.
                 fresh = self.session_scratchpad.read(origin='nlu', keys=['new_flow'], consume=False)
                 if any(e['used_count'] == 0 and e['turn_number'] >= self._turn_start for e in fresh):
                     context.add_turn('agent', {'text': text, 'tool_uses': [],
@@ -328,7 +307,7 @@ class PolicyExecutor:
                     return ''                       # renders NLU's announcement
                 state.keep_going = False            # terminal round — the turn is worded
                 return text
-            if self.nudged:  # thinking-only twice → forced wrap-up (T14)
+            if self.nudged:  # A second thinking-only response forces wrap-up.
                 state.keep_going = False
                 return self._final_emit(system_prompt)
             self.nudged = True
@@ -342,7 +321,7 @@ class PolicyExecutor:
         for tool_use in tool_uses:
             try:
                 result, self.last_call = self._guarded_call(tool_use, valid, self.last_call)
-            except TimeoutError:      # a hook-wait expiry fails the turn loudly (round 3.4)
+            except TimeoutError:      # A hook timeout fails the turn loudly.
                 raise
             except Exception as ecp:  # noqa: BLE001 — convert to a corrective tool error
                 log.exception('tool call crashed: %s', ecp)
@@ -365,16 +344,13 @@ class PolicyExecutor:
         return ''                     # mid-turn round — no reply yet
 
     def wait_for_nlu(self, hook:str):
-        """Block until NLU's thinking settles (the hook 1/3/5 waits). Expiry raises — the turn
-        fails loudly into take_turn's safety net."""
+        """Block at hooks 1, 3, and 5 until NLU settles; raise on expiry for take_turn's safety net."""
         if not self.world.nlu_done.wait(timeout=30):
             raise TimeoutError(f'NLU still thinking after 30s at {hook}')
 
     def _final_emit(self, system_prompt:str) -> str:
-        """The one forced-terminal path (T14): round budget, corrective cap, or a second
-        thinking-only miss — one last no-tools call forces a plain-text wrap-up, so completed
-        work still gets a real reply. The canned fallback survives only as this method's own
-        last resort."""
+        """Force a plain-text terminal reply after the round budget, corrective cap, or second empty response.
+        Use the canned fallback only when the final model call still returns no text."""
         context = self.world.context
         context.add_turn('system', {'text': _WRAP_UP_MESSAGE})
         response = self.engineer(system_prompt, context.compile_messages(), family='claude',
@@ -384,19 +360,10 @@ class PolicyExecutor:
         return '\n'.join(part for part in text_parts if part).strip() or _FALLBACK_MESSAGE
 
     def _guarded_call(self, tool_use, valid:set, last_call) -> tuple[dict, tuple]:
-        """Guardrails around one tool call: hallucinated names and identical consecutive calls
-        return corrective errors instead of calling the tool. Everything else routes through
-        `_tool`, which already converts bad args into corrective tool errors the model
-        can retry on. These guards are the legitimate exception to the no-defensive-code rule —
-        LLM output is unpredictable input.
-
-        `last_call` is (name+args key, succeeded). Dedupe only fires when the previous identical
-        call SUCCEEDED — retrying the same call after a transient tool error (server_error from
-        an overloaded LLM, a flaky channel API) is legitimate recovery, not a loop. A
-        manage_flows key also carries the live stack (2.14.2): NLU fills slots and stacks flows
-        mid-loop, so an identical retry after the stack changed is a new call — e.g. pressing
-        the run button again once the fill landed."""
-        # hook: pre-tool
+        """Reject unknown tools and repeated successful calls, then route valid calls through `call_tool`.
+        `last_call` stores the call key and success; failed calls remain retryable. A manage_flows key includes
+        the live stack so identical arguments after an NLU stack change count as a new call."""
+        # Pre-tool hook
         call = (tool_use.name, json.dumps(dict(tool_use.input or {}), sort_keys=True, default=str))
         if tool_use.name == 'manage_flows':
             call += (json.dumps(self.flow_stack.to_list(), sort_keys=True, default=str),)
@@ -416,8 +383,7 @@ class PolicyExecutor:
         return result, (call, result['_success'])
 
     def _track_usage(self, response):
-        """Record real prompt-token usage off an agent-loop API response (MEM's compaction
-        trigger reads it, never estimates). Cache reads/writes count toward the window."""
+        """Record actual agent-loop prompt-token usage, including cache reads and writes, for MEM compaction."""
         usage = response.usage
         if usage:
             self.last_prompt_tokens = (usage.input_tokens
@@ -427,10 +393,8 @@ class PolicyExecutor:
     # -- Tool calls -------------------------------------------------------
 
     def call_tool(self, tool_name:str, tool_input:dict) -> dict:
-        """The uniform call surface — every tool call from both loops routes through here
-        (call_mcp, the MCP sibling, is designed-not-built: no server is wired). Bad calls come
-        back as corrective errors, never exceptions — except a hook-wait TimeoutError, which
-        fails the whole turn loudly."""
+        """Route domain and component tool calls through one surface and convert failures to corrective errors.
+        Preserve hook TimeoutError so the Assistant's safety net can fail the turn loudly."""
         try:
             if tool_name in self.domain_tools:
                 service, method_name = self.domain_tools[tool_name]
@@ -440,7 +404,7 @@ class PolicyExecutor:
                 return self.component_tools[tool_name](tool_input)
             else:
                 return corrective('invalid_input', f'Unknown tool: {tool_name}')
-        except TimeoutError:          # a hook-wait expiry fails the turn loudly (round 3.4)
+        except TimeoutError:          # A hook timeout fails the turn loudly.
             raise
         except OutlineValidationError as ecp:
             return corrective('validation', str(ecp))
@@ -466,15 +430,13 @@ class PolicyExecutor:
         return corrective('invalid_input', f'Unknown op: {op}')
 
     def _view_policies(self, params:dict) -> dict:
-        """The sub-agent belief read (5.2.4) — flat, no arguments: the live stack plus the
-        active flow's filled slot values."""
+        """Return the live FlowStack and Active flow's filled slots to a policy sub-agent."""
         flow = self.flow_stack.get_flow()
         return {'_success': True, 'flows': self.flow_stack.to_list(),
                 'slots': flow.slot_values_dict() if flow else {}}
 
     def _execution_error(self, params:dict) -> dict:
-        """Acknowledge a sub-agent's violation signal (5.2.3) — call_policy reads the traced
-        call afterwards and stamps the artifact, routing it to the error path."""
+        """Acknowledge a violation so call_policy can stamp the artifact and route it to the error path."""
         return {'_success': True, '_message': 'Violation recorded — wrap up your run.'}
 
     def _declare_ambiguity(self, params:dict) -> dict:
@@ -488,21 +450,13 @@ class PolicyExecutor:
         return {'_success': True}
 
     # -- Orchestrator hot-path tools --------------------------------------
-    # Thin wiring onto the state, memory, and NLU surfaces. Errors raised below (bad
-    # write_state op, unknown flow, grounding violation) are caught by call_tool's
-    # try/except and returned as corrective tool errors for the orchestrator loop to retry on.
+    # `call_tool` converts errors from these state, memory, and NLU surfaces into corrective results.
 
     def _manage_flows(self, params:dict) -> dict:
-        """The ONE flow tool at both levels (5.2.1) — ops [update, stackon, fallback, pop].
-        `update` changes a flow's status/stage in place at any depth (flow_name targets a
-        buried flow; blank means the top flow) and `pop` clears Completed and Invalid flows
-        from the top of the stack down to the first Pending or Active flow. Policy execution
-        is runtime-owned: stackon (active defaults true), fallback, and a pop that surfaces a
-        Pending flow call execute() — unless the call came from inside a policy run:
-        call_policy injects `defer`, the sub-agent menu is stackon/fallback only, and the
-        flow re-surfaces at the PEX layer instead of running inline (no fourth level).
-        Belief, grounding, and slots stay NLU's job — no op here touches them (T18: Continue
-        is a pure status write)."""
+        """Apply update, stackon, fallback, or pop to the FlowStack and run newly runnable work.
+        `update` changes status or stage at any depth; `pop` removes terminal tops and promotes Pending work.
+        Policy sub-agents may defer stackon or fallback so the flow resurfaces for execution at the PEX layer.
+        NLU retains ownership of belief, grounding, and slot filling."""
         defer = params.get('defer', False)
         params = {**params, 'op': {'update': 'update_flow'}.get(params['op'], params['op'])}
         if defer and params['op'] not in ('stackon', 'fallback'):
@@ -512,7 +466,7 @@ class PolicyExecutor:
         kwargs = dict(params.get('fields', {}))
         if 'flow_name' in params:
             kwargs['flow_name'] = params['flow_name']
-        if 'slots' in kwargs:  # T18: slot writes left the tool — NLU owns slot filling
+        if 'slots' in kwargs:  # NLU owns slot filling.
             return corrective('invalid_input', 'slots are not writable through manage_flows — '
                               'NLU fills slots; update takes status/stage only')
         if 'status' in kwargs:
@@ -520,8 +474,7 @@ class PolicyExecutor:
         promoted = None
         match params['op']:
             case 'stackon':
-                # No slot hand-over while an ambiguity is open — the incomplete flow's values
-                # are exactly what is in question (planner spec scenario 15 discussion).
+                # Do not transfer slots while an ambiguity leaves the incomplete flow's values in question.
                 self.flow_stack.stackon(kwargs['flow_name'],
                                         transfer=not self.world.ambiguity.is_present,
                                         active=params.get('active', True))
@@ -534,37 +487,23 @@ class PolicyExecutor:
                 self.recently_finished += popped   # every pop lands here — Completed or Invalid
             case _:
                 raise ValueError(f'Unknown manage_flows op: {params["op"]!r}')
-        # Stack events that run the top policy: stackon (active defaults true — active=false
-        # stacks a plan step as Pending), fallback, a status write of 'Active' through update
-        # (the manual run button, planner spec scenario 20), and a pop that PROMOTED a Pending
-        # flow (2.13.2 — the op name is not a run signal: a pop that removed nothing, emptied
-        # the stack, or left an already-Active flow on top has no newly runnable work).
+        # Run the top policy only when the operation makes a flow newly runnable.
         run = (params['op'] == 'fallback'
                or (params['op'] == 'pop' and promoted is not None)
                or (params['op'] == 'stackon' and params.get('active', True))
                or (params['op'] == 'update_flow' and kwargs.get('status') == 'Active'))
-        # From inside a policy run (5.2.1): the flow is on the stack now; it re-surfaces at the
-        # PEX layer and the agent runs it on a later round — no inline execute() (no fourth level).
+        # Deferred policy calls leave the flow on the stack for the PEX Agent to run on a later round.
         if run and not defer:
-            # A pop-run names the promoted flow so a different Active entry can never be
-            # selected accidentally (2.13.2) — NLU may stack over it in the same window.
+            # Pin a promoted flow because NLU may place another Active entry before execution begins.
             return self.execute(start=promoted)
         return {'_success': True, '_error': ''}
 
     def execute(self, start=None) -> dict:
-        """Run policy sub-agents until the stack settles — called ONLY from a manage_flows op
-        that surfaced runnable work (the run branch), never from the Assistant. Each pass:
-        ground → security → call_policy → verify (hook point 6) → the hook-3 read — NLU may
-        have re-stacked mid-run. A completion ends the pass: the pop clears the Completed/Invalid
-        flows in code and the surfaced next flow shows up in the round refresh (5.2.5) — the
-        agent judges what runs next, usually op='update' status='Active'. A same-intent new flow
-        ends the pass so the refresh surfaces the announcement (the agent decides); a
-        different-intent flow re-runs in code (the re-route; the agent is never notified).
-        Re-running a flow within a turn is legal — the loop stops when the live flow stops
-        changing, not on a ledger of what ran. `start` pins the first flow to run (a pop's
-        promoted flow); later iterations re-derive the live flow as always. Every exit returns
-        the one three-key shape (5.2.5): `{_success, _error, artifact}` — the full artifact went
-        to the World for display; the agent sees the compact projection."""
+        """Run policy sub-agents surfaced by manage_flows until the live FlowStack stops changing.
+        Each pass grounds, checks security, runs and verifies the policy, then waits for NLU at hook 3.
+        Completion pops terminal flows; same-intent changes return for an Agent decision, while different
+        intents continue in code. `start` pins a promoted first flow. Return `{_success, _error, artifact}`
+        with the full artifact stored in the World and a compact projection returned to the PEX Agent."""
         state, context = self.world.state, self.world.context
         result = None
         curr_flow = start or self.flow_stack.get_flow()
@@ -577,8 +516,7 @@ class PolicyExecutor:
                 curr_flow = self.flow_stack.get_flow()
                 continue
 
-            # The per-flow body: ground once at the choke point (2.14.3) — ground_flow only
-            # fills EMPTY entity slots, so a flow NLU already filled is untouched.
+            # Ground only empty entity slots at the shared execution point, preserving values NLU already filled.
             curr_flow.status = 'Active'
             state.ground_flow(curr_flow)
             approval = self._security_check(curr_flow)   # hook: pre-flow
@@ -607,16 +545,13 @@ class PolicyExecutor:
                 break   # nothing changed — the stall stands; return it to the agent
             if curr_flow.intent == prev_flow.intent:
                 break   # same intent → the refresh surfaces NLU's announcement, the agent decides
-            # different intent → code re-routes (3.4.1); the loop continues on curr_flow
+            # A different intent continues in code with the replacement flow.
         if result is not None:
             return result
         return {'_success': True, '_error': ''}          # a run that surfaced nothing new
 
     def _complete_pop(self, flow, artifact, entry, context):
-        """The code-owned completion pop: a completed flow (and any Completed/Invalid flows
-        under it) leaves the stack, and a surfaced plan marker is removed. Writes a synthesized
-        completion entry when the policy completed without complete_flow, so the round refresh
-        always has a summary to surface."""
+        """Pop terminal flows and a surfaced Plan marker, synthesizing a missing completion entry for refresh."""
         if entry is None:  # completed without complete_flow — synthesize an entry
             summary = artifact.thoughts or f'{flow.name()} completed'
             self.session_scratchpad.append_entry(flow.name(),
@@ -625,8 +560,7 @@ class PolicyExecutor:
         popped, _ = self.flow_stack.pop()  # Completed and Invalid leave together
         next_flow = self.flow_stack.get_flow()
         if next_flow and next_flow.name() == 'plan':
-            # The Plan Flow oversees, it does not do the work: the pop that surfaces it removes
-            # it. TODO(review pass, future round): run its policy here — review via the scratchpad.
+            # A surfaced Plan marker has finished overseeing its steps and leaves with the terminal flows.
             next_flow.status = 'Completed'
             more, _ = self.flow_stack.pop()
             popped += more
@@ -635,10 +569,8 @@ class PolicyExecutor:
             self.world.state.has_plan = False  # the marker anchors the flag — it left the stack
 
     def _result(self, artifact, error:str='', note:str='') -> dict:
-        """The one policy-run result shape (5.2.5): `{_success, _error, artifact}`. The artifact
-        is a compact projection — origin, the sub-agent's thoughts, the block summaries, and the
-        violation when the artifact carries one; `note` fills thoughts when the artifact has none
-        (a validation reason, the approval prompt)."""
+        """Return `{_success, _error, artifact}` with a compact artifact projection for the PEX Agent.
+        The projection includes origin, thoughts, block summaries, and any violation; `note` fills empty thoughts."""
         view = {'origin': artifact.origin, 'thoughts': artifact.thoughts or note,
                 'blocks': _block_summaries(artifact)}
         if 'violation' in artifact.data:
@@ -646,17 +578,13 @@ class PolicyExecutor:
         return {'_success': not error, '_error': error, 'artifact': view}
 
     def call_policy(self, flow) -> tuple:
-        """The code wrapper around one policy sub-agent run: lookup, run, pop_completion.
-        Returns (artifact, completion entry) — the entry is None unless the policy completed
-        via complete_flow. Sub-agents receive call_tool as their `tools` (traced below); the
-        orchestrator guards stay in _guarded_call. Every run appends its trajectory to the
-        session's subagents.jsonl — the sub-agent level of the observability traces."""
+        """Look up and run one policy sub-agent, then return its artifact and optional completion entry.
+        Trace each sub-agent tool call and append the run trajectory to the session's `subagents.jsonl`."""
         policy = self._policies[flow.intent]
         calls = []
 
         def traced_tool(name, params):
-            # A sub-agent's manage_flows defers (5.2.1): the flow lands on the stack and
-            # re-surfaces at the PEX layer — never an inline run from inside a policy run.
+            # Defer a sub-agent's FlowStack change so the flow resurfaces for execution at the PEX layer.
             call_params = {**params, 'defer': True} if name == 'manage_flows' else params
             result = self.call_tool(name, call_params)
             calls.append({'tool': name, 'input': params, '_success': result['_success'],
@@ -664,8 +592,7 @@ class PolicyExecutor:
             return result
 
         artifact = policy.execute(self.world.state, self.world.context, traced_tool)
-        # Wire the violation signal (5.2.3): a successful execution_error call stamps the
-        # artifact so verify() routes it to the error path — one site, no per-policy edits.
+        # Stamp violations from successful execution_error calls so verify() selects the error path.
         for call in calls:
             if call['tool'] == 'execution_error' and call['_success'] and 'violation' not in artifact.data:
                 artifact.update_data(violation=call['input']['violation'])
@@ -679,13 +606,8 @@ class PolicyExecutor:
         return artifact, policy.pop_completion()
 
     def refresh(self) -> str:
-        """The round refresh (5.2.5): the ephemeral message prepended to each PEX-Agent round,
-        carrying (a) the live stack, top first; (b) a one-line digest of every scratchpad entry
-        not yet seen (`used_count == 0`) — NLU announcements, completions, findings; (c) the
-        pending clarification question. `used_count` is the seen-cursor: read() bumps it as the
-        digests render, so each entry surfaces exactly once. Not persisted — only the current
-        round's delta reaches the model, replacing the old per-hook nlu-note read; the agent
-        queries nothing, the unseen work is pushed to it."""
+        """Build the ephemeral round message from the live stack, unseen scratchpad entries, and ambiguity.
+        Scratchpad reads advance `used_count`, so each announcement, completion, or finding surfaces once."""
         stack = ' | '.join(f"{item['flow_name']}·{item['status']}"
                            for item in reversed(self.flow_stack.to_list())) or '(empty)'
         lines = [f"[state] Live stack (top first): {stack}."]
@@ -701,31 +623,24 @@ class PolicyExecutor:
         return '\n'.join(lines)
 
     def _understand(self, params:dict) -> dict:
-        """The PEX Agent's belief READ, plus the contemplate re-route request (3.4.7). Both ops
-        wait on NLU settling — the same wait prepare owns at hook point 1. PEX never invokes the
-        NLU module: on op='contemplate' the request is queued on the scratchpad for the
-        Assistant, which calls nlu.contemplate() after this pass ends and re-enters the loop."""
+        """Read the assembled belief or queue a contemplate request after NLU settles.
+        The Assistant consumes contemplate requests from the scratchpad, calls NLU, and re-enters the loop."""
         self.wait_for_nlu('understand')
         if params['op'] == 'contemplate':
-            # used_count is the consumed marker — contemplation_requested's read bumps it, so
-            # each re-route request fires exactly once (C5).
+            # The Assistant's consuming read advances used_count so each re-route request runs once.
             self.session_scratchpad.append_entry('orchestrator',
                 {'turn_number': self.world.context.num_utterances, 'request': 'contemplate',
                  'summary': 'policy could not proceed — asking NLU to re-route'})
             return {'_success': True, '_message': 'Re-route queued. End your reply this round; '
                                                  'the re-detected flow runs on the next pass.'}
-        # The assembled belief view (5.2.4): the Dialogue State document with PEX's live FlowStack
-        # attached — sibling components, the stack never stored on the state (state.json carries a
-        # serialized copy only at save time).
+        # Assemble the Dialogue State with PEX's live FlowStack; state.json receives only a saved copy.
         document = self.world.state.read_state()
         document['flow_stack'] = self.flow_stack.to_list()
         return {'_success': True, 'state': document}
 
     def _scratchpad(self, params:dict) -> dict:
-        """The one scratchpad tool at both levels (5.2.2) — op='read' filters by origin/keys,
-        op='append' files one entry. A sub-agent append that names no origin files under the
-        active flow (the auto-origin save_findings used to provide). append_entry stamps the
-        contract fields (version, used_count); turn_number is the caller's."""
+        """Read scratchpad entries by origin or keys, or append one under its origin or the Active flow.
+        The caller supplies `turn_number`; append_entry stamps version and used_count."""
         op = params['op']
         if op == 'read':
             entries = self.session_scratchpad.read(origin=params.get('origin'),
@@ -768,10 +683,8 @@ class PolicyExecutor:
         }
 
     def get_tools_for_flow(self, flow) -> list[dict]:
-        """The sub-agent's tool list (5.2): the shared component tools shaped for a policy run —
-        manage_flows limited to stackon/fallback (update/pop belong to the PEX layer), the flat
-        belief read (view_policies), scratchpad, declare_ambiguity, execution_error,
-        coordinate_context — plus the flow's own domain tools."""
+        """Build a policy sub-agent's component tools and append the flow's scoped domain tools.
+        Its manage_flows surface includes stackon and fallback; update and pop remain at the PEX layer."""
         tools = [self._def_manage_flows(sub_agent=True), self._def_view_policies(),
                  self._def_scratchpad(), self._def_declare_ambiguity(),
                  self._def_execution_error(), self._def_coordinate_context()]
@@ -782,10 +695,7 @@ class PolicyExecutor:
         return tools
 
     def get_tools_for_orchestrator(self) -> list[dict]:
-        """The PEX Agent's tool list (5.2): manage_flows (all four ops), the belief read
-        (understand), the shared scratchpad and coordinate_context, store_preference, and the
-        read-only domain allowlist. The flat sub-agent reads (view_policies) and the sub-agent
-        signals (declare_ambiguity, execution_error) are deliberately absent."""
+        """Build the PEX Agent's planner, belief, scratchpad, context, preference, and read-only domain tools."""
         tools = [self._def_manage_flows(), self._def_understand(), self._def_scratchpad(),
                  self._def_coordinate_context(), self._def_store_preference()]
         for tool_name in READ_ONLY_DOMAIN_TOOLS:
