@@ -1,4 +1,5 @@
 import logging
+import re
 
 from backend.modules.policies.base import BasePolicy
 from backend.components.task_artifact import TaskArtifact
@@ -128,6 +129,24 @@ class DraftPolicy(BasePolicy):
             reference = next((ent.get('post', '') for ent in source_slot.values if ent.get('post')), '')
         title = topic_slot.to_dict() if topic_slot.check_if_filled() else reference
         post_id = self._resolve_post_id(reference, tools) if reference else None
+        verified = bool(source_slot.values and source_slot.values[0].get('ver'))
+        if post_id:
+            meta = tools('read_metadata', {'post_id': post_id})
+            exact = reference == post_id or (
+                meta['_success'] and meta['title'].strip().lower() == reference.strip().lower())
+            verified = verified or exact
+
+        active = state.get_active_entity()
+        if post_id and not verified and active.get('post') and active.get('ver'):
+            active_meta = tools('read_metadata', {'post_id': active['post']})
+            reference_terms = {term for term in re.findall(r'[a-z0-9]+', reference.lower())
+                               if len(term) > 3}
+            active_terms = {term for term in re.findall(
+                r'[a-z0-9]+', active_meta.get('title', '').lower()) if len(term) > 3}
+            if active_meta['_success'] and reference_terms & active_terms:
+                post_id = active['post']
+                title = active_meta['title']
+                verified = True
         if not post_id:
             if not title:
                 return None, '', self.error_artifact(flow, 'missing_reference',
@@ -138,21 +157,22 @@ class DraftPolicy(BasePolicy):
                     created.get('_message', 'Could not create a draft for the outline.'))
             post_id = created['post_id']
             title = created.get('title') or title
+            verified = True  # create_post returned this exact id for the user's new draft
         else:
             meta = tools('read_metadata', {'post_id': post_id})
             title = meta.get('title', title) if meta.get('_success') else title
-        state.set_active_entity(post=post_id, sec='', ver=True)
+        state.set_active_entity(post=post_id, sec='', ver=verified)
         if source_slot.values:
             source_slot.values[0]['post'] = post_id
-            source_slot.values[0]['ver'] = True
+            source_slot.values[0]['ver'] = verified
             source_slot._rebuild_keys()
             source_slot.check_if_filled()
         else:
-            source_slot.add_one(post=post_id, ver=True)
+            source_slot.add_one(post=post_id, ver=verified)
         return post_id, title, None
 
     def _propose_outline(self, flow, state, context, tools, depth:int=2):
-        # Defensive guard: Remove persistence tools from the skill's tool registry for Propose mode.
+        # Defensive guard: Remove persistence tools from the skill's tool inventory for Propose mode.
         # Also pass propose_mode=True in the resolved-context hint so the skill knows to stay text-only.
         artifact = TaskArtifact(origin='outline')
 

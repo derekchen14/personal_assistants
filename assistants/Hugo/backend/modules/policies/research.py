@@ -93,8 +93,20 @@ class ResearchPolicy(BasePolicy):
             state.grounding['choices'] = [
                 {'kind': 'post', 'label': it['title'], 'status': it['status'],
                  'entity': {'post': it['post_id'], 'sec': '', 'snip': '', 'chl': '', 'ver': True},
-                 'source': flow.name(), 'turn_number': context.num_utterances}
+                 'source': flow.name()}
                 for it in items]
+
+        # Search can carry grounding forward, but search uniqueness is not verification. Only
+        # the user's exact title/id verifies here; an explicit later pick from `choices` verifies
+        # through NLU's candidate-selection path.
+        if items:
+            normalized_query = query.strip().lower()
+            exact = next((item for item in items if item['post_id'] == query or
+                          item['title'].strip().lower() == normalized_query), None)
+            if exact:
+                state.set_active_entity(post=exact['post_id'], sec='', ver=True)
+            elif len(items) == 1:
+                state.set_active_entity(post=items[0]['post_id'], sec='', ver=False)
 
         # Scratchpad write — downstream audit can reference matches.
         self.scratchpad.append_entry(flow.name(), {

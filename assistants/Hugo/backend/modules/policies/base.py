@@ -29,7 +29,7 @@ class BasePolicy:
         so the skill can plan without re-fetching. Pass extra_resolved to merge already-fetched
         data (e.g. the current outline) into the resolved-entities block so the skill skips a
         redundant tool call. Pass exclude_tools to hard-strip tool names from the skill's tool
-        registry for this call (e.g. forbid `generate_outline` in propose mode). The tool call
+        inventory for this call (e.g. forbid `generate_outline` in propose mode). The tool call
         will error on the model side if it tries anyway. Pass `tier='high'` to swap the skill
         onto a stronger tier; pass `schema=<json-schema dict>` to force a schema-constrained
         terminal emit when the tool loop would otherwise return empty text."""
@@ -70,7 +70,12 @@ class BasePolicy:
     # -- Post helpers -------------------------------------------------------
 
     def _resolve_post_id(self, identifier, tools):
-        """Resolve a title or post_id string to an actual post_id."""
+        """Resolve a title or post_id without guessing among several candidates.
+
+        Verification is owned by ``resolve_source_ids`` because the string return value cannot
+        carry it. This helper may return one unique fuzzy result, but callers must keep that
+        prediction ``ver=False`` unless the id/title was exact or the user selected it.
+        """
         if not identifier:
             return None
         # A raw post id resolves directly, whatever its shape (eval-seeded ids like
@@ -95,7 +100,7 @@ class BasePolicy:
             for item in items:
                 if item['title'].lower() == query.lower():
                     return item['post_id']
-            if items:
+            if len(items) == 1:
                 return items[0]['post_id']
 
         # Fuzzy title pass (2.15.2) — mirror _resolve_sec_id's difflib matching over the library
@@ -104,8 +109,8 @@ class BasePolicy:
             if result['_success'] else {'items': []}
         titles = [item['title'].lower() for item in listing['items']]
         for query in candidates:
-            matches = difflib.get_close_matches(query.lower(), titles, n=1, cutoff=0.6)
-            if matches:
+            matches = difflib.get_close_matches(query.lower(), titles, n=2, cutoff=0.6)
+            if len(matches) == 1:
                 return listing['items'][titles.index(matches[0])]['post_id']
         return None
 
@@ -143,6 +148,26 @@ class BasePolicy:
         if not reference:
             return None, None, None
         post_id = self._resolve_post_id(reference, tools)
+        verified = bool(vals and vals.get('ver'))
+        if post_id:
+            meta = tools('read_metadata', {'post_id': post_id})
+            exact = reference == post_id or (
+                meta['_success'] and meta['title'].strip().lower() == reference.strip().lower())
+            verified = verified or exact
+
+        # A verified active post wins over a weaker fuzzy prediction when the new reference is
+        # anaphoric or overlaps its title. An explicit exact id/title above still wins.
+        if not verified and active_entity.get('post') and active_entity.get('ver'):
+            active_meta = tools('read_metadata', {'post_id': active_entity['post']})
+            normalized = lambda value: {
+                token for token in re.findall(r'[a-z0-9]+', value.lower())
+                if len(token) > 3 and token not in {'this', 'that', 'post', 'draft', 'note'}
+            }
+            overlap = (not reference or reference == active_entity['post'] or
+                       bool(normalized(reference) & normalized(active_meta.get('title', ''))))
+            if active_meta['_success'] and overlap:
+                post_id = active_entity['post']
+                verified = True
         if not post_id:
             if slot.priority != 'required':
                 # An elective entity slot means the flow proceeds without it (cite's url-only
@@ -162,7 +187,7 @@ class BasePolicy:
             state.grounding['choices'] = [
                 {'kind': 'post', 'label': item['title'], 'status': item['status'],
                  'entity': {'post': item['post_id'], 'sec': '', 'snip': '', 'chl': '', 'ver': True},
-                 'source': flow.name(), 'turn_number': state.turn_count}
+                 'source': flow.name()}
                 for item in items]
             titles = ', '.join(f"'{item['title']}'" for item in items)
             self.ambiguity.recognize('partial',
@@ -171,7 +196,13 @@ class BasePolicy:
             return None, None, TaskArtifact(flow.name())
         sec_ref = vals['sec'] if vals else active_entity.get('sec', '')
         sec_id = self._resolve_sec_id(sec_ref, tools, post_id)
-        state.set_active_entity(post=post_id, sec=sec_id or '')
+        state.set_active_entity(post=post_id, sec=sec_id or '', ver=verified)
+        if vals:
+            vals['post'] = post_id
+            vals['sec'] = sec_id or ''
+            vals['ver'] = verified
+            slot._rebuild_keys()
+            slot.check_if_filled()
         return post_id, sec_id, None
 
     def _build_resolved_context(self, flow, state, tools, include_preview:bool=False) -> dict|None:
