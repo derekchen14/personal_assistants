@@ -301,17 +301,20 @@ class PolicyExecutor:
         state.keep_going = True
         if state.pred_intent in ('Plan', 'Clarify'):
             self.wait_for_nlu('hook point 1')
-        pred_flow = state.pred_flows[0]['name']
         context = self.world.context
         user_turn = next(turn for turn in reversed(context.full_conversation(as_turns=True))
                          if turn.role == 'user')
         if user_turn.turn_type == 'action':   # golden dax — react() already stacked it; force it
-            note = (f"[click] The user selected '{pred_flow}' directly. You MUST run it as your "
-                    f"next step with manage_flows (update status='Active').")
-        else:                                 # TypeSafe — a prediction the agent may override
+            note = (f"[click] The user selected '{state.pred_flows[0]['name']}' directly. You "
+                    f"MUST run it as your next step with manage_flows (update status='Active').")
+        elif state.pred_flows:                # TypeSafe — a prediction the agent may override
             note = (f"[typesafe] intent={state.pred_intent} — the predicted flow is "
-                    f"'{pred_flow}'. Stack and run it with manage_flows (op='stackon'), pick a "
-                    f"different flow, or reply directly.")
+                    f"'{state.pred_flows[0]['name']}'. Stack and run it with manage_flows "
+                    f"(op='stackon'), pick a different flow, or reply directly.")
+        else:  # NLU abstained after the wait — the ask path: a general ambiguity is pending
+            note = (f"[typesafe] intent={state.pred_intent} — no flow was detected. A "
+                    f"clarification is pending: relay it with ask_clarification_question, or "
+                    f"pick a flow yourself if the request is actually clear.")
         context.add_turn('system', {'text': note})   # system utterance — round 1 sees it
 
     def orchestrate(self, system_prompt) -> str:
