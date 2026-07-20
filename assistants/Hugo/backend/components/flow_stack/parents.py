@@ -22,9 +22,6 @@ class BaseFlow(object):
   def intent(self):
     return self.parent_type
 
-  def get(self, key, default=None):
-    return getattr(self, key, default)
-
   def name(self, full=False):
     if full:
       return f'{self.parent_type}({self.flow_type})'
@@ -40,9 +37,6 @@ class BaseFlow(object):
       elif slot.filled:
         parts.append(f"{slot_name}: {slot.value}")
     return ' '.join(parts)
-
-  def is_complete(self):
-    return self.status == 'Completed'
 
   def is_filled(self):
     for slot in self.slots.values():
@@ -94,10 +88,6 @@ class BaseFlow(object):
     the entity exists before committing it)."""
     if self.entity_slot in self.slots:
       self.slots[self.entity_slot].add_one(**entity)
-
-  def entity_values(self, size=False):
-    values = self.slots[self.entity_slot].values
-    return len(values) if size else values
 
 
 # ── Domain Parents ───────────────────────────────────────────────────────

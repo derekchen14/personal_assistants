@@ -38,15 +38,14 @@ class MemoryExtensionModule:
         completed = [flow for flow in recently_finished if flow.status == 'Completed']
         self.context_coordinator.add_turn('agent', {'text': utterance})
         self.start(completed)
-        # artifact long-term storage (append world.latest_artifact() to artifacts.jsonl in the
-        # session dir) # designed-not-built
+        # TODO: artifact long-term storage (save world.artifacts to artifacts.jsonl in the session dir)
         self._compaction_check(prompt_tokens)
         self.finish()
 
     def start(self, completed:tuple=()):
         """Canonical turn 'module · start()': the backward-looking turn_wrap checkpoint (a
         kind-6 system activity) — which flows completed this turn, which flow is still active,
-        the grounded post — plus the per-turn resets (is_newborn, consumed choices, turn count)."""
+        the grounded post — plus the per-turn resets (is_newborn, consumed choices)."""
         state = self.world.state
         active = self.world.flows.get_flow(status='Active')
         parts = [f"completed: {', '.join(flow.name() for flow in completed) or 'none'}",
@@ -69,13 +68,14 @@ class MemoryExtensionModule:
         if choices and any(flow.name() not in sources and flow.intent != 'Converse'
                            for flow in completed):
             state.grounding['choices'] = []
-        state.turn_count += 1
 
     def finish(self):
-        """Canonical turn 'module · finish()': run the turn-end shape check on the one live
-        stack (pex.flow_stack, via the world), save state.json."""
+        """Canonical turn 'module · finish()': run the turn-end shape check on the one live stack
+        (pex.flow_stack, via the world), record the turn_id snapshot from Context (the single
+        source of truth for turn counts), then save state.json."""
         self._check_turn_end_shape(self.world.flows.to_list())
-        self.world.state.save(self.world.state_file())
+        self.world.state.turn_id = self.world.context.num_utterances
+        self.world.state.save(self.world.session_dir() / 'state.json')
 
     @staticmethod
     def _check_turn_end_shape(stack:list):

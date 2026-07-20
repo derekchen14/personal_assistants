@@ -73,7 +73,7 @@ class Assistant:
                 if nlu_error: raise nlu_error[0]
 
             self.mem.recap(reply, self.pex.last_prompt_tokens, self.pex.recently_finished)
-            return self._build_payload(reply, self.world.latest_artifact())
+            return self._build_payload(reply, self.world.artifacts[-1])
         except Exception as ecp:  # noqa: BLE001 — top-level safety net
             log.exception('take_turn failed: %s', ecp)
             return self._fallback_response("Something went wrong on my end. Please try again.")
@@ -98,7 +98,7 @@ class Assistant:
         if self.world.conversation_id is None:
             self.world.open_session(datetime.now().strftime(f'{self.username}_%Y%m%d_%H%M%S'))
 
-        self.world.scratchpad._scratchpad_path = self.world.session_dir() / 'scratchpad.jsonl'
+        self.world.scratchpad._pathway = self.world.session_dir() / 'scratchpad.jsonl'
         state = self.world.state
         state.conversation_id = self.world.conversation_id
         state.username = self.username

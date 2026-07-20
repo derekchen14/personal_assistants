@@ -213,11 +213,6 @@ class FreeTextSlot(GroupSlot):
       self.values.append(text)
     self.check_if_filled()
 
-  def extract(self, labels):
-    if 'operations' in labels:
-      for operation in labels['operations']:
-        self.add_one(operation)
-
   def json_schema(self):
     return {'type': ['array', 'null'], 'items': {'type': 'string'}}
 
@@ -537,10 +532,6 @@ class ChannelSlot(SourceSlot):
     if channel not in self.values:
       self.values.append(channel)
     self.check_if_filled()
-
-  def add_many(self, channels):
-    for channel in channels:
-      self.add_one(channel)
 
   def check_if_filled(self):
     self.filled = len(self.values) >= self.size

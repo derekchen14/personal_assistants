@@ -155,71 +155,89 @@ class RecipeService:
         ...
 ```
 
-### PEX Registration: `_tools` Dict with `(service, method_name)` Tuples
+### PEX Registration: Two Inventories
 
-PEX registers domain tools in a `_tools` dict that maps tool names to `(service_instance, method_name)` tuples. This pattern keeps routing simple and avoids a separate registry abstraction.
+PEX holds two tool inventories. **Domain tools** live in `self.domain_tools`, a dict mapping each tool name to a `(service_instance, method_name)` tuple — routing is a dict lookup plus `getattr`, no per-tool wiring. **Component tools** live in `self.component_tools`, a dict mapping each tool name to the bound PEX method that serves it, under one naming rule: `method = '_' + tool_name` (`manage_flows` → `_manage_flows`). Which callers see which tool, and which `op` menu they get, lives in the definition builders — never in the inventory.
 
 ```python
-class PEX:
-    def __init__(self, config, ambiguity, engineer, memory, world):
+class PolicyExecutor:
+    def __init__(self, config, engineer):
         # ... standard init ...
 
-        # Domain-specific service classes
+        # Domain service classes, one per external system / internal service
         self._recipe_service = RecipeService(db_conn, config)
         self._nutrition_service = NutritionService(config)
 
-        # Tool registry: tool_name → (service, method_name)
-        self._tools: dict[str, tuple[object, str]] = {
-            'recipe_search': (self._recipe_service, 'search'),
-            'recipe_get': (self._recipe_service, 'get'),
-            'recipe_create': (self._recipe_service, 'create'),
+        # Domain tool inventory: tool_name → (service, method_name)
+        self.domain_tools: dict[str, tuple[object, str]] = {
+            'recipe_search':    (self._recipe_service, 'search'),
+            'recipe_get':       (self._recipe_service, 'get'),
+            'recipe_create':    (self._recipe_service, 'create'),
             'nutrition_lookup': (self._nutrition_service, 'lookup'),
         }
+
+        # Component tool inventory: tool_name → bound method ('_' + tool_name)
+        self.component_tools = {
+            'manage_flows':       self._manage_flows,
+            'understand':         self._understand,
+            'view_policies':      self._view_policies,
+            'scratchpad':         self._scratchpad,
+            'declare_ambiguity':  self._declare_ambiguity,
+            'execution_error':    self._execution_error,
+            'coordinate_context': self._coordinate_context,
+            'store_preference':   self._store_preference,
+        }
 ```
+
+The word **registry** is reserved for the [World](../components/world.md) (the component registry); both tool dicts are **inventories**.
 
 ### Tool Routing
 
-The `_dispatch_tool` method handles all tool calls. Domain tools are routed via `_tools` using `getattr`; component tools (the MEM skills `recap`/`recall`/`retrieve`/`store_preference`, the scratchpad tools, `understand`, and `handle_ambiguity`) are routed via internal methods.
+`call_tool` handles every tool call from both loops. Domain tools resolve through `self.domain_tools` with `getattr`; component tools are a straight dict lookup in `self.component_tools`. Bad calls come back as corrective tool errors, never exceptions — except a hook-wait `TimeoutError`, which fails the whole turn loudly.
 
 ```python
-def _dispatch_tool(self, tool_name: str, tool_input: dict) -> dict:
+def call_tool(self, tool_name: str, tool_input: dict) -> dict:
     try:
-        if tool_name in self._tools:
-            service, method_name = self._tools[tool_name]
+        if tool_name in self.domain_tools:
+            service, method_name = self.domain_tools[tool_name]
             method = getattr(service, method_name)
             return method(**tool_input)
-        elif tool_name in ('recap', 'recall', 'retrieve', 'store_preference'):
-            return self.memory.dispatch_skill(tool_name, tool_input)
-        elif tool_name in ('append_to_scratchpad', 'read_from_scratchpad'):
-            return self._dispatch_scratchpad_tool(tool_name, tool_input)
-        elif tool_name == 'understand':
-            return self._dispatch_state_read(tool_input)
-        elif tool_name == 'handle_ambiguity':
-            return self._dispatch_ambiguity_tool(tool_input)
+        elif tool_name in self.component_tools:
+            return self.component_tools[tool_name](tool_input)
         else:
-            return {
-                '_success': False,
-                '_error': 'unknown_tool',
-                '_message': f'Unknown tool: {tool_name}',
-            }
-    except Exception as e:
-        return {
-            '_success': False,
-            '_error': 'server_error',
-            '_message': f'{type(e).__name__}: {e}',
-        }
+            return corrective('invalid_input', f'Unknown tool: {tool_name}')
+    except TimeoutError:          # a hook-wait expiry fails the turn loudly
+        raise
+    except Exception as ecp:
+        return corrective('server_error', f'{type(ecp).__name__}: {ecp}')
 ```
 
-Component tools (the MEM skills, the scratchpad tools, `understand`, `handle_ambiguity`) are NOT in the `_tools` dict. They are handled by dedicated `_dispatch_*` methods inside PEX, since they access internal component state rather than external services.
+Component tools are NOT in `self.domain_tools` — each is a method on PEX (reached through `self.component_tools`) because it reads or changes internal component state (the Flow Stack, the Session Scratchpad, the Dialogue State belief, the Ambiguity Handler) rather than calling an external service.
 
-### Tool Definitions for Skills
+### Tool Definitions Per Audience
 
-`get_tools_for_flow(flow)` assembles the tool list for a skill invocation. It combines the universal-scope component tools (always available) with the flow's declared tools — both resolved from the one manifest.
+The same component method serves two callers with different menus. `get_tools_for_flow(flow)` builds the **sub-agent** list; `get_tools_for_orchestrator()` builds the **PEX Agent** list. Both compose the shared component tools with the caller's domain tools, but each component tool's definition is shaped per audience by a single `_def_<tool>` builder — so a narrower `op` menu (or absence from the list), never a second method, expresses the level difference.
 
 ```python
 def get_tools_for_flow(self, flow) -> list[dict]:
-    tools = list(self._component_tool_definitions())
+    # sub-agent: manage_flows limited to stackon/fallback, the flat belief read
+    # (view_policies), scratchpad, declare_ambiguity, execution_error, coordinate_context
+    tools = [self._def_manage_flows(sub_agent=True), self._def_view_policies(),
+             self._def_scratchpad(), self._def_declare_ambiguity(),
+             self._def_execution_error(), self._def_coordinate_context()]
     for tool_name in flow.tools:
+        tool_def = self._get_tool_def(tool_name)
+        if tool_def:
+            tools.append(tool_def)
+    return tools
+
+def get_tools_for_orchestrator(self) -> list[dict]:
+    # PEX Agent: manage_flows (all four ops), the belief read (understand), scratchpad,
+    # coordinate_context, store_preference, and the read-only domain allowlist. The flat
+    # sub-agent reads and signals (view_policies, declare_ambiguity, execution_error) are absent.
+    tools = [self._def_manage_flows(), self._def_understand(), self._def_scratchpad(),
+             self._def_coordinate_context(), self._def_store_preference()]
+    for tool_name in READ_ONLY_DOMAIN_TOOLS:
         tool_def = self._get_tool_def(tool_name)
         if tool_def:
             tools.append(tool_def)
@@ -299,7 +317,7 @@ The policy class method assembles the skill prompt by:
 1. Reading the skill template from `<domain>/skills/<dact>.md`
 2. Injecting the current slot values from the flow stack
 3. Appending tool schemas for the tools referenced in the template
-4. Appending the universal-scope component tool schemas (the MEM skills, scratchpad tools, `understand`, `handle_ambiguity`) — the portion of the manifest every skill gets, regardless of what the flow declared
+4. Appending the shared component tool schemas for a sub-agent run (`manage_flows` limited to stackon/fallback, `view_policies`, `scratchpad`, `declare_ambiguity`, `execution_error`, `coordinate_context`) — the portion every skill gets, regardless of what the flow declared
 
 The assembled prompt is passed to the LLM for skill invocation.
 
@@ -324,6 +342,8 @@ JSON Schema matching what the [Task Artifact](../components/task_artifact.md) ne
 - Data goes in a `result` field (object or array)
 - Include `metadata` for pagination, timestamps, source attribution
 - Output shape should match the block type (table data → array of rows, card data → single object)
+
+This shape governs **domain tools** (the ones derived from flow slots). **Component tools** are exempt: internal reads return their data under bespoke top-level keys next to `_success` (`view_policies` → `flows` + `slots`, `coordinate_context` → `history`), because there is no Task Artifact block to feed — the orchestrator consumes the read directly.
 
 ### Worked Schema Example
 
@@ -406,14 +426,14 @@ shared/
     shell_run.json
     http_request.json
     components/                 # universal-scope tools — the shared half of the manifest
-      recap.json
-      recall.json
-      retrieve.json
-      store_preference.json
-      append_to_scratchpad.json
-      read_from_scratchpad.json
+      manage_flows.json
+      scratchpad.json
+      coordinate_context.json
       understand.json
-      handle_ambiguity.json
+      view_policies.json
+      declare_ambiguity.json
+      execution_error.json
+      store_preference.json
 
 <domain>/
   schemas/
@@ -428,7 +448,7 @@ shared/
 - **`shared/schemas/`** — Canonical tool schemas that appear across many domains (sql_execute, python_execute, shell_run, http_request). These define the baseline shape; domains register them with domain-specific permissions and config.
 - **`<domain>/schemas/`** — Domain-specific tool schemas. One file per tool, named `<tool_id>.json`.
 - **Domain overrides shared** — A domain can override a shared schema by placing a file with the same tool_id in `<domain>/schemas/`. The domain version wins. This lets a domain tighten permissions, add fields, or restrict enums on a canonical tool.
-- **`shared/schemas/components/`** — Component tool schemas for the MEM skills (`recap`/`recall`/`retrieve`/`store_preference`), the scratchpad tools, `understand`, and `handle_ambiguity`. These are the **universal-scope** half of the manifest: composed in at load and given to every skill, so domain authors never re-declare them (see [Skill Templates](#skill-templates) § Assembly).
+- **`shared/schemas/components/`** — Component tool schemas for the round-5.2 set (`manage_flows`, `scratchpad`, `coordinate_context`, `understand`, `view_policies`, `declare_ambiguity`, `execution_error`, `store_preference`). These are the **universal-scope** half of the manifest: composed in at load and given to every skill, so domain authors never re-declare them (see [Skill Templates](#skill-templates) § Assembly). In Hugo these definitions are built in code by the `_def_<tool>` builders rather than read from files (see the Hugo divergence note under [Core Fields](#core-fields)).
 
 ## Naming Conventions
 
@@ -463,6 +483,9 @@ A tool serving 10+ flows or using a broad `action` enum (`["outline", "expand", 
 Before creating a dedicated tool, check whether adding a parameter to an existing tool covers the same need. A boolean or enum parameter can replace an entire tool.
 
 - `modify_row` with `is_header=true` replaced the dedicated `modify_headers` tool
+- (round 5.2) `scratchpad` with an `op` enum (`read` / `append`) replaced `read_from_scratchpad` /
+  `append_to_scratchpad` / `save_findings`; `manage_flows` with an `op` enum replaced `stackon_flow` /
+  `fallback_flow` — mechanical variants of one component action fold into one method
 
 The reverse also holds — **don't** subsume when the variants are semantically distinct. MEM keeps `recap` /
 `recall` / `retrieve` / `store_preference` as four separate tools (not one `manage_memory` with a `level` enum):
@@ -511,19 +534,23 @@ Each tool in the manifest declares these properties. PEX loads the manifest at s
 | `idempotent` | bool | Safe to auto-retry without side effects (drives PEX retry policy) |
 | `timeout_ms` | int | Max execution time in milliseconds |
 
-> **Hugo divergence (decided 2026-06-21):** `scope`, `dispatch`, and `output_schema` are **not** in Hugo's manifest — they live in code (provisioning via each flow's `self.tools`; routing via the code-side routing table). One source is enough; the manifest doesn't duplicate them.
+> **Hugo divergence (decided 2026-06-21):** `scope`, routing, and `output_schema` are **not** in Hugo's manifest — they live in code (each flow's `tools` list provisions its domain tools; `call_tool` routes by name over the two inventories, `self.domain_tools` and `self.component_tools`). One source is enough; the manifest doesn't duplicate them.
 
 ### Capability Tags
 
-Three boolean tags that classify a tool's security profile. Used by [PEX § Pre-Hook](../modules/pex.md) to enforce the Lethal Trifecta threat model — when all three tags are true on a single tool, that tool requires mandatory human approval regardless of other settings.
+Three boolean tags that classify a tool's security profile, nested under a single `capabilities` key on the manifest entry. Used by [PEX § Pre-Hook](../modules/pex.md) to enforce the Lethal Trifecta threat model — when all three tags are true on a single tool, that tool requires mandatory human approval regardless of other settings.
 
-| Field | Type | Default | Description |
+```yaml
+capabilities: {accesses_private_data: false, receives_untrusted_input: false, communicates_externally: false}
+```
+
+| Field (under `capabilities`) | Type | Default | Description |
 |---|---|---|---|
 | `accesses_private_data` | bool | false | Tool reads or writes user/tenant PII, credentials, or sensitive business data |
 | `receives_untrusted_input` | bool | false | Tool processes input originating from outside the system (user uploads, external APIs, scraped content) |
 | `communicates_externally` | bool | false | Tool sends data to external systems (email, Slack, webhooks, third-party APIs) |
 
-Any two tags together are safe with standard controls. All three together create an exfiltration path (untrusted input → access private data → send externally). PEX pre-hook check #7 enforces this.
+Any two tags together are safe with standard controls. All three together create an exfiltration path (untrusted input → access private data → send externally). PEX pre-hook check #7 reads them as `caps.get(...)` and enforces this.
 
 ### Operational Fields
 
@@ -546,9 +573,7 @@ recipe_search:
   input_schema: schemas/recipe_search_input.json
   idempotent: true
   timeout_ms: 10000
-  accesses_private_data: false
-  receives_untrusted_input: false
-  communicates_externally: false
+  capabilities: {accesses_private_data: false, receives_untrusted_input: false, communicates_externally: false}
   max_retries: null              # use global resilience default
   requires_approval: false
   rate_limit_rpm: null
@@ -562,9 +587,7 @@ timer_set:
   output_schema: schemas/timer_set_output.json
   idempotent: false
   timeout_ms: 5000
-  accesses_private_data: false
-  receives_untrusted_input: false
-  communicates_externally: true   # sends command to IoT device
+  capabilities: {accesses_private_data: false, receives_untrusted_input: false, communicates_externally: true}   # sends command to IoT device
   max_retries: 1                 # no retry for side-effecting timer
   requires_approval: false
   rate_limit_rpm: null
@@ -578,9 +601,7 @@ nutrition_lookup:
   output_schema: schemas/nutrition_lookup_output.json
   idempotent: true
   timeout_ms: 15000
-  accesses_private_data: false
-  receives_untrusted_input: false
-  communicates_externally: true   # calls external USDA API
+  capabilities: {accesses_private_data: false, receives_untrusted_input: false, communicates_externally: true}   # calls external USDA API
   max_retries: null
   requires_approval: false
   rate_limit_rpm: 30             # external API rate limit
@@ -672,25 +693,28 @@ Unique to one domain, wrapping a specific platform API:
 
 ### Component Tools (Skill Access)
 
-Some components are exposed as tools to skills during [PEX § Skill Invocation](../modules/pex.md). They are **universal-scope** entries in the manifest — composed from `shared/schemas/components/` and given to every skill, alongside the per-flow-declared domain tools.
+Some components are exposed as tools during [PEX § Skill Invocation](../modules/pex.md). They are **universal-scope** entries — given to every skill alongside its per-flow-declared domain tools. Round 5.2 collapsed these to **one method per component action**; the two callers (the PEX Agent and a sub-agent) differ only in the menu each definition builder exposes, never in the method that runs.
 
-| Component tool | Operations | Scope · dispatch |
-|---|---|---|
-| `recap` / `recall` / `retrieve` / `store_preference` | MEM L1 / L2 / L3 reads (`store_preference` writes L2) | universal · internal (MEM) |
-| `append_to_scratchpad` / `read_from_scratchpad` | append findings (triggers NLU) / read | universal · internal (scratchpad) |
-| `understand` | read the serialized Dialogue State belief | universal · internal (Dialogue State) |
-| `handle_ambiguity` | recognize / recover / ask / resolve | universal · internal (Ambiguity Handler) |
-| `flow_stack` | read slot values, prior flow results | universal · internal (FlowStack) |
+| Component tool | Operations | Audience | Serves |
+|---|---|---|---|
+| `manage_flows` | update / stackon / fallback / pop (sub-agents: stackon / fallback only) | both | FlowStack |
+| `scratchpad` | read / append (append triggers NLU) | both | Session Scratchpad |
+| `coordinate_context` | get_history / get_turn / get_checkpoint | both | Conversation context |
+| `understand` | read the Dialogue State belief (stack + active slots) | PEX Agent | Dialogue State |
+| `view_policies` | flat belief read: live stack + the active flow's filled slots | sub-agent | FlowStack |
+| `declare_ambiguity` | recognize an ambiguity by level + metadata | sub-agent | Ambiguity Handler |
+| `execution_error` | signal a violation so the run routes to the error path | sub-agent | policy error path |
+| `store_preference` | write a user preference to memory | PEX Agent | MEM |
 
-A skill receives the universal-scope tools it needs plus its 1–3 flow-specific (per-flow-declared) tools — all from the one manifest.
+A skill receives the sub-agent component tools plus its 1–3 flow-specific (per-flow-declared) tools.
 
 ### Not Tools
 
 Handled by components and never exposed to skills or the manifest:
 
-- Dialogue State → read via `understand` (slot values also via flow_stack)
+- Dialogue State → read via `understand` (PEX Agent); a sub-agent reads the stack + active slots via `view_policies`
 - LLM calls → the skill IS the LLM; [Prompt Engineer](../components/prompt_engineer.md) is not needed as a tool
-- Ambiguity → reached via `handle_ambiguity`; a skill that cannot proceed returns the `uncertain` outcome, on which the policy either recognizes ambiguity (`handle_ambiguity`) or emits a violation
+- Ambiguity → a sub-agent that cannot proceed calls `declare_ambiguity` (or signals `execution_error`); the clarification question reaches the user in-band, not through a separate ask tool
 - Task Artifact → policy responsibility; the skill returns data, the policy/sub-agent builds the artifact
 - Conversation management → NLU (belief) / MEM (event stream)
 

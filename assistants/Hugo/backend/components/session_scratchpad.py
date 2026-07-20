@@ -7,37 +7,30 @@ class SessionScratchpad:
     one conversation. A shared resource owned by the World; NLU sees it as `nlu.scratchpad` (beside
     `nlu.ambiguity`), and PEX + the policies read/write it through the same instance.
 
-    One storage mode: an append-only JSONL file in the session dir (bound by World.open_session via
-    `attach`), so every agent and sub-agent shares the same pad on disk. Entries are free-form dicts,
-    each stamped with `origin` by this code — never trusted from LLM input. When an origin is written
-    more than once, the newest entry wins on read."""
+    One storage mode: an append-only JSONL file in the session dir, so every agent and sub-agent shares
+    the same pad on disk. Entries are free-form dicts, each stamped with `origin` by this code rather than
+    from LLM input. When an origin is written more than once, the newest entry wins on read."""
 
     def __init__(self, scratchpad_path:str|None=None):
-        self._scratchpad_path = Path(scratchpad_path) if scratchpad_path else None
-
-    def attach(self, scratchpad_path):
-        """Bind the pad to its session file — World.open_session calls this."""
-        self._scratchpad_path = Path(scratchpad_path)
+        self._pathway = Path(scratchpad_path) if scratchpad_path else None
 
     def append_entry(self, origin:str, entry:dict):
-        """The write surface for PEX, the policies, and every sub-agent — append one entry (a
-        schema-free dict). This component owns the Entry contract fields (round 5.2): `origin`
-        and the `version` / `used_count` stamps land here, never in the callers — `turn_number`
-        stays the caller's field (every caller holds the context, the scratchpad does not). A
-        caller-passed `version`/`used_count` wins (e.g. re-filing an already-consumed entry).
-        The session dir is created lazily on the first append (open_session stays
-        side-effect free)."""
+        """The write surface for PEX, the policies, and every sub-agent. Each entry contains:
+          * `origin` - where the entry came from, often the name of the flow
+          * `version` - tracks whether the entry has been edited
+          * `used_count` - tracks how many times the entry has been read
+        The session dir is created lazily on the first append if it does not already exist"""
         stamped = {'version': 1, 'used_count': 0, **entry, 'origin': origin}
-        self._scratchpad_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self._scratchpad_path, 'a', encoding='utf-8') as file:
+        self._pathway.parent.mkdir(parents=True, exist_ok=True)
+        with open(self._pathway, 'a', encoding='utf-8') as file:
             file.write(json.dumps(stamped) + '\n')
 
     def read(self, origin:str|None=None, keys:list[str]|None=None, consume:bool=True) -> list[dict]:
         """Entries in append order (newest last), optionally filtered by `origin` and/or by `keys`
         that must all be present on an entry.
 
-        Reading IS consuming (round 3.4): any returned entry with `used_count == 0` is bumped
-        to 1 on disk — `used_count == 0` therefore means first appearance, and PEX's round
+        Reading IS consuming so returned entries have their `used_count` incremented by 1.
+        A `used_count == 0` therefore means first appearance, and PEX's round
         refresh uses it as its seen-cursor (round 5.2). The returned dicts keep the pre-bump
         value so callers can still filter on it. Pass `consume=False` for maintenance scans
         and context renders that must not advance the cursor (NLU's review pass, the skill
@@ -77,9 +70,9 @@ class SessionScratchpad:
 
     def _load(self) -> list[dict]:
         """All entries, no filtering, no consuming — the shared loader for read/amend/prune."""
-        if not self._scratchpad_path.exists():
+        if not self._pathway.exists():
             return []
-        lines = self._scratchpad_path.read_text(encoding='utf-8').splitlines()
+        lines = self._pathway.read_text(encoding='utf-8').splitlines()
         return [json.loads(line) for line in lines]
 
     def _locate(self, entries:list, origin:str, turn_number:int) -> int:
@@ -93,14 +86,14 @@ class SessionScratchpad:
 
     def _rewrite(self, entries:list):
         lines = [json.dumps(entry) for entry in entries]
-        self._scratchpad_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        self._pathway.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
     def clear(self):
-        if self._scratchpad_path and self._scratchpad_path.exists():
-            self._scratchpad_path.write_text('', encoding='utf-8')
+        if self._pathway and self._pathway.exists():
+            self._pathway.write_text('', encoding='utf-8')
 
     @property
     def size(self) -> int:
-        if not self._scratchpad_path.exists():
+        if not self._pathway.exists():
             return 0
-        return len(self._scratchpad_path.read_text(encoding='utf-8').splitlines())
+        return len(self._pathway.read_text(encoding='utf-8').splitlines())

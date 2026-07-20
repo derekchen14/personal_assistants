@@ -41,7 +41,7 @@ def nlu(minimal_config, tmp_path):
     pex.world = world
     mem.world = world
     world.context.add_turn('user', {'text': '', 'dax': '', 'payload': {}}, 'action')
-    world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
+    world.scratchpad._pathway = (tmp_path / 'scratchpad.jsonl')
     return nlu
 
 
@@ -67,7 +67,7 @@ class TestAmbiguityHandler:
         assert nlu.ambiguity_handler.observation == ''
 
     def test_recover_resolves_from_preference(self, nlu, tmp_path):
-        nlu.world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
+        nlu.world.scratchpad._pathway = (tmp_path / 'scratchpad.jsonl')
         nlu.world.prefs.store_preference('channel', 'substack')
         nlu.ambiguity_handler.recognize('partial', {'missing': 'channel'})
         result = nlu.recover()
@@ -77,7 +77,7 @@ class TestAmbiguityHandler:
         assert recovery[-1]['found'] == 'substack' and recovery[-1]['version'] == 1
 
     def test_recover_stays_pending_when_nothing_found(self, nlu, tmp_path):
-        nlu.world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
+        nlu.world.scratchpad._pathway = (tmp_path / 'scratchpad.jsonl')
         nlu.ambiguity_handler.recognize('partial', {'missing': 'channel'})
         result = nlu.recover()
         assert result == {'recovery': 'channel'}  # the missing slot name comes back unresolved
@@ -174,9 +174,9 @@ def _stub_think_internals(nlu, detection):
 
 class TestThinkDispatch:
     """think() detects first and only pays for a classify + narrowed re-detect on a low-confidence
-    cross-intent tie (§3.1.1; predict() was folded into think 2026-07-08). _intent_split is the
-    boolean that governs that escalation; the working intent is read off
-    `dialogue_state.pred_intent`, never passed as a parameter (round 3.4)."""
+    cross-intent tie (§3.1.1; predict() was folded into think 2026-07-08). The escalation fires when
+    the ranked flows span >1 intent AND top-1 is under the confidence floor; the working intent is
+    read off `dialogue_state.pred_intent`, never passed as a parameter (round 3.4)."""
 
     def test_think_skips_classify_on_confident_detection(self, nlu):
         _stub_think_internals(nlu, {'return_value': _detection([('outline', 0.9)], 0.9)})
@@ -201,15 +201,6 @@ class TestThinkDispatch:
         nlu.think('polish the intro')
         assert nlu.dialogue_state.detect_flows.call_args.args[2] == 'polish the intro'
         assert 'Revise' in nlu.dialogue_state.detect_flows.call_args.args[3]  # check's snippet
-
-    def test_intent_split_true_when_flows_span_intents_and_low_conf(self, nlu):
-        assert nlu._intent_split(_detection([('outline', 0.5), ('find', 0.5)], 0.4)) is True
-
-    def test_intent_split_false_when_confident(self, nlu):
-        assert nlu._intent_split(_detection([('outline', 0.5), ('find', 0.5)], 0.9)) is False
-
-    def test_intent_split_false_when_single_intent(self, nlu):
-        assert nlu._intent_split(_detection([('outline', 0.6), ('compose', 0.4)], 0.4)) is False
 
     def test_classify_intent_still_callable(self, nlu):
         engineer = MagicMock()
@@ -575,7 +566,7 @@ class TestScratchpadReview:
     diagnostics; semantic review stays designed-not-built."""
 
     def test_review_repairs_nonconforming_entry(self, nlu, tmp_path):
-        nlu.world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
+        nlu.world.scratchpad._pathway = (tmp_path / 'scratchpad.jsonl')
         nlu.world.scratchpad.append_entry('legacy', {'note': 'predates the contract'})
         report = nlu.review_scratchpad()
         assert report['reviewed'] is True and report['repaired'] == 1
@@ -584,7 +575,7 @@ class TestScratchpadReview:
         assert newest['note'] == 'predates the contract'  # lossless repair
 
     def test_review_leaves_conforming_pad_alone(self, nlu, tmp_path):
-        nlu.world.scratchpad.attach(tmp_path / 'scratchpad.jsonl')
+        nlu.world.scratchpad._pathway = (tmp_path / 'scratchpad.jsonl')
         nlu.world.scratchpad.append_entry('find', {'version': 1, 'turn_number': 1, 'used_count': 0})
         report = nlu.review_scratchpad()
         assert report == {'reviewed': True, 'size': 1, 'repaired': 0}
@@ -596,7 +587,7 @@ def _session_state() -> DialogueState:
     state = DialogueState({})
     state.pred_intent = 'Draft'
     state.pred_flows = [{'name': 'compose', 'dax': flow2dax('compose'), 'confidence': 0.9}]
-    state.turn_count = 12
+    state.turn_id = 12
     state.conversation_id = 'convo-42'
     state.username = 'writer'
     state.set_active_entity(post='p1', sec='intro', chl='substack', ver=True)
@@ -621,7 +612,7 @@ class TestSessionStateFile:
         document = _session_state().read_state()
         assert list(document) == ['session', 'beliefs', 'grounding']
         assert list(document['grounding']) == ['choices', 'notes', 'entities']
-        assert document['session']['turn_count'] == 12
+        assert document['session']['turn_id'] == 12
         assert document['beliefs']['intent'] == 'Draft'
 
     def test_load_rehydrates_fields(self, tmp_path):
@@ -630,7 +621,7 @@ class TestSessionStateFile:
         reloaded = DialogueState.load(state_file)
         assert reloaded.conversation_id == 'convo-42'
         assert reloaded.username == 'writer'
-        assert reloaded.turn_count == 12
+        assert reloaded.turn_id == 12
         assert reloaded.flow_name() == 'compose'
         assert reloaded.get_active_entity()['ver'] is True
 

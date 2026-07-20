@@ -104,7 +104,7 @@ class PolicyExecutor:
         self._analysis_service = AnalysisService()
         self._platform_service = PlatformService()
 
-        self.tools: dict[str, tuple[object, str]] = {
+        self.domain_tools: dict[str, tuple[object, str]] = {
             # PostService (9)
             'find_posts':        (self._post_service, 'find_posts'),
             'search_notes':      (self._post_service, 'search_notes'),
@@ -158,10 +158,10 @@ class PolicyExecutor:
         self.errors = 0        # consecutive corrective tool failures
         self.nudged = False    # a thinking-only miss already nudged this turn
         self.last_call = None  # (name+args key, succeeded) — _guarded_call's dedupe memory
-        # Component tool registry (round 5.2) — one dict, one naming rule: method = '_' +
+        # Component tool inventory (round 5.2) — one dict, one naming rule: method = '_' +
         # exposed tool name. Which CALLERS see which tools (and which ops) lives in the
         # definitions, never here.
-        self.toolset = {
+        self.component_tools = {
             'manage_flows':         self._manage_flows,
             'understand':           self._understand,
             'view_policies':        self._view_policies,
@@ -172,7 +172,8 @@ class PolicyExecutor:
             'store_preference':     self._store_preference,
         }
         self._policies: dict[str, object] = {}  # built when the world is attached (setter below)
-        self.initialization()
+        for stale in self._content_service._snap_root.glob('snap_*.json'):   # wipe prior sessions
+            stale.unlink()
 
     @property
     def world(self):
@@ -184,7 +185,7 @@ class PolicyExecutor:
         component, and the policies (their scoped components dict carries world-bound references —
         sub-agents never see the whole world)."""
         self._world = world
-        self.tools['search_documents'] = (world.knowledge, 'search_documents')
+        self.domain_tools['search_documents'] = (world.knowledge, 'search_documents')
         components = {'engineer': self.engineer, 'config': self.config, 'ambiguity': world.ambiguity,
             'get_tools': self.get_tools_for_flow, 'flow_stack': self.flow_stack,
             'content_service': self._content_service, 'scratchpad': self.session_scratchpad,
@@ -196,11 +197,6 @@ class PolicyExecutor:
             'Revise': RevisePolicy(components),
             'Publish': PublishPolicy(components),
         }
-
-    def initialization(self):
-        # Wipe snapshot history from prior sessions
-        for stale in self._content_service._snap_root.glob('snap_*.json'):
-            stale.unlink()
 
     # -- Pre-hook ---------------------------------------------------------
 
@@ -255,11 +251,6 @@ class PolicyExecutor:
         thoughts = artifact.thoughts
         if user_utterance and thoughts.strip() == user_utterance.strip():
             return ArtifactCheck(passed=False, reason='Response echoes user input verbatim')
-        if flow.name() in self.config['content_validation']:
-            card_content = block_data.get('content', '')
-            slot_text = "collected_slot_evidence(flow)"
-            visible = '\n'.join(part for part in (thoughts, card_content, slot_text) if part)
-            # return self._llm_quality_check(visible)
         return ArtifactCheck(passed=True)
 
     @staticmethod
@@ -270,22 +261,6 @@ class PolicyExecutor:
             merged.update(block.data)
             block_types.append(block.block_type)
         return merged, block_types
-
-    def _llm_quality_check(self, content:str):
-        context = self.world.context
-        prompt = (
-            f'Recent conversation:\n{context.compile_history()}\n\n'
-            f'User request: {context.last_user_utt}\n\nAgent output:\n{content}'
-        )
-        try:
-            raw_output = self.engineer(prompt, task='quality_check', tier='low', max_tokens=128)
-            verdict = raw_output.strip().lower()
-            if verdict.startswith('pass'):
-                return ArtifactCheck(passed=True)
-            reason = verdict.removeprefix('fail:').strip() or 'LLM quality check failed'
-            return ArtifactCheck(passed=False, reason=reason)
-        except Exception:
-            return ArtifactCheck(passed=True)
 
     # -- The PEX Agent: prepare() + one round per orchestrate() call ------
 
@@ -344,8 +319,11 @@ class PolicyExecutor:
         if not tool_uses:
             if text:
                 self.wait_for_nlu('hook point 5')   # post-LLM, no tools ran
-                if self._fresh_nlu_entry():         # PEX 5: one more round to decide — the
-                    context.add_turn('agent', {'text': text, 'tool_uses': [],   # next refresh
+                # PEX 5: an unseen 'new_flow' NLU stacked THIS turn earns one more round to decide
+                # (ending on a fresh Pending top would strand it); the next refresh renders it.
+                fresh = self.session_scratchpad.read(origin='nlu', keys=['new_flow'], consume=False)
+                if any(e['used_count'] == 0 and e['turn_number'] >= self._turn_start for e in fresh):
+                    context.add_turn('agent', {'text': text, 'tool_uses': [],
                                                'tool_results': []}, turn_type='action')
                     return ''                       # renders NLU's announcement
                 state.keep_going = False            # terminal round — the turn is worded
@@ -454,12 +432,12 @@ class PolicyExecutor:
         back as corrective errors, never exceptions — except a hook-wait TimeoutError, which
         fails the whole turn loudly."""
         try:
-            if tool_name in self.tools:
-                service, method_name = self.tools[tool_name]
+            if tool_name in self.domain_tools:
+                service, method_name = self.domain_tools[tool_name]
                 method = getattr(service, method_name)
                 return method(**tool_input)
-            elif tool_name in self.toolset:
-                return self.toolset[tool_name](tool_input)
+            elif tool_name in self.component_tools:
+                return self.component_tools[tool_name](tool_input)
             else:
                 return corrective('invalid_input', f'Unknown tool: {tool_name}')
         except TimeoutError:          # a hook-wait expiry fails the turn loudly (round 3.4)
@@ -605,10 +583,10 @@ class PolicyExecutor:
             state.ground_flow(curr_flow)
             approval = self._security_check(curr_flow)   # hook: pre-flow
             if approval:
-                self.world.insert_artifact(approval)
+                self.world.artifacts.append(approval)
                 return self._result(approval, error='approval_required')
             artifact, entry = self.call_policy(curr_flow)
-            self.world.insert_artifact(artifact)
+            self.world.artifacts.append(artifact)
             check = self.verify(artifact, curr_flow)     # hook point 6 closes every sub-agent run
             curr_flow.is_newborn = False  # verification counts as touched, whatever the outcome
             if not check.passed:
@@ -722,22 +700,6 @@ class PolicyExecutor:
             lines.append(f'[clarify] A question is pending — relay it in your own voice: "{question}"')
         return '\n'.join(lines)
 
-    def _fresh_nlu_entry(self) -> bool:
-        """True when NLU stacked a flow THIS turn that the agent has not yet acted on (an unseen
-        'new_flow' announcement). Non-consuming — the next round's refresh renders it. Guards the
-        terminal no-tool round: ending with a fresh stacked flow would strand a Pending top."""
-        entries = self.session_scratchpad.read(origin='nlu', keys=['new_flow'], consume=False)
-        return any(entry['used_count'] == 0 and entry['turn_number'] >= self._turn_start
-                   for entry in entries)
-
-    def _belief_document(self) -> dict:
-        """The assembled belief view (5.2.4): the Dialogue State document with PEX's live
-        FlowStack attached. The two are sibling components — the stack belongs to PEX and is
-        never stored on the state (state.json carries a serialized copy only at save time)."""
-        document = self.world.state.read_state()
-        document['flow_stack'] = self.flow_stack.to_list()
-        return document
-
     def _understand(self, params:dict) -> dict:
         """The PEX Agent's belief READ, plus the contemplate re-route request (3.4.7). Both ops
         wait on NLU settling — the same wait prepare owns at hook point 1. PEX never invokes the
@@ -752,7 +714,12 @@ class PolicyExecutor:
                  'summary': 'policy could not proceed — asking NLU to re-route'})
             return {'_success': True, '_message': 'Re-route queued. End your reply this round; '
                                                  'the re-detected flow runs on the next pass.'}
-        return {'_success': True, 'state': self._belief_document()}
+        # The assembled belief view (5.2.4): the Dialogue State document with PEX's live FlowStack
+        # attached — sibling components, the stack never stored on the state (state.json carries a
+        # serialized copy only at save time).
+        document = self.world.state.read_state()
+        document['flow_stack'] = self.flow_stack.to_list()
+        return {'_success': True, 'state': document}
 
     def _scratchpad(self, params:dict) -> dict:
         """The one scratchpad tool at both levels (5.2.2) — op='read' filters by origin/keys,

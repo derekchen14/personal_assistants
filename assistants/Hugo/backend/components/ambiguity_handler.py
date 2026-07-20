@@ -64,14 +64,11 @@ class AmbiguityHandler:
         return response
 
     def resolve(self, explanation:str=''):
-        log.info(f"Resolved Ambiguity from {self.get_level} due to {explanation}")
+        log.info(f"Resolved Ambiguity from {self.get_level()} due to {explanation}")
         self.is_present = False
         self.metadata = {}
         self.observation = ''
         self.counts = {'general': 0, 'partial': 0, 'specific': 0, 'confirmation': 0}
-
-    def needs_clarification(self, confidence:float) -> bool:
-        return confidence < self.confidence_min
 
     def _general_ask(self) -> str:
         missing = self.metadata.get('missing', 'intent')

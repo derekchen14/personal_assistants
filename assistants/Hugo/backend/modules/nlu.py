@@ -50,7 +50,9 @@ class NaturalLanguageUnderstanding:
         snippet, working = self.check()
         state, context = self.world.state, self.world.context
         detection = state.detect_flows(self.engineer, context, user_text, snippet, working)
-        if self._intent_split(detection):                   # low-confidence AND spans >1 intent
+        intents = {FLOW_ONTOLOGY[flow['name']]['intent'] for flow in detection['pred_flows']}
+        if len(intents) > 1 and detection['confidence'] < self.ambiguity_handler.confidence_min:
+            # low-confidence AND spans >1 intent — the one case a coarse-intent tie-break is worth a call
             state.classify_intent(self.engineer, context, self.world.flows.get_flow())
             if intent2flow(state.pred_intent):  # domain intents only — Plan/Clarify add no
                 detection = state.detect_flows(self.engineer, context, user_text,  # narrowing
@@ -121,7 +123,7 @@ class NaturalLanguageUnderstanding:
             state.ground_flow(curr_flow)
             state.fill_slots(self.engineer, context, curr_flow, payload, self.ambiguity_handler)
         state = self._write_belief(flow_name, detection['confidence'], predicted, curr_flow)
-        if self.ambiguity_handler.needs_clarification(state.confidence):
+        if state.confidence < self.ambiguity_handler.confidence_min:
             self.ambiguity_handler.recognize('general', metadata={'top_detection': flow_name},
                 observation=f'Low confidence ({state.confidence:.2f}) on flow "{flow_name}"')
         self.review_scratchpad()      # NLU's turn point — reviews last turn's appends too
@@ -172,7 +174,8 @@ class NaturalLanguageUnderstanding:
                 detection = {'flows': [parsed['flows'][0]], 'confidence': 0.7}
         except Exception as ecp:
             log.warning('contemplate routing failed: %s', ecp)
-            self._raise_if_debug(ecp)
+            if self.config.get('debug', False):
+                raise
 
         flow_name = detection['flows'][0]
         curr_flow = self.world.flows.stackon(flow_name, transfer=not self.ambiguity_handler.is_present)
@@ -224,9 +227,10 @@ class NaturalLanguageUnderstanding:
             entry['summary'] = 'plan: stacked ' + ' → '.join(steps)
         elif not detected:      # abstention — every voter returned an empty list
             entry['summary'] = 'no confident detection; nothing stacked'
-        elif detected == prev and _repeat_count(self.world.flows, detected) <= 1:
-            # Two live same-name instances mean reconciliation kept a second task on a new
-            # entity (2.13.3) — that falls through to the announcement below, same-name or not.
+        elif detected == prev and sum(1 for item in self.world.flows._stack
+                if item.flow_type == detected and item.status in ('Active', 'Pending')) <= 1:
+            # More than one live (Active/Pending) same-name instance means reconciliation kept a
+            # second task on a new entity (2.13.3) — that falls through to the announcement below.
             entry['summary'] = f'aligned on {detected}'
         elif flow is None:      # ontology fallback fired — nothing stacked to announce
             entry['summary'] = f'detected {detected}; nothing stacked'
@@ -275,7 +279,21 @@ class NaturalLanguageUnderstanding:
             slot.check_if_filled()
 
     def recover(self):
+        """Designed-not-built recovery pass — kept OFF the live loop until the recovery UX is
+        settled (no production caller). Before PEX escalates a pending ambiguity to a user
+        question, try to fill the missing slot from memory. `ambiguity_handler.recover` does the
+        L2 lookup (user preferences) plus the scratchpad and resolves the ambiguity when a value
+        turns up; NLU records the attempt either way. The fuller sketch below reaches the rest of
+        the MEM trifecta (L3 retrieve) and fills the recovered value into the active flow, so a
+        recoverable turn proceeds without asking the user."""
+        missing = self.world.ambiguity.metadata.get('missing', '')
         result, success = self.ambiguity_handler.recover(self.world.prefs, self.world.scratchpad)
+        # Sketch (designed-not-built) — the L3 tier and the slot fill, once recovery is wired in:
+        #   if not success:                                       # L2 miss → try L3 knowledge
+        #       hit = self.world.knowledge.search_documents(missing, top_k=1)
+        #       result, success = (hit['result'][0], True) if hit['result'] else (result, False)
+        #   if success:                                           # fill the flow so it can proceed
+        #       self.world.flows.get_flow().fill_slots_by_label({missing: result})
         entry = {'turn_number': self.world.context.num_utterances,
                  'found' if success else 'missing': result}
         self.world.scratchpad.append_entry('recovery', entry)
@@ -299,14 +317,6 @@ class NaturalLanguageUnderstanding:
 
     # ── Prediction ────────────────────────────────────────────────────
 
-    def _intent_split(self, detection:dict) -> bool:
-        """True only when the ranked flows span >1 intent AND top-1 is under the confidence floor —
-        the one case a coarse-intent tie-break is worth a call. Under D1-A the span clause is almost
-        always true, so the confidence clause is the real trigger. At most one extra classify + one
-        extra detect per turn."""
-        intents = {FLOW_ONTOLOGY[flow['name']]['intent'] for flow in detection['pred_flows']}
-        return len(intents) > 1 and detection['confidence'] < self.ambiguity_handler.confidence_min
-
     def _fill_slices(self, state, payload):
         filtered = {}
         for key, val in payload.items():
@@ -318,20 +328,7 @@ class NaturalLanguageUnderstanding:
                 filtered[key] = val
         return state, filtered
 
-    def _raise_if_debug(self, ecp:Exception):
-        if self.config.get('debug', False):
-            raise ecp
-
     # ── Support (private) ─────────────────────────────────────────────
-
-    @staticmethod
-    def _slot_preview(slot):
-        """Short preview of a slot's payload — handles both value-style and steps-style slots."""
-        if hasattr(slot, 'steps') and slot.steps:
-            return [step.get('name', '?') for step in slot.steps]
-        if hasattr(slot, 'values') and slot.values:
-            return [str(v)[:80] for v in slot.values]
-        return None
 
     def _write_belief(self, flow_name:str, confidence:float, pred_flows:list, flow=None):
         """Write the detection onto the session state's belief IN PLACE — the single source of
@@ -345,13 +342,6 @@ class NaturalLanguageUnderstanding:
         state.confidence = confidence
         state.pred_flows = pred_flows
         return state
-
-
-def _repeat_count(flows, name:str) -> int:
-    """How many live (Active/Pending) instances of `name` sit on the stack — more than one
-    means reconciliation kept a second same-type task (round 2.13.3)."""
-    return sum(1 for entry in flows._stack
-               if entry.flow_type == name and entry.status in ('Active', 'Pending'))
 
 
 def _entity_ids(flow) -> set:

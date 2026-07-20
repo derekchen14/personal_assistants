@@ -67,8 +67,8 @@ class ContextCoordinator:
         log.info(f"{role.upper()} ({turn_type}): {content['text']}")
         turn = Turn(role, turn_type, content, turn_id=self.num_utterances)
         self._history.append(turn)
-        if turn_type == 'utterance' and role in ('user', 'agent'):
-            self.num_utterances += 1
+        if turn_type == 'utterance':   # user, agent AND system utterances — system turns touch the
+            self.num_utterances += 1   # scratchpad too, so each is a distinct turn (action turns don't count)
         self.save_turn_to_disk(turn)
         return turn
 
@@ -181,8 +181,7 @@ class ContextCoordinator:
             turn.timestamp = entry['timestamp']
             self._history.append(turn)
         self.num_utterances = sum(1 for turn in self._history
-                                  if turn.turn_type == 'utterance'
-                                  and turn.role in ('user', 'agent'))
+                                  if turn.turn_type == 'utterance')
         for turn in reversed(self._history):  # newest summary seeds the iterative update
             if turn.turn_type == 'utterance' and turn.role == 'system' \
                     and turn.text.startswith(SUMMARY_PREFIX):

@@ -285,12 +285,13 @@ class TestRecap:
         config['compaction'] = {'threshold_tokens': 64000, 'protect_tail': 20}
         world, memory = _make_world(MappingProxyType(config))
         world.open_session('convo-store')
-        before = world.state.turn_count
+        before = world.context.num_utterances
         memory.recap('Drafted the otter post.')
-        assert world.state.turn_count == before + 1
+        assert world.context.num_utterances == before + 1   # recap appended the agent utterance
+        assert world.state.turn_id == world.context.num_utterances   # snapshot recorded from Context
         assert 'Drafted the otter post.' in memory.context_coordinator.compile_history(keep_system=True)
-        saved = json.loads(world.state_file().read_text())
-        assert saved['session']['turn_count'] == before + 1
+        saved = json.loads((world.session_dir() / 'state.json').read_text())
+        assert saved['session']['turn_id'] == world.context.num_utterances
 
 
 
@@ -368,36 +369,19 @@ class TestWorldSessions:
     def test_reset_deletes_and_recreates_session_dir(self, sessions_dir, minimal_config):
         world, memory = _make_world(minimal_config)
         world.open_session('convo-42')
-        world.state.save(world.state_file())
+        world.state.save(world.session_dir() / 'state.json')
         world.reset()
         assert (sessions_dir / 'convo-42').is_dir()
         assert list((sessions_dir / 'convo-42').iterdir()) == []
         # In-place reset re-seeds the session substrate.
-        assert world.state.turn_count == 0
-        assert world.latest_artifact() is not None
+        assert world.state.turn_id == 0
+        assert world.artifacts[-1] is not None
 
     def test_reset_without_session_still_works(self, sessions_dir, minimal_config):
         world, memory = _make_world(minimal_config)
         world.reset()
         assert not sessions_dir.exists()
-        assert world.state.turn_count == 0
-
-    def test_close_prunes_to_most_recent_n(self, sessions_dir, session_config):
-        import os
-        sessions_dir.mkdir(parents=True)
-        for idx, convo in enumerate(['oldest', 'middle', 'newest']):
-            (sessions_dir / convo).mkdir()
-            stamp = 1_700_000_000 + idx * 1000
-            os.utime(sessions_dir / convo, (stamp, stamp))
-        world, memory = _make_world(session_config)
-        world.close()
-        survivors = sorted(path.name for path in sessions_dir.iterdir())
-        assert survivors == ['middle', 'newest']
-
-    def test_close_with_no_sessions_dir(self, sessions_dir, session_config):
-        world, memory = _make_world(session_config)
-        world.close()  # nothing on disk yet — must not crash
-        assert not sessions_dir.exists()
+        assert world.state.turn_id == 0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -498,7 +482,7 @@ class TestUserPreferences:
     def test_bare_string_stores_endorsed_full_confidence(self, minimal_config):
         prefs = UserPreferences(minimal_config, 'test_user')
         prefs.store_preference('verbosity', 'terse')
-        assert prefs.get_preference('verbosity') == 'terse'
+        assert prefs.read()['verbosity'] == 'terse'
         record = prefs._preferences['verbosity']
         assert record.endorsed is True and record.confidence == 1.0
 
@@ -509,10 +493,6 @@ class TestUserPreferences:
         record = prefs._preferences['tone']
         assert record.value == 'wry' and record.endorsed is False
         assert record.confidence == 0.6 and record.triggers == ['humor']
-
-    def test_get_preference_missing_returns_default(self, minimal_config):
-        prefs = UserPreferences(minimal_config, 'test_user')
-        assert prefs.get_preference('nope', 'fallback') == 'fallback'
 
     def test_read_returns_flat_key_value_view(self, minimal_config):
         prefs = UserPreferences(minimal_config, 'test_user')

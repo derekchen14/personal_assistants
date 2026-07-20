@@ -1,7 +1,7 @@
 """PEX model unit tests (the Hands) — one of the three model-unit-test modules.
 
 Deterministic half only for now (the probabilistic half is empty): the orchestrator acting loop,
-the tool-def registry, flow runs / completion, the propose two-phase, and the system prompt.
+the tool-def inventory, flow runs / completion, the propose two-phase, and the system prompt.
 Shared fixtures (mock_agent, sessions_dir, engineer, orch_agent) live in conftest.py.
 """
 from __future__ import annotations
@@ -73,13 +73,13 @@ class TestParseJson:
 class TestOrchestratorToolDefs:
     """Hot-path tool definitions and the orchestrator's tool list (decision 16 allowlist)."""
 
-    def test_defs_cover_tool_registry_exactly(self, mock_agent):
-        """One registry, one naming rule (5.2.6): method = '_' + tool name."""
+    def test_defs_cover_tool_inventory_exactly(self, mock_agent):
+        """One inventory, one naming rule (5.2.6): method = '_' + tool name."""
         pex = mock_agent.pex
-        assert set(pex.toolset) == {'manage_flows', 'understand', 'view_policies', 'scratchpad',
+        assert set(pex.component_tools) == {'manage_flows', 'understand', 'view_policies', 'scratchpad',
                                     'declare_ambiguity', 'execution_error', 'coordinate_context',
                                     'store_preference'}
-        for name, method in pex.toolset.items():
+        for name, method in pex.component_tools.items():
             assert method.__name__ == f'_{name}'
 
     def test_orchestrator_tool_list_composition(self, mock_agent):
@@ -151,7 +151,7 @@ class TestOrchestratorDispatch:
         active flow / orchestrator when none given), op='read' filters by origin; append_entry
         stamps the contract fields."""
         pex = mock_agent.pex
-        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
+        pex.session_scratchpad._pathway = (tmp_path / 'scratch.jsonl')
         originless = pex.call_tool('scratchpad', {'op': 'append', 'entry': {'finding': 'weak'}})
         assert originless['_success'] is True   # files under orchestrator, no rejection
         appended = pex.call_tool('scratchpad',
@@ -213,7 +213,7 @@ class TestScopedToolSurface:
         """A9 read side: a flat save_findings-shape write is read back whole, and the used-count
         bump re-write shows the increment on a re-read."""
         pex = mock_agent.pex
-        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
+        pex.session_scratchpad._pathway = (tmp_path / 'scratch.jsonl')
         policy = pex._policies['Revise']
         pex.session_scratchpad.append_entry('audit', {'used_count': 0, 'summary': 's',
                                                       'findings': []})
@@ -251,7 +251,7 @@ class TestDispatchFlow:
     def wired(self, sessions_dir, mock_agent, tmp_path):
         pex = mock_agent.pex
         mock_agent.world.open_session('wire-test')
-        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
+        pex.session_scratchpad._pathway = (tmp_path / 'scratch.jsonl')
         return mock_agent
 
     def test_completion_record_is_the_tool_result(self, wired):
@@ -309,7 +309,7 @@ class TestPolicyCompletion:
     def wired(self, sessions_dir, mock_agent, tmp_path):
         pex = mock_agent.pex
         mock_agent.world.open_session('completion-test')
-        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
+        pex.session_scratchpad._pathway = (tmp_path / 'scratch.jsonl')
         return mock_agent
 
     def _migrated_policy(self, agent, summary, metadata=None):
@@ -326,7 +326,7 @@ class TestPolicyCompletion:
         components = {'engineer': pex.engineer, 'config': pex.config,
                       'ambiguity': agent.world.ambiguity, 'get_tools': pex.get_tools_for_flow,
                       'flow_stack': pex.flow_stack, 'content_service': pex._content_service,
-                      'scratchpad': pex.session_scratchpad, 'state_file': agent.world.state_file}
+                      'scratchpad': pex.session_scratchpad}
         return _MigratedPolicy(components)
 
     def test_complete_flow_writes_record_once(self, wired):
@@ -365,6 +365,97 @@ class TestPolicyCompletion:
         assert (post_id, sec_id, error) == ('cafe0001', None, None)
         assert state.get_active_post() == 'cafe0001'
 
+    @staticmethod
+    def _grounding_tools(posts):
+        posts = [{**item, 'status': item.get('status', 'draft')} for item in posts]
+        by_id = {item['post_id']: item for item in posts}
+
+        def tools(name, params):
+            if name == 'read_metadata':
+                item = by_id.get(params['post_id'])
+                if not item:
+                    return {'_success': False, '_error': 'not_found'}
+                return {'_success': True, 'title': item['title'], 'status': 'draft',
+                        'section_ids': []}
+            if name == 'find_posts':
+                query = params.get('query', '').lower()
+                items = [item for item in posts if not query or query in item['title'].lower()]
+                return {'_success': True, 'items': items}
+            raise AssertionError(name)
+        return tools
+
+    def test_exact_title_verifies_grounding(self, wired):
+        pex, state = wired.pex, wired.world.state
+        flow = pex.flow_stack.stackon('compose')
+        flow.slots['source'].add_one(post='Exact Post')
+        tools = self._grounding_tools([{'post_id': 'p1', 'title': 'Exact Post'}])
+
+        post_id, _, error = pex._policies['Draft'].resolve_source_ids(flow, state, tools)
+
+        assert (post_id, error) == ('p1', None)
+        assert state.get_active_entity()['ver'] is True
+        assert flow.slots['source'].values[0]['ver'] is True
+
+    def test_unique_fuzzy_result_stays_unverified(self, wired):
+        pex, state = wired.pex, wired.world.state
+        flow = pex.flow_stack.stackon('compose')
+        flow.slots['source'].add_one(post='July')
+        tools = self._grounding_tools([
+            {'post_id': 'p1', 'title': 'Why Most Beginner Gardens Die in July'}])
+
+        post_id, _, error = pex._policies['Draft'].resolve_source_ids(flow, state, tools)
+
+        assert (post_id, error) == ('p1', None)
+        assert state.get_active_entity()['ver'] is False
+        assert flow.slots['source'].values[0]['ver'] is False
+
+    def test_explicit_candidate_selection_stays_verified(self, wired):
+        pex, state = wired.pex, wired.world.state
+        state.grounding['choices'] = [{
+            'kind': 'post', 'label': 'Garden One', 'status': 'draft',
+            'entity': {'post': 'p1', 'sec': '', 'snip': '', 'chl': '', 'ver': True},
+            'source': 'find', 'turn_number': 1,
+        }]
+        flow = pex.flow_stack.stackon('compose')
+        flow.slots['source'].add_one(post='p1', ver=True)
+        tools = self._grounding_tools([{'post_id': 'p1', 'title': 'Garden One'}])
+
+        post_id, _, error = pex._policies['Draft'].resolve_source_ids(flow, state, tools)
+
+        assert (post_id, error) == ('p1', None)
+        assert state.get_active_entity()['ver'] is True
+
+    def test_verified_active_post_wins_over_fuzzy_prediction(self, wired):
+        pex, state = wired.pex, wired.world.state
+        state.set_active_entity(post='p1', ver=True)
+        flow = pex.flow_stack.stackon('compose')
+        flow.slots['source'].add_one(post='July gardening')
+        tools = self._grounding_tools([
+            {'post_id': 'p1', 'title': 'Why Most Beginner Gardens Die in July'},
+            {'post_id': 'p2', 'title': 'July Gardening Checklist'},
+        ])
+
+        post_id, _, error = pex._policies['Draft'].resolve_source_ids(flow, state, tools)
+
+        assert (post_id, error) == ('p1', None)
+        assert state.get_active_entity()['ver'] is True
+
+    def test_multiple_fuzzy_results_become_choices(self, wired):
+        pex, state = wired.pex, wired.world.state
+        flow = pex.flow_stack.stackon('compose')
+        flow.slots['source'].add_one(post='garden')
+        tools = self._grounding_tools([
+            {'post_id': 'p1', 'title': 'Garden One'},
+            {'post_id': 'p2', 'title': 'Garden Two'},
+        ])
+
+        post_id, _, error = pex._policies['Draft'].resolve_source_ids(flow, state, tools)
+
+        assert post_id is None
+        assert error is not None
+        assert [choice['entity']['post'] for choice in state.grounding['choices']] == ['p1', 'p2']
+        assert state.get_active_post() == ''
+
 
 class TestProposeTwoPhase:
     """propose's generate→pick split (mirrors audit). Phase 1 writes 2-3 candidates itself and
@@ -375,7 +466,7 @@ class TestProposeTwoPhase:
     def ready(self, sessions_dir, mock_agent, tmp_path, monkeypatch):
         pex = mock_agent.pex
         mock_agent.world.open_session('propose-test')
-        pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
+        pex.session_scratchpad._pathway = (tmp_path / 'scratch.jsonl')
         policy = pex._policies['Revise']
         mock_agent.world.state.set_active_entity(post='p1', ver=True)  # grounding gate for complete_flow
         flow = pex.flow_stack.stackon('propose')
@@ -420,6 +511,52 @@ class TestProposeTwoPhase:
         assert revise['content'] == 'Intro. Beta option Tail.'
         assert revise['sec_id'] == 'tradeoffs'
         assert flow.status == 'Completed'
+
+
+class TestEvalContentBoundary:
+
+    @staticmethod
+    def _fake_post_service(entries):
+        class FakePostService:
+            def list_preview(self, limit=100):
+                return {'_success': True, 'items': list(entries)}
+
+            def delete_post(self, post_id):
+                entries[:] = [entry for entry in entries if entry['post_id'] != post_id]
+                return {'_success': True}
+        return FakePostService
+
+    def test_cleanup_removes_only_posts_created_after_snapshot(self, monkeypatch):
+        from backend.utilities import services
+        from utils.evaluation_suite.harness import snapshot_post_ids, clean_created_posts
+
+        entries = [{'post_id': 'standing', 'title': 'Standing'}]
+
+        monkeypatch.setattr(services, 'PostService', self._fake_post_service(entries))
+        before = snapshot_post_ids()
+        entries.append({'post_id': 'scenario-created', 'title': 'Scenario'})
+
+        clean_created_posts(before)
+
+        assert entries == [{'post_id': 'standing', 'title': 'Standing'}]
+
+    def test_failed_eval_still_restores_content_boundary(self, monkeypatch):
+        from backend.utilities import services
+        from utils.evaluation_suite._evals import run_evals
+
+        entries = [{'post_id': 'standing', 'title': 'Standing'}]
+        monkeypatch.setattr(services, 'PostService', self._fake_post_service(entries))
+
+        def fail_after_create(*args, **kwargs):
+            entries.append({'post_id': 'scenario-created', 'title': 'Scenario'})
+            raise RuntimeError('scenario failed')
+
+        monkeypatch.setattr(run_evals, '_score_convo_inner', fail_after_create)
+
+        with pytest.raises(RuntimeError, match='scenario failed'):
+            run_evals._score_convo({}, set())
+
+        assert entries == [{'post_id': 'standing', 'title': 'Standing'}]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -588,7 +725,8 @@ class TestOrchestratorLoop:
         _script(orch_agent, [_response(_text_block('Saved.'))])
         orch_agent.take_turn('persist please')
         session = sessions_dir / orch_agent.world.conversation_id
-        assert json.loads((session / 'state.json').read_text())['session']['turn_count'] == 1
+        saved_turn_id = json.loads((session / 'state.json').read_text())['session']['turn_id']
+        assert saved_turn_id == orch_agent.world.context.num_utterances
         lines = (session / 'history.jsonl').read_text().splitlines()
         # session start, user turn, prepare's note, the reply, the turn_wrap checkpoint
         assert len(lines) == 5

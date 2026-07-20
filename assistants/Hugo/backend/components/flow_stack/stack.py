@@ -94,11 +94,6 @@ class FlowStack:
                 return entry
         return None
 
-    def stack_size(self) -> int:
-        """Number of active/pending flows on the stack (excludes Completed/Invalid)."""
-        live = (FlowLifecycle.ACTIVE.value, FlowLifecycle.PENDING.value)
-        return sum(1 for entry in self._stack if entry.status in live)
-
     def pop(self):
         """A while loop from the top of the stack: remove Completed and Invalid flows until
         the code reaches a Pending or Active flow, or an empty stack (Derek, 2026-07-17) — a
@@ -139,6 +134,3 @@ class FlowStack:
         flow.status = FlowLifecycle.PENDING.value
         self._stack.append(flow)
         return flow
-
-    def _pop(self):
-        return self._stack.pop() if self._stack else None

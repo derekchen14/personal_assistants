@@ -128,7 +128,7 @@ class DialogueState:
         self.username = ''
         self.has_plan = False # signals that multiple flows are valid
         self.has_issues = False  # signals need for contemplation
-        self.turn_count = 0
+        self.turn_id = 0  # snapshot of Context.num_utterances, recorded by MEM at save time (a consumer)
 
     def flow_name(self, string=True, threshold=0.0):
         candidates = [flow for flow in self.pred_flows if flow['confidence'] > threshold]
@@ -153,7 +153,7 @@ class DialogueState:
         state.username = session['username']
         state.has_plan = session['has_plan']
         state.has_issues = session['has_issues']
-        state.turn_count = session['turn_count']
+        state.turn_id = session['turn_id']
         state.grounding = data['grounding']
         return state
 
@@ -187,7 +187,7 @@ class DialogueState:
         beliefs = {'intent': self.pred_intent, 'flows': self.pred_flows}
         session = {'convo_id': self.conversation_id, 'username': self.username,
                     'has_plan': self.has_plan, 'has_issues': self.has_issues,
-                    'turn_count': self.turn_count}
+                    'turn_id': self.turn_id}
         state = {'session': session, 'beliefs': beliefs, 'grounding': self.grounding}
         return state
 

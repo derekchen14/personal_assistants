@@ -49,10 +49,6 @@ class UserPreferences:
             self._preferences[key] = Preference(value=value_or_record)
         self.save()
 
-    def get_preference(self, key:str, default:str='') -> str:
-        pref = self._preferences.get(key)
-        return pref.value if pref else default
-
     def read(self, query=None) -> dict:
         """What `recall` returns: a flat {key: value} view. Semantic filtering by `query` is
         deferred (no vector store yet), so this returns every preference for now."""

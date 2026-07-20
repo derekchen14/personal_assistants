@@ -76,7 +76,7 @@ class RevisePolicy(BasePolicy):
     def _rework_delete(self, flow, state, context, post_id, tools):
         """Whole-entity deletion. Published posts aren't deletable —
         confirm an unpublish intent first. delete_post runs through the `tools` callable (not the skill's
-        tool registry); the post is gone afterward, so emit a toast and skip any content readback.
+        tool inventory); the post is gone afterward, so emit a toast and skip any content readback.
         Grounding is left on the now-deleted id because _check_grounding only forbids an EMPTY
         grounding.post at completion — it does no existence check."""
         meta = tools('read_metadata', {'post_id': post_id})

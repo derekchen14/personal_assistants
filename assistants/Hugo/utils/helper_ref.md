@@ -158,13 +158,12 @@ Session scratchpad is a separate component — `SessionScratchpad` (`backend/com
 Core flow API:
 - Property `intent`  →  `self.parent_type`  (:23)
 - `name(full=False) -> str`  →  `'create'` or `'Draft(create)'`  (:30)
-- `is_complete()` (:46), `is_filled()` (:49)
+- `is_filled()` (:49)
 - `fill_slots_by_label(labels: dict) -> bool`  →  System-1 targeted single-slot fill from PEX label extraction. Routes entity values through `extract_entity`  (:58)
 - `fill_slot_values(values: dict)`  →  transfer prediction values onto slot objects; aliases `title→target`, `post/post_id→source`  (:74)
 - `slot_values_dict() -> dict`  →  only filled / non-empty slots  (:136)
 - `to_dict() -> dict`  (:144)
 - `extract_entity(entity)`  →  add entity to the primary grounding slot; override in domain parents for validation  (:90)
-- `entity_values(size=False)`  →  values of `self.slots[self.entity_slot]`  (:157)
 - `needs_to_think() -> bool`  (:161)
 - `match_action(action_name) -> bool`  →  starts-with `self.parent_type.upper()`  (:166)
 
@@ -214,7 +213,7 @@ Hugo entity parts inside SourceSlot entities: `{post, sec, snip, chl, ver}`.
 
 Class constant: `_STATUS_SUFFIXES = (' draft', ' post', ' note', ' published')`.
 
-## 11. PEX tool registry — 33 domain tools + component/orchestrator tools
+## 11. PEX tool inventory — 33 domain tools + component/orchestrator tools
 
 `backend/modules/pex.py:106–144` (domain tool table), `:888–998` (orchestrator tool definitions).
 
