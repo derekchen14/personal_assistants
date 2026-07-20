@@ -129,6 +129,26 @@ class BasePolicy:
 
     # -- Persistence helpers ------------------------------------------------
 
+    def verify_grounding(self, post_id, reference, state, tools, verified=False):
+        """Upgrade a fuzzy post_id to verified. True when `reference` is an exact id/title match,
+        or when an already-verified active post is anaphoric to / overlaps `reference` — in which
+        case post_id switches to that active post. Returns (post_id, verified)."""
+        if post_id:
+            meta = tools('read_metadata', {'post_id': post_id})
+            exact = reference == post_id or (
+                meta['_success'] and meta['title'].strip().lower() == reference.strip().lower())
+            verified = verified or exact
+        active = state.get_active_entity()
+        if post_id and not verified and active.get('post') and active.get('ver'):
+            active_meta = tools('read_metadata', {'post_id': active['post']})
+            tokens = lambda text: {t for t in re.findall(r'[a-z0-9]+', text.lower())
+                                   if len(t) > 3 and t not in {'this', 'that', 'post', 'draft', 'note'}}
+            overlap = (not reference or reference == active['post'] or
+                       bool(tokens(reference) & tokens(active_meta.get('title', ''))))
+            if active_meta['_success'] and overlap:
+                post_id, verified = active['post'], True
+        return post_id, verified
+
     def resolve_source_ids(self, flow, state, tools):
         """Extract (post_id, sec_id, error) from the state file's grounding block — the single source
         of truth for the active entity. A user-typed reference in the entity slot (this turn's
@@ -148,26 +168,8 @@ class BasePolicy:
         if not reference:
             return None, None, None
         post_id = self._resolve_post_id(reference, tools)
-        verified = bool(vals and vals.get('ver'))
-        if post_id:
-            meta = tools('read_metadata', {'post_id': post_id})
-            exact = reference == post_id or (
-                meta['_success'] and meta['title'].strip().lower() == reference.strip().lower())
-            verified = verified or exact
-
-        # A verified active post wins over a weaker fuzzy prediction when the new reference is
-        # anaphoric or overlaps its title. An explicit exact id/title above still wins.
-        if not verified and active_entity.get('post') and active_entity.get('ver'):
-            active_meta = tools('read_metadata', {'post_id': active_entity['post']})
-            normalized = lambda value: {
-                token for token in re.findall(r'[a-z0-9]+', value.lower())
-                if len(token) > 3 and token not in {'this', 'that', 'post', 'draft', 'note'}
-            }
-            overlap = (not reference or reference == active_entity['post'] or
-                       bool(normalized(reference) & normalized(active_meta.get('title', ''))))
-            if active_meta['_success'] and overlap:
-                post_id = active_entity['post']
-                verified = True
+        post_id, verified = self.verify_grounding(post_id, reference, state, tools,
+                                                  bool(vals and vals.get('ver')))
         if not post_id:
             if slot.priority != 'required':
                 # An elective entity slot means the flow proceeds without it (cite's url-only

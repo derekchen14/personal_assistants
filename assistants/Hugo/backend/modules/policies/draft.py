@@ -1,5 +1,4 @@
 import logging
-import re
 
 from backend.modules.policies.base import BasePolicy
 from backend.components.task_artifact import TaskArtifact
@@ -130,23 +129,7 @@ class DraftPolicy(BasePolicy):
         title = topic_slot.to_dict() if topic_slot.check_if_filled() else reference
         post_id = self._resolve_post_id(reference, tools) if reference else None
         verified = bool(source_slot.values and source_slot.values[0].get('ver'))
-        if post_id:
-            meta = tools('read_metadata', {'post_id': post_id})
-            exact = reference == post_id or (
-                meta['_success'] and meta['title'].strip().lower() == reference.strip().lower())
-            verified = verified or exact
-
-        active = state.get_active_entity()
-        if post_id and not verified and active.get('post') and active.get('ver'):
-            active_meta = tools('read_metadata', {'post_id': active['post']})
-            reference_terms = {term for term in re.findall(r'[a-z0-9]+', reference.lower())
-                               if len(term) > 3}
-            active_terms = {term for term in re.findall(
-                r'[a-z0-9]+', active_meta.get('title', '').lower()) if len(term) > 3}
-            if active_meta['_success'] and reference_terms & active_terms:
-                post_id = active['post']
-                title = active_meta['title']
-                verified = True
+        post_id, verified = self.verify_grounding(post_id, reference, state, tools, verified)
         if not post_id:
             if not title:
                 return None, '', self.error_artifact(flow, 'missing_reference',
