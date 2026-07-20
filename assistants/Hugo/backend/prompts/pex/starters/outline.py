@@ -11,18 +11,24 @@ from backend.prompts.for_pex import render_freetext, render_checklist
 
 
 def build(flow, resolved:dict, user_text:str) -> str:
-    return f'<resolved_details>\n{_format_parameters(flow)}\n</resolved_details>'
+    return f'<resolved_details>\n{_format_parameters(flow, resolved)}\n</resolved_details>'
 
 
-def _format_parameters(flow) -> str:
-    lines = []
+def _format_parameters(flow, resolved:dict) -> str:
+    # The skill branches on `stage`, and direct mode saves via generate_outline(post_id, ...) —
+    # both MUST render here or the sub-agent falls back to propose behavior and never saves.
+    lines = [f'stage: {flow.stage}']
+    if resolved.get('post_id'):
+        lines.append(f'post_id: {resolved["post_id"]}')
+    topic = resolved.get('topic') or (flow.slots['topic'].to_dict()
+                                      if flow.slots['topic'].check_if_filled() else '')
+    if topic:
+        lines.append(f'Topic: {topic}')
     sections = flow.slots['sections']
-    topic = flow.slots['topic']
-    depth = flow.slots['depth']
-    if topic.check_if_filled():
-        lines.append(f'Topic: {topic.to_dict()}')
     if sections.check_if_filled():
         lines.append(f'Sections: {render_checklist(sections)}')
-    if depth.check_if_filled():
-        lines.append(f'Depth: {depth.level}')
-    return '\n'.join(lines) if lines else '(no parameters filled — interpret latest utterance)'
+    depth = resolved.get('depth') or (flow.slots['depth'].level
+                                      if flow.slots['depth'].check_if_filled() else 0)
+    if depth:
+        lines.append(f'Depth: {int(depth)}')
+    return '\n'.join(lines)
