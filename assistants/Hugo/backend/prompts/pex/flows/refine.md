@@ -22,6 +22,11 @@ This skill describes how to refine outlines. The current outline is provided in 
    f. **Normalize formatting**: when `Formatting settings` are in `<resolved_details>`, apply them (heading levels, list/indent style, spacing) by rewriting the affected sections via `revise_content` (or `update_post` for renames). Change structure and whitespace only — never the wording.
 5. When done, simply close the loop. No summary needed.
 
+The preloaded outline is authoritative. Do not call `read_metadata` or `read_section` for content
+already visible there. Choose only the persistence operation(s) required by the user's checklist;
+do not call unrelated write tools. After all requested saves succeed, stop immediately. Retry a
+tool only after `_success=False`, never after success.
+
 ## Error Handling
 
 If the `<post_content>` looks malformed (missing `##` headings, bullets outside a section), do your best to fix visible structure while honoring the request. If truly unworkable, call `execution_error(violation='invalid_input', message=<short explanation>)` and do NOT save.

@@ -25,6 +25,8 @@ This skill describes how to convert an outline into prose. The current outline i
    b. `convert_to_prose(content)` — does a mechanical conversion to prose.
    c. Smooth out the content to flow smoothly. (See 'Writing Principles' below)
    d. `revise_content(post_id, sec_id, content)` — save the prose back to the section. 
+   e. Read each section at most once. After its save succeeds, move to the next section without
+      re-reading or applying a second write tool to the same content.
 4. Follow the Draft intent's output format — prose paragraphs separated by blank lines, no bullets inside a prose section.
    a. Honor the Guidance parameter as a soft preference (tone, length, hook) without displacing the primary goal.
    b. If Surrounding sections are already prose (visible in previews), match their tone and paragraph length.
@@ -72,6 +74,9 @@ Revising the content is your most important task since the other parts are strai
 If the `<post_content>` block looks malformed, best-effort convert the visible sections. If truly unworkable, call `execution_error(violation='invalid_input', message=<short explanation>)` and do NOT save.
 
 If `convert_to_prose` fails for a section, retry ONCE. If it fails again, skip that section and continue — do NOT abort the whole flow. After saving all in-scope sections, note the skipped ones with `execution_error(violation='tool_error', message=<section names>)`.
+
+Never retry a successful conversion or persistence call. Once every in-scope section is saved,
+emit the terminal JSON without further domain reads.
 
 If the user's request doesn't make sense given the outline, call `declare_ambiguity(level=<specific|partial|confirmation>, ...)`.
 

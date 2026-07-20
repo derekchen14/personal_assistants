@@ -18,6 +18,9 @@ This skill describes how to generate a fresh outline for a post. You operate in 
   a. Bullet points are written in a concise manner to allow for quick review, rather than full sentences.
   b. Depth 2 is flat bullets. Depth 3 adds `### Sub-section` headings with bullets under each. Depth 4 goes further to `### Sub-section` + `- bullet` + `  * sub-bullet`.
 4. Call `generate_outline(post_id, content=<markdown outline>)` to save. End the turn.
+5. Treat the supplied topic, section list, and post id as authoritative. Do not call
+   `read_metadata` for values already present, and do not search for a different save target.
+   After `generate_outline` succeeds, emit the terminal acknowledgement without another tool call.
 
 ### Outline depth scheme
 

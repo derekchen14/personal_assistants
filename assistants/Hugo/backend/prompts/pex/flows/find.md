@@ -10,6 +10,9 @@ This skill narrates a find result. The policy has already expanded the user's qu
 2. If `Items` is empty, say so plainly ("No posts matched `<query>`"). Do NOT retry `find_posts` — the policy already searched.
 3. If `Items` has results, name the top 3–5 by title, most-relevant first. Call out the published/draft split when it helps (e.g. "2 published, 1 draft"). Keep it to 1–2 sentences.
 4. Refer to posts by TITLE, never by post_id. Do NOT modify posts — find is read-only.
+5. The ordinary path makes no tool calls: the policy already performed and deduplicated the
+   domain search. Never repeat a successful search. Use the fallback `find_posts` call only when
+   the Items block itself is missing, and stop after that one fallback succeeds.
 
 ## Error Handling
 

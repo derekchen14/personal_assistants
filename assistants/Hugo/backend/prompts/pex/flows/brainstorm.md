@@ -6,14 +6,19 @@ This skill produces creative angles for a topic, or alternative phrasings for a 
 
 1. Read `<resolved_details>` for the active slots.
 2. When `topic` is filled:
-  a. If a `source` post is also resolved, you may call `read_section(post_id, sec_id)` once to gain context. Skip when no source is resolved.
-  b. You may call `find_posts(query=<topic>)` or `search_notes(query=<topic>)` to check prior coverage. Do NOT call these tools if you already have enough material to ideate.
+  a. Call `brainstorm_ideas(topic=<topic>)` exactly once as the primary domain action. Use its
+     coverage findings to avoid repeating existing angles.
+  b. If a `source` post is also resolved and its content is not preloaded, you may call
+     `read_section(post_id, sec_id)` once. Skip when no source is resolved or content is present.
+     Do not also call `find_posts` or `search_notes`; `brainstorm_ideas` already gathers coverage.
   c. If `ideas` is filled, treat its items as the user's own seed list — do NOT repeat them. Generate complementary ideas that extend the seeded direction.
   d. Emit the final JSON (see Output) as your last message. Produce 3–5 distinct, diverse ideas varying angle and style.
 3. When `source.snip` is filled:
   a. Call `read_section(post_id, sec_id)` for surrounding tone context.
   b. Emit the final JSON (see Output) as your last message. Suggest 2–3 alternatives that match the post's existing tone.
 4. Cap at 5 ideas / 3 alternatives. Fewer strong ideas beat many weak ones.
+5. Never repeat a successful domain call. After the required context call succeeds, emit the
+   terminal JSON instead of continuing to browse.
 
 ## Error Handling
 

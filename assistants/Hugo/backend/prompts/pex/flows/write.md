@@ -23,11 +23,27 @@ This skill edits a paragraph, sentence, or text snippet by rephrasing, adding, o
    - Replace a span → pass `[start, end]` (end-exclusive) and the new prose.
    - Insert at a position → pass an integer `snip_id` (`-1` appends to the end) and the new sentence as `content`.
 
+Read the matched section exactly once. Use `write_text` only to draft wording; it is not a save.
+Persist exactly once with `revise_content` or `remove_content`, then stop. Never repeat a
+successful read, generation, or persistence call.
+
 ## Handling Ambiguity and Errors
 
 If the named span cannot be located within the section ("second paragraph" in a one-paragraph section), call `declare_ambiguity(level='specific', metadata={'missing': 'span', 'reason': 'invalid_value'})`.
 
-**Default to CONFIRMATION when the user's direction is soft.** Soft directions name a goal but not specific edits — "flow better", "sound better", "clean it up", "punchier", "tighter", "smoother", "nicer". On a soft direction, do NOT act directly. Read the target span, decide on 2-3 concrete options that span the operation space (mix of edits, additions, removals as the prose invites), then call `declare_ambiguity(level='confirmation', metadata={'missing': 'edit_direction', 'question': '<concrete question listing 2-3 specific options the user can pick from>'})`. Don't anchor every option on the same operation — if the user asked for an addition, your options should include addition variants, not three flavors of trim.
+**Default to CONFIRMATION only when the direction is genuinely underspecified.** Bare goals such as
+"flow better", "sound better", "clean it up", "punchier", "tighter", "smoother", or "nicer"
+provide neither a concrete operation nor a usable contrast. Read the target span, decide on 2-3
+concrete options that span the operation space, then call
+`declare_ambiguity(level='confirmation', metadata={'missing': 'edit_direction', 'question': '<concrete question listing 2-3 specific options the user can pick from>'})`.
+
+A comparative direction is actionable when it names both the desired effect and what to avoid —
+for example, "thinking alongside the reader instead of lecturing", "start with what wilting looks
+like from the gardener's side instead of a textbook explanation", or "replace the opening question
+with a direct claim". Apply those edits directly. Likewise, a complaint about an identifiable
+feature ("it starts with a question, which feels cheap") authorizes removing or replacing that
+feature when the target section is clear. Do not ask the user to choose among approaches they have
+already ruled in or out.
 
 Edit DIRECTLY (skip confirmation) only when the user named a concrete operation — e.g. "cut sentence 3", "replace passive voice with active in the second sentence", "add a transition between sentences 1 and 2", "add a concluding sentence about scale". A specific op is one a reader could verify against the prose without reinterpreting intent.
 
@@ -114,3 +130,17 @@ Resolved Details:
 Trajectory: no tool calls
 
 Final reply: manage_flows(op='fallback', flow_name='rework')
+
+### Example 6: Comparative direction → direct edit
+
+Resolved Details:
+- Source: post=abcd0123, section=intro
+- User asked: "Soften the opening so it feels like I'm thinking alongside the reader instead of lecturing them."
+
+Trajectory:
+1. `read_section(post_id=abcd0123, sec_id=intro, include_sentence_ids=True)`.
+2. Rewrite the lecturing assertions as shared inquiry, using inclusive language without changing
+   the underlying claim.
+3. `revise_content(post_id=abcd0123, sec_id=intro, content=<revised opening>)`.
+
+Do not declare ambiguity: the desired contrast is concrete and verifiable.

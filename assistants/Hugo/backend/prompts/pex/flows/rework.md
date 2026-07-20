@@ -14,9 +14,18 @@ This skill describes how to rework a blog post given user-supplied items: a list
 
 4. End the turn by emitting one JSON object with the keys below — see Output for the schema.
 
+Use only the domain operations required by the user's requested changes. Never re-read a section
+after a successful read, never repeat a successful save, and do not call another persistence tool
+to "improve" content already saved. Once the requested changes succeed, emit the terminal JSON.
+
 ## Handling Ambiguity and Errors
 
-- Vague guidance (no concrete spans, no numbered list): emit JSON with empty `changes` and `done`; describe the confusion in `summary`. Do not save anything.
+- Vague guidance with no identifiable problem or desired outcome ("make the middle better",
+  "fix whatever feels off") emits JSON with empty `changes` and `done`; describe the confusion in
+  `summary`. Do not save anything. A request is actionable without exact spans when it identifies a
+  concrete repeated idea, names material to remove, supplies a new organizing argument, or states a
+  verifiable before/after outcome. Examples: "the middle repeats the heat point three times" and
+  "rebuild the piece around what the money is for, then redefine risk for a ten-year horizon."
 - Wrong flow: if the request reads as a Write edit — sentence cleanup inside one paragraph, or trimming a few words/sentences — call `manage_flows(op='fallback', flow_name='write')`. The policy re-routes through the flow stack — you still emit the JSON with empty arrays and a `summary` line naming the right flow.
 - If `revise_content` fails twice, the policy emits a `failed_to_save` error artifact. Do not attempt a third call from the skill.
 
@@ -137,3 +146,18 @@ Final reply:
   "done": ["smooth_transitions"]
 }
 ```
+
+### Example 5: Consolidate a named repeated idea
+
+Resolved Details:
+- Source: post=abcd0123
+- Suggestions: ["The middle sections repeat the same point about heat three times"]
+
+Trajectory:
+1. Use `<post_preview>` to identify the middle sections that make the heat claim, then read each once.
+2. Keep the strongest explanation, remove redundant versions, and revise the adjacent transitions so
+   the argument still progresses.
+3. Persist only the sections that changed.
+
+Do not ask whether to cut or fold the repetitions: eliminating the repeated heat point is already a
+concrete, verifiable outcome.
