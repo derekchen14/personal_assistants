@@ -285,14 +285,14 @@ def verify(artifact, flow):
 
 ## Todo list
 
-- [ ] **T1 — take_turn becomes the L1 loop** (assistant.py:59-69). Final shape:
+- [x] **T1 — take_turn becomes the L1 loop** (assistant.py:59-69). Final shape:
   `pex.prepare()` → `while self.world.state.keep_going:` [contemplate check →
   `reply = self.pex.orchestrate(self.system_prompt)`] → `self.mem.recap(reply, ...)`. The
   contemplate branch calls `nlu.contemplate()` only — the agent runs the re-stacked flow on its
   next round (no `pex.execute()` from L1). Delete the stale `self.keep_going()` /
   `pex.final_response` references; `contemplation_requested` (assistant.py:74) stays — its
   `is_newborn` filter is already in (C5).
-- [ ] **T2 — prepare() grows** (pex.py:351-362): reset `recently_finished`, `_reads`,
+- [x] **T2 — prepare() grows** (pex.py:351-362): reset `recently_finished`, `_reads`,
   `_turn_start`, the five loop attributes from 2.16.1, and `state.keep_going = True`; keep the
   Plan/Clarify wait; delete the old stack-the-predicted-flow lines (pex.py:283-285) — prepare()
   only reads `state.pred_flows[0]` for the note; append the 2.16.2 system note (two variants).
@@ -301,7 +301,7 @@ def verify(artifact, flow):
   use: `wait_for_nlu(hook)` for the wait+raise pattern (four copies today — prepare, execute,
   orchestrate, `_understand_user`), and `corrective(error, message)` for the hand-built
   `{_success: False, _error, _message}` dict (~8 copies).
-- [ ] **T3 — orchestrate(system_prompt)** — extract one round from the loop body
+- [x] **T3 — orchestrate(system_prompt)** — extract one round from the loop body
   (pex.py:296-347). The round's model call goes through the engineer's public call surface —
   `engineer(system_prompt, messages, family='claude', tier='high', tools=..., max_tokens=4096)`
   — not the private `_call_claude` with a raw model_id; the tier→model mapping lives in the
@@ -309,39 +309,39 @@ def verify(artifact, flow):
   `state.keep_going = False` and returns the text; the nudge path's second miss and the
   round/corrective caps also flip the flag and return `_FALLBACK_MESSAGE` / `_final_emit()`.
   The hook-5 `_read_nlu_entry` read (pex.py:307-314) is unchanged.
-- [ ] **T4 — execute(start=None)** — rename `_top_policy`, inline `activate_flow` as its per-flow
+- [x] **T4 — execute(start=None)** — rename `_top_policy`, inline `activate_flow` as its per-flow
   body, and extract `call_policy(flow)` (policy lookup, run, `pop_completion`). `verify` stays on
   the line after `call_policy`. Callers: the run branch of `_manage_flows` (pex.py:591-598).
-- [ ] **T5 — call_tool rename** (`_tool` → `call_tool`); update `_guarded_call` (pex.py:410) and
+- [x] **T5 — call_tool rename** (`_tool` → `call_tool`); update `_guarded_call` (pex.py:410) and
   the policy-facing pass-through (pex.py:693). Policies keep receiving the callable as their
   `tools` param. `call_mcp` is spec-only this round.
-- [ ] **T6 — recently_finished**: rename + append at every pop site — the completion pop
+- [x] **T6 — recently_finished**: rename + append at every pop site — the completion pop
   (pex.py:720-729, including the plan-surfacing pop) and `_manage_flows` op='pop' (pex.py:581).
   Fix the budget-reset counter per 2.16.1.
-- [ ] **T7 — MEM skips Invalid**: `mem.recap` filters `status == 'Completed'` from
+- [x] **T7 — MEM skips Invalid**: `mem.recap` filters `status == 'Completed'` from
   `recently_finished` for the store and the turn_wrap checkpoint's `completed` list; Invalid
   members are dropped there (the agent already saw them via `popped`).
-- [ ] **T8 — keep_going writers**: implement the two writers — `prepare()` sets True,
+- [x] **T8 — keep_going writers**: implement the two writers — `prepare()` sets True,
   `orchestrate()`'s three terminal paths set False. No repo-wide sweep (C7): leave any existing
   belief-side writer alone until it causes a problem in practice.
-- [ ] **T9 — delete dead surface**: `_execute_click`, the `intent2flow` import if pex.py no
+- [x] **T9 — delete dead surface**: `_execute_click`, the `intent2flow` import if pex.py no
   longer uses it, plus any locals/helpers orphaned by the split. Net diff for pex.py should be near zero or negative outside the note strings.
-- [ ] **T10 — tests**: update `pex_unit_tests.py` call sites to the new names/shape (moratorium:
+- [x] **T10 — tests**: update `pex_unit_tests.py` call sites to the new names/shape (moratorium:
   update or delete only, never add). Run the three files from the Hugo dir; all green.
-- [ ] **T11 — docs sync**: helper_ref.md's PEX section to the new surface;
+- [x] **T11 — docs sync**: helper_ref.md's PEX section to the new surface;
   `architecture.md` PEX lines if they name the old loop; pex.md was updated as this round's
   pre-work (pseudo-code section + Click bullet + who-waits paragraph).
-- [ ] **T12 — verification**: commit the coding draft first; one live probe turn (find →
+- [x] **T12 — verification**: commit the coding draft first; one live probe turn (find →
   grounded reply) confirming round 1 obeys each note variant; replay the gate canaries B03.C14
   and B01.C13 — completion no worse than 0.5 / 1.0; restore `database/content` after the runs.
-- [ ] **T13 — one round primitive in the engineer**: `PromptEngineer.__call__` becomes the
+- [x] **T13 — one round primitive in the engineer**: `PromptEngineer.__call__` becomes the
   single place a model round happens — system prompt + message list + family/tier + tools → one
   API response (the T3 signature). `flow_execute` is rewritten to loop over `__call__` (thread
   tool results, collect the tool_log, handle the terminal emit) and keeps returning
   `(text, tool_log)`; the private `_call_claude` route disappears behind it. Two public
   granularities remain: `engineer(...)` = one round for callers that own their loop (PEX);
   `engineer.flow_execute(...)` = one complete sub-agent run (the policies).
-- [ ] **T14 — one terminal path**: a second thinking-only miss routes through `_final_emit()`
+- [x] **T14 — one terminal path**: a second thinking-only miss routes through `_final_emit()`
   instead of returning `_FALLBACK_MESSAGE` directly; the canned string survives only as
   `_final_emit`'s own last resort. `orchestrate()` then has exactly two exits — the terminal
   reply text, or `_final_emit()`.
