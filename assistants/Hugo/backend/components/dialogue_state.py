@@ -8,8 +8,8 @@ from backend.prompts.for_experts import (build_flow_prompt, render_flow_ontology
                                          PLAN_NOUL, CLARIFY_NOUL)
 from backend.prompts.for_nlu import build_slot_filling_prompt, build_shown_candidates
 from backend.utilities.services import PostService
-from schemas.ontology import FLOW_ONTOLOGY
-from utils.helper import flow2dax, intent2flow
+from schemas.ontology import FLOW_ONTOLOGY, INTENTS
+from utils.helper import flow2dax, dax2flow
 
 log = logging.getLogger(__name__)
 
@@ -202,62 +202,51 @@ class DialogueState:
             return None
         return {'id': post_id, 'title': title}
 
-    def classify_intent(self, engineer, context) -> str:
-        """The turn's first model call (NLU 1) — one TypeSafe request (`engineer.typesafe`,
-        the non-LLM System-1 model) with three questions fanned out: a Choice over the domain
-        intents (+ Continue when a continuable flow is grounded) and the two nouls. Either
-        noul at or above NOUL_THRESHOLD IS the intent — Plan or Clarify, the higher of the
-        two when both cross; otherwise the Choice's pick stands. 'Continue' is never stored:
-        it maps to the working flow's intent before the write (audit + Continue → 'Revise').
-        A failed call stores '' — no signal, so detection runs over the full ontology.
-
-        Like every predictor (round 2.16), the intent maps to a flow at prediction time and
-        lands on the belief: pred_flows carries the intent's basic flow (Continue → the
-        working flow) as an S1 hint, below the ensemble confidence floor. Plan, Clarify, and
-        a failed call write no flow — prepare() waits on NLU's settled belief for those."""
-        flow = self.flow_name(string=True)
-        working = flow if flow and intent2flow(FLOW_ONTOLOGY[flow]['intent']) else ''
+    def classify_intent(self, engineer, context, prev_flow) -> str:
+        """A quick System-1 decision on the next step. Choose from:
+        a. Standard intents - which are mapped to basic flows: {000}, {001}, {002}, {003}, {004}
+        b. Plan intent - which implies a multi-step task
+        c. Clarify intent - implies none of the above, or underspecified request
+        d. Continue - which means we just continue on with the current active flow
+        The classified intent is stored within `self.pred_intent`.
+        """
         criteria = dict(INTENT_CRITERIA)
-        if working:
-            criteria['Continue'] = (f'The turn advances `{working}`, the task already in '
-                                    f'progress — an answer, a detail, an approval, or '
-                                    f'"keep going".')
+        if prev_flow:
+            continue_desc = (f'The turn continues on with `{prev_flow.name()}`, the task already in progress'
+                             '— an answer, a detail, an approval, or "keep going".')
+            criteria['Continue'] = (continue_desc)
             
         document = {'history': context.compile_history(), 'utterance': context.last_user_utt}
-        questions = {'intent': {'type': 'choice', 'instructions': INTENT_QUESTION,
-                                'criteria': criteria},
+        questions = {'intent': {'type': 'choice', 'instructions': INTENT_QUESTION, 'criteria': criteria},
                      'has_plan': PLAN_NOUL, 'needs_clarify': CLARIFY_NOUL}
         try:
             answers = engineer.typesafe(document, questions)
             plan, clarify = answers['has_plan']['noul'], answers['needs_clarify']['noul']
             if plan >= NOUL_THRESHOLD or clarify >= NOUL_THRESHOLD:
                 intent = 'Plan' if plan >= clarify else 'Clarify'
+                self.pred_flows = []
+            elif answers['intent']['choice'] == 'Continue':
+                intent = self.pred_intent
+                # no change needed to predicted flows
             else:
                 intent = answers['intent']['choice']
+                dax = f'00{INTENTS.index(intent)}'
+                flow_name = dax2flow(dax)
+                self.pred_flows = [{'name': flow_name, 'dax': dax, 'confidence': 0.5}]
+
         except Exception as ecp:
-            log.warning('intent classification failed: %s', ecp)
-            if self.config.get('debug', False):
-                raise ecp
+            log.warning(f'intent classification failed: {ecp}')
+            if self.config.get('debug', False): raise ecp
             intent = ''
-        if intent == 'Continue':
-            flow = working
-            intent = FLOW_ONTOLOGY[working]['intent']
-        else:
-            flow = intent2flow(intent)
         self.pred_intent = intent
-        if flow:
-            self.pred_flow = flow2dax(flow)
-            self.confidence = 0.5
-            self.pred_flows = [{'name': flow, 'dax': flow2dax(flow), 'confidence': 0.5}]
         return intent
 
     def detect_flows(self, engineer, context, user_text:str, snippet:str='', working:str=''):
-        """Ensemble flow detection — 2-5 voters, confidence = voter agreement. `snippet` is
+        """Ensemble flow detection — two to five voters, confidence = voter agreement. `snippet` is
         the extra prompt block check() picked; `working` is the flow already in progress
-        (check() reads it off the LIVE stack — since round 2.16 classify_intent writes the
-        belief flow at prediction time, so the belief no longer carries last turn's
-        detection). A working flow narrows candidates to that flow + its edges and seeds the
-        vote; any other hint narrows to the intent's flows."""
+        (check() reads it off the stack the belief no longer carries last turn's detection). 
+        A working flow narrows candidates to that flow + its edges and seeds the vote; 
+        any other hint narrows to the intent's flows."""
         hint = working or self.pred_intent
         convo_history = context.compile_history()
         prompt = self._detection_prompt(user_text, hint, convo_history)
@@ -268,9 +257,6 @@ class DialogueState:
         votes: list[dict] = []
         med_families = ('claude', 'gemini', 'gpt')
         if hint in FLOW_ONTOLOGY:
-            # Continue: PEX already offered a flow-level vote for the Active flow — seed it and
-            # poll only the two families PEX is NOT running on. The tally runs over three votes
-            # exactly as on any other turn.
             pex_family = self._orchestrator_family()
             votes.append({'flows': [hint], '_model': pex_family, '_tier': 'med'})
             med_families = tuple(fam for fam in med_families if fam != pex_family)

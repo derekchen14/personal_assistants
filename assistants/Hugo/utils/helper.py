@@ -1,4 +1,4 @@
-from schemas.ontology import DACT_ONTOLOGY, FLOW_ONTOLOGY, Intent
+from schemas.ontology import DACT_ONTOLOGY, FLOW_ONTOLOGY
 
 
 # Build DAX lookup once at import
@@ -43,14 +43,14 @@ def intent2flow(intent: str) -> str | None:
     return dax2flow(dax) if dax else None
 
 
-def flows_by_intent(intent: Intent) -> dict:
+def flows_by_intent(intent: str) -> dict:
     return {
         name: cat for name, cat in FLOW_ONTOLOGY.items()
         if cat.get('intent') == intent
     }
 
 
-def flow_names_by_intent(intent: Intent) -> list[str]:
+def flow_names_by_intent(intent: str) -> list[str]:
     return sorted(
         name for name, cat in FLOW_ONTOLOGY.items()
         if cat.get('intent') == intent

@@ -79,11 +79,10 @@ class FlowStack:
         return new_flow
 
     def get_flow(self, status:str|None=None):
-        """Top-of-stack flow, optionally filtered by lifecycle status
-        (e.g. 'Active', 'Pending')."""
-        for entry in reversed(self._stack):
-            if status is None or entry.status == status:
-                return entry
+        """Top-of-stack flow, optionally filtered by lifecycle status (e.g. 'Active', 'Pending')."""
+        for flow in reversed(self._stack):
+            if status is None or flow.status == status:
+                return flow
         return None
 
     def find_by_name(self, flow_name:str):

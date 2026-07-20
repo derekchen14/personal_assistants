@@ -1,14 +1,14 @@
 from enum import Enum
 
-
-class Intent:
-    PLAN = 'Plan'
-    CONVERSE = 'Converse'
-    CLARIFY = 'Clarify'
-    RESEARCH = 'Research'     # find, browse, summarize, compare
-    DRAFT = 'Draft'           # brainstorm, outline, compose, refine
-    REVISE = 'Revise'         # rework, write, audit, propose
-    PUBLISH = 'Publish'       # release, schedule, cite
+INTENTS = [
+    'Converse',
+    'Research',     # find, browse, summarize, compare
+    'Draft',        # brainstorm, outline, compose, refine
+    'Revise',       # rework, write, audit, propose
+    'Publish',      # release, schedule, cite
+    'Plan',
+    'Clarify',
+]
 
 
 class FlowLifecycle(str, Enum):
@@ -51,7 +51,7 @@ FLOW_ONTOLOGY = {
 
     'find': {
         'dax': '{001}',
-        'intent': Intent.RESEARCH,
+        'intent': 'Research',
         'description': 'Search previous posts, drafts or notes by keyword or topic — returns matching titles, excerpts, and publication dates sorted by relevance',
         'output': 'list',
         'edge_flows': ['audit', 'summarize'],
@@ -59,7 +59,7 @@ FLOW_ONTOLOGY = {
     },
     'inspect': {
         'dax': '{1AD}',
-        'intent': Intent.RESEARCH,
+        'intent': 'Research',
         'description': 'Report one or more metrics — word count, section count, reading time, image count, post size (MB), or post metadata - category tags, has_featured_image, publication date, last edited date, scheduled date, channels, status',
         'output': 'card',
         'edge_flows': ['summarize'],
@@ -67,7 +67,7 @@ FLOW_ONTOLOGY = {
     },
     'summarize': {
         'dax': '{19A}',
-        'intent': Intent.RESEARCH,
+        'intent': 'Research',
         'description': 'Synthesize a post into a short paragraph capturing the core argument, target audience, and main takeaways — useful for excerpts, SEO descriptions, or pre-reads before writing a follow-up',
         'output': 'card',
         'edge_flows': ['find', 'compare'],
@@ -75,7 +75,7 @@ FLOW_ONTOLOGY = {
     },
     'compare': {
         'dax': '{18A}',
-        'intent': Intent.RESEARCH,
+        'intent': 'Research',
         'description': 'Compare style or structure across two or more posts — sentence length, paragraph density, heading patterns, vocabulary, tonal consistency — or diff two versions of a section side by side to see additions, deletions, and modifications',
         'output': 'compare',
         'edge_flows': ['find', 'audit'],
@@ -86,7 +86,7 @@ FLOW_ONTOLOGY = {
 
     'outline': {
         'dax': '{002}',
-        'intent': Intent.DRAFT,
+        'intent': 'Draft',
         'description': 'Generate an outline — section headings, key bullet points, estimated word counts, and suggested reading order',
         'output': 'list',
         'edge_flows': ['compose', 'refine', 'brainstorm'],
@@ -94,7 +94,7 @@ FLOW_ONTOLOGY = {
     },
     'compose': {
         'dax': '{3AD}',
-        'intent': Intent.DRAFT,
+        'intent': 'Draft',
         'description': 'Draft a full post from its outline — converts outline bullets into prose paragraphs across the post (still rough). Input is an outline, output is a post. For section-level edits use write, for whole-post revision use rework',
         'output': 'card',
         'edge_flows': ['outline', 'refine'],
@@ -102,7 +102,7 @@ FLOW_ONTOLOGY = {
     },
     'refine': {
         'dax': '{02B}',
-        'intent': Intent.DRAFT,
+        'intent': 'Draft',
         'description': 'Shape the outline into a clean, properly-formatted draft — adjust headings, reorder or add/remove bullet points and subsections, incorporate feedback, and normalize structural formatting',
         'output': 'card',
         'edge_flows': ['outline', 'write'],
@@ -110,7 +110,7 @@ FLOW_ONTOLOGY = {
     },
     'brainstorm': {
         'dax': '{39D}',
-        'intent': Intent.DRAFT,
+        'intent': 'Draft',
         'description': 'Come up with new ideas or angles for a given topic, word, or phrase. This may include hooks, opening lines, synonyms, or new perspectives the user can choose from',
         'output': 'list',
         'edge_flows': ['find', 'outline'],
@@ -121,7 +121,7 @@ FLOW_ONTOLOGY = {
 
     'rework': {
         'dax': '{006}',
-        'intent': Intent.REVISE,
+        'intent': 'Revise',
         'description': 'Major revision of draft content — restructures arguments, replaces weak sections, addresses reviewer comments. Also the destructive form: removing a section, draft, or note, previewing the change for the user before committing. Scope spans a section up to the whole post. For smaller changes, use write',
         'output': 'card',
         'edge_flows': ['write', 'refine', 'propose'],
@@ -129,7 +129,7 @@ FLOW_ONTOLOGY = {
     },
     'write': {
         'dax': '{003}',
-        'intent': Intent.REVISE,
+        'intent': 'Revise',
         'description': 'Sentence-level editing of a paragraph, sentence, or phrase — improves word choice, tightens sentences, fixes transitions, smooths flow. Also simplifies — reducing complexity and redundancy, warning the user before cutting content. Scoped within a single paragraph or image, not the whole post',
         'output': 'card',
         'edge_flows': ['rework', 'refine'],
@@ -137,7 +137,7 @@ FLOW_ONTOLOGY = {
     },
     'audit': {
         'dax': '{13A}',
-        'intent': Intent.REVISE,
+        'intent': 'Revise',
         'description': "Check that the post is written in the user's voice rather than sounding like AI — compares voice, terminology, formatting, and stylistic patterns against previous posts — and adjusts tone or register (formal, casual, technical, academic, witty, natural) across the post",
         'output': 'card',
         'edge_flows': ['compare', 'rework'],
@@ -145,7 +145,7 @@ FLOW_ONTOLOGY = {
     },
     'propose': {
         'dax': '{39B}',
-        'intent': Intent.REVISE,
+        'intent': 'Revise',
         'description': 'Generate 2-3 targeted alternatives to fill a placeholder gap (`<fill in here>`, TODO, or blank slot) in existing content, presented inline for the user to pick — like brainstorm, but scoped to a specific slot in a draft',
         'output': 'selection',
         'edge_flows': ['refine', 'rework', 'brainstorm'],
@@ -156,7 +156,7 @@ FLOW_ONTOLOGY = {
 
     'release': {
         'dax': '{004}',
-        'intent': Intent.PUBLISH,
+        'intent': 'Publish',
         'description': 'Publish the post to the primary blog and optionally cross-post (syndicate) to secondary channels (Medium, Dev.to, LinkedIn, Substack), adapting formatting per target',
         'output': 'toast',
         'edge_flows': ['schedule', 'cite'],
@@ -164,7 +164,7 @@ FLOW_ONTOLOGY = {
     },
     'schedule': {
         'dax': '{4AC}',
-        'intent': Intent.PUBLISH,
+        'intent': 'Publish',
         'description': 'Schedule a post for future publication — sets a specific date and time for automatic publishing on a given channel',
         'output': 'toast',
         'edge_flows': ['release', 'cite'],
@@ -172,7 +172,7 @@ FLOW_ONTOLOGY = {
     },
     'cite': {
         'dax': '{15B}',
-        'intent': Intent.PUBLISH,
+        'intent': 'Publish',
         'description': 'Add a citation to a note — if a URL is provided, attach it directly; if only a note is provided, search the web for a supporting source and propose it for user confirmation',
         'output': 'card',
         'edge_flows': ['release', 'rework'],
@@ -183,16 +183,12 @@ FLOW_ONTOLOGY = {
 
     'chat': {
         'dax': '{000}',
-        'intent': Intent.CONVERSE,
+        'intent': 'Converse',
         'description': 'Open-ended conversation — general Q&A about writing craft, blogging strategy, SEO, audience engagement; proactive suggestions for what to do next; and quick reference lookups (definitions, synonyms, antonyms). Anything not tied to a specific post action',
         'output': 'card',
         'edge_flows': ['brainstorm', 'find'],
         'policy_path': 'policies.converse.chat',
-    },
-
-    # Plan and Clarify own no ontology entries (round 3.5): detection chooses among exactly
-    # these 16 flows. The Intent enum keeps both labels; the {29D}/{09F} daxes stay label-only
-    # in the eval-dataset contract, and PlanFlow registers in flow_classes directly.
+    }
 }
 
 KEY_ENTITIES = ['post', 'section', 'snippet', 'channel']

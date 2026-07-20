@@ -8,7 +8,7 @@ from backend.components.dialogue_state import DialogueState, _flow_detection_sch
 
 from backend.prompts.for_experts import detection_snippet
 from backend.prompts.for_contemplate import build_contemplate_prompt as _build_contemplate_prompt_text
-from schemas.ontology import FLOW_ONTOLOGY, Intent
+from schemas.ontology import FLOW_ONTOLOGY
 from utils.helper import edge_flows_for, dax2flow, flow2dax, intent2flow
 
 class NaturalLanguageUnderstanding:
@@ -51,7 +51,7 @@ class NaturalLanguageUnderstanding:
         state, context = self.world.state, self.world.context
         detection = state.detect_flows(self.engineer, context, user_text, snippet, working)
         if self._intent_split(detection):                   # low-confidence AND spans >1 intent
-            state.classify_intent(self.engineer, context)  # the tie-break re-classify
+            state.classify_intent(self.engineer, context, self.world.flows.get_flow())
             if intent2flow(state.pred_intent):  # domain intents only — Plan/Clarify add no
                 detection = state.detect_flows(self.engineer, context, user_text,  # narrowing
                                                detection_snippet(state.pred_intent))
@@ -339,7 +339,7 @@ class NaturalLanguageUnderstanding:
         state. Never inserts a new per-turn state; PEX stages and activates."""
         state = self.world.state
         cat = FLOW_ONTOLOGY.get(flow_name, {})
-        state.pred_intent = cat.get('intent', Intent.CONVERSE)
+        state.pred_intent = cat.get('intent', 'Converse')
         state.pred_flow = flow2dax(flow_name)
         state.confidence = confidence
         state.pred_flows = pred_flows

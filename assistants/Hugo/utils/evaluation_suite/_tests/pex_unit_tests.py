@@ -1846,7 +1846,6 @@ class TestPlanLifecycle:
     Critical 1)."""
 
     def test_plan_flows_survive_completion(self, sessions_dir, mock_agent, monkeypatch):
-        from schemas.ontology import Intent
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         state = mock_agent.world.state
@@ -1861,7 +1860,7 @@ class TestPlanLifecycle:
                 return TaskArtifact('outline', thoughts='outline done')
             def pop_completion(self):
                 return {'flow': 'outline', 'summary': 'done', 'metadata': {}}
-        monkeypatch.setitem(pex._policies, Intent.DRAFT, _CompletingPolicy())
+        monkeypatch.setitem(pex._policies, 'Draft', _CompletingPolicy())
 
         result = pex.call_tool('manage_flows',
                                     {'op': 'stackon', 'flow_name': 'outline'})

@@ -12,7 +12,6 @@ from backend.utilities.services import (
     OutlineValidationError, PostNotFoundError,
 )
 from backend.modules.policies import *
-from schemas.ontology import Intent
 
 log = logging.getLogger(__name__)
 
@@ -187,11 +186,11 @@ class PolicyExecutor:
             'content_service': self._content_service, 'scratchpad': self.session_scratchpad,
         }
         self._policies = {
-            Intent.CONVERSE: ConversePolicy(components),
-            Intent.RESEARCH: ResearchPolicy(components),
-            Intent.DRAFT: DraftPolicy(components),
-            Intent.REVISE: RevisePolicy(components),
-            Intent.PUBLISH: PublishPolicy(components),
+            'Converse': ConversePolicy(components),
+            'Research': ResearchPolicy(components),
+            'Draft': DraftPolicy(components),
+            'Revise': RevisePolicy(components),
+            'Publish': PublishPolicy(components),
         }
 
     def initialization(self):
@@ -289,7 +288,7 @@ class PolicyExecutor:
     def prepare(self):
         """Hook point 1 — PEX's first step, called by take_turn before the round loop. Per-turn
         resets, the Plan/Clarify gate (the only intents that wait on NLU's settled thinking),
-        then the prediction note: one kind-5 system turn handing round 1 the belief every
+        then the prediction note: one system utterance handing round 1 the belief every
         predictor already wrote (`state.pred_flows`, mapped at prediction time — no lookup, no
         stackon; the agent stacks through manage_flows). An expired wait fails the turn loudly —
         the raise lands in take_turn's safety net."""
@@ -313,7 +312,7 @@ class PolicyExecutor:
             note = (f"[typesafe] intent={state.pred_intent} — the predicted flow is "
                     f"'{pred_flow}'. Stack and run it with manage_flows (op='stackon'), pick a "
                     f"different flow, or reply directly.")
-        context.add_turn('system', {'text': note})   # kind 5 — round 1 sees the prediction
+        context.add_turn('system', {'text': note})   # system utterance — round 1 sees it
 
     def orchestrate(self, system_prompt) -> str:
         """One PEX-Agent round — the while-loop lives in take_turn (`state.keep_going`).
