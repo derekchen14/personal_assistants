@@ -136,7 +136,7 @@ class FlowStack:
         flow = cls()
         flow.flow_id = str(uuid4())[:8]
         # A bare push waits as Pending; stackon sets Active by default (Derek, 2026-07-17) and
-        # activation promotes the rest (activate_flow, or pop surfacing the next top).
+        # activation promotes the rest (execute(), or pop surfacing the next flow).
         flow.status = FlowLifecycle.PENDING.value
         self._stack.append(flow)
         return flow

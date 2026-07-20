@@ -216,7 +216,8 @@ class BasePolicy:
         """The single call a policy makes at the moment its flow finishes. The status flips to
         Completed on the live flow (MEM saves state.json at turn end) and the completion entry
         {summary, metadata} is appended to the session scratchpad under the flow's origin;
-        activate_flow collects it via pop_completion and returns it as the tool result. NLU may
+        pex.call_policy collects it via pop_completion and execute() returns it as the tool
+        result. NLU may
         stack a divergent flow above mid-run (round 3.4), so completion never requires being
         top of stack — a Completed flow buried under live work waits there, and pop's top-down
         loop clears it once the flows above it resolve."""
@@ -228,7 +229,7 @@ class BasePolicy:
         return self._completion
 
     def pop_completion(self) -> dict|None:
-        """Hand the entry written by complete_flow to activate_flow exactly once."""
+        """Hand the entry written by complete_flow to pex.call_policy exactly once."""
         entry, self._completion = self._completion, None
         return entry
 

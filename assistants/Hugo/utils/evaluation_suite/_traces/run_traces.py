@@ -49,9 +49,9 @@ def _domain_tools() -> set:
 
 
 def _install_tool_logger(agent) -> list:
-    """Record every tool call by wrapping pex._tool. Returns the shared log."""
+    """Record every tool call by wrapping pex.call_tool. Returns the shared log."""
     log = []
-    original = agent.pex._tool
+    original = agent.pex.call_tool
 
     def logging_tool(tool_name, tool_input):
         entry = {'name': tool_name, 'input': tool_input}
@@ -68,7 +68,7 @@ def _install_tool_logger(agent) -> list:
         entry['result_message'] = result.get('_message') if isinstance(result, dict) else ''
         return result
 
-    agent.pex._tool = logging_tool
+    agent.pex.call_tool = logging_tool
     return log
 
 

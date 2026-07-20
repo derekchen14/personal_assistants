@@ -24,29 +24,32 @@ class NaturalLanguageUnderstanding:
     # The Assistant calls these directly — `understand` survives only as the name of PEX's
     # tool. Each ends in validate(), which writes the turn's scratchpad entry.
 
-    def check(self) -> str:
+    def check(self) -> tuple:
         """Opens `think` with the preliminary work (round 3.4): prior ambiguity is ALWAYS
         cleared here — the dynamic, situation-dependent resolve comes in a later round — and
         the extra detection-prompt snippet is picked for the classified intent (Continue reads
-        very differently from Plan or Clarify). Nothing is passed in: the working intent is
-        dialogue_state.pred_intent. 'Continue' itself is never stored — classify_intent (T16)
-        maps it to the Active flow's intent — so a Continue reading is pred_intent matching
-        the belief flow's own intent, and the flow name comes from flow_name()."""
+        very differently from Plan or Clarify). Returns (snippet, working). The working flow
+        is the LIVE stack's in-flight flow, kept only when this turn's classified intent
+        matches it — the Continue reading. It reads the stack, not the belief, because
+        classify_intent writes the belief flow at prediction time (round 2.16), so pred_flows
+        no longer preserves last turn's detection."""
         if self.ambiguity_handler.is_present:
             self.ambiguity_handler.resolve(explanation='superseded by the new turn')
         state = self.dialogue_state
-        flow = state.flow_name(string=True)
+        curr_flow = self.world.flows.get_flow()
+        in_flight = bool(curr_flow) and curr_flow.status in ('Active', 'Pending')
+        flow = curr_flow.name() if in_flight else ''
         working = flow if (flow and intent2flow(state.pred_intent)  # only domain intents continue
                           and state.pred_intent == FLOW_ONTOLOGY[flow]['intent']) else ''
-        return detection_snippet(state.pred_intent, working)
+        return detection_snippet(state.pred_intent, working), working
 
     def think(self, user_text:str, payload:dict={}):
         """One path: check → detect_flows → fill_slots → validate. Stacks and fills the LIVE
         flow — no transient, no copy step. Any disagreement with what PEX is running is
         resolved on PEX's side (the hook 3/5 read of validate's entry)."""
-        snippet = self.check()
+        snippet, working = self.check()
         state, context = self.world.state, self.world.context
-        detection = state.detect_flows(self.engineer, context, user_text, snippet)
+        detection = state.detect_flows(self.engineer, context, user_text, snippet, working)
         if self._intent_split(detection):                   # low-confidence AND spans >1 intent
             state.classify_intent(self.engineer, context)  # the tie-break re-classify
             if intent2flow(state.pred_intent):  # domain intents only — Plan/Clarify add no
@@ -78,7 +81,7 @@ class NaturalLanguageUnderstanding:
             curr_flow.status = 'Active'                     # the first step runs; the rest wait
             # The first step grounds and fills like the single-flow path (2.14.3) — its
             # originating utterance is live, so the LLM fill is worth one call. Later steps
-            # ground at activate_flow when promoted.
+            # ground inside pex.execute() when promoted.
             state.ground_flow(curr_flow)
             state.fill_slots(self.engineer, context, curr_flow, payload, self.ambiguity_handler)
             state = self._write_belief(steps[0], detection['confidence'], predicted, curr_flow)
@@ -162,7 +165,7 @@ class NaturalLanguageUnderstanding:
             self.ambiguity_handler.observation, '\n'.join(lines), context.compile_history())
         detection = {'flows': ['chat'], 'confidence': 0.5}
         try:
-            parsed = self.engineer(prompt, 'contemplate', max_tokens=512,
+            parsed = self.engineer(prompt, task='contemplate', max_tokens=512,
                                    schema=_flow_detection_schema(candidates))
             if parsed['flows'] and parsed['flows'][0] in FLOW_ONTOLOGY:
                 # Single re-route call, no ensemble to agree — score it as a majority vote (0.7).
@@ -176,7 +179,12 @@ class NaturalLanguageUnderstanding:
         state = self._write_belief(flow_name, detection['confidence'],
             [{'name': flow_name, 'dax': flow2dax(flow_name),
               'confidence': detection['confidence']}], curr_flow)
+    
+        turn_content = {'text': parsed, 'tool_uses': [], 'tool_results': []}
+        self.world.context.add_turn('agent', turn_content, turn_type='action')
+        self.world.context.add_turn('system', {'text': '[contemplate] NLU re-routed the flow based on contemplation.'})
         return self.validate(state, 'think', failed or '')
+
 
     def validate(self, state, op:str='think', prev:str=''):
         """Ends the thinking: ontology fallback + intent correction, rules-based slot repair,

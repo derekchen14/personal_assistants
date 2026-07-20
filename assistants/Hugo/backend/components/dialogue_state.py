@@ -118,6 +118,8 @@ class DialogueState:
         self.pred_flows: list[dict] = []
         self.pred_flow = ''    # top detection's dax
         self.confidence = 0.0  # top detection's ensemble agreement
+        self.keep_going = False  # "this turn still has PEX work" — prepare() sets True,
+                                 # orchestrate()'s terminal paths set False (round 2.16)
 
         """ each entity for the blog domain is {post, sec, snip, chl, ver}
         In most cases, there is only on active entity in the list """
@@ -207,7 +209,12 @@ class DialogueState:
         noul at or above NOUL_THRESHOLD IS the intent — Plan or Clarify, the higher of the
         two when both cross; otherwise the Choice's pick stands. 'Continue' is never stored:
         it maps to the working flow's intent before the write (audit + Continue → 'Revise').
-        A failed call stores '' — no signal, so detection runs over the full ontology."""
+        A failed call stores '' — no signal, so detection runs over the full ontology.
+
+        Like every predictor (round 2.16), the intent maps to a flow at prediction time and
+        lands on the belief: pred_flows carries the intent's basic flow (Continue → the
+        working flow) as an S1 hint, below the ensemble confidence floor. Plan, Clarify, and
+        a failed call write no flow — prepare() waits on NLU's settled belief for those."""
         flow = self.flow_name(string=True)
         working = flow if flow and intent2flow(FLOW_ONTOLOGY[flow]['intent']) else ''
         criteria = dict(INTENT_CRITERIA)
@@ -233,20 +240,24 @@ class DialogueState:
                 raise ecp
             intent = ''
         if intent == 'Continue':
+            flow = working
             intent = FLOW_ONTOLOGY[working]['intent']
+        else:
+            flow = intent2flow(intent)
         self.pred_intent = intent
+        if flow:
+            self.pred_flow = flow2dax(flow)
+            self.confidence = 0.5
+            self.pred_flows = [{'name': flow, 'dax': flow2dax(flow), 'confidence': 0.5}]
         return intent
 
-    def detect_flows(self, engineer, context, user_text:str, snippet:str=''):
-        """Ensemble flow detection — 2-5 voters, confidence = voter agreement. Nothing is
-        passed in beyond the turn: the working intent is read off the belief (`pred_intent`).
-        'Continue' is never stored (classify_intent maps it to the Active flow's intent), so
-        a Continue reading is pred_intent matching the belief flow's intent — it narrows
-        candidates to that flow + its edges and seeds the vote; any other intent narrows to
-        its flows. `snippet` is the extra prompt block check() picked."""
-        flow = self.flow_name(string=True)
-        working = flow if (flow and intent2flow(self.pred_intent)   # only domain intents continue
-                          and self.pred_intent == FLOW_ONTOLOGY[flow]['intent']) else ''
+    def detect_flows(self, engineer, context, user_text:str, snippet:str='', working:str=''):
+        """Ensemble flow detection — 2-5 voters, confidence = voter agreement. `snippet` is
+        the extra prompt block check() picked; `working` is the flow already in progress
+        (check() reads it off the LIVE stack — since round 2.16 classify_intent writes the
+        belief flow at prediction time, so the belief no longer carries last turn's
+        detection). A working flow narrows candidates to that flow + its edges and seeds the
+        vote; any other hint narrows to the intent's flows."""
         hint = working or self.pred_intent
         convo_history = context.compile_history()
         prompt = self._detection_prompt(user_text, hint, convo_history)
@@ -314,7 +325,7 @@ class DialogueState:
                                                       pending=ambiguity.is_present)
         for attempt in (1, 2):
             try:
-                parsed = engineer(prompt, 'fill_slots', max_tokens=2048,
+                parsed = engineer(prompt, task='fill_slots', max_tokens=2048,
                                   schema=_fill_slots_schema(flow))
             except ValueError:
                 parsed = {}
@@ -366,7 +377,7 @@ class DialogueState:
     def _collect_votes(self, engineer, families:tuple, level:str, prompt:str, schema:dict) -> list[dict]:
         def _call_voter(family:str) -> dict | None:
             try:
-                parsed = engineer(prompt, 'detect_flow', family=family, tier=level,
+                parsed = engineer(prompt, task='detect_flow', family=family, tier=level,
                                   max_tokens=1024, schema=schema)
                 parsed['_model'] = family
                 parsed['_tier'] = level

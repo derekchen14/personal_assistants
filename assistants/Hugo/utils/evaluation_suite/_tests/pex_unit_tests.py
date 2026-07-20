@@ -23,6 +23,7 @@ from backend.components.prompt_engineer import PromptEngineer
 from backend.prompts.for_orchestrator import build_orchestrator_prompt
 from schemas.config import load_config
 from schemas.ontology import FLOW_ONTOLOGY
+from utils.helper import flow2dax
 
 _HOT_PATH_TOOLS = ('manage_flows', 'understand', 'append_to_scratchpad', 'store_preference',
                    'ask_clarification_question')
@@ -48,7 +49,8 @@ def _script(agent, responses):
     """Replace the loop's LLM call with a scripted response queue."""
     queue = list(responses)
     agent.engineer._call_claude = (
-        lambda system, messages, model_id, *, tools=None, max_tokens=4096: queue.pop(0))
+        lambda system, messages, model_id, *, tools=None, max_tokens=4096,
+               schema_dict=None: queue.pop(0))
     return queue
 
 
@@ -88,7 +90,7 @@ class TestOrchestratorToolDefs:
         for name in ('handle_ambiguity', 'manage_memory', 'call_flow_stack'):
             assert name not in names  # retired on the orchestrator path
         writes = {'create_post', 'update_post', 'delete_post', 'revise_content', 'release_post'}
-        assert not writes & set(names)  # domain writes only via activate_flow
+        assert not writes & set(names)  # domain writes only via execute()
 
     def test_allowlist_is_decision_16(self):
         assert READ_ONLY_DOMAIN_TOOLS == ('find_posts', 'read_metadata', 'read_section',
@@ -101,7 +103,7 @@ class TestOrchestratorDispatch:
     """_tool routes the hot-path names onto the Phase 1/2 surfaces."""
 
     def test_understand_read_returns_document(self, mock_agent):
-        result = mock_agent.pex._tool('understand', {'op': 'read'})
+        result = mock_agent.pex.call_tool('understand', {'op': 'read'})
         assert result['_success'] is True
         assert list(result['state']) == ['session', 'beliefs', 'grounding', 'flow_stack']
 
@@ -109,7 +111,7 @@ class TestOrchestratorDispatch:
         """state.json persistence moved to MEM's turn-end finish(); the tool result carries
         the refreshed document."""
         mock_agent.world.open_session('wire-test')
-        result = mock_agent.pex._tool('manage_flows',
+        result = mock_agent.pex.call_tool('manage_flows',
                                                {'op': 'stackon', 'flow_name': 'outline',
                                                 'active': False})
         assert result['_success'] is True
@@ -121,14 +123,14 @@ class TestOrchestratorDispatch:
         mock_agent.world.open_session('wire-test')
         pex = mock_agent.pex
         pex.flow_stack.stackon('chat').status = 'Completed'
-        result = pex._tool('manage_flows', {'op': 'pop'})
+        result = pex.call_tool('manage_flows', {'op': 'pop'})
         assert result['_success'] is True
         assert result['state']['flow_stack'] == []
         assert pex.flow_stack.to_list() == []
 
     def test_manage_flows_bad_op_returns_corrective_error(self, sessions_dir, mock_agent):
         mock_agent.world.open_session('wire-test')
-        result = mock_agent.pex._tool('manage_flows', {'op': 'merge'})
+        result = mock_agent.pex.call_tool('manage_flows', {'op': 'merge'})
         assert result['_success'] is False
         assert 'Unknown manage_flows op' in result['_message']
 
@@ -136,8 +138,8 @@ class TestOrchestratorDispatch:
         """T18: slot writes left the tool — NLU owns slot filling. Any fields.slots gets a
         corrective error instead of reaching the flow."""
         mock_agent.world.open_session('wire-test')
-        mock_agent.pex._tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
-        result = mock_agent.pex._tool(
+        mock_agent.pex.call_tool('manage_flows', {'op': 'stackon', 'flow_name': 'outline'})
+        result = mock_agent.pex.call_tool(
             'manage_flows', {'op': 'update', 'fields': {'slots': {'source': [{'post': 'x'}]}}})
         assert result['_success'] is False
         assert result['_error'] == 'invalid_input'
@@ -148,12 +150,12 @@ class TestOrchestratorDispatch:
         the contract fields on the LLM-authored one; read_scratchpad filters by origin."""
         pex = mock_agent.pex
         pex.session_scratchpad.attach(tmp_path / 'scratch.jsonl')
-        originless = pex._tool('append_to_scratchpad', {'entry': {'finding': 'intro is weak'}})
+        originless = pex.call_tool('append_to_scratchpad', {'entry': {'finding': 'intro is weak'}})
         assert originless['_success'] is False and originless['_error'] == 'invalid_input'
-        appended = pex._tool('append_to_scratchpad',
+        appended = pex.call_tool('append_to_scratchpad',
                                       {'entry': {'origin': 'audit', 'finding': 'intro is weak'}})
         assert appended == {'_success': True, 'size': 1}
-        result = pex._tool('read_scratchpad', {'origin': 'audit'})
+        result = pex.call_tool('read_scratchpad', {'origin': 'audit'})
         assert result['entries'] == [{'origin': 'audit', 'finding': 'intro is weak', 'version': 1,
                                       'turn_number': mock_agent.world.context.num_utterances,
                                       'used_count': 0}]
@@ -168,20 +170,20 @@ class TestScopedToolSurface:
     def test_declare_ambiguity_tool_recognizes(self, mock_agent):
         pex = mock_agent.pex
         ambiguity = mock_agent.world.ambiguity
-        result = pex._tool('declare_ambiguity',
+        result = pex.call_tool('declare_ambiguity',
             {'level': 'partial', 'metadata': {'missing': 'source', 'entity': 'post'}})
         assert result == {'_success': True}
         assert ambiguity.is_present is True and ambiguity.get_level() == 'partial'
-        bad = pex._tool('declare_ambiguity',
+        bad = pex.call_tool('declare_ambiguity',
                                  {'level': 'general', 'metadata': {'missing': 'nope'}})
         assert bad['_success'] is False and bad['_error'] == 'invalid_input'
 
     def test_ask_clarification_question_tool(self, mock_agent):
         pex = mock_agent.pex
-        none = pex._tool('ask_clarification_question', {})
+        none = pex.call_tool('ask_clarification_question', {})
         assert none['_success'] is False and none['_error'] == 'invalid_input'
         mock_agent.world.ambiguity.recognize('partial', {'missing': 'source', 'entity': 'post'})
-        result = pex._tool('ask_clarification_question', {})
+        result = pex.call_tool('ask_clarification_question', {})
         assert result['_success'] is True and result['question']
 
     # test_recover_from_ambiguity_tool removed — T19 deleted the tool (recovery is NLU's or
@@ -190,11 +192,11 @@ class TestScopedToolSurface:
     def test_flow_stack_tools_replace_call_flow_stack(self, mock_agent):
         pex = mock_agent.pex
         pex.flow_stack.stackon('outline')
-        flows = pex._tool('read_flow_stack', {'details': 'flows'})
+        flows = pex.call_tool('read_flow_stack', {'details': 'flows'})
         assert flows['_success'] is True and flows['flows'][0]['flow_name'] == 'outline'
-        assert pex._tool('stackon_flow', {'flow': 'compose'}) == \
+        assert pex.call_tool('stackon_flow', {'flow': 'compose'}) == \
             {'_success': True, 'stacked': 'compose'}
-        assert pex._tool('fallback_flow', {'flow': 'write'}) == \
+        assert pex.call_tool('fallback_flow', {'flow': 'write'}) == \
             {'_success': True, 'fell_back_to': 'write'}
 
     def test_manage_memory_tool_is_gone(self, mock_agent):
@@ -202,7 +204,7 @@ class TestScopedToolSurface:
         orch_names = {tool['name'] for tool in pex.get_tools_for_orchestrator()}
         comp_names = {tool['name'] for tool in pex._component_tool_definitions()}
         assert 'manage_memory' not in orch_names and 'manage_memory' not in comp_names
-        result = pex._tool('manage_memory', {'action': 'read_scratchpad'})
+        result = pex.call_tool('manage_memory', {'action': 'read_scratchpad'})
         assert result['_success'] is False and 'Unknown tool' in result['_message']
 
     def test_read_scratch_value_reads_flat_entry(self, mock_agent, tmp_path):
@@ -234,14 +236,14 @@ class _StubPolicy:
         return TaskArtifact(origin=flow.name(), thoughts=self.thoughts)
 
     def pop_completion(self):
-        """Unmigrated-policy shape: no complete_flow call, activate_flow writes the record."""
+        """Unmigrated-policy shape: no complete_flow call, execute() writes the record."""
         return None
 
 
 
 
 class TestDispatchFlow:
-    """activate_flow runs the policy inline and returns the completion record (decision 7)."""
+    """execute() runs the policy inline and returns the completion record (decision 7)."""
 
     @pytest.fixture
     def wired(self, sessions_dir, mock_agent, tmp_path):
@@ -255,7 +257,8 @@ class TestDispatchFlow:
         state = wired.world.state
         state.set_active_entity(post='cafe01', ver=True)
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack)
-        result = pex.activate_flow({'flow_name': 'outline'})   # internal runtime plumbing, not a tool
+        pex.flow_stack.stackon('outline')
+        result = pex.execute()   # internal runtime plumbing, not a tool
         assert result['_success'] is True
         assert result['status'] == 'Completed'
         assert result['completion'] == {'origin': 'outline', 'version': 1,
@@ -275,7 +278,8 @@ class TestDispatchFlow:
                                              thoughts='Need a post first.')
         wired.world.ambiguity.recognize('partial', metadata={'missing': 'source', 'entity': 'post'},
                                         observation='Which post should I work on?')
-        result = pex.activate_flow({'flow_name': 'outline'})
+        pex.flow_stack.stackon('outline')
+        result = pex.execute()
         assert result['_success'] is True
         assert result['status'] == 'Active'
         assert result['question'] == 'Which post should I work on?'
@@ -284,7 +288,8 @@ class TestDispatchFlow:
     def test_empty_artifact_fails_validation(self, wired):
         pex = wired.pex
         pex._policies['Draft'] = _StubPolicy(pex.flow_stack, status='Active', thoughts='')
-        result = pex.activate_flow({'flow_name': 'outline'})
+        pex.flow_stack.stackon('outline')
+        result = pex.execute()
         assert result['_success'] is False
         assert result['_error'] == 'validation'
 
@@ -295,7 +300,7 @@ class TestPolicyCompletion:
     """BasePolicy.complete_flow / pop_completion — the single completion call under the
     orchestrator substrate (changes.md §8 policies row): status via write_state (so the §6
     grounding validation fires) + the §5.3 completion record, deduped against
-    activate_flow's transitional fallback. Plus the grounding-block entity access (§6)."""
+    execute()'s transitional fallback. Plus the grounding-block entity access (§6)."""
 
     @pytest.fixture
     def wired(self, sessions_dir, mock_agent, tmp_path):
@@ -327,12 +332,13 @@ class TestPolicyCompletion:
         state.set_active_entity(post='cafe01', ver=True)
         pex._policies['Draft'] = self._migrated_policy(wired, 'Wrote the intro.',
                                                        metadata={'sec': 'intro'})
-        result = pex.activate_flow({'flow_name': 'outline'})
+        pex.flow_stack.stackon('outline')
+        result = pex.execute()
         assert result['_success'] is True
         assert result['completion'] == {'origin': 'outline', 'version': 1,
                                         'turn_number': wired.world.context.num_utterances, 'used_count': 0,
                                         'summary': 'Wrote the intro.', 'metadata': {'sec': 'intro'}}
-        # The policy's record IS the tool result — no fallback duplicate from activate_flow.
+        # The policy's record IS the tool result — no fallback duplicate from execute().
         assert pex.session_scratchpad.read(keys=['summary', 'metadata']) == [result['completion']]
         assert pex.flow_stack.to_list() == []   # T12: the completed flow left the stack in code
 
@@ -475,7 +481,8 @@ class TestOrchestratorLoop:
         assert sorted(result) == ['actions', 'artifact', 'message']
         messages = orch_agent.world.context.compile_messages()
         assert messages[0] == {'role': 'user', 'content': 'what posts do I have?'}
-        assert messages[1] == {'role': 'assistant',
+        assert messages[1]['content'].startswith('[typesafe] intent=Converse')  # prepare's note
+        assert messages[2] == {'role': 'assistant',
                                'content': 'You have three posts in progress.'}
 
     def test_tool_round_calls_tools_and_appends_results(self, orch_agent):
@@ -484,10 +491,12 @@ class TestOrchestratorLoop:
         result = orch_agent.take_turn('where were we?')
         assert result['message'] == 'All caught up.'
         messages = orch_agent.world.context.compile_messages()
-        assert [msg['role'] for msg in messages] == ['user', 'assistant', 'user', 'assistant']
-        tool_use = messages[1]['content'][0]
+        # user, the prepare note, the tool round, its results, the reply
+        assert [msg['role'] for msg in messages] == ['user', 'user', 'assistant', 'user',
+                                                     'assistant']
+        tool_use = messages[2]['content'][0]
         assert tool_use['type'] == 'tool_use' and tool_use['name'] == 'understand'
-        tool_result = messages[2]['content'][0]
+        tool_result = messages[3]['content'][0]
         assert tool_result['tool_use_id'] == 'toolu_01'
         assert json.loads(tool_result['content'])['_success'] is True
 
@@ -496,7 +505,7 @@ class TestOrchestratorLoop:
                              _response(_text_block('Sorry, no coffee.'))])
         result = orch_agent.take_turn('brew something')
         assert result['message'] == 'Sorry, no coffee.'
-        tool_result = json.loads(orch_agent.world.context.compile_messages()[2]['content'][0]['content'])
+        tool_result = json.loads(orch_agent.world.context.compile_messages()[3]['content'][0]['content'])
         assert tool_result['_success'] is False
         assert 'Unknown tool' in tool_result['_message']
 
@@ -505,7 +514,7 @@ class TestOrchestratorLoop:
                              _response(_tool_block('understand', {'op': 'read'}, block_id='t2')),
                              _response(_text_block('done'))])
         orch_agent.take_turn('check state twice')
-        second = json.loads(orch_agent.world.context.compile_messages()[4]['content'][0]['content'])
+        second = json.loads(orch_agent.world.context.compile_messages()[5]['content'][0]['content'])
         assert second['_error'] == 'duplicate_call'
 
     def test_identical_retry_after_error_still_runs(self, orch_agent):
@@ -516,7 +525,7 @@ class TestOrchestratorLoop:
                              _response(_tool_block('manage_flows', {'op': 'bogus'}, block_id='t2')),
                              _response(_text_block('gave up'))])
         orch_agent.take_turn('do the thing')
-        second = json.loads(orch_agent.world.context.compile_messages()[4]['content'][0]['content'])
+        second = json.loads(orch_agent.world.context.compile_messages()[5]['content'][0]['content'])
         assert second['_error'] != 'duplicate_call'  # re-called, not skipped
 
     def test_read_only_calls_capped_per_turn(self, orch_agent):
@@ -529,7 +538,7 @@ class TestOrchestratorLoop:
         _script(orch_agent, calls + [_response(_text_block('capped'))])
         orch_agent.take_turn('survey everything')
         results = [json.loads(orch_agent.world.context.compile_messages()[idx]['content'][0]['content'])
-                   for idx in range(2, 2 * (cap + 1) + 1, 2)]
+                   for idx in range(3, 2 * (cap + 1) + 2, 2)]
         assert [result['_success'] for result in results[:cap]] == [True] * cap
         assert results[cap]['_error'] == 'read_cap'
 
@@ -537,13 +546,16 @@ class TestOrchestratorLoop:
         _script(orch_agent, [_response(), _response(_text_block('after the nudge'))])
         result = orch_agent.take_turn('hello?')
         assert result['message'] == 'after the nudge'
-        assert orch_agent.world.context.compile_messages()[1] == {'role': 'user',
+        assert orch_agent.world.context.compile_messages()[2] == {'role': 'user',
                                                         'content': _NUDGE_MESSAGE}
 
     def test_thinking_only_twice_falls_back(self, orch_agent):
-        _script(orch_agent, [_response(), _response()])
+        """T14: the second miss routes through _final_emit — one forced no-tools wrap-up call;
+        the canned fallback survives only when even that call produces nothing."""
+        queue = _script(orch_agent, [_response(), _response(), _response()])
         result = orch_agent.take_turn('hello?')
         assert result['message'] == _FALLBACK_MESSAGE
+        assert queue == []  # two misses + the forced wrap-up call, nothing more
         assert orch_agent.world.context.compile_messages()[-1]['content'] == _FALLBACK_MESSAGE
 
     def test_consecutive_failures_cap_breaks_to_wrap_up(self, orch_agent):
@@ -574,7 +586,8 @@ class TestOrchestratorLoop:
         session = sessions_dir / orch_agent.world.conversation_id
         assert json.loads((session / 'state.json').read_text())['session']['turn_count'] == 1
         lines = (session / 'history.jsonl').read_text().splitlines()
-        assert len(lines) == 4  # session start, user turn, the reply, the turn_wrap checkpoint
+        # session start, user turn, prepare's note, the reply, the turn_wrap checkpoint
+        assert len(lines) == 5
 
     def test_max_rounds_read_from_config(self, sessions_dir, monkeypatch):
         """The round budget flows from config: max_rounds=1 stops the loop after one round and
@@ -587,7 +600,13 @@ class TestOrchestratorLoop:
         agent = Assistant(username='test_user')
         agent.nlu.think = lambda *args, **kwargs: None
         agent.nlu.react = lambda *args, **kwargs: None
-        agent.nlu.dialogue_state.classify_intent = lambda *args, **kwargs: ''
+        state = agent.nlu.dialogue_state
+
+        def _classify(*args, **kwargs):
+            state.pred_intent = 'Converse'
+            state.pred_flows = [{'name': 'chat', 'dax': flow2dax('chat'), 'confidence': 0.5}]
+            return 'Converse'
+        state.classify_intent = _classify
         queue = _script(agent, [_response(_tool_block('understand', {'op': 'read'})),
                                 _response(_text_block('Wrapped up after one round.'))])
         result = agent.take_turn('walk the whole backlog')
@@ -634,20 +653,22 @@ class TestOrchestratorLoop:
 
 
 
-class TestOrchestratorClickBypass:
-    """Decision 13: pure clicks never reach the loop; action+text injects the flow."""
+class TestOrchestratorClickTurns:
+    """Round 2.16 (option b): no click bypass — every turn rides the agent loop. prepare()'s
+    [click] note forces the agent's first round to run the stacked flow via manage_flows."""
 
-    def test_pure_click_skips_the_loop(self, orch_agent):
-        def _boom(*args, **kwargs):
-            raise AssertionError('pure click must not call the LLM loop')
-        orch_agent.engineer._call_claude = _boom
+    def test_click_rides_the_standard_path(self, orch_agent):
         orch_agent.pex._policies['Converse'] = _StubPolicy(orch_agent.pex.flow_stack,
                                                            thoughts='Hi! What shall we write?')
+        _script(orch_agent, [_response(_tool_block('manage_flows',
+                                {'op': 'update', 'fields': {'status': 'Active'}})),
+                             _response(_text_block('Hi! What shall we write?'))])
         result = orch_agent.take_turn('', dax='{000}', payload={})
         assert result['message'] == 'Hi! What shall we write?'
         messages = orch_agent.world.context.compile_messages()
         assert messages[0]['content'].startswith('[click] dax={000} flow=chat')
-        assert messages[1] == {'role': 'assistant', 'content': 'Hi! What shall we write?'}
+        assert messages[1]['content'].startswith("[click] The user selected 'chat'")
+        assert orch_agent.pex.flow_stack.to_list() == []  # the run completed and popped
 
     def test_action_with_text_runs_loop_with_flow_injected(self, orch_agent):
         _script(orch_agent, [_response(_text_block('Building on your pick.'))])
@@ -659,6 +680,7 @@ class TestOrchestratorClickBypass:
 
     # test_flag_off_routes_to_old_path removed — the legacy _take_turn path and the
     # orchestrator feature flag are gone; take_turn always runs the orchestrator loop.
+    # test_pure_click_skips_the_loop replaced — the code-side click bypass died with 2.16.
 
 
 
@@ -683,7 +705,10 @@ class TestTurnCheckpoint:
     def test_checkpoint_notes_completed_flow(self, orch_agent):
         orch_agent.pex._policies['Converse'] = _StubPolicy(orch_agent.pex.flow_stack,
                                                            thoughts='Hi there.')
-        orch_agent.take_turn('', dax='{000}', payload={})  # click → completes the chat flow
+        _script(orch_agent, [_response(_tool_block('manage_flows',
+                                {'op': 'update', 'fields': {'status': 'Active'}})),
+                             _response(_text_block('Hi there.'))])
+        orch_agent.take_turn('', dax='{000}', payload={})  # click → the agent runs chat
         assert 'completed: chat' in self._checkpoints(orch_agent)[-1]
 
 
@@ -1787,21 +1812,23 @@ class TestSingleCallStackon:
         pex = mock_agent.pex
         state = mock_agent.world.state
         self._believe(state, 'outline')
-        ran = {}
-        monkeypatch.setattr(pex, 'activate_flow',
-                            lambda params: ran.update(params) or {'_success': True, 'status': 'Completed'})
-        result = pex._tool('manage_flows',
+        ran = []
+        monkeypatch.setattr(pex, 'execute',
+                            lambda start=None: ran.append(start) or {'_success': True, 'status': 'Completed'})
+        result = pex.call_tool('manage_flows',
                                     {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True
-        assert ran['flow_name'] == 'outline'   # active defaults true: the push runs the policy
+        assert ran == [None]   # active defaults true: the push runs the sub-agent loop
+        assert pex.flow_stack.get_flow().name() == 'outline'
 
     def test_stackon_active_false_only_stacks(self, sessions_dir, mock_agent, monkeypatch):
         mock_agent.world.open_session('wire-test')
         state = mock_agent.world.state
         self._believe(state, 'outline')
         called = []
-        monkeypatch.setattr(mock_agent.pex, 'activate_flow', lambda params: called.append(params))
-        result = mock_agent.pex._tool('manage_flows',
+        monkeypatch.setattr(mock_agent.pex, 'execute',
+                            lambda start=None: called.append(start))
+        result = mock_agent.pex.call_tool('manage_flows',
                                                {'op': 'stackon', 'flow_name': 'outline',
                                                 'active': False})
         assert result['_success'] is True and not called
@@ -1824,7 +1851,7 @@ class TestPlanLifecycle:
         pex = mock_agent.pex
         state = mock_agent.world.state
         for flow_name in ('release', 'compose'):    # reverse execution order: first-to-run last
-            result = pex._tool('manage_flows', {'op': 'stackon', 'flow_name': flow_name,
+            result = pex.call_tool('manage_flows', {'op': 'stackon', 'flow_name': flow_name,
                                                          'active': False})
             assert result['_success'] is True
 
@@ -1836,15 +1863,15 @@ class TestPlanLifecycle:
                 return {'flow': 'outline', 'summary': 'done', 'metadata': {}}
         monkeypatch.setitem(pex._policies, Intent.DRAFT, _CompletingPolicy())
 
-        result = pex._tool('manage_flows',
+        result = pex.call_tool('manage_flows',
                                     {'op': 'stackon', 'flow_name': 'outline'})
         assert result['_success'] is True and result['status'] == 'Completed'
-        # T12: outline left the stack via activate_flow's pop, which promoted compose to Active;
+        # T12: outline left the stack via execute()'s pop, which promoted compose to Active;
         # the run-the-top loop always stops at a completion — the agent judges what runs next.
         entries = [(entry['flow_name'], entry['status']) for entry in pex.flow_stack.to_list()]
         assert ('compose', 'Active') in entries     # the plan survived the completion
         assert ('release', 'Pending') in entries
-        result = pex._tool('manage_flows', {'op': 'pop'})
+        result = pex.call_tool('manage_flows', {'op': 'pop'})
         # 2.13.2: a pop against an already-Active top removes nothing and promotes nothing —
         # no policy runs, the result is state-only, and the stack is unchanged.
         assert result['_success'] is True and 'status' not in result
@@ -1852,7 +1879,7 @@ class TestPlanLifecycle:
         assert ('compose', 'Active') in entries and ('release', 'Pending') in entries
         # Running the Active compose is the manual run button: op='update', status='Active'.
         # Its completion pops it in code and promotes release — where the loop stops again.
-        result = pex._tool('manage_flows',
+        result = pex.call_tool('manage_flows',
                            {'op': 'update', 'fields': {'status': 'Active'}})
         assert result['_success'] is True and result['status'] == 'Completed'
         entries = [(entry['flow_name'], entry['status']) for entry in pex.flow_stack.to_list()]

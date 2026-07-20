@@ -29,10 +29,12 @@ class Assistant:
         self.mem.world = self.world
 
     def take_turn(self, text:str, dax:str|None=None, payload:dict={}) -> dict:
-        """ Three modules run asynchronously
+        """The L1 loop (round 2.16). Three modules run asynchronously:
         1. NLU's think: (check → detect_flows → fill_slots → validate) runs on a worker thread
-        2. PEX's acting loop runs on main. Convergence is forced by hook point 3 or 5 based on PEX reading the scratchpad
-        3. MEM stores the turn at the end."""
+        2. The PEX Agent runs on main — prepare() (hook point 1), then one round per
+           orchestrate() call while state.keep_going; convergence is forced by the hook 3/5
+           reads. The terminal round's return value IS the reply.
+        3. MEM stores the turn at the end (Completed flows only)."""
         def understand_user():
             try:
                 self.nlu.think(text, payload)
@@ -56,35 +58,32 @@ class Assistant:
                 nlu_thread = threading.Thread(target=understand_user, daemon=True)
                 nlu_thread.start()
 
-            turn_start = self.world.context.num_utterances
-            utterance = self.pex.execute(self.system_prompt, dax=dax, payload=payload, text=text)
-
+            self.pex.prepare()
+            reply = ''
+            while self.world.state.keep_going:
+                if self.contemplation_requested():  # 3.4.7 — a policy stalled, asked to re-route
+                    self.nlu.contemplate(text)      # the agent runs the re-stacked flow next round
+                reply = self.pex.orchestrate(self.system_prompt)
             if nlu_thread:
                 nlu_thread.join()          # a turn never ends with NLU mid-write
-                if nlu_error:
-                    raise nlu_error[0]
+                if nlu_error: raise nlu_error[0]
 
-            # 3.4.7: PEX queued a re-route request — the Assistant calls NLU (modules never
-            # reach each other), then re-enters PEX once. The re-detected flow is on the stack.
-            requests = self.world.scratchpad.read(origin='orchestrator', keys=['request'])
-            if any(entry['request'] == 'contemplate' and entry['turn_number'] >= turn_start
-                   for entry in requests):
-                self.nlu.contemplate(text)
-                # The superseded reply is loop output, not the final reply — a text-only kind 4.
-                self.world.context.add_turn('agent', {'text': utterance, 'tool_uses': [],
-                    'tool_results': []}, turn_type='action')
-                self.world.context.add_turn('system', {'text': '[contemplate] '
-                    'NLU re-routed the flow; act on the stack as it stands.'})
-                completed = self.pex.completed_this_turn  # prepare() resets it on re-entry
-                utterance = self.pex.execute(self.system_prompt, text='[contemplate] NLU '
-                    're-routed the flow; act on the stack as it stands.')
-                self.pex.completed_this_turn = completed + self.pex.completed_this_turn
-
-            # MEM's recap writes the final reply as the single agent-utterance turn.
-            self.mem.recap(utterance, self.pex.last_prompt_tokens, self.pex.completed_this_turn)
-            return self._build_payload(utterance, self.world.latest_artifact())
+            self.mem.recap(reply, self.pex.last_prompt_tokens, self.pex.recently_finished)
+            return self._build_payload(reply, self.world.latest_artifact())
         except Exception as ecp:  # noqa: BLE001 — top-level safety net
             return self._fallback_response("Something went wrong on my end. Please try again.")
+
+    def contemplation_requested(self):
+        requests = self.world.scratchpad.read(origin='orchestrator', keys=['request'])
+        turn_start = self.world.context.num_utterances
+
+        triggered = False
+        for entry in requests:
+            req_type, turn_num, is_newborn = entry['request'], entry['turn_number'], entry['is_newborn']
+            if req_type == 'contemplate' and turn_num >= turn_start and is_newborn:
+                triggered = True
+                break
+        return triggered
 
     def _init_session(self):
         """Orchestrator session start. Runs once per session: bind a session dir when none is open,

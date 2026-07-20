@@ -103,7 +103,7 @@ def _predict_flow(agent, user_text:str, provider:str|None=None) -> tuple[str, fl
     schema['properties']['confidence'] = {'type': 'string',
                                           'enum': ['0.1', '0.3', '0.5', '0.7', '0.9']}
     schema['required'] = schema['required'] + ['confidence']
-    parsed = agent.engineer(prompt, 'detect_flow', schema=schema)
+    parsed = agent.engineer(prompt, task='detect_flow', schema=schema)
     flows = parsed['flows']
     label = 'clarify' if not flows else ('plan' if len(flows) > 1 else flows[0])
     return label, float(parsed['confidence'])

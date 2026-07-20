@@ -64,7 +64,8 @@ def _script(agent, responses):
     """Replace the loop's LLM call with a scripted response queue."""
     queue = list(responses)
     agent.engineer._call_claude = (
-        lambda system, messages, model_id, *, tools=None, max_tokens=4096: queue.pop(0))
+        lambda system, messages, model_id, *, tools=None, max_tokens=4096,
+               schema_dict=None: queue.pop(0))
     return queue
 
 

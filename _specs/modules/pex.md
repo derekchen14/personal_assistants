@@ -6,11 +6,10 @@ response and the progress messages; its triggered outputs form the **telemetry l
 
 PEX sits at the **middle level** of three:
 
-- **Level 0 — the main Agent** (deterministic code): governs the turn lifecycle and delivers outputs. See
+- **Main Assistant** (deterministic code): governs the turn lifecycle and delivers outputs. See
   [architecture](../architecture.md).
-- **Level 1 — PEX** (this module): a continuous LLM-loop that runs the central tool-calling loop, consulting
-  [NLU](nlu.md) (understand) and [MEM](mem.md) (remember) **in parallel**.
-- **Level 2 — sub-agents**: the per-flow policies the runtime executes. They cannot nest deeper; a sub-agent that
+- **PEX agent** (this module): a thin code wrapper around a continuous agent-loop that runs the central tool-calling loop, consulting [NLU](nlu.md) (understand) and [MEM](mem.md) (remember) **in parallel**.
+- **Sub-agents**: the per-flow policies the runtime executes. They cannot nest deeper; a sub-agent that
   needs more work **stacks on** a flow, which re-surfaces at the PEX layer rather than spawning a fourth level.
 
 PEX owns the agent loop, **[Workflow Planning / Sub-agent Routing](#workflow-planning--sub-agent-routing)**,
@@ -20,21 +19,204 @@ two surfaces it produces with — the **[Task Artifact](../components/task_artif
 
 ---
 
+## One turn through PEX — pseudo-code
+
+Two agentic loops run inside PEX (the Assistant above them is deterministic code):
+
+1. the **PEX Agent** — triggered by `pex.orchestrate()`; the PEX module is a thin code
+   wrapper around this agent.
+2. the **policy sub-agent** — triggered by `pex.execute()`; the policy is the code wrapper
+   around the sub-agent.
+
+Tools, policies, and MCP servers are treated identically, so the verb is **call**: the three
+services are `call_tool()`, `call_policy()`, and `call_mcp()`, and each returns a
+`{_success: bool, ...}` dict. `prepare()` is PEX's first step of every turn; `verify()` is the
+last step of every sub-agent run.
+
+Both loops make model rounds the same way: `engineer(...)` is the single round primitive — one
+call, one model round. PEX owns its loop and calls it once per `orchestrate()`; a policy wants a
+finished run, so `flow_execute` loops the same primitive inside the engineer and returns
+`(text, tool_log)`.
+
+**Standardization.** Every predictor — a user action (golden dax), the TypeSafe model, NLU's
+ensemble — writes the same belief: `state.pred_intent` and `state.pred_flows`, mapped to flows at
+prediction time. `prepare()` looks nothing up and stacks nothing; the PEX agent stays the main
+driver, stacking and running flows through `manage_flows`. Nothing downstream knows which
+predictor made the prediction.
+
+### The Assistant drives the turn
+
+```python
+def take_turn(text, dax=None, payload={}):
+    context.add_turn('user', content)              # kind 1 (utterance) or kind 2 (click)
+    if dax:
+        nlu.react(dax, payload)                    # golden dax — stacks the named flow, fills slots
+    else:
+        state.classify_intent(engineer, context)   # TypeSafe — writes pred_intent + pred_flows
+        spawn nlu.think(text)                      # ensemble — worker thread, may re-stack mid-turn
+
+    pex.prepare()                                  # first step — hook point 1
+    while state.keep_going:
+        if contemplation_requested():              # 3.4.7 — a policy stalled and asked to re-route
+            nlu.contemplate()                      # NLU re-detects over the failed flow; the agent
+                                                   #   runs the re-stacked flow next round
+        reply = pex.orchestrate()                  # one PEX-Agent round; '' until the terminal round
+    mem.recap(reply, ...)                          # records the reply turn (kind 3); MEM stores
+                                                   #   Completed flows only, never Invalid ones
+```
+
+### prepare() — PEX's first step (hook point ①)
+
+```python
+def prepare():
+    recently_finished, reads = [], 0               # every flow popped this turn — Completed or Invalid
+    turn_start = context.num_utterances
+    state.keep_going, rounds = True, 0             # True until the terminal emit words the reply
+    if state.pred_intent in ('Plan', 'Clarify'):   # the only intents that wait on NLU
+        wait(nlu_done, timeout=30)                 # expiry raises — the turn fails loudly
+    pred_flow = state.pred_flows[0]                # mapped at prediction time — no lookup, no stackon
+    if the user turn is an action:                 # golden dax — react() already stacked it; force it
+        note = (f"[click] The user selected '{pred_flow}' directly. You MUST run it as your "
+                f"next step with manage_flows (update status='Active').")
+    else:                                          # TypeSafe — a prediction the agent may override
+        note = (f"[typesafe] intent={state.pred_intent} — the predicted flow is '{pred_flow}'. "
+                f"Stack and run it with manage_flows (op='stackon'), pick a different flow, or "
+                f"reply directly.")
+    context.add_turn('system', {'text': note})     # kind 5 — round 1 sees the prediction
+```
+
+### execute() — run Flow sub-agents until the stack settles
+
+Called only from inside a `manage_flows` call, whenever an op surfaces runnable work (stackon,
+fallback, a promoting pop, a status write of 'Active').
+
+```python
+def execute(start=None):
+    curr_flow = start or flow_stack.get_flow()
+    while curr_flow and curr_flow.status in ('Pending', 'Active'):
+        curr_flow.status = 'Active'
+        state.ground_flow(curr_flow)               # fills only EMPTY entity slots; idempotent
+        if security_check(curr_flow):              # lethal-trifecta gate → confirmation block
+            return approval_result                 # no sub-agent run
+        artifact = call_policy(curr_flow)          # ← the policy sub-agent runs inside
+        check = verify(artifact, curr_flow)        # last step — hook point 6
+        wait(nlu_done, timeout=30)                 # hook point 3 — NLU may have re-stacked
+        if curr_flow.status == 'Completed':
+            popped = pop Completed and Invalid flows   # in code, never the agent's job
+            recently_finished += popped            # every popped flow — Completed or Invalid
+            surface next_flow + NLU's note in the tool result
+            break
+        prev_flow, curr_flow = curr_flow, flow_stack.get_flow()
+        if curr_flow is prev_flow:
+            break                                  # stall (question or violation) — agent decides
+        if curr_flow.intent == prev_flow.intent:
+            surface NLU's announcement; break      # same-intent conflict — PEX 5 decides
+        # different intent — code re-routes silently; the loop continues on curr_flow
+    return the policy result as the manage_flows tool result
+```
+
+### call_policy() — the code wrapper around one sub-agent run
+
+```python
+def call_policy(flow):
+    policy = policies[flow.intent]                 # five policy objects per domain
+    return policy.<flow>_policy(flow, state, context, call_tool)
+
+def <flow>_policy(flow, state, context, tools):    # the one skeleton every policy follows
+    if not flow.slots[flow.entity_slot].filled:    # 1. guard the entity slot
+        ambiguity.recognize('partial')
+        return TaskArtifact(flow.name())
+    # 2. branch on slot state — specific ambiguity, a prerequisite stackon, or execution
+    text, tool_log = llm_execute(flow, ...)        # 3. the sub-agent LLM loop: skill + starter +
+                                                   #    flow.tools; every call routes through
+                                                   #    call_tool (hook points 2 / 3 / 4)
+    artifact = classify(text, tool_log)            #    violations from the closed 8-code set
+    if succeeded:
+        complete_flow(flow, summary, metadata)     # 4. the policy completes itself
+    return artifact
+```
+
+### orchestrate() — one PEX-Agent round
+
+```python
+def orchestrate():
+    rounds += 1
+    response = engineer(system_prompt, context.compile_messages(), family='claude',
+                        tier='high', tools=catalog, max_tokens=4096)
+    text, tool_uses = split(response)
+
+    if not tool_uses:
+        if text:
+            wait(nlu_done, timeout=30)             # hook point 5 — post-LLM, no tools ran
+            if unconsumed_nlu_announcement():
+                record text as a kind-4 turn; append the note as a system turn
+                return ''                          # PEX 5 — one more round to decide
+            state.keep_going = False               # terminal round — the turn is worded
+            return text                            # the reply is PEX's final result
+        nudge once (system turn); a second miss goes through _final_emit() — the wrap-up call
+        return ''
+
+    results = [call_tool(tu.name, tu.input) for tu in tool_uses]
+    # a manage_flows op that surfaces runnable work calls execute() inline; its policy
+    # result IS the tool result
+    context.add_turn('agent', {text, tool_uses, results}, 'action')  # one kind-4 turn per round
+    if a flow completed this round: rounds = 0     # every plan step starts a fresh budget
+    if rounds == max_rounds or corrective_cap_hit:
+        state.keep_going = False
+        return _final_emit()                       # one no-tools wrap-up call — the reply
+    return ''                                      # mid-turn round — no reply yet
+```
+
+### call_tool() / call_mcp() — the uniform call surface
+
+```python
+def call_tool(name, args):                         # every tool call, both levels, one guard site
+    if name not in catalog:                  return corrective('invalid_input')
+    if identical_to_last_successful_call:    return corrective('duplicate_call')
+    if read_only_tool and reads >= max_reads: return corrective('read_cap')
+    if catalog[name].served_by_mcp:
+        return call_mcp(catalog[name].server, name, args)
+    try:
+        return bound_method(**args)                # services return {_success, ...}
+    except Exception as ecp:
+        return corrective('server_error', ecp)     # corrective errors, never raises
+
+def call_mcp(server, name, args):
+    return mcp_clients[server].call(name, args)    # same {_success, ...} contract as call_tool
+```
+
+### verify() — the last step of every sub-agent run (hook point ⑥)
+
+```python
+def verify(artifact, flow):
+    if ambiguity.is_present:            return passed             # the question IS the outcome
+    if 'violation' in artifact.data:    return failed(error_path)  # already classified; no retry
+    if artifact_has_no_data:            return failed('no data')
+    if artifact.thoughts == last_user_utt: return failed('echo')
+    if flow.name() in content_validation: run_llm_quality_check()  # stubbed today
+    return passed
+```
+
+---
+
 ## The PEX Agent loop
 
-`PEX.execute()` is PEX's tool-calling engine — the PEX Agent loop. The **Assistant** routes to PEX
-*first*: the loop's opening reasoning move is a System-1 intent sense (PEX 1), which the Assistant
-relays to [NLU](nlu.md) as the hint before detection starts. NLU's ensemble detection then runs in
-parallel with the loop; `execute()` proceeds on the standing belief and picks up NLU's verdict as a
-Session Scratchpad entry at the hook points (see
+`PEX.orchestrate()` runs one round of the PEX Agent loop — the PEX module is a thin wrapper around
+this agent. PEX 1, the System-1 intent sense, is the TypeSafe `classify_intent` call the Assistant
+runs synchronously before either lane starts; it writes `state.pred_intent`, the hint NLU's
+ensemble detection then checks in parallel. The turn proceeds on the standing belief and picks up
+NLU's verdict as a Session Scratchpad entry at the hook points (see
 [hook points](#policy-hook-points--the-6-hook-sub-agent-framework)):
 
-- **Click** → the Assistant runs `understand(op=react)`; the dax names the flow, so there is no
-  detection and no agent loop — the resolved flow goes straight to the runtime.
+- **Click** → the Assistant runs `nlu.react`; the dax names the flow, so there is no detection.
+  `prepare()`'s system note tells the agent it MUST run that flow next — the agent's first round
+  is that `manage_flows` call, not a choice.
 - **Utterance, clear domain intent** → the intent maps to its basic flow (Converse→chat {000},
   Research→find {001}, Draft→outline {002}, Revise→write {003}, Publish→release {004} — the dax
-  codes hold across domains; finer-grained flows are NLU's to choose) and `execute()` stacks and
-  starts it without waiting.
+  codes hold across domains; finer-grained flows are NLU's to choose) — the prediction is
+  already in `state.pred_flows`; `prepare()` announces it in a system note and the agent's
+  first round stacks and runs it. "Without waiting" means no wait on NLU — detection lands at
+  the hook points mid-flow.
 - **Utterance, Plan or Clarify** → the only intents that wait: the first move is a belief read at
   hook point ①, blocking until NLU's settled belief lands.
 
@@ -46,8 +228,8 @@ of the 8 intents. Each intent sets how the turn treats the (possibly still-runni
   Handler.
 - **Continue** — legal only while an Active flow exists; advance that flow by handing it back to the
   runtime, without stacking or re-routing. The Active flow name is NLU's hint for this turn.
-- **Converse** — map to `chat` {000}; it stacks and runs like any flow (the streamed reply is its
-  execution), then pops and the flow beneath reactivates. No carve-out.
+- **Converse** — maps to `chat` {000} like any intent; no carve-out in code. The agent chooses:
+  reply directly on simple requests, or stack and run `chat` when the reply needs the FAQs.
 - **Research / Draft / Revise / Publish** — go directly to flow execution; the NLU update is optional at
   the hook points.
 
@@ -59,8 +241,8 @@ the turn. One extra gate: when the stack already holds an Active flow and PEX 1 
 the agent's next move (PEX 2) double-checks that selection with the Workflow Planner skill before
 stacking over live work — prompt-only, the same agent that later resolves conflicts as PEX 5.
 
-Inside the loop (`_run_loop`, bounded to `_MAX_ROUNDS`), PEX calls the model with a frozen three-tier system
-prompt, the message list, and the tool catalog. Each round:
+Inside the loop (each `orchestrate()` call is one round, bounded to `max_rounds`), PEX calls the
+model with a frozen three-tier system prompt, the message list, and the tool catalog. Each round:
 
 - Tool calls are validated against the catalog; identical consecutive calls are de-duplicated; a
   consecutive-failure cap (`_MAX_CORRECTIVE`) stops runaway error loops.
@@ -76,7 +258,7 @@ prompt, the message list, and the tool catalog. Each round:
 - Exhausting the round budget or the corrective cap triggers a single no-tools `_final_emit` wrap-up, so
   completed work is never buried behind a canned fallback.
 
-When the turn ends, the main Agent's post-hook records the agent turn, persists state, runs
+When the turn ends, the main Assistant's post-hook records the agent turn, persists state, runs
 the compaction check, and delivers the [Task Artifact](#task-artifact--rendering) (below).
 
 ### Owns vs. delegates
@@ -234,15 +416,16 @@ signal** or a **user interrupt**.
 
 **Plain names (2026-07-03):** ① is the **pre-flow** hook, ⑤+⑥ together are the **post-flow** hook, ②
 (with ④ as its retry variant) is **pre-tool**, ③ is **post-tool**. These six are the complete set — the
-work at `execute()` entry and the end-of-turn checkpoint is ordinary turn lifecycle, not a hook. Since both
+work in `prepare()` and the end-of-turn checkpoint is ordinary turn lifecycle, not a hook. Since both
 the orchestrator loop and every sub-agent route tool calls through the same path, the pre/post-tool
 hooks cover both levels from one place.
 
 **Who waits on NLU (revised 2026-07-14):** on every utterance turn, NLU's detection runs in parallel
 and the hooks are where its verdict comes in. **Plan and Clarify are required to wait**: their first
 move is a belief read at hook point ①, which blocks until detection lands. **The other six intents
-never block**: `execute()` stacks the intent's basic flow and starts the policy, and the hook ③/⑤
-scratchpad read picks up NLU's verdict mid-flow. When NLU detected the same flow, nothing needs to
+never block on NLU**: the prediction is already in `state.pred_flows`, the agent's first round
+stacks and runs it via `manage_flows`, and the hook ③/⑤ scratchpad read picks up NLU's verdict
+mid-flow. When NLU detected the same flow, nothing needs to
 change — that is the speed-up.
 
 **The scratchpad message (2026-07-14, round 3.4):** NLU ends its thinking (`validate`) by writing one
@@ -330,9 +513,9 @@ Each executing **sub-agent** builds its own **[Task Artifact](../components/task
 parts, blocks, thoughts. When several flows are active in one turn, PEX **curates** the sibling artifacts into
 a **single** TaskArtifact (stack order, dedup identical blocks; see
 [Task Artifact § Lifecycle](../components/task_artifact.md#artifact-lifecycle)) and hands it up to the main
-Agent. The sub-agents **propose** the blocks; curation defaults to passing them through (ordered, deduped)
+Assistant. The sub-agents **propose** the blocks; curation defaults to passing them through (ordered, deduped)
 with minimal change — PEX authors blocks from scratch only as an optional summarization step for a clearer,
-more concise turn. The main Agent then sends a processed version to the user (through the webserver) and a copy to
+more concise turn. The main Assistant then sends a processed version to the user (through the webserver) and a copy to
 [MEM](mem.md) for long-term storage (through the World object). PEX composes the spoken reply directly from
 these artifacts plus the tool and sub-agent results via a **voice Skill** in its system prompt — there is no
 naturalization tool. Every model call PEX or its sub-agents make routes through the

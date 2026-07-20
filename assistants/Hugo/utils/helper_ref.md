@@ -9,10 +9,15 @@ Every capability Hugo needs to operate likely already lives somewhere. Ask **whi
 1. Standard pattern: 
 ```python
 prompt = build_*_prompt(...)
-raw_output = self.engineer(prompt, '<task_name>')
+raw_output = self.engineer(prompt, task='<task_name>')
 parsed = self.engineer.parse(raw_output)
 ```
-self.engineer() also takes in parameters for `model` and `max_tokens` when deviating from defaults.
+self.engineer() also takes in parameters for `tier`, `family`, and `max_tokens` when deviating
+from defaults. `__call__` is the single round primitive (round 2.16): passing `messages` (a
+compiled message list) makes `prompt` the full system prompt and returns the raw provider
+response — PEX's orchestrator rounds call
+`engineer(system_prompt, context.compile_messages(), family='claude', tier='high', tools=...)`,
+and `flow_execute` loops the same call internally.
 Modules import `build_*_prompt` helpers directly from `backend/prompts/`.
 Use `raw_output` before parsing, with meaningful name (`parsed`, `pred_slots`, `verdict`, `cleaned`, `repaired`, etc.) after.
 
@@ -225,7 +230,7 @@ Before proposing a new tool, grep for the capability here first.
 
 **BusinessContext** (1): `search_faqs`.
 
-**Orchestrator hot-path tools** (5, `_orchestrator_toolset`): `understand`, `manage_flows`, `scratchpad`, `store_preference`, plus the long-tail component tools. Writes still route through a flow via `manage_flows` — stackon (active defaults true), fallback, and pop-promotion run the top policy themselves; there is no activate op. The tool surface is being reshaped per `_specs/_review/rounds/round_0.1_spec.md` (scoped per-agent toolsets).
+**Orchestrator hot-path tools** (5, `_orchestrator_toolset`): `understand`, `manage_flows`, `scratchpad`, `store_preference`, plus the long-tail component tools. Writes still route through a flow via `manage_flows` — stackon (active defaults true), fallback, a promoting pop, and `update status='Active'` call `pex.execute()` (the policy sub-agent loop); there is no activate op. Every tool call from both loops routes through `pex.call_tool`. The PEX-Agent surface is `prepare()` (hook ① resets + the prediction note) and `orchestrate(system_prompt)` (ONE round per call; the while-loop lives in `Assistant.take_turn`, gated on `state.keep_going`; the terminal round's return value is the reply).
 
 **Component tools** (3): `handle_ambiguity`, `coordinate_context`, `manage_memory`.
 

@@ -138,14 +138,28 @@ class PromptEngineer:
         resp.raise_for_status()
         return resp.json()['answers']
 
-    def __call__(self, prompt:str, task:str='skill', tier:str='med', max_tokens:int=1024,
-                 schema=None, family:str=''):
-        messages = [{'role': 'user', 'content': prompt}]
-        system = self._system_for_task(task)
+    def __call__(self, prompt:str, messages:list|None=None, task:str='skill', tier:str='med',
+                 max_tokens:int=1024, schema=None, family:str='', tools:list|None=None):
+        """One model round — the single round primitive both loops share (round 2.16). Two
+        shapes: with `messages`, `prompt` is a full system prompt and the raw provider response
+        returns (PEX's orchestrator rounds; `flow_execute` loops this same call); without it,
+        `prompt` is the user message, `task` picks the system suffix, and the reply text (or
+        the schema-validated object) returns."""
         family = family or ACTIVE_FAMILY
         model_id = self._resolve_model(tier, family)
-        log.info('  task=%s  model=%s', task, model_id)
         schema_dict = self._to_json_schema(schema) if schema is not None else None
+        if messages is not None:
+            log.info('  round model=%s  tools=%d', model_id, len(tools or []))
+            match family:
+                case 'claude':
+                    return self._call_claude(prompt, messages, model_id, tools=tools,
+                                             max_tokens=max_tokens, schema_dict=schema_dict)
+                case 'gemini':   return self._call_gemini(prompt, messages, model_id, max_tokens, schema_dict=schema_dict)
+                case 'together': return self._call_together(prompt, messages, model_id, max_tokens, schema_dict=schema_dict)
+                case 'gpt':      return self._call_gpt(prompt, messages, model_id, max_tokens, schema_dict=schema_dict)
+        messages = [{'role': 'user', 'content': prompt}]
+        system = self._system_for_task(task)
+        log.info('  task=%s  model=%s', task, model_id)
         match family:
             case 'claude':
                 response = self._call_claude(system, messages, model_id, max_tokens=max_tokens, schema_dict=schema_dict)
@@ -185,7 +199,7 @@ class PromptEngineer:
         model_id = self._resolve_model(tier)
         match ACTIVE_FAMILY:
             case 'claude':
-                r = self._call_claude(system, messages, model_id, max_tokens=max_tokens)
+                r = self(system, messages, tier=tier, family='claude', max_tokens=max_tokens)
                 return ''.join(b.text for b in r.content if b.type == 'text')
             case 'gemini':   return self._call_gemini(system, messages, model_id, max_tokens)
             case 'together': return self._call_together(system, messages, model_id, max_tokens)
@@ -213,17 +227,20 @@ class PromptEngineer:
         family = ACTIVE_FAMILY
         adapted = self._adapt_tool_defs(family, tool_defs)
         match family:
-            case 'claude':   return self._call_claude_with_tools(system, msgs, model_id, adapted, call_tool, max_tokens, max_num_calls)
+            case 'claude':   return self._call_claude_with_tools(system, msgs, tier, adapted, call_tool, max_tokens, max_num_calls)
             case 'gemini':   return self._call_gemini_with_tools(system, msgs, model_id, adapted, call_tool, max_tokens, max_num_calls, schema_dict=schema)
             case 'gpt':      return self._call_gpt_with_tools(system, msgs, model_id, adapted, call_tool, max_tokens, max_num_calls)
             case 'together': return self._call_together_with_tools(system, msgs, model_id, adapted, call_tool, max_tokens, max_num_calls)
 
-    def _call_claude_with_tools(self, system, msgs, model_id, tool_defs, call_tool, max_tokens, max_num_calls):
+    def _call_claude_with_tools(self, system, msgs, tier, tool_defs, call_tool, max_tokens, max_num_calls):
+        """The claude sub-agent run: loops the one round primitive (__call__) up to
+        max_num_calls, threading tool results back in. Returns (text, tool_log)."""
         msgs = list(msgs)
         tool_log: list[dict] = []
         text_parts: list[str] = []
         for _ in range(max_num_calls):
-            response = self._call_claude(system, msgs, model_id, tools=tool_defs, max_tokens=max_tokens)
+            response = self(system, msgs, tier=tier, family='claude', tools=tool_defs,
+                            max_tokens=max_tokens)
             text_parts = []
             tool_uses = []
             for block in response.content:

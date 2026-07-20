@@ -13,7 +13,6 @@ from backend.utilities.services import (
 )
 from backend.modules.policies import *
 from schemas.ontology import Intent
-from utils.helper import dax2flow, intent2flow
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ READ_ONLY_DOMAIN_TOOLS = ('find_posts', 'read_metadata', 'read_section', 'search
                           'list_channels', 'channel_status')
 
 def _block_summaries(artifact) -> list:
-    """Compact view of the artifact blocks for the activate_flow tool result, so the
+    """Compact view of the artifact blocks for execute()'s policy result, so the
     orchestrator knows what the frontend will render (it must reference blocks, never
     restate them). Same card-shaped summary the e2e harness and agent logging use;
     selection blocks additionally carry their option labels."""
@@ -58,6 +57,11 @@ def _block_summaries(artifact) -> list:
             summary['title'] = data['title']
         summaries.append(summary)
     return summaries
+
+
+def corrective(error:str, message:str) -> dict:
+    """The corrective tool-error shape — handed back to the model to retry on, never raised."""
+    return {'_success': False, '_error': error, '_message': message}
 
 
 def _validate_ambig_metadata(level:str, metadata:dict) -> str | None:
@@ -142,11 +146,19 @@ class PolicyExecutor:
         # Real prompt-token usage off the last agent-loop API response — MEM's compaction
         # check reads it in the turn wrap (MEM.recap).
         self.last_prompt_tokens = 0
-        # Flows that reached Completed during the current turn — reset per prepare(), read by the
-        # end-of-turn checkpoint and passed to MEM.recap (round 3.3 choices lifecycle).
-        self.completed_this_turn = []
+        # Every flow popped during the current turn — Completed or Invalid (round 2.16). Reset
+        # per prepare(), passed to MEM.recap (which stores only the Completed members) and read
+        # by orchestrate()'s round-budget reset.
+        self.recently_finished = []
         self._reads = 0  # per-turn count of successful read-only domain-tool calls; reset in prepare()
         self._turn_start = 0  # context.num_utterances at prepare() — scopes hook reads to this turn
+        # PEX-Agent round state (round 2.16): one round per orchestrate() call, so the old loop
+        # locals live here; prepare() resets them per turn.
+        self.rounds = 0        # rounds since the last completion — a completion resets the budget
+        self.finished = 0      # Completed members of recently_finished already counted
+        self.errors = 0        # consecutive corrective tool failures
+        self.nudged = False    # a thinking-only miss already nudged this turn
+        self.last_call = None  # (name+args key, succeeded) — _guarded_call's dedupe memory
         # Orchestrator hot-path tools — wiring only; the implementations live in
         # DialogueState (state file), SessionScratchpad (scratchpad JSONL), and the policies.
         self._orchestrator_toolset = {
@@ -263,7 +275,7 @@ class PolicyExecutor:
             f'User request: {context.last_user_utt}\n\nAgent output:\n{content}'
         )
         try:
-            raw_output = self.engineer(prompt, 'quality_check', tier='low', max_tokens=128)
+            raw_output = self.engineer(prompt, task='quality_check', tier='low', max_tokens=128)
             verdict = raw_output.strip().lower()
             if verdict.startswith('pass'):
                 return ArtifactCheck(passed=True)
@@ -272,130 +284,115 @@ class PolicyExecutor:
         except Exception:
             return ArtifactCheck(passed=True)
 
-    # -- Acting loop (the Assistant's single PEX entry) -------------------
-
-    def execute(self, system_prompt, *, dax=None, payload=None, text='') -> str:
-        """The acting loop the Assistant calls once per turn — opens with prepare() (hook
-        point 1) and NLU thinks in parallel on the worker thread. A pure click (dax, no text)
-        is resolved deterministically — no LLM. Otherwise the bounded orchestrator loop decides
-        the next action per the system prompt, calling tools through `_tool`; NLU's mid-turn
-        stack changes surface at the hook 3/5 reads. Returns the spoken utterance."""
-        state = self.world.state
-        self.prepare()
-        if dax and not text.strip():
-            utterance = self._execute_click(dax)
-        else:
-            # T16: on a clear domain intent with no Active top, code stackons the intent's
-            # basic flow — the racing stackon NLU's think converges on (S1). An Active top of
-            # the same intent just runs; a different intent goes to the PEX 2 gate (prompt).
-            basic = intent2flow(state.pred_intent)
-            top = self.flow_stack.get_flow()
-            if basic and not (top and top.status == 'Active'):
-                self.flow_stack.stackon(basic)   # Active by default — this IS the turn's flow
-            utterance = self._run_loop(system_prompt)
-        return utterance
+    # -- The PEX Agent: prepare() + one round per orchestrate() call ------
 
     def prepare(self):
-        """Hook point 1 — execute opens here. Per-turn resets, then the Plan/Clarify gate: when
-        the classified intent needs NLU's settled thinking, block on nlu_done before the loop.
-        classify_intent (T16) writes state.pred_intent synchronously before either lane runs;
-        take_turn blanks it until then, so the gate stays quiet. An expired wait fails the turn
-        loudly — the raise lands in take_turn's safety net."""
-        self.completed_this_turn = []
+        """Hook point 1 — PEX's first step, called by take_turn before the round loop. Per-turn
+        resets, the Plan/Clarify gate (the only intents that wait on NLU's settled thinking),
+        then the prediction note: one kind-5 system turn handing round 1 the belief every
+        predictor already wrote (`state.pred_flows`, mapped at prediction time — no lookup, no
+        stackon; the agent stacks through manage_flows). An expired wait fails the turn loudly —
+        the raise lands in take_turn's safety net."""
+        self.recently_finished = []
         self._reads = 0
         self._turn_start = self.world.context.num_utterances
-        if self.world.state.pred_intent in ('Plan', 'Clarify'):
-            if not self.world.nlu_done.wait(timeout=30):
-                raise TimeoutError('NLU still thinking after 30s at hook point 1')
-
-    def _execute_click(self, dax:str) -> str:
-        """Pure click: the dax names the flow and NLU.react already stacked it with the filled
-        slots. Activate it — the artifact thoughts ARE the reply (no LLM loop). MEM's recap
-        records the reply turn."""
-        result = self.activate_flow({'flow_name': dax2flow(dax)})
-        artifact = self.world.latest_artifact()
-        return result.get('question') or artifact.thoughts or _FALLBACK_MESSAGE
-
-    def _run_loop(self, system_prompt:str) -> str:
-        """The bounded acting loop: call the LLM with the frozen system prompt + the projected
-        history (compile_messages) + orchestrator tool catalog; call tools through `_tool`;
-        record each round as one kind-4 turn. A plain-text response with no tool calls ends the
-        turn and IS the utterance, verbatim."""
+        self.rounds, self.finished, self.errors = 0, 0, 0
+        self.nudged, self.last_call = False, None
+        state = self.world.state
+        state.keep_going = True
+        if state.pred_intent in ('Plan', 'Clarify'):
+            self.wait_for_nlu('hook point 1')
+        pred_flow = state.pred_flows[0]['name']
         context = self.world.context
-        tools = self.get_tools_for_orchestrator()
-        valid = {tool['name'] for tool in tools}
-        model_id = self.config['models']['overrides']['orchestrator']['model_id']
+        user_turn = next(turn for turn in reversed(context.full_conversation(as_turns=True))
+                         if turn.role == 'user')
+        if user_turn.turn_type == 'action':   # golden dax — react() already stacked it; force it
+            note = (f"[click] The user selected '{pred_flow}' directly. You MUST run it as your "
+                    f"next step with manage_flows (update status='Active').")
+        else:                                 # TypeSafe — a prediction the agent may override
+            note = (f"[typesafe] intent={state.pred_intent} — the predicted flow is "
+                    f"'{pred_flow}'. Stack and run it with manage_flows (op='stackon'), pick a "
+                    f"different flow, or reply directly.")
+        context.add_turn('system', {'text': note})   # kind 5 — round 1 sees the prediction
 
-        nudged = False
-        errors = 0
-        last_call = None
-        round_idx = 0
-        finished = 0
-        while round_idx < self.max_rounds:
-            round_idx += 1
-            response = self.engineer._call_claude(system_prompt, context.compile_messages(),
-                                                  model_id, tools=tools, max_tokens=4096)
-            self._track_usage(response)
-            text_parts = [block.text for block in response.content if block.type == 'text']
-            tool_uses = [block for block in response.content if block.type == 'tool_use']
-            text = '\n'.join(part for part in text_parts if part).strip()
+    def orchestrate(self, system_prompt) -> str:
+        """One PEX-Agent round — the while-loop lives in take_turn (`state.keep_going`).
+        Returns '' on mid-turn rounds and the reply text on the terminal round; the reply is
+        PEX's return value, nothing else carries it. Tool calls route through _guarded_call →
+        call_tool; NLU's mid-turn stack changes surface at the hook 3/5 reads. Two exits end
+        the turn: the terminal no-tool text, or _final_emit() (nudged twice / caps)."""
+        context, state = self.world.context, self.world.state
+        self.rounds += 1
+        catalog = self.get_tools_for_orchestrator()
+        response = self.engineer(system_prompt, context.compile_messages(), family='claude',
+                                 tier='high', tools=catalog, max_tokens=4096)
+        self._track_usage(response)
+        text_parts = [block.text for block in response.content if block.type == 'text']
+        tool_uses = [block for block in response.content if block.type == 'tool_use']
+        text = '\n'.join(part for part in text_parts if part).strip()
 
-            if not tool_uses:
-                if text:
-                    if not self.world.nlu_done.wait(timeout=30):  # hook 5: post-LLM, no tools ran
-                        raise TimeoutError('NLU still thinking after 30s at hook point 5')
-                    note = self._read_nlu_entry()
-                    if note:
-                        context.add_turn('agent', {'text': text, 'tool_uses': [],
-                                                   'tool_results': []}, turn_type='action')
-                        context.add_turn('system', {'text': note})
-                        continue                                  # PEX 5: one more round to decide
-                    return text  # terminal — MEM's recap records the reply
-                if nudged:  # thinking-only twice → canned fallback; MEM's recap records it
-                    return _FALLBACK_MESSAGE
-                nudged = True
-                context.add_turn('system', {'text': _NUDGE_MESSAGE})
-                continue
+        if not tool_uses:
+            if text:
+                self.wait_for_nlu('hook point 5')   # post-LLM, no tools ran
+                note = self._read_nlu_entry()
+                if note:
+                    context.add_turn('agent', {'text': text, 'tool_uses': [],
+                                               'tool_results': []}, turn_type='action')
+                    context.add_turn('system', {'text': note})
+                    return ''                       # PEX 5: one more round to decide
+                state.keep_going = False            # terminal round — the turn is worded
+                return text
+            if self.nudged:  # thinking-only twice → forced wrap-up (T14)
+                state.keep_going = False
+                return self._final_emit(system_prompt)
+            self.nudged = True
+            context.add_turn('system', {'text': _NUDGE_MESSAGE})
+            return ''
 
-            blocks = [{'type': 'tool_use', 'id': tu.id, 'name': tu.name,
-                       'input': dict(tu.input or {})} for tu in tool_uses]
+        valid = {tool['name'] for tool in catalog}
+        blocks = [{'type': 'tool_use', 'id': tu.id, 'name': tu.name,
+                   'input': dict(tu.input or {})} for tu in tool_uses]
+        results = []
+        for tool_use in tool_uses:
+            try:
+                result, self.last_call = self._guarded_call(tool_use, valid, self.last_call)
+            except TimeoutError:      # a hook-wait expiry fails the turn loudly (round 3.4)
+                raise
+            except Exception as ecp:  # noqa: BLE001 — convert to a corrective tool error
+                log.exception('tool call crashed: %s', ecp)
+                result = corrective('server_error', f'{type(ecp).__name__}: {ecp}')
+                self.last_call = None
+            self.errors = self.errors + 1 if not result['_success'] else 0
+            log.info('  orch round=%d tool=%s ok=%s', self.rounds, tool_use.name,
+                     result['_success'])
+            results.append({'type': 'tool_result', 'tool_use_id': tool_use.id,
+                            'content': json.dumps(result, default=str)})
+        context.add_turn('agent', {'text': text, 'tool_uses': blocks,
+                                   'tool_results': results}, turn_type='action')
+        done = sum(1 for flow in self.recently_finished if flow.status == 'Completed')
+        if done > self.finished:      # a completed flow resets the round budget —
+            self.finished = done      # every plan step starts fresh
+            self.rounds = 0
+        if self.rounds >= self.max_rounds or self.errors >= self.max_corrective:
+            state.keep_going = False
+            return self._final_emit(system_prompt)
+        return ''                     # mid-turn round — no reply yet
 
-            results = []
-            for tool_use in tool_uses:
-                # The round lands as ONE kind-4 turn below, calls and results together — a
-                # crash inside a tool call converts to a corrective error, so the pairing can
-                # never dangle.
-                try:
-                    result, last_call = self._guarded_call(tool_use, valid, last_call)
-                except TimeoutError:      # a hook-wait expiry fails the turn loudly (round 3.4)
-                    raise
-                except Exception as ecp:  # noqa: BLE001 — convert to a corrective tool error
-                    log.exception('tool call crashed: %s', ecp)
-                    result = {'_success': False, '_error': 'server_error',
-                              '_message': f'{type(ecp).__name__}: {ecp}'}
-                    last_call = None
-                errors = errors + 1 if not result['_success'] else 0
-                log.info('  orch round=%d tool=%s ok=%s', round_idx, tool_use.name,
-                         result['_success'])
-                results.append({'type': 'tool_result', 'tool_use_id': tool_use.id,
-                                'content': json.dumps(result, default=str)})
-            context.add_turn('agent', {'text': text, 'tool_uses': blocks,
-                                       'tool_results': results}, turn_type='action')
-            if len(self.completed_this_turn) > finished:  # a completed flow resets the round
-                finished = len(self.completed_this_turn)  # budget — every plan step starts fresh
-                round_idx = 0
-            if errors >= self.max_corrective:
-                break  # the model keeps failing tool calls — stop burning rounds
-        return self._final_emit(system_prompt, model_id)
+    def wait_for_nlu(self, hook:str):
+        """Block until NLU's thinking settles (the hook 1/3/5 waits). Expiry raises — the turn
+        fails loudly into take_turn's safety net."""
+        if not self.world.nlu_done.wait(timeout=30):
+            raise TimeoutError(f'NLU still thinking after 30s at {hook}')
 
-    def _final_emit(self, system_prompt:str, model_id:str) -> str:
-        """Round budget or corrective cap exhausted: one last no-tools call forces a plain-text
-        wrap-up (the terminal emit), so completed work still gets a real reply instead of the
-        canned fallback. Falls back only if even that produces nothing."""
+    def _final_emit(self, system_prompt:str) -> str:
+        """The one forced-terminal path (T14): round budget, corrective cap, or a second
+        thinking-only miss — one last no-tools call forces a plain-text wrap-up, so completed
+        work still gets a real reply. The canned fallback survives only as this method's own
+        last resort."""
         context = self.world.context
         context.add_turn('system', {'text': _WRAP_UP_MESSAGE})
-        response = self.engineer._call_claude(system_prompt, context.compile_messages(),
-                                              model_id, max_tokens=1024)
+        response = self.engineer(system_prompt, context.compile_messages(), family='claude',
+                                 tier='high', max_tokens=1024)
         self._track_usage(response)
         text_parts = [block.text for block in response.content if block.type == 'text']
         return '\n'.join(part for part in text_parts if part).strip() or _FALLBACK_MESSAGE
@@ -418,18 +415,16 @@ class PolicyExecutor:
         if tool_use.name == 'manage_flows':
             call += (json.dumps(self.flow_stack.to_list(), sort_keys=True, default=str),)
         if tool_use.name not in valid:
-            result = {'_success': False, '_error': 'invalid_input',
-                      '_message': f'Unknown tool: {tool_use.name!r}. Use a tool from your tool list.'}
+            result = corrective('invalid_input',
+                f'Unknown tool: {tool_use.name!r}. Use a tool from your tool list.')
         elif last_call and call == last_call[0] and last_call[1]:
-            result = {'_success': False, '_error': 'duplicate_call',
-                      '_message': 'Identical consecutive tool call skipped — change the '
-                                  'arguments or respond to the user.'}
+            result = corrective('duplicate_call', 'Identical consecutive tool call skipped — '
+                                'change the arguments or respond to the user.')
         elif tool_use.name in READ_ONLY_DOMAIN_TOOLS and self._reads >= self.max_reads:
-            result = {'_success': False, '_error': 'read_cap',
-                      '_message': f'Already used {self.max_reads} read-only lookups this turn. '
-                                  'Stack on and activate a flow, or respond to the user.'}
+            result = corrective('read_cap', f'Already used {self.max_reads} read-only lookups '
+                                'this turn. Stack on and activate a flow, or respond to the user.')
         else:
-            result = self._tool(tool_use.name, dict(tool_use.input or {}))
+            result = self.call_tool(tool_use.name, dict(tool_use.input or {}))
             if tool_use.name in READ_ONLY_DOMAIN_TOOLS and result['_success']:
                 self._reads += 1
         return result, (call, result['_success'])
@@ -445,7 +440,11 @@ class PolicyExecutor:
 
     # -- Tool calls -------------------------------------------------------
 
-    def _tool(self, tool_name:str, tool_input:dict) -> dict:
+    def call_tool(self, tool_name:str, tool_input:dict) -> dict:
+        """The uniform call surface — every tool call from both loops routes through here
+        (call_mcp, the MCP sibling, is designed-not-built: no server is wired). Bad calls come
+        back as corrective errors, never exceptions — except a hook-wait TimeoutError, which
+        fails the whole turn loudly."""
         try:
             if tool_name in self.tools:
                 service, method_name = self.tools[tool_name]
@@ -468,21 +467,15 @@ class PolicyExecutor:
             elif tool_name in self._orchestrator_toolset:
                 return self._orchestrator_toolset[tool_name](tool_input)
             else:
-                return {
-                    '_success': False, '_error': 'invalid_input',
-                    '_message': f'Unknown tool: {tool_name}',
-                }
+                return corrective('invalid_input', f'Unknown tool: {tool_name}')
         except TimeoutError:          # a hook-wait expiry fails the turn loudly (round 3.4)
             raise
         except OutlineValidationError as ecp:
-            return {'_success': False, '_error': 'validation', '_message': str(ecp)}
+            return corrective('validation', str(ecp))
         except PostNotFoundError as ecp:
-            return {'_success': False, '_error': 'not_found', '_message': str(ecp)}
+            return corrective('not_found', str(ecp))
         except Exception as ecp:
-            return {
-                '_success': False, '_error': 'server_error',
-                '_message': f'{type(ecp).__name__}: {ecp}',
-            }
+            return corrective('server_error', f'{type(ecp).__name__}: {ecp}')
 
     def _context_tool(self, params:dict) -> dict:
         action = params.get('action', '')
@@ -498,7 +491,7 @@ class PolicyExecutor:
             label = params.get('label', '')
             cp = self.world.context.get_checkpoint(label)
             return {'_success': True, 'checkpoint': cp}
-        return {'_success': False, '_error': 'invalid_input', '_message': f'Unknown action: {action}'}
+        return corrective('invalid_input', f'Unknown action: {action}')
 
     def _read_flow_stack(self, params:dict) -> dict:
         details = params.get('details', 'flows')
@@ -508,8 +501,8 @@ class PolicyExecutor:
             return {'_success': True, 'flow': self.flow_stack.get_flow().to_dict()}
         if details == 'flows':
             return {'_success': True, 'flows': self.flow_stack.to_list()}
-        return {'_success': False, '_error': 'invalid_input',
-                '_message': f"details must be 'flows', 'slots', or 'flow_meta'; got {details!r}"}
+        return corrective('invalid_input',
+                          f"details must be 'flows', 'slots', or 'flow_meta'; got {details!r}")
 
     def _stackon_flow(self, params:dict) -> dict:
         self.flow_stack.stackon(params['flow'])
@@ -525,7 +518,7 @@ class PolicyExecutor:
         if err:
             log.info('[ambig-trace] declare_ambiguity REJECTED level=%s metadata=%s err=%s',
                      level, metadata, err)
-            return {'_success': False, '_error': 'invalid_input', '_message': err}
+            return corrective('invalid_input', err)
         self.world.ambiguity.recognize(level, metadata=metadata, observation=params.get('observation', ''))
         return {'_success': True}
 
@@ -572,19 +565,19 @@ class PolicyExecutor:
         """The orchestrator's one flow tool — ops [update, stackon, fallback, pop].
         `update` changes a flow's status/stage in place at any depth (flow_name targets a
         buried flow; blank means the top flow) and `pop` clears Completed and Invalid flows
-        from the top of the stack down to the first Pending or Active flow. Policy execution is runtime-owned: stackon (active defaults true),
-        fallback, and a pop that surfaces a Pending flow run the top policy; `activate_flow`
-        is internal plumbing, not a tool op. Belief, grounding, and slots stay NLU's job — no
-        op here touches them (T18: Continue is a pure status write)."""
+        from the top of the stack down to the first Pending or Active flow. Policy execution
+        is runtime-owned: stackon (active defaults true), fallback, and a pop that surfaces a
+        Pending flow call execute() — the only call sites the sub-agent loop has. Belief,
+        grounding, and slots stay NLU's job — no op here touches them (T18: Continue is a
+        pure status write)."""
         params = {**params, 'op': {'update': 'update_flow'}.get(params['op'], params['op'])}
         state = self.world.state
         kwargs = dict(params.get('fields', {}))
         if 'flow_name' in params:
             kwargs['flow_name'] = params['flow_name']
         if 'slots' in kwargs:  # T18: slot writes left the tool — NLU owns slot filling
-            return {'_success': False, '_error': 'invalid_input',
-                    '_message': 'slots are not writable through manage_flows — NLU fills '
-                                'slots; update takes status/stage only'}
+            return corrective('invalid_input', 'slots are not writable through manage_flows — '
+                              'NLU fills slots; update takes status/stage only')
         if 'status' in kwargs:
             kwargs['status'] = kwargs['status'].capitalize()
         promoted = None
@@ -600,7 +593,8 @@ class PolicyExecutor:
             case 'update_flow':
                 self.flow_stack.update_flow(**kwargs)
             case 'pop':
-                _, promoted = self.flow_stack.pop()
+                popped, promoted = self.flow_stack.pop()
+                self.recently_finished += popped   # every pop lands here — Completed or Invalid
             case _:
                 raise ValueError(f'Unknown manage_flows op: {params["op"]!r}')
         document = state.read_state()
@@ -617,33 +611,95 @@ class PolicyExecutor:
         if run:
             # A pop-run names the promoted flow so a different Active entry can never be
             # selected accidentally (2.13.2) — NLU may stack over it in the same window.
-            return self._top_policy(state, document, start=promoted)
+            return self.execute(start=promoted)
         return {'_success': True, 'state': document}
 
-    def _top_policy(self, state, document:dict|None=None, start=None) -> dict:
-        """Run the top runnable flow after a stack change, then the hook-3 read — NLU may
-        have re-stacked mid-run. A completion ends the pass: activate_flow's pop has cleared
-        the Completed/Invalid flows, and its result carries `popped` plus the surfaced
-        `next_flow` — the agent judges what runs next, usually op='update' status='Active'
-        (Unresolved 1a, 2026-07-17). A same-intent new top surfaces the announcement to the
-        agent (PEX 5 decides); a different-intent top re-runs in code (the re-route; the
-        agent is never notified). Re-running a flow within a turn is legal — the loop stops
-        when the top stops changing, not on a ledger of what ran. Runtime-owned; never
-        exposed as a planner tool. `start` pins the first flow to run (a pop's promoted flow);
-        later iterations re-derive the top as always."""
+    def execute(self, start=None) -> dict:
+        """Run policy sub-agents until the stack settles — called ONLY from a manage_flows op
+        that surfaced runnable work (the run branch), never from the Assistant. Each pass:
+        ground → security → call_policy → verify (hook point 6) → the hook-3 read — NLU may
+        have re-stacked mid-run. A completion ends the pass: the pop has cleared the
+        Completed/Invalid flows and the result carries `popped` plus the surfaced `next_flow`
+        — the agent judges what runs next, usually op='update' status='Active' (Unresolved
+        1a, 2026-07-17). A same-intent new flow surfaces the announcement to the agent (PEX 5
+        decides); a different-intent flow re-runs in code (the re-route; the agent is never
+        notified). Re-running a flow within a turn is legal — the loop stops when the live
+        flow stops changing, not on a ledger of what ran. `start` pins the first flow to run
+        (a pop's promoted flow); later iterations re-derive the live flow as always. execute()
+        writes no turns — its output travels as the manage_flows tool result."""
+        state, context = self.world.state, self.world.context
         result = None
-        top = start or self.flow_stack.get_flow()
-        while top and top.status in ('Pending', 'Active'):
-            if top.name() == 'plan':   # a surfaced Plan Flow never runs (TODO: the review pass)
-                top.status = 'Completed'
-                self.flow_stack.pop()
+        curr_flow = start or self.flow_stack.get_flow()
+        while curr_flow and curr_flow.status in ('Pending', 'Active'):
+            if curr_flow.name() == 'plan':   # a surfaced Plan Flow never runs (TODO: review pass)
+                curr_flow.status = 'Completed'
+                popped, _ = self.flow_stack.pop()
+                self.recently_finished += popped
                 state.has_plan = False
-                top = self.flow_stack.get_flow()
+                curr_flow = self.flow_stack.get_flow()
                 continue
-            result = self.activate_flow({'flow_name': top.name()})
-            if not self.world.nlu_done.wait(timeout=30):        # hook 3: the post-tool read
-                raise TimeoutError('NLU still thinking after 30s at hook point 3')
-            if top.status == 'Completed':
+
+            # The per-flow body: ground once at the choke point (2.14.3) — ground_flow only
+            # fills EMPTY entity slots, so a flow NLU already filled is untouched.
+            curr_flow.status = 'Active'
+            state.ground_flow(curr_flow)
+            approval = self._security_check(curr_flow)   # hook: pre-flow
+            if approval:
+                return corrective('approval_required', approval.blocks[0].data['prompt'])
+            artifact, entry = self.call_policy(curr_flow)
+            self.world.insert_artifact(artifact)
+            check = self.verify(artifact, curr_flow)     # hook point 6 closes every sub-agent run
+            curr_flow.is_newborn = False  # verification counts as touched, whatever the outcome
+            if not check.passed:
+                curr_flow.is_uncertain = True  # the policy hit an issue; cleared on resolution
+                if check.is_error_frame:
+                    result = {**corrective('execution_error', artifact.data['violation']),
+                              'thoughts': artifact.thoughts}
+                else:
+                    result = corrective('validation', check.reason)
+            else:
+                curr_flow.is_uncertain = self.world.ambiguity.is_present
+                blocks = _block_summaries(artifact)
+                if curr_flow.status != 'Completed':
+                    question = (self.world.ambiguity.ask(curr_flow.name())
+                                if self.world.ambiguity.is_present else '')
+                    result = {'_success': True, 'status': curr_flow.status, 'question': question,
+                              'thoughts': artifact.thoughts, 'blocks': blocks}
+                else:
+                    if entry is None:  # completed without complete_flow — synthesize an entry
+                        summary = artifact.thoughts or f'{curr_flow.name()} completed'
+                        entry = {'version': 1, 'turn_number': context.num_utterances,
+                                 'used_count': 0, 'summary': summary,
+                                 'metadata': artifact.data or {}}
+                        self.session_scratchpad.append_entry(curr_flow.name(), entry)
+                        entry = {**entry, 'origin': curr_flow.name()}
+                    popped, _ = self.flow_stack.pop()  # Completed and Invalid leave together
+                    next_flow = self.flow_stack.get_flow()
+                    if next_flow and next_flow.name() == 'plan':
+                        # The Plan Flow oversees, it does not do the work: the pop that
+                        # surfaces it removes it. TODO(review pass, future round): run its
+                        # policy here instead — review the steps' work via the scratchpad.
+                        next_flow.status = 'Completed'
+                        more, _ = self.flow_stack.pop()
+                        popped += more
+                        next_flow = self.flow_stack.get_flow()
+                    self.recently_finished += popped   # every popped flow — either status
+                    if state.has_plan and not self.flow_stack.find_by_name('plan'):
+                        state.has_plan = False  # the marker anchors the flag — it left the stack
+                    if next_flow and next_flow.status != 'Active':  # hook 6 shape check (Derek)
+                        result = corrective('invalid_stack',
+                            f'{next_flow.name()!r} surfaced with status {next_flow.status!r} '
+                            f'after the pop — set it Active with manage_flows or pop it')
+                    else:
+                        result = {'_success': True, 'status': curr_flow.status,
+                                  'completion': entry, 'blocks': blocks,
+                                  'popped': [done.name() for done in popped]}
+                        if next_flow:  # the surfaced flow is the agent's call (Unresolved 1a)
+                            result['next_flow'] = {'name': next_flow.name(),
+                                                   'status': next_flow.status}
+
+            self.wait_for_nlu('hook point 3')            # the post-tool read
+            if curr_flow.status == 'Completed':
                 # The S3/S5 window: NLU stacked a flow while this one was mid-run and it
                 # completed in the same pass. The announcement still surfaces at hook 3 —
                 # the completion result carries it, so the agent decides WITH NLU's
@@ -652,21 +708,29 @@ class PolicyExecutor:
                 if note:
                     result['nlu_update'] = note
                 break   # popped in code; the agent judges what runs next
-            new_top = self.flow_stack.get_flow()
-            if not new_top or new_top.flow_id == top.flow_id:
+            prev_flow, curr_flow = curr_flow, self.flow_stack.get_flow()
+            if not curr_flow or curr_flow.flow_id == prev_flow.flow_id:
                 break   # nothing changed — the stall stands; return it to the agent
-            if new_top.intent == top.intent:
+            if curr_flow.intent == prev_flow.intent:
                 note = self._read_nlu_entry()                   # same intent → PEX 5 decides
                 if note:
                     result['nlu_update'] = note
                 break
-            top = new_top   # different intent → code re-routes (3.4.1)
+            # different intent → code re-routes (3.4.1); the loop continues on curr_flow
         if result is not None:
             return result
-        if document is None:
-            document = state.read_state()
-            document['flow_stack'] = self.flow_stack.to_list()
+        document = state.read_state()
+        document['flow_stack'] = self.flow_stack.to_list()
         return {'_success': True, 'state': document}
+
+    def call_policy(self, flow) -> tuple:
+        """The code wrapper around one policy sub-agent run: lookup, run, pop_completion.
+        Returns (artifact, completion entry) — the entry is None unless the policy completed
+        via complete_flow. Sub-agents receive plain call_tool as their `tools`; the
+        orchestrator guards stay in _guarded_call."""
+        policy = self._policies[flow.intent]
+        artifact = policy.execute(self.world.state, self.world.context, self.call_tool)
+        return artifact, policy.pop_completion()
 
     def _read_nlu_entry(self) -> str | None:
         """The hook 3/5 read: surface THIS turn's unconsumed NLU announcement, if any. The
@@ -690,86 +754,13 @@ class PolicyExecutor:
                 f"this stack — the flow NLU stacked carries the user's newest message, so it "
                 f"usually wins.")
 
-    def activate_flow(self, params:dict) -> dict:
-        """Run the named flow's policy inline — the delegate_task analogue. Grounding comes
-        from the state file's grounding block; _security_check and verify (hook point 6)
-        re-attach around the policy run. On completion the flow's completion entry is written
-        to the session scratchpad, the pop clears Completed/Invalid flows off the stack in
-        code (never the agent's job), and the entry returns as the tool result."""
-        state = self.world.state
-        name = params['flow_name']
-        flow = self.flow_stack.find_by_name(name) or self.flow_stack.stackon(name)
-        flow.status = 'Active'  # pushes wait as Pending; running the policy promotes
-        # Every run passes through here — promoted plan steps, agent stackons, the run button —
-        # so ground once at the choke point (2.14.3). ground_flow only fills EMPTY entity
-        # slots, so a flow NLU already filled is untouched and repeat calls are harmless.
-        state.ground_flow(flow)
-
-        # hook: pre-flow
-        approval = self._security_check(flow)
-        if approval:
-            return {'_success': False, '_error': 'approval_required',
-                    '_message': approval.blocks[0].data['prompt']}
-
-        policy = self._policies[flow.intent]
-        artifact = policy.execute(state, self.world.context, self._tool)
-        entry = policy.pop_completion()  # set when the policy completed via complete_flow
-        self.world.insert_artifact(artifact)
-
-        # hook point 6: verify closes every policy run
-        check = self.verify(artifact, flow)
-        flow.is_newborn = False  # verification counts as touched, whatever the outcome
-        if not check.passed:
-            flow.is_uncertain = True  # the policy hit an issue; cleared on resolution
-            if check.is_error_frame:
-                return {'_success': False, '_error': 'execution_error',
-                        '_message': artifact.data['violation'], 'thoughts': artifact.thoughts}
-            return {'_success': False, '_error': 'validation', '_message': check.reason}
-
-        flow.is_uncertain = self.world.ambiguity.is_present
-        blocks = _block_summaries(artifact)
-        if flow.status != 'Completed':
-            question = self.world.ambiguity.ask(flow.name()) if self.world.ambiguity.is_present else ''
-            return {'_success': True, 'status': flow.status, 'thoughts': artifact.thoughts,
-                    'question': question, 'blocks': blocks}
-        self.completed_this_turn.append(flow)  # for the end-of-turn checkpoint + MEM's store
-        if entry is None:  # policy completed without calling complete_flow — synthesize an entry
-            summary = artifact.thoughts or f'{flow.name()} completed'
-            entry = {'version': 1, 'turn_number': self.world.context.num_utterances, 'used_count': 0,
-                     'summary': summary, 'metadata': artifact.data or {}}
-            self.session_scratchpad.append_entry(flow.name(), entry)
-            entry = {**entry, 'origin': flow.name()}
-        popped, _ = self.flow_stack.pop()  # Completed and Invalid leave together, in code
-        top = self.flow_stack.get_flow()
-        if top and top.name() == 'plan':
-            # The Plan Flow oversees, it does not do the work: the pop that surfaces it
-            # removes it. TODO(review pass, future round): run its policy here instead —
-            # review the steps' work via the session scratchpad first.
-            top.status = 'Completed'
-            more, _ = self.flow_stack.pop()
-            popped += more
-            top = self.flow_stack.get_flow()
-        if state.has_plan and not self.flow_stack.find_by_name('plan'):
-            state.has_plan = False  # the marker anchors the flag — it left the stack
-                                    # (removed at surfacing, or Invalid: the abandon move)
-        if top and top.status != 'Active':  # hook 6 shape check: never a dormant top (Derek)
-            return {'_success': False, '_error': 'invalid_stack', '_message':
-                    f'{top.name()!r} surfaced with status {top.status!r} after the pop — set '
-                    f'it Active with manage_flows or pop it'}
-        result = {'_success': True, 'status': flow.status, 'completion': entry, 'blocks': blocks,
-                  'popped': [done.name() for done in popped]}
-        if top:  # the surfaced flow is the agent's call (Unresolved 1a): run it, or decline it
-            result['next_flow'] = {'name': top.name(), 'status': top.status}
-        return result
-
     def _understand_user(self, params:dict) -> dict:
         """The orchestrator's belief READ, plus the contemplate re-route request (3.4.7). Both
         ops wait on NLU settling — the same wait prepare owns at hook point 1. PEX never
         invokes the NLU module: on op='contemplate' the request is queued on the scratchpad
         for the Assistant, which calls nlu.contemplate() after this pass ends and re-enters
         the loop."""
-        if not self.world.nlu_done.wait(timeout=30):
-            raise TimeoutError('NLU still thinking after 30s at understand')
+        self.wait_for_nlu('understand')
         if params['op'] == 'contemplate':
             self.session_scratchpad.append_entry('orchestrator', {'version': 1,
                 'turn_number': self.world.context.num_utterances, 'used_count': 0,
@@ -784,8 +775,7 @@ class PolicyExecutor:
 
     def _append_scratchpad(self, params:dict) -> dict:
         if 'origin' not in params['entry']:
-            return {'_success': False, '_error': 'invalid_input',
-                    '_message': "entry needs a stable 'origin' to file it under."}
+            return corrective('invalid_input', "entry needs a stable 'origin' to file it under.")
         # LLM-authored entry — code stamps the contract fields it can't be trusted with.
         entry = {'version': 1, **params['entry'],
                  'turn_number': self.world.context.num_utterances, 'used_count': 0}
@@ -803,8 +793,7 @@ class PolicyExecutor:
         if self.world.ambiguity.is_present:
             flow = self.flow_stack.get_flow()
             return {'_success': True, 'question': self.world.ambiguity.ask(flow.name() if flow else '')}
-        return {'_success': False, '_error': 'invalid_input',
-                '_message': 'No pending ambiguity to ask about.'}
+        return corrective('invalid_input', 'No pending ambiguity to ask about.')
 
     # -- Tool definitions -------------------------------------------------
 

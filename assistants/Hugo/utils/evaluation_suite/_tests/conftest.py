@@ -57,7 +57,7 @@ def _stub_tool_call(messages, tools, call_tool, *,
     return '[stub] LLM response for testing.', []
 
 
-def _stub_call_claude(system, messages, model_id, *, tools=None, max_tokens=4096):
+def _stub_call_claude(system, messages, model_id, *, tools=None, max_tokens=4096, schema_dict=None):
     """Return a stub anthropic-like Message."""
     text_block = MagicMock()
     text_block.type = 'text'
@@ -140,13 +140,33 @@ def memory_dir(tmp_path, monkeypatch):
 @pytest.fixture
 def orch_agent(sessions_dir, monkeypatch):
     """Agent with a tmp sessions root and scripted LLM calls. NLU think/react are stubbed to
-    no-ops so the Flow gate stays hermetic — these tests exercise PEX.execute (the acting loop),
-    not ensemble detection; the belief stays at its session defaults."""
+    no-ops so the Flow gate stays hermetic — these tests exercise the PEX-Agent rounds
+    (orchestrate), not ensemble detection. classify_intent is stubbed to write the same belief
+    the real one writes (round 2.16): prepare() reads pred_flows for the prediction note."""
     monkeypatch.setattr('backend.assistant.load_config', lambda: load_config(overrides={'debug': True}))
     agent = Assistant(username='test_user')
     agent.nlu.think = lambda *args, **kwargs: None
-    agent.nlu.react = lambda *args, **kwargs: None
-    agent.nlu.dialogue_state.classify_intent = lambda *args, **kwargs: ''  # NLU 1 stays hermetic
+
+    from utils.helper import dax2flow, flow2dax
+    from schemas.ontology import FLOW_ONTOLOGY
+
+    def _classify(*args, **kwargs):  # NLU 1 stays hermetic — a fixed Converse hint
+        state = agent.nlu.dialogue_state
+        state.pred_intent = 'Converse'
+        state.pred_flows = [{'name': 'chat', 'dax': flow2dax('chat'), 'confidence': 0.5}]
+        return 'Converse'
+    agent.nlu.dialogue_state.classify_intent = _classify
+
+    def _react(dax, payload={}):  # the real react minus the LLM slot fill: stack + belief
+        name = dax2flow(dax)
+        stack = agent.pex.flow_stack
+        curr_flow = stack.get_flow()
+        if not (curr_flow and curr_flow.status == 'Active' and curr_flow.name() == name):
+            stack.stackon(name)
+        state = agent.nlu.dialogue_state
+        state.pred_intent = FLOW_ONTOLOGY[name]['intent']
+        state.pred_flows = [{'name': name, 'dax': dax, 'confidence': 0.99}]
+    agent.nlu.react = _react
     yield agent
     agent.close()
 

@@ -190,9 +190,10 @@ prunes nonconforming entries at its turn point.
 
 ### PEX Agent
 
-The PEX Agent runs the bounded loop for one turn: read belief, commit to one of the eight Intent
-options, apply Workflow Planner actions through `manage_flows`, and end the turn with plain text —
-the reply. Its **Tools** [call] are the planner surface plus narrow component surfaces (belief
+The PEX Agent runs the bounded loop for one turn — one round per `pex.orchestrate()` call, with
+the while-loop at the Assistant level gated on `state.keep_going` (round 2.16): read belief,
+commit to one of the eight Intent options, apply Workflow Planner actions through `manage_flows`,
+and end the turn with plain text — the reply, returned by the terminal round. Its **Tools** [call] are the planner surface plus narrow component surfaces (belief
 read, scratchpad, preferences, ambiguity ask/recover) and a small read-only domain allowlist;
 every domain write goes through a flow. Its **Skills** carry the planner and reply guidance.
 

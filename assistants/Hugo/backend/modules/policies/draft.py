@@ -83,7 +83,7 @@ class DraftPolicy(BasePolicy):
         if not flow.slots['source'].check_if_filled() and not flow.slots['topic'].check_if_filled():
             convo_history = context.compile_history(look_back=3)
             prompt = f'{convo_history}\n\nExtract the topic the user wants to outline for the blog post or note. Reply with JSON: {{"topic": "..."}}.'
-            parsed = self.engineer.parse(self.engineer(prompt, 'fill_slots'))
+            parsed = self.engineer.parse(self.engineer(prompt, task='fill_slots'))
             flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})
 
         if not flow.slots['source'].check_if_filled() and not flow.slots['topic'].check_if_filled():
@@ -260,7 +260,7 @@ class DraftPolicy(BasePolicy):
         else:
             convo_history = context.compile_history(look_back=3)
             prompt = f'{convo_history}\n\nExtract the topic the user wants to brainstorm about. Reply with JSON: {{"topic": "..."}}.'
-            raw_output = self.engineer(prompt, 'fill_slots')
+            raw_output = self.engineer(prompt, task='fill_slots')
             parsed = self.engineer.parse(raw_output)
             flow.fill_slots_by_label({'topic': parsed and parsed.get('topic')})
             if not flow.slots['topic'].filled:

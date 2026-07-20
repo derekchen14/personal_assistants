@@ -26,14 +26,16 @@ class MemoryExtensionModule:
         self.business_knowledge = BusinessKnowledge(engineer)    # L3 — business knowledge / FAQs
         self.world = None  # attached by the Assistant after World construction
 
-    def recap(self, utterance:str, prompt_tokens:int=0, completed:tuple=()):
+    def recap(self, utterance:str, prompt_tokens:int=0, recently_finished:tuple=()):
         """The turn wrap (T20: `store_turn` renamed to match the module surface table —
         `recap`: start → compaction/promote → finish): record the agent turn, run start() (the
         turn_wrap checkpoint + per-turn resets), the compaction check, then finish() (persist).
-        `prompt_tokens` is PEX's real acting-loop usage and `completed` the flows that reached
-        Completed this turn, both passed by the Assistant (the World holds components, not
-        modules). Promotion beyond explicit saves (PEX's store_preference tool writes L2 during
-        the turn) is designed-not-built."""
+        `prompt_tokens` is PEX's real acting-loop usage and `recently_finished` every flow
+        popped this turn, both passed by the Assistant (the World holds components, not
+        modules). MEM stores only the Completed members — the agent already saw Invalid pops
+        via `popped` in the tool results (round 2.16). Promotion beyond explicit saves (PEX's
+        store_preference tool writes L2 during the turn) is designed-not-built."""
+        completed = [flow for flow in recently_finished if flow.status == 'Completed']
         self.context_coordinator.add_turn('agent', {'text': utterance})
         self.start(completed)
         # artifact long-term storage (append world.latest_artifact() to artifacts.jsonl in the
