@@ -761,9 +761,12 @@ class PolicyExecutor:
         the loop."""
         self.wait_for_nlu('understand')
         if params['op'] == 'contemplate':
+            # is_newborn is the consumed marker — contemplation_requested's read flips it, so
+            # each re-route request fires exactly once (C5).
             self.session_scratchpad.append_entry('orchestrator', {'version': 1,
                 'turn_number': self.world.context.num_utterances, 'used_count': 0,
-                'request': 'contemplate', 'summary': 'policy could not proceed — asking NLU to re-route'})
+                'request': 'contemplate', 'is_newborn': True,
+                'summary': 'policy could not proceed — asking NLU to re-route'})
             return {'_success': True, '_message': 'Re-route queued. End your reply this round; '
                                                  'the re-detected flow runs on the next pass.'}
         return self.read_state(params)
