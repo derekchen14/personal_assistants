@@ -725,22 +725,36 @@ class PolicyExecutor:
     def call_policy(self, flow) -> tuple:
         """The code wrapper around one policy sub-agent run: lookup, run, pop_completion.
         Returns (artifact, completion entry) — the entry is None unless the policy completed
-        via complete_flow. Sub-agents receive plain call_tool as their `tools`; the
-        orchestrator guards stay in _guarded_call."""
+        via complete_flow. Sub-agents receive call_tool as their `tools` (traced below); the
+        orchestrator guards stay in _guarded_call. Every run appends its trajectory to the
+        session's subagents.jsonl — the sub-agent level of the observability traces."""
         policy = self._policies[flow.intent]
-        artifact = policy.execute(self.world.state, self.world.context, self.call_tool)
+        calls = []
+
+        def traced_tool(name, params):
+            result = self.call_tool(name, params)
+            calls.append({'tool': name, 'input': params, '_success': result['_success'],
+                          '_error': result.get('_error', '')})
+            return result
+
+        artifact = policy.execute(self.world.state, self.world.context, traced_tool)
+        record = {'turn_number': self.world.context.num_utterances, 'flow': flow.name(),
+                  'status': flow.status, 'calls': calls, 'thoughts': artifact.thoughts}
+        with open(self.world.session_dir() / 'subagents.jsonl', 'a', encoding='utf-8') as file:
+            file.write(json.dumps(record, default=str) + '\n')
         return artifact, policy.pop_completion()
 
     def _read_nlu_entry(self) -> str | None:
         """The hook 3/5 read: surface THIS turn's unconsumed NLU announcement, if any. The
-        scratchpad's read() flips `is_newborn` on what it returns — reading IS consuming — and
-        the returned dicts keep the pre-flip value, so the filter below still works. Entries
+        scratchpad's read() bumps `used_count` on what it returns — reading IS consuming, so
+        `used_count == 0` means first appearance — and the returned dicts keep the pre-bump
+        value, so the filter below still works. Entries
         are scoped by turn_number >= the turn's opening turn_id (tool-log turns advance the
         counter mid-loop, so equality would miss the announcement). The note renders from the
         LIVE stack at read time (2.14.2) so it never names a dead flow, and carries NLU's
         rationale instead of a decline recipe — the decision is the agent's."""
         entries = self.session_scratchpad.read(origin='nlu', keys=['new_flow'])
-        entry = next((entry for entry in reversed(entries) if entry.get('is_newborn')
+        entry = next((entry for entry in reversed(entries) if entry['used_count'] == 0
                       and entry['turn_number'] >= self._turn_start), None)
         if entry is None:
             return None
@@ -761,11 +775,11 @@ class PolicyExecutor:
         the loop."""
         self.wait_for_nlu('understand')
         if params['op'] == 'contemplate':
-            # is_newborn is the consumed marker — contemplation_requested's read flips it, so
+            # used_count is the consumed marker — contemplation_requested's read bumps it, so
             # each re-route request fires exactly once (C5).
             self.session_scratchpad.append_entry('orchestrator', {'version': 1,
                 'turn_number': self.world.context.num_utterances, 'used_count': 0,
-                'request': 'contemplate', 'is_newborn': True,
+                'request': 'contemplate',
                 'summary': 'policy could not proceed — asking NLU to re-route'})
             return {'_success': True, '_message': 'Re-route queued. End your reply this round; '
                                                  'the re-detected flow runs on the next pass.'}

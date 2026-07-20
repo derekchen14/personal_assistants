@@ -193,8 +193,8 @@ class NaturalLanguageUnderstanding:
         then the turn's scratchpad entry — every turn writes exactly one (aligned /
         announcement / click / plan / abstention). `prev` is the flow PEX was running at think's stackon
         decision point — it labels the entry aligned vs announcement and fills `prev_flow`.
-        The announcement carries `is_newborn: true` as the consumed marker (the scratchpad's
-        read() flips it) plus NLU's rationale."""
+        The announcement's consumed marker is `used_count == 0` (the scratchpad's read()
+        bumps it) plus NLU's rationale."""
         if state.pred_flows:   # a deliberate abstention (empty detection) stays empty
             cat = FLOW_ONTOLOGY.get(state.flow_name(string=True))
             if not cat:
@@ -233,7 +233,7 @@ class NaturalLanguageUnderstanding:
         else:
             summary = (f'added {detected} to the stack before completing {prev}' if prev
                        else f'added {detected} to the stack')
-            entry.update(prev_flow=prev, new_flow=detected, is_newborn=True, summary=summary,
+            entry.update(prev_flow=prev, new_flow=detected, summary=summary,
                          rationale=state.pred_flows[0].get('rationale', '') if state.pred_flows else '',
                          question=self.ambiguity_handler.observation)
         self.world.scratchpad.append_entry('nlu', entry)

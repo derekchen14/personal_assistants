@@ -33,9 +33,10 @@ class SessionScratchpad:
         """Entries in append order (newest last), optionally filtered by `origin` and/or by `keys`
         that must all be present on an entry.
 
-        Reading IS consuming (round 3.4): any returned entry carrying `is_newborn: true` is
-        flipped to False on disk, whoever the caller is — NLU, PEX, or MEM. The returned dicts
-        keep the pre-flip value so callers can still filter on it."""
+        Reading IS consuming (round 3.4): any returned entry with `used_count == 0` is bumped
+        to 1 on disk, whoever the caller is — NLU, PEX, or MEM. `used_count == 0` therefore
+        means first appearance. The returned dicts keep the pre-bump value so callers can
+        still filter on it."""
         if not self._scratchpad_path.exists():
             return []
         lines = self._scratchpad_path.read_text(encoding='utf-8').splitlines()
@@ -45,12 +46,12 @@ class SessionScratchpad:
             selected = [entry for entry in selected if entry['origin'] == origin]
         if keys:
             selected = [entry for entry in selected if all(name in entry for name in keys)]
-        consumed = {id(entry) for entry in selected if entry.get('is_newborn')}
+        consumed = {id(entry) for entry in selected if entry.get('used_count') == 0}
         if consumed:
-            returned = [dict(entry) for entry in selected]     # pre-flip copies for the caller
+            returned = [dict(entry) for entry in selected]     # pre-bump copies for the caller
             for entry in entries:
                 if id(entry) in consumed:
-                    entry['is_newborn'] = False
+                    entry['used_count'] += 1
             self._rewrite(entries)
             return returned
         return selected

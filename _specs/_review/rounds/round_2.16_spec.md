@@ -249,7 +249,9 @@ def verify(artifact, flow):
   written by `orchestrate()` only. `execute()` writes no turns; its output travels as the
   manage_flows tool result.
 - `_read_nlu_entry` (pex.py:649-669) is the hook ③/⑤ read: newest unconsumed `origin='nlu'`
-  entry with `turn_number >= _turn_start`; reading consumes (`is_newborn` flips).
+  entry with `turn_number >= _turn_start`; reading consumes (`used_count` bumps 0 → 1;
+  `used_count == 0` means first appearance — `is_newborn` is a FLOW attribute, never an entry
+  field; ruled 2026-07-19).
 - `state.keep_going` writers: `prepare()` (True) and `orchestrate()`'s three terminal paths
   (False). No sweep — C7 leaves any theoretical belief-side writer alone until seen in practice.
 - MEM: `recap(reply, last_prompt_tokens, recently_finished)`; it stores and checkpoints only the
@@ -274,8 +276,8 @@ def verify(artifact, flow):
 - **C4 — no carve-out in code.** Converse is not special-cased anywhere. The agent chooses:
   reply directly on simple requests, or stack and run `chat` when the reply needs the FAQs —
   steered by a guidance line in the orchestrator system prompt.
-- **C5 — already fixed in code.** `contemplation_requested` keeps only `is_newborn` entries, so
-  each re-route request fires exactly once.
+- **C5 — already fixed in code.** `contemplation_requested` keeps only first-appearance entries
+  (`used_count == 0`; the read bumps it), so each re-route request fires exactly once.
 - **C6 — standard stackon.** The flow `nlu.react` stacks on a click lands Active (stackon's
   default). The [click] note's `update status='Active'` is then a same-value write, which still
   fires the run branch — pex.py:591-594 checks the written value, not a change. On utterance
@@ -291,7 +293,7 @@ def verify(artifact, flow):
   contemplate branch calls `nlu.contemplate()` only — the agent runs the re-stacked flow on its
   next round (no `pex.execute()` from L1). Delete the stale `self.keep_going()` /
   `pex.final_response` references; `contemplation_requested` (assistant.py:74) stays — its
-  `is_newborn` filter is already in (C5).
+  first-appearance filter (`used_count == 0`) is already in (C5).
 - [x] **T2 — prepare() grows** (pex.py:351-362): reset `recently_finished`, `_reads`,
   `_turn_start`, the five loop attributes from 2.16.1, and `state.keep_going = True`; keep the
   Plan/Clarify wait; delete the old stack-the-predicted-flow lines (pex.py:283-285) — prepare()

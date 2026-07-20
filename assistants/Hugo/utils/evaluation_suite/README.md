@@ -54,23 +54,25 @@ A run with no `--ids` takes a fresh random sample of 8.
 
 ## Reading traces (how to diagnose a bad run)
 
-Every scenario run writes the **full orchestrator transcript** to disk — this is the observability
-trace. You do not re-run the agent to see what happened; you read the file.
+Every scenario run writes the **full turn record** to disk — this is the observability trace. You
+do not re-run the agent to see what happened; you read the files.
 
 ```
-database/sessions/<convo_id>/messages.jsonl
+database/sessions/<convo_id>/history.jsonl      # every turn: user/agent/system, tool calls + results
+database/sessions/<convo_id>/subagents.jsonl    # one line per policy sub-agent run: its tool
+                                                # trajectory ({tool, input, _success, _error}) +
+                                                # the flow, end status, and terminal thoughts
+database/sessions/<convo_id>/scratchpad.jsonl   # the session scratchpad (NLU announcements,
+                                                # completion entries, contemplate requests)
 ```
 
 A run names its session after the scenario (e.g. `database/sessions/B04.C01/`), so the transcript is
-findable per case. Each line is one API-shaped message in order:
+findable per case. In history.jsonl, agent action turns carry `tool_uses` + `tool_results` — a
+`_success: false` on `manage_flows` is a failed policy run; the matching subagents.jsonl line shows
+what the sub-agent actually did (or failed to do) inside that run.
 
-- `read_state` result + a `[belief]` line — NLU's detection for the turn (intent, flow, confidence,
-  slots). This is where you see what the agent *thought* the user wanted.
-- `write_state` / `activate_flow` calls — the calls PEX actually made, and the result (or the error).
-- the final assistant text — the reply the user saw.
-
-Read three or four turns in order and the break point is visible: a wrong flow at `[belief]`, a
-`_success: false` on `activate_flow`, or a flow that finishes without ever grounding a post.
+Read three or four turns in order and the break point is visible: a wrong flow in the `[nlu]` note,
+a `_success: false` on `manage_flows`, or a sub-agent that never called its save tool.
 
 The suite also writes structured trace records under:
 

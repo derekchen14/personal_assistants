@@ -84,8 +84,8 @@ class Assistant:
 
         triggered = False
         for entry in requests:
-            req_type, turn_num, is_newborn = entry['request'], entry['turn_number'], entry['is_newborn']
-            if req_type == 'contemplate' and turn_num >= turn_start and is_newborn:
+            req_type, turn_num, used = entry['request'], entry['turn_number'], entry['used_count']
+            if req_type == 'contemplate' and turn_num >= turn_start and used == 0:
                 triggered = True
                 break
         return triggered
