@@ -85,7 +85,7 @@ Append each conversation as one JSON line to `utils/evaluation_suite/datasets/tr
   - Mostly avoid flow names in utterances. Users usually don't say the 16 internal flow names (find, browse,
     summarize, compare, outline, compose, refine, brainstorm, rework, write, audit, propose, release,
     schedule, cite, chat); express the intent with a natural synonym instead (outline → "sketch the
-    structure"; compose → "turn it into prose"; audit → "give it a once-over"). ("draft" and "publish" are
+    structure"; compose → "turn it into prose"; audit → "check it for canned AI phrasing"). ("draft" and "publish" are
     always fine; they aren't flow names.)
   - A flow name IS occasionally acceptable — the "easy case" — when it reads naturally and is NOT a bare
     command: an intent ("I want to write something on X"), a noun/artifact ("the outline is set"), or a
@@ -104,7 +104,7 @@ Append each conversation as one JSON line to `utils/evaluation_suite/datasets/tr
   Describe the problem, do not request the deliverable:
   - Good (implied): "there's a hole in the middle and I don't know what belongs there" -> propose.
     Bad (too direct): "give me some options for that gap".
-  - Good: "does this even sound like me?" -> audit.  Bad: "run a voice pass on it".
+  - Good: "does this have any of those canned AI phrases left?" -> audit. Bad: "run an AI-tell audit".
   - Good: "the intro drags for a screen before it says anything" -> write/refine.  Bad: "trim the intro".
   Implicit is not the same as ambiguous: an implied intent can still be perfectly decidable (the hole line is a
   clean `propose`, not a `general`). When augmenting, push variants toward MORE implicit phrasing; never
@@ -243,8 +243,8 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     outline -> refine -> compose -> write : structure a known idea, tidy the outline, draft, polish a line
     outline -> refine -> refine -> compose : structure, two rounds of outline tweaks, then draft
     outline -> compose -> compose -> write : structure, draft a long post across two passes, fix a line
-    brainstorm -> outline -> compose -> audit : ideate, structure, draft, check it sounds like me not AI
-    outline -> refine -> compose -> audit : structure, tidy, draft, then a voice check
+    brainstorm -> outline -> compose -> audit : ideate, structure, draft, strip out AI slop
+    outline -> refine -> compose -> audit : structure, tidy, draft, then remove AI tells
     brainstorm -> outline -> compose -> rework : ideate, structure, draft, restructure a weak stretch
     outline -> compose -> write -> write : structure, draft, fix two paragraphs in turn
     brainstorm -> outline -> compose -> propose : ideate, structure, draft, fill a leftover gap with options
@@ -266,8 +266,8 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     find -> summarize -> summarize -> outline : pull posts, condense two of them, then structure
     find -> outline -> refine -> compose : pull a related post, structure a new one, tidy the outline, draft
     browse -> outline -> compose -> write : browse notes for an idea, structure, draft, polish a line
-    find -> outline -> compose -> audit : pull a post, structure a follow-up, draft, voice check
-    browse -> outline -> compose -> audit : browse for an idea, structure, draft, voice check
+    find -> outline -> compose -> audit : pull a post, structure a follow-up, draft, remove AI tells
+    browse -> outline -> compose -> audit : browse for an idea, structure, draft, remove AI tells
     browse -> find -> outline -> refine : browse, pull a related post, structure, tidy the outline
     find -> outline -> compose -> write : pull a post, structure, draft, polish a line
   * Research-only session [3]
@@ -275,51 +275,51 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     browse -> find -> summarize -> compare : browse ideas, pull a post, condense, compare to another
     browse -> find -> summarize -> brainstorm : browse, pull a post, condense, spin angles for a follow-up
   * Revise loop, stays in revise [13]
-    rework -> write -> audit -> rework : restructure, line fix, voice check, another restructure
-    write -> write -> audit -> rework : fix two paragraphs, check voice, a structural pass
-    rework -> propose -> write -> audit : restructure, fill a resulting gap with options, polish, voice check
+    rework -> write -> audit -> rework : restructure, line fix, remove AI tells, another restructure
+    write -> write -> audit -> rework : fix two paragraphs, clear out the AI slop, a structural pass
+    rework -> propose -> write -> audit : restructure, fill a resulting gap with options, polish, remove AI tells
     rework -> write -> propose -> write : restructure, fix a line, fill a gap, integrate it
-    write -> rework -> audit -> write : line fix, restructure, voice check, final polish
-    rework -> write -> write -> audit : restructure, fix two paragraphs, voice check
-    write -> audit -> rework -> write : line fix, voice check, restructure, polish
-    rework -> audit -> write -> audit : restructure, voice check, line fix, re-check
+    write -> rework -> audit -> write : line fix, restructure, remove AI tells, final polish
+    rework -> write -> write -> audit : restructure, fix two paragraphs, remove AI tells
+    write -> audit -> rework -> write : line fix, remove AI tells, restructure, polish
+    rework -> audit -> write -> audit : restructure, remove AI tells, line fix, re-check for AI tells
     write -> propose -> rework -> write : fix a line, fill a gap, restructure, polish
-    rework -> rework -> write -> audit : two restructuring passes, line fix, voice check
-    write -> propose -> write -> audit : line fix, fill a gap, integrate, voice check
+    rework -> rework -> write -> audit : two restructuring passes, line fix, remove AI tells
+    write -> propose -> write -> audit : line fix, fill a gap, integrate, remove AI tells
     rework -> propose -> write -> write : restructure, fill a gap, then fix two lines
     write -> rework -> propose -> write : line fix, restructure, fill a gap, polish
   * Draft then revise [22]
-    compose -> write -> rework -> audit : draft prose, fix a line, restructure, voice check
+    compose -> write -> rework -> audit : draft prose, fix a line, restructure, remove AI tells
     outline -> compose -> rework -> write : structure, draft, restructure, polish a line
-    compose -> audit -> rework -> write : draft, voice check, restructure, polish
-    compose -> write -> audit -> rework : draft, line fix, voice check, restructure
-    outline -> compose -> audit -> rework : structure, draft, voice check, restructure
-    compose -> rework -> write -> audit : draft, restructure, polish, voice check
+    compose -> audit -> rework -> write : draft, strip out canned AI prose, restructure, polish
+    compose -> write -> audit -> rework : draft, line fix, remove AI tells, restructure
+    outline -> compose -> audit -> rework : structure, draft, remove AI tells, restructure
+    compose -> rework -> write -> audit : draft, restructure, polish, remove AI tells
     compose -> write -> propose -> write : draft, fix a line, fill a leftover gap, integrate
-    compose -> audit -> write -> rework : draft, voice check, line fix, restructure
-    outline -> compose -> write -> audit : structure, draft, line fix, voice check
+    compose -> audit -> write -> rework : draft, remove AI tells, line fix, restructure
+    outline -> compose -> write -> audit : structure, draft, line fix, clear out AI slop
     compose -> rework -> rework -> write : draft, two restructuring passes, polish
     compose -> write -> rework -> write : draft, line fix, restructure, polish
-    outline -> refine -> compose -> audit : structure, tidy outline, draft, voice check
-    compose -> propose -> write -> audit : draft with a gap, fill it, integrate, voice check
-    compose -> audit -> rework -> audit : draft, voice check, restructure, re-check
-    outline -> compose -> rework -> audit : structure, draft, restructure, voice check
-    compose -> write -> write -> audit : draft, fix two paragraphs, voice check
-    compose -> audit -> audit -> rework : draft, voice check across two turns, then restructure
-    outline -> compose -> audit -> audit : structure, draft, then a two-turn voice check
+    outline -> refine -> compose -> audit : structure, tidy outline, draft, remove AI tells
+    compose -> propose -> write -> audit : draft with a gap, fill it, integrate, remove AI tells
+    compose -> audit -> rework -> audit : draft, remove AI tells, restructure, re-check for AI tells
+    outline -> compose -> rework -> audit : structure, draft, restructure, remove AI tells
+    compose -> write -> write -> audit : draft, fix two paragraphs, remove AI tells
+    compose -> audit -> audit -> rework : draft, remove AI tells across two turns, then restructure
+    outline -> compose -> audit -> audit : structure, draft, then a two-turn AI-tell cleanup
     outline -> compose -> rework -> rework : structure, draft, two restructuring passes
     compose -> propose -> propose -> write : draft, fill two gaps in turn, integrate
     compose -> rework -> write -> write : draft, restructure, then polish two paragraphs
-    compose -> rework -> rework -> audit : draft, two restructuring passes, voice check
+    compose -> rework -> rework -> audit : draft, two restructuring passes, remove AI tells
   * Revise then publish [4]
     rework -> write -> release -> schedule : restructure, polish, publish, schedule a channel
-    rework -> write -> audit -> release : restructure, polish, final voice check, publish
+    rework -> write -> audit -> release : restructure, polish, remove AI tells, publish
     write -> rework -> write -> release : polish, restructure, final polish, publish
-    rework -> audit -> write -> release : restructure, voice check, polish, publish
+    rework -> audit -> write -> release : restructure, remove AI tells, polish, publish
   * Publish-focused [3]
     cite -> cite -> release -> schedule : add two citations, publish to blog, schedule a cross-post
     write -> cite -> release -> schedule : polish, cite, publish, schedule a channel
-    write -> audit -> cite -> release : polish, voice check, cite, publish
+    write -> audit -> cite -> release : polish, remove AI tells, cite, publish
   * Full pipeline [5]
     find -> outline -> compose -> release : pull a related post, structure, draft, publish
     brainstorm -> outline -> compose -> release : ideate, structure, draft, publish
@@ -335,20 +335,20 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     chat -> outline -> compose -> write : chat, structure, draft, polish a line
     chat -> chat -> outline -> compose : a longer chat, then structure and draft
   * Inspect then fix [14]
-    find -> audit -> rework -> write : pull a post, check its voice, restructure, polish
-    compare -> audit -> write -> rework : compare against a past post, voice check, polish, restructure
-    find -> compare -> audit -> rework : pull a post, compare style, voice check, restructure
-    compare -> audit -> rework -> write : compare, voice check, restructure, polish
-    find -> audit -> write -> release : pull a draft, voice check, polish, publish
-    compare -> rework -> write -> audit : compare, restructure, polish, voice check
-    find -> audit -> rework -> release : pull a draft, voice check, restructure, publish
+    find -> audit -> rework -> write : pull a post, flag the AI slop, restructure, polish
+    compare -> audit -> write -> rework : compare against a past post, identify AI tells, polish, restructure
+    find -> compare -> audit -> rework : pull a post, compare style, identify AI tells, restructure
+    compare -> audit -> rework -> write : compare, identify AI tells, restructure, polish
+    find -> audit -> write -> release : pull a draft, remove AI tells, polish, publish
+    compare -> rework -> write -> audit : compare, restructure, polish, remove AI tells
+    find -> audit -> rework -> release : pull a draft, remove AI tells, restructure, publish
     find -> rework -> write -> release : pull a draft, restructure, polish, publish
-    compare -> audit -> write -> release : compare, voice check, polish, publish
+    compare -> audit -> write -> release : compare, remove AI tells, polish, publish
     find -> compare -> rework -> write : pull two drafts, compare, restructure one, polish
-    find -> rework -> write -> audit : pull a draft, restructure, polish, voice check
-    find -> audit -> audit -> rework : pull a draft, voice check across two turns, restructure
+    find -> rework -> write -> audit : pull a draft, restructure, polish, remove AI tells
+    find -> audit -> audit -> rework : pull a draft, remove AI tells across two turns, restructure
     find -> rework -> rework -> write : pull a draft, restructure across two passes, polish
-    find -> write -> write -> audit : pull a draft, fix two paragraphs, voice check
+    find -> write -> write -> audit : pull a draft, fix two paragraphs, remove AI tells
 
 3. Ambiguity — conversations where the agent cannot act confidently, so it recognizes the gap, asks **one**
    clarification, and the user resolves it. Recognizing uncertainty instead of guessing (and NOT asking when
@@ -429,8 +429,9 @@ Each axis is an independent knob that provides degrees of freedom for the genera
        ordered?"), not one obvious flow dressed up ("I don't know what to write here" -> that is just `propose`).
     10. **Label the action on every turn, continuations included.** Each `(flow {dax})` must match what that
         turn actually does, and continuation turns get the same scrutiny as the ambiguous one. `audit` is ONLY
-        the voice/tone/consistency pass; "read it and remove / rewrite / strip / fix content X" is `write` or
-        `rework`, not `audit`.
+        the pass that identifies and removes AI tells: canned transitions, inflated abstraction, empty
+        emphasis, repetitive rhetorical patterns, stock phrases, and other AI-slop signals. A general tone or
+        voice change is `write` when local and `rework` when structural; it is not `audit`.
   * **Turn-level diversity (the openers were almost all bland commands; they must not be).** About one third of
     openers are commands and two thirds are questions or explanations. A real user never says a blunt "Do X";
     commands are long contextual instructions. No command is bare verb-object
@@ -444,7 +445,7 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     [-> outline {002}]  "do something with my Edison notes" -> "rough them into a structure" · clear: shaping the notes already underway
     [-> release {004}]  "what's next for the barbell post" -> "get it live today" · clear: publishing already the plan
     [-> find {001}]     "the RAG thing, I'm lost" -> "dig up what I wrote on it before" · clear: a research thread already open
-    [-> audit {13A}]    "make the finance post better" -> "the voice, it's too stiff" · clear: a voice pass already queued
+    [-> audit {13A}]    "make the finance post better" -> "it has those canned AI phrases all over it" · clear: an AI-tell pass already queued
     [-> brainstorm {39D}] "I'm stuck on the astronomy piece" -> "need a few fresh angles" · clear: ideation already underway
     [-> chat {000}]     "can you help me out" -> "how long should an intro run?" · clear: a Q&A already in flight
     [-> write {003}]    "the cycling post, ugh" -> "the intro's bloated, trim it" · clear: an edit already in progress
@@ -457,11 +458,11 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     [-> browse {012}]   "the language-learning one" -> "what topics am I still missing" · clear: a coverage check already underway
     [-> compose {3AD}]  "the clean-energy post" -> "the outline's done, make it prose" · clear: drafting from the outline already the plan
   * partial [16] (remove the grounded entity; 8 clean, 4 guess/reject, 4 reroute)
-    [audit {13A}]   "give that one a once-over" -> "the cycling post" (clean) · clear: cycling post already active
+    [audit {13A}]   "check that one for AI slop" -> "the cycling post" (clean) · clear: cycling post already active
     [write {003}]   "edit that bit" -> "Edison, the intro" (clean) · clear: Edison post already open
     [rework {006}]  "restructure it" -> "the index-funds draft" (clean) · clear: that draft already active
     [compare {18A}] "set them side by side" -> "the two RAG ones" (clean) · clear: both RAG posts already referenced
-    [audit {13A}]   "check the voice on that" -> "the gardening post" (clean) · clear: gardening post already active
+    [audit {13A}]   "check that for canned AI phrasing" -> "the gardening post" (clean) · clear: gardening post already active
     [write {003}]   "smooth that out" -> "train travel, the overnight bit" (clean) · clear: that section already open
     [rework {006}]  "fix the middle section" -> "Roman roads, the trade part" (clean) · clear: Roman roads post already active
     [compare {18A}] "look at the differences" -> "this draft vs the live version" (clean) · clear: both versions already in view
@@ -470,51 +471,51 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     [audit {13A}]   "the cycling post" -> guess 'Skip the Road Bike' -> "no, the bike-lanes one" (guess, reject) · clear: only one cycling post exists
     [rework {006}]  "the index post" -> guess 'Index Funds for People...' -> "no, the IRA one" (guess, reject) · clear: only one finance post matches
     [write {003} -> release {004}] "polish that paragraph" -> "the solar one, it's fine, just publish it" (reroute) · clear: solar post active, edit intent clear
-    [rework {006} -> audit {13A}] "rework the middle" -> "heat pumps, actually just check the voice" (reroute) · clear: heat-pump post active, rework intent clear
-    [audit {13A} -> find {001}] "look over that one" -> "strength training, pull my saved notes first" (reroute) · clear: post active, review intent clear
-    [compare {18A} -> audit {13A}] "weigh them up" -> "the finance takes, actually just check the newer one" (reroute) · clear: posts referenced, compare intent clear
+    [rework {006} -> audit {13A}] "rework the middle" -> "heat pumps, actually just strip out the AI slop" (reroute) · clear: heat-pump post active, rework intent clear
+    [audit {13A} -> find {001}] "check that one for AI tells" -> "strength training, pull my saved notes first" (reroute) · clear: post active, audit intent clear
+    [compare {18A} -> audit {13A}] "weigh them up" -> "the finance takes, actually just check the newer one for AI tells" (reroute) · clear: posts referenced, compare intent clear
   * specific [16] (remove the required value, nothing to infer; 10 clean, 3 invalid, 3 reroute)
-    [audit {13A}]    "set the tone on the Edison post" -> "casual" (clean) · clear: tone set earlier
+    [audit {13A}]    "check the Edison post for AI tells" -> "the canned transitions" (clean) · clear: tell type set earlier
     [schedule {4AC}] "schedule the barbell post" -> "friday 9am" (clean) · clear: a cadence already set
     [release {004}]  "publish the finance post" -> "substack" (clean) · clear: channel known
     [cite {15B}]     "back up that claim" -> search returns nothing -> "use the DOT report" (clean, empty) · clear: a public source turns up
-    [audit {13A}]    "set the register on the burnout post" -> "technical" (clean) · clear: register set earlier
+    [audit {13A}]    "check the burnout post for AI tells" -> "the empty emphasis" (clean) · clear: tell type set earlier
     [schedule {4AC}] "schedule the Roman post for the morning" -> "monday" (clean) · clear: the day already known
     [release {004}]  "publish the security post" -> "linkedin" (clean) · clear: channel known
-    [audit {13A}]    "give the astronomy post a tone pass" -> "witty" (clean) · clear: tone set earlier
+    [audit {13A}]    "check the astronomy post for AI tells" -> "the stock phrases" (clean) · clear: tell type set earlier
     [cite {15B}]     "source the delay stat" -> "it's from your trip logs, where to point it?" -> "my travel spreadsheet" (clean, private) · clear: a public source exists
     [schedule {4AC}] "schedule the index-funds post for thursday" -> "8am" (clean) · clear: the time already known
     [schedule {4AC}] "schedule the RAG post for blursday" -> "next friday" (invalid) · clear: a valid date given
     [release {004}]  "can this go up on dev.to?" -> "dev.to's not one of my channels; blog, substack, linkedin, medium, or a twitter note?" -> "substack" (invalid) · clear: a valid channel given
-    [audit {13A}]    "make the language-learning post sound stern" -> "yeah, formal" (invalid) · clear: a known register given
-    [audit {13A} -> rework {006}] "set the voice on the gardening post" -> "skip the voice, just restructure it" (reroute) · clear: tone present, voice intent clear
+    [audit {13A}]    "remove the AI tells from the language-learning post" -> "just make it formal" (invalid) · clear: a known tell type given
+    [audit {13A} -> rework {006}] "check the gardening post for AI tells" -> "skip that, just restructure it" (reroute) · clear: tell type present, audit intent clear
     [schedule {4AC} -> find {001}] "schedule the heat-pump post for thursday" -> "it's not ready, pull my notes first" (reroute) · clear: time present, post ready
-    [release {004} -> audit {13A}] "publish the cycling post" -> "hold off, run the voice once more first" (reroute) · clear: channel present, post ready
+    [release {004} -> audit {13A}] "publish the cycling post" -> "hold off, clear out the AI slop first" (reroute) · clear: channel present, post ready
   * confirmation [16] (remove the explicit value, a basis to infer remains; 10 clean, 6 reject)
     [release {004}]  "post it to my usual spot" -> "substack?" -> "yes" (clean, inferred) · clear: "to substack" stated outright
-    [audit {13A}]    "match my usual voice on the finance post" -> "casual?" -> "yeah" (clean, inferred) · clear: "make it casual" stated outright
+    [audit {13A}]    "remove the usual AI tells from the finance post" -> "the canned transitions?" -> "yeah" (clean, inferred) · clear: "remove the canned transitions" stated outright
     [schedule {4AC}] "same time as last week for the barbell post" -> "friday 9am?" -> "yep" (clean, inferred) · clear: "friday 9am" stated outright
     [release {004}]  "cross-post the cycling one like before" -> "linkedin post and a twitter note?" -> "that's right" (clean, inferred) · clear: channels named outright
-    [audit {13A}]    "keep the burnout post consistent with the series" -> "technical register?" -> "correct" (clean, inferred) · clear: "technical" stated outright
+    [audit {13A}]    "remove the usual AI tells from the burnout post" -> "the empty emphasis?" -> "correct" (clean, inferred) · clear: "empty emphasis" stated outright
     [release {004}]  "publish to linkdin" -> "linkedin?" -> "yes" (clean, fuzzy) · clear: "linkedin" spelled cleanly
     [schedule {4AC}] "schedule it for fridya 9" -> "friday 9am?" -> "yep" (clean, fuzzy) · clear: "friday 9am" typed cleanly
-    [audit {13A}]    "make it casuel" -> "casual?" -> "yeah" (clean, fuzzy) · clear: "casual" typed cleanly
-    [audit {13A}]    "keep it consistent with the finance series" -> "casual, like the rest?" -> "yeah" (clean, inferred) · clear: "casual" stated outright
+    [audit {13A}]    "remove the cannd transitions" -> "canned transitions?" -> "yeah" (clean, fuzzy) · clear: "canned transitions" typed cleanly
+    [audit {13A}]    "remove the usual AI tells from the finance post" -> "canned transitions, like last time?" -> "yeah" (clean, inferred) · clear: "canned transitions" stated outright
     [cite {15B}]     "source it the way I usually do" -> "your research wiki?" -> "yes" (clean, inferred) · clear: the source named outright
-    [audit {13A}]    "match my usual voice on the astronomy post" -> "casual?" -> "no, formal this time" (reject, inferred) · clear: "formal" stated outright
+    [audit {13A}]    "remove the usual AI tells from the astronomy post" -> "the stock transitions?" -> "no, the punchy fragments this time" (reject, inferred) · clear: "punchy fragments" stated outright
     [release {004}]  "post it where I usually do" -> "substack?" -> "no, linkedin this time" (reject, inferred) · clear: "linkedin" stated outright
     [schedule {4AC}] "same slot as always for the Roman post" -> "friday 9am?" -> "no, make it monday" (reject, inferred) · clear: "monday" stated outright
-    [audit {13A}]    "keep the cycling post in the house style" -> "casual?" -> "no, a bit more formal" (reject, inferred) · clear: "formal" stated outright
+    [audit {13A}]    "remove the usual AI tells from the cycling post" -> "the canned transitions?" -> "no, the fake quotations this time" (reject, inferred) · clear: "fake quotations" stated outright
     [schedule {4AC}] "put it on the usual morning slot" -> "friday 9am?" -> "no, monday this week" (reject, inferred) · clear: "monday" stated outright
-    [audit {13A}]    "give it the usual edge" -> "witty, like before?" -> "no, keep it dry this time" (reject, inferred) · clear: "dry" stated outright
+    [audit {13A}]    "remove the usual AI tells" -> "the stock phrases, like before?" -> "no, the repetitive sentence shapes this time" (reject, inferred) · clear: "repetitive sentence shapes" stated outright
   * Anchor conversations (the voice and the label model in practice). User turns carry labels; only `general`
     is no-flow. The `clear:` baseline is the same convo with the removed piece restored, where the agent acts
     without asking.
     - general · personal finance (clean)
       U1 [Clarify]: make the finance post better
       A2: Better in what way, the structure, the facts, or how it reads?
-      U3 [resolves -> audit {13A}]: the voice, it's too stiff
-      A4 [audit]: Running a voice pass. The hedging in the intro is what reads stiff.
+      U3 [resolves -> audit {13A}]: it has those canned AI phrases all over it
+      A4 [audit]: I found stock transitions, empty emphasis, and three repetitive sentence openings. I removed them.
       U5 [close]: that's it exactly
     - partial · Edison (guess, reject)
       U1 [summarize {19A}]: open the Edison piece
@@ -537,10 +538,10 @@ Each axis is an independent knob that provides degrees of freedom for the genera
       U3 [resolves -> release {004}]: linkedin
       A4 [release]: Live on LinkedIn.
     - confirmation · personal finance (inferred, clean)
-      U1 [audit {13A}]: match my usual voice on the finance post
-      A2: Casual, like your last ones?
+      U1 [audit {13A}]: clear the usual AI slop out of the finance post
+      A2: The canned transitions, like last time?
       U3 [resolves -> audit {13A}]: yeah
-      A4 [audit]: Done, casual throughout.
+      A4 [audit]: Done. The canned transitions are gone.
     - confirmation · train travel (inferred, reject)
       U1 [release {004}]: post it where I usually do
       A2: Substack?
@@ -585,10 +586,10 @@ Each axis is an independent knob that provides degrees of freedom for the genera
     [draft sections] plan -> compose + compose + compose + compose -> rework : draft four sections, join
     [research]       plan -> find -> summarize -> compare : pull a past post, condense, set against a newer one
     [research]       plan -> find + find + find -> compare : pull three posts, compare
-    [revise]         plan -> rework -> write -> audit : restructure a weak middle, polish, voice-check
-    [draft sections] plan -> compose + compose + compose -> audit : draft a 3-part series, voice-check
+    [revise]         plan -> rework -> write -> audit : restructure a weak middle, polish, remove AI slop
+    [draft sections] plan -> compose + compose + compose -> audit : draft a 3-part series, remove AI tells
     [prep]           plan -> brainstorm -> outline -> refine : angles, structure, tidy the outline (no prose)
-    [revise]         plan -> audit + audit + audit -> rework : voice-check three sections, fix what surfaces
+    [revise]         plan -> audit + audit + audit -> rework : check three sections for AI tells, fix what surfaces
   * Straightforward, mid-plan checkpoint [16]
     [draft]          plan -> outline -> [check] -> compose -> [check] -> write (clean)
     [draft sections] plan -> compose -> [check] -> compose -> [check] -> compose -> rework (clean)

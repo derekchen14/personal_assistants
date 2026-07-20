@@ -2,7 +2,7 @@ from enum import Enum
 
 INTENTS = [
     'Converse',
-    'Research',     # find, browse, summarize, compare
+    'Research',     # find, inspect, summarize, compare
     'Draft',        # brainstorm, outline, compose, refine
     'Revise',       # rework, write, audit, propose
     'Publish',      # release, schedule, cite
