@@ -1,3 +1,4 @@
+import logging
 import threading
 from datetime import datetime
 
@@ -9,6 +10,8 @@ from backend.components.task_artifact import TaskArtifact
 from backend.components.prompt_engineer import PromptEngineer
 from backend.components.world import World
 from backend.prompts.for_orchestrator import build_orchestrator_prompt
+
+log = logging.getLogger(__name__)
 
 class Assistant:
 
@@ -72,6 +75,7 @@ class Assistant:
             self.mem.recap(reply, self.pex.last_prompt_tokens, self.pex.recently_finished)
             return self._build_payload(reply, self.world.latest_artifact())
         except Exception as ecp:  # noqa: BLE001 — top-level safety net
+            log.exception('take_turn failed: %s', ecp)
             return self._fallback_response("Something went wrong on my end. Please try again.")
 
     def contemplation_requested(self):
