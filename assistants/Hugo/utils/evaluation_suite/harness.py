@@ -77,6 +77,21 @@ def _clean_leftovers(post_id:str, title:str):
             svc.delete_post(entry['post_id'])
 
 
+def snapshot_post_ids() -> set[str]:
+    """Capture the content-library boundary before one scenario runs."""
+    from backend.utilities.services import PostService
+    return {entry['post_id'] for entry in PostService().list_preview(limit=1000).get('items', [])}
+
+
+def clean_created_posts(before:set[str]):
+    """Remove only posts created by the scenario, including when its run raised midway."""
+    from backend.utilities.services import PostService
+    service = PostService()
+    after = {entry['post_id'] for entry in service.list_preview(limit=1000).get('items', [])}
+    for post_id in after - before:
+        service.delete_post(post_id)
+
+
 def _build_agent(session_id:str|None=None):
     """Orchestrator-path Agent with debug=True. Pass a `session_id` (the convo_id) to name the
     session dir after the scenario, so its transcript persists at a findable

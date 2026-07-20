@@ -33,7 +33,7 @@ if str(_HUGO_ROOT) not in sys.path:
 # harness flips schemas.config.EVAL_HARNESS + loads .env at import — wanted here.
 from utils.evaluation_suite.harness import (
     _build_agent, _seed_post, _clean_leftovers, _TURN_TIMEOUT_SEC, load_cases, sample,
-    seed_active_post)
+    seed_active_post, snapshot_post_ids, clean_created_posts)
 from utils.evaluation_suite.scoring import is_completed, tool_similarity
 from utils.evaluation_suite import scoring as gates
 from utils.evaluation_suite.trace_writer import (
@@ -118,6 +118,15 @@ def _top_pred_flow(agent):
 
 
 def _run_case(case:dict, domain_tools:set, report_path:Path) -> tuple[int, int, list, list, list]:
+    """Run one scenario inside a content-library boundary that is restored even on failure."""
+    before = snapshot_post_ids()
+    try:
+        return _run_case_inner(case, domain_tools, report_path)
+    finally:
+        clean_created_posts(before)
+
+
+def _run_case_inner(case:dict, domain_tools:set, report_path:Path) -> tuple[int, int, list, list, list]:
     """Seed declared posts, run the user turns, score completion + tool similarity per turn. Returns
     (completed_user_turns, total_user_turns, per_turn_tool_similarities, per_turn_seconds,
     trace_records)."""

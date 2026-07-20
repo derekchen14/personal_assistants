@@ -36,7 +36,7 @@ if str(_HUGO_ROOT) not in sys.path:
 
 from utils.evaluation_suite.harness import (
     _build_agent, _seed_post, _clean_leftovers, _TURN_TIMEOUT_SEC, sample, all_ids, load_cases,
-    seed_active_post)
+    seed_active_post, snapshot_post_ids, clean_created_posts)
 from utils.evaluation_suite.scoring import (
     is_completed, tool_similarity, semantic_similarity, judge_response)
 from utils.evaluation_suite._traces.run_traces import _normalize_post, _install_tool_logger, _domain_tools
@@ -83,6 +83,16 @@ def _top_pred_flow(agent):
 
 
 def _score_convo(case:dict, domain_tools:set, judge:bool=False, trace_path:Path|None=None) -> dict:
+    """Run one scenario inside a content-library boundary that is restored even on failure."""
+    before = snapshot_post_ids()
+    try:
+        return _score_convo_inner(case, domain_tools, judge, trace_path)
+    finally:
+        clean_created_posts(before)
+
+
+def _score_convo_inner(case:dict, domain_tools:set, judge:bool=False,
+                       trace_path:Path|None=None) -> dict:
     """Run one conversation end-to-end and score the criteria at the CONVERSATION level. The response
     judge (criterion 3, the only LLM cost) runs only when `judge` is set."""
     seeded = []
